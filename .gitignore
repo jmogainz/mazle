@@ -29,6 +29,7 @@ yarn-error.log*
 # Vercel
 .vercel/README.txt
 .vercel/output
+.last_vercel_deploy_url
 
 # TypeScript
 *.tsbuildinfo

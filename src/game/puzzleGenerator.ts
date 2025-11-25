@@ -1,12 +1,12 @@
 import seedrandom from 'seedrandom';
 import { TileType, Position, PuzzleData, Direction } from './types';
 
-// Server salt for puzzle generation (in production, this would come from server)
-const SERVER_SALT = 'mazle-daily-v1-2024';
+// Server salt for puzzle generation
+const SERVER_SALT = 'mazle-daily-v4-2024-refined';
 
 // Get deterministic seed for a given date
 export function getDailySeed(date: Date): string {
-  const dateStr = date.toISOString().split('T')[0]; // YYYY-MM-DD
+  const dateStr = date.toISOString().split('T')[0];
   return `${dateStr}-${SERVER_SALT}`;
 }
 
@@ -18,7 +18,7 @@ export function getPuzzleNumber(date: Date): number {
   return diffDays + 1;
 }
 
-// Seeded random number generator wrapper
+// Seeded random number generator
 class SeededRandom {
   private rng: seedrandom.PRNG;
 
@@ -26,38 +26,38 @@ class SeededRandom {
     this.rng = seedrandom(seed);
   }
 
-  // Returns float between 0 and 1
   random(): number {
     return this.rng();
   }
 
-  // Returns int between min (inclusive) and max (exclusive)
   randomInt(min: number, max: number): number {
     return Math.floor(this.random() * (max - min)) + min;
   }
 
-  // Returns random element from array
   randomChoice<T>(arr: T[]): T {
     return arr[this.randomInt(0, arr.length)];
   }
 
-  // Shuffle array in place
   shuffle<T>(arr: T[]): T[] {
-    for (let i = arr.length - 1; i > 0; i--) {
+    const result = [...arr];
+    for (let i = result.length - 1; i > 0; i--) {
       const j = this.randomInt(0, i + 1);
-      [arr[i], arr[j]] = [arr[j], arr[i]];
+      [result[i], result[j]] = [result[j], result[i]];
     }
-    return arr;
+    return result;
   }
 }
 
-// Check if a position is valid on the grid
-function isValidPosition(x: number, y: number, width: number, height: number): boolean {
+// Position utilities
+function isValid(x: number, y: number, width: number, height: number): boolean {
   return x >= 0 && x < width && y >= 0 && y < height;
 }
 
-// Get direction delta
-function getDirectionDelta(dir: Direction): Position {
+function isInner(x: number, y: number, width: number, height: number): boolean {
+  return x > 0 && x < width - 1 && y > 0 && y < height - 1;
+}
+
+function getDelta(dir: Direction): Position {
   switch (dir) {
     case Direction.UP: return { x: 0, y: -1 };
     case Direction.DOWN: return { x: 0, y: 1 };
@@ -66,55 +66,82 @@ function getDirectionDelta(dir: Direction): Position {
   }
 }
 
-// Simulate a move and return final position
+function getAllDirs(): Direction[] {
+  return [Direction.UP, Direction.DOWN, Direction.LEFT, Direction.RIGHT];
+}
+
+function posKey(p: Position): string {
+  return `${p.x},${p.y}`;
+}
+
+function posEq(a: Position, b: Position): boolean {
+  return a.x === b.x && a.y === b.y;
+}
+
+// Simulate a move with ice sliding
 function simulateMove(
   tiles: TileType[][],
   start: Position,
   dir: Direction,
   width: number,
   height: number
-): Position | null {
-  const delta = getDirectionDelta(dir);
+): { pos: Position; valid: boolean } {
+  const delta = getDelta(dir);
   let x = start.x + delta.x;
   let y = start.y + delta.y;
 
-  // Check if initial move is valid
-  if (!isValidPosition(x, y, width, height)) return null;
-  
+  if (!isValid(x, y, width, height)) {
+    return { pos: start, valid: false };
+  }
+
   const targetTile = tiles[y][x];
-  if (targetTile === TileType.WALL) return null;
+  if (targetTile === TileType.WALL) {
+    return { pos: start, valid: false };
+  }
 
   // Check ledge entry rules
   if (targetTile >= TileType.LEDGE_UP && targetTile <= TileType.LEDGE_RIGHT) {
-    // Ledges can only be entered from specific directions
-    const ledgeDir = targetTile - TileType.LEDGE_UP; // 0=up, 1=down, 2=left, 3=right
+    const ledgeDir = targetTile - TileType.LEDGE_UP;
     const allowedDirs = [Direction.DOWN, Direction.UP, Direction.RIGHT, Direction.LEFT];
-    if (dir !== allowedDirs[ledgeDir]) return null;
+    if (dir !== allowedDirs[ledgeDir]) {
+      return { pos: start, valid: false };
+    }
   }
 
   // Handle ice sliding
   if (targetTile === TileType.ICE) {
-    while (true) {
+    let steps = 0;
+    while (steps < 50) {
+      steps++;
       const nextX = x + delta.x;
       const nextY = y + delta.y;
-      
-      if (!isValidPosition(nextX, nextY, width, height)) break;
-      
+
+      if (!isValid(nextX, nextY, width, height)) break;
+
       const nextTile = tiles[nextY][nextX];
       if (nextTile === TileType.WALL) break;
-      if (nextTile >= TileType.LEDGE_UP && nextTile <= TileType.LEDGE_RIGHT) break;
-      
+
+      // Check ledge
+      if (nextTile >= TileType.LEDGE_UP && nextTile <= TileType.LEDGE_RIGHT) {
+        const ledgeDir = nextTile - TileType.LEDGE_UP;
+        const allowedDirs = [Direction.DOWN, Direction.UP, Direction.RIGHT, Direction.LEFT];
+        if (dir !== allowedDirs[ledgeDir]) break;
+        x = nextX;
+        y = nextY;
+        break;
+      }
+
       x = nextX;
       y = nextY;
-      
+
       if (nextTile !== TileType.ICE) break;
     }
   }
 
-  return { x, y };
+  return { pos: { x, y }, valid: true };
 }
 
-// BFS to find if goal is reachable and minimum moves
+// BFS pathfinding
 function findPath(
   tiles: TileType[][],
   start: Position,
@@ -124,24 +151,22 @@ function findPath(
 ): number | null {
   const queue: { pos: Position; moves: number }[] = [{ pos: start, moves: 0 }];
   const visited = new Set<string>();
-  visited.add(`${start.x},${start.y}`);
-
-  const directions = [Direction.UP, Direction.DOWN, Direction.LEFT, Direction.RIGHT];
+  visited.add(posKey(start));
 
   while (queue.length > 0) {
     const current = queue.shift()!;
-    
-    if (current.pos.x === goal.x && current.pos.y === goal.y) {
+
+    if (posEq(current.pos, goal)) {
       return current.moves;
     }
 
-    for (const dir of directions) {
-      const newPos = simulateMove(tiles, current.pos, dir, width, height);
-      if (newPos) {
-        const key = `${newPos.x},${newPos.y}`;
+    for (const dir of getAllDirs()) {
+      const result = simulateMove(tiles, current.pos, dir, width, height);
+      if (result.valid) {
+        const key = posKey(result.pos);
         if (!visited.has(key)) {
           visited.add(key);
-          queue.push({ pos: newPos, moves: current.moves + 1 });
+          queue.push({ pos: result.pos, moves: current.moves + 1 });
         }
       }
     }
@@ -150,347 +175,431 @@ function findPath(
   return null;
 }
 
-// Generate a puzzle for a given seed
+// Get all reachable positions
+function getReachable(
+  tiles: TileType[][],
+  start: Position,
+  width: number,
+  height: number
+): Set<string> {
+  const reachable = new Set<string>();
+  const queue: Position[] = [start];
+  reachable.add(posKey(start));
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+
+    for (const dir of getAllDirs()) {
+      const result = simulateMove(tiles, current, dir, width, height);
+      if (result.valid) {
+        const key = posKey(result.pos);
+        if (!reachable.has(key)) {
+          reachable.add(key);
+          queue.push(result.pos);
+        }
+      }
+    }
+  }
+
+  return reachable;
+}
+
+// Check solvability
+function isSolvable(tiles: TileType[][], start: Position, goal: Position, w: number, h: number): boolean {
+  return findPath(tiles, start, goal, w, h) !== null;
+}
+
+// Verify no stuck states - all reachable positions can reach the goal
+function hasNoStuckStates(tiles: TileType[][], start: Position, goal: Position, w: number, h: number): boolean {
+  const reachable = getReachable(tiles, start, w, h);
+  for (const key of reachable) {
+    const [x, y] = key.split(',').map(Number);
+    if (!isSolvable(tiles, { x, y }, goal, w, h)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// ============================================================================
+// PUZZLE GENERATION - Guaranteed solvable with strategic obstacles
+// ============================================================================
+
+function createBaseMaze(width: number, height: number, rng: SeededRandom): TileType[][] {
+  // Start with all walls
+  const tiles: TileType[][] = Array(height).fill(null).map(() => Array(width).fill(TileType.WALL));
+
+  // Carve out the playable area using recursive backtracking maze generation
+  // This guarantees connectivity
+  const visited = new Set<string>();
+
+  function carve(x: number, y: number) {
+    visited.add(posKey({ x, y }));
+    tiles[y][x] = TileType.ICE;
+
+    // Get shuffled directions
+    const dirs = rng.shuffle([
+      { dx: 0, dy: -2 }, // Up
+      { dx: 0, dy: 2 },  // Down
+      { dx: -2, dy: 0 }, // Left
+      { dx: 2, dy: 0 },  // Right
+    ]);
+
+    for (const { dx, dy } of dirs) {
+      const nx = x + dx;
+      const ny = y + dy;
+
+      if (isInner(nx, ny, width, height) && !visited.has(posKey({ x: nx, y: ny }))) {
+        // Carve the wall between current and next
+        tiles[y + dy / 2][x + dx / 2] = TileType.ICE;
+        carve(nx, ny);
+      }
+    }
+  }
+
+  // Start carving from a position
+  const startX = 2 + (rng.randomInt(0, (width - 4) / 2)) * 2;
+  const startY = 2 + (rng.randomInt(0, (height - 4) / 2)) * 2;
+  carve(startX, startY);
+
+  return tiles;
+}
+
+function widenPassages(tiles: TileType[][], width: number, height: number, rng: SeededRandom): void {
+  // Widen some passages to create larger ice areas
+  const widenCount = rng.randomInt(15, 30);
+
+  for (let i = 0; i < widenCount; i++) {
+    const x = rng.randomInt(2, width - 2);
+    const y = rng.randomInt(2, height - 2);
+
+    if (tiles[y][x] === TileType.WALL) {
+      // Check if adjacent to ice
+      const neighbors = [
+        tiles[y - 1]?.[x], tiles[y + 1]?.[x],
+        tiles[y]?.[x - 1], tiles[y]?.[x + 1]
+      ].filter(t => t === TileType.ICE);
+
+      if (neighbors.length >= 2) {
+        tiles[y][x] = TileType.ICE;
+      }
+    }
+  }
+}
+
+function addStopBlocks(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number,
+  rng: SeededRandom,
+  count: number
+): void {
+  // Add walls inside ice areas to create stopping points and redirect slides
+  let placed = 0;
+  let attempts = 0;
+
+  while (placed < count && attempts < count * 5) {
+    attempts++;
+    const x = rng.randomInt(2, width - 2);
+    const y = rng.randomInt(2, height - 2);
+
+    if (tiles[y][x] !== TileType.ICE) continue;
+    if (posEq({ x, y }, start) || posEq({ x, y }, goal)) continue;
+
+    // Temporarily place wall
+    tiles[y][x] = TileType.WALL;
+
+    // Check if still solvable and no stuck states
+    if (isSolvable(tiles, start, goal, width, height)) {
+      placed++;
+    } else {
+      tiles[y][x] = TileType.ICE; // Revert
+    }
+  }
+}
+
+function addFloorStops(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number,
+  rng: SeededRandom,
+  count: number
+): void {
+  // Add floor tiles as natural stopping points (decision points)
+  let placed = 0;
+  let attempts = 0;
+
+  while (placed < count && attempts < count * 3) {
+    attempts++;
+    const x = rng.randomInt(2, width - 2);
+    const y = rng.randomInt(2, height - 2);
+
+    if (tiles[y][x] !== TileType.ICE) continue;
+    if (posEq({ x, y }, start) || posEq({ x, y }, goal)) continue;
+
+    tiles[y][x] = TileType.FLOOR;
+    placed++;
+  }
+}
+
+function addLedges(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number,
+  rng: SeededRandom,
+  count: number
+): void {
+  // Add one-way ledges for directional challenge
+  // Ledges can only be entered from one direction
+
+  const ledgeOptions: { dir: Direction; type: TileType }[] = [
+    { dir: Direction.DOWN, type: TileType.LEDGE_UP },    // Enter from above
+    { dir: Direction.UP, type: TileType.LEDGE_DOWN },    // Enter from below
+    { dir: Direction.RIGHT, type: TileType.LEDGE_LEFT }, // Enter from left
+    { dir: Direction.LEFT, type: TileType.LEDGE_RIGHT }, // Enter from right
+  ];
+
+  let placed = 0;
+  let attempts = 0;
+
+  while (placed < count && attempts < count * 10) {
+    attempts++;
+    const x = rng.randomInt(3, width - 3);
+    const y = rng.randomInt(3, height - 3);
+
+    if (tiles[y][x] !== TileType.ICE && tiles[y][x] !== TileType.FLOOR) continue;
+    if (posEq({ x, y }, start) || posEq({ x, y }, goal)) continue;
+
+    // Pick a random ledge direction
+    const option = rng.randomChoice(ledgeOptions);
+    const delta = getDelta(option.dir);
+
+    // Check that we have walkable tiles on entry and exit sides
+    const entryX = x - delta.x;
+    const entryY = y - delta.y;
+    const exitX = x + delta.x;
+    const exitY = y + delta.y;
+
+    if (!isInner(entryX, entryY, width, height)) continue;
+    if (!isInner(exitX, exitY, width, height)) continue;
+
+    const entryTile = tiles[entryY][entryX];
+    const exitTile = tiles[exitY][exitX];
+
+    if (entryTile === TileType.WALL || exitTile === TileType.WALL) continue;
+
+    // Temporarily place ledge
+    const oldTile = tiles[y][x];
+    tiles[y][x] = option.type;
+
+    // Check if still solvable AND no stuck states
+    if (isSolvable(tiles, start, goal, width, height) && 
+        hasNoStuckStates(tiles, start, goal, width, height)) {
+      placed++;
+    } else {
+      tiles[y][x] = oldTile; // Revert
+    }
+  }
+}
+
+function addExtraConnections(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number,
+  rng: SeededRandom,
+  count: number
+): void {
+  // Add extra paths by removing some walls - creates alternative routes
+  let added = 0;
+  let attempts = 0;
+
+  while (added < count && attempts < count * 5) {
+    attempts++;
+    const x = rng.randomInt(2, width - 2);
+    const y = rng.randomInt(2, height - 2);
+
+    if (tiles[y][x] !== TileType.WALL) continue;
+
+    // Check if this wall separates two ice areas
+    const neighbors = [
+      { x: x, y: y - 1 }, { x: x, y: y + 1 },
+      { x: x - 1, y: y }, { x: x + 1, y: y }
+    ];
+
+    const iceNeighbors = neighbors.filter(n => 
+      isValid(n.x, n.y, width, height) && 
+      (tiles[n.y][n.x] === TileType.ICE || tiles[n.y][n.x] === TileType.FLOOR)
+    );
+
+    if (iceNeighbors.length >= 2) {
+      tiles[y][x] = TileType.ICE;
+      added++;
+    }
+  }
+}
+
+// Main puzzle generation
 export function generatePuzzle(seed: string): PuzzleData {
   const rng = new SeededRandom(seed);
-  
-  // Variable puzzle size for variety
+
+  // Puzzle sizes - larger for more challenge
   const sizeOptions = [
-    { width: 13, height: 13 },
-    { width: 14, height: 12 },
-    { width: 12, height: 14 },
-    { width: 13, height: 12 },
-    { width: 12, height: 13 },
-    { width: 12, height: 12 },
-    { width: 12, height: 11 },
-    { width: 11, height: 12 },
-    { width: 12, height: 10 },
-    { width: 10, height: 12 },
-    { width: 11, height: 11 },
+    { width: 17, height: 15 },
+    { width: 19, height: 15 },
+    { width: 17, height: 17 },
+    { width: 19, height: 17 },
+    { width: 21, height: 17 },
+    { width: 19, height: 19 },
+    { width: 21, height: 19 },
   ];
-  
+
   const { width, height } = rng.randomChoice(sizeOptions);
-  
+
   let bestPuzzle: PuzzleData | null = null;
-  const passes = [
-    {
-      targetMinMoves: 28,
-      targetMaxMoves: 60,
-      minDistance: 12,
-      wallRange: [18, 34] as [number, number],
-      stripeRange: [2, 4] as [number, number],
-      stripeOpenings: [1, 2] as [number, number],
-      icePatchRange: [3, 6] as [number, number],
-      icePatchSizeRange: [4, 9] as [number, number],
-      ledgeRange: [3, 6] as [number, number],
-      pillarRange: [2, 5] as [number, number],
-      iceLinesRange: [1, 3] as [number, number],
-    },
-    {
-      // Relaxed pass to avoid deterministic fallback in dev/test seeds
-      targetMinMoves: 18,
-      targetMaxMoves: 50,
-      minDistance: 8,
-      wallRange: [14, 28] as [number, number],
-      stripeRange: [1, 3] as [number, number],
-      stripeOpenings: [1, 3] as [number, number],
-      icePatchRange: [2, 5] as [number, number],
-      icePatchSizeRange: [3, 7] as [number, number],
-      ledgeRange: [2, 5] as [number, number],
-      pillarRange: [1, 4] as [number, number],
-      iceLinesRange: [0, 2] as [number, number],
-    },
-  ];
-  const attemptsPerPass = 200;
+  let bestScore = 0;
 
-  for (const pass of passes) {
-    let attempts = 0;
+  for (let attempt = 0; attempt < 50; attempt++) {
+    // Create base maze with guaranteed connectivity
+    const tiles = createBaseMaze(width, height, rng);
 
-    while (!bestPuzzle && attempts < attemptsPerPass) {
-      attempts++;
-      
-      // Initialize grid with floors
-      const tiles: TileType[][] = Array(height)
-        .fill(null)
-        .map(() => Array(width).fill(TileType.FLOOR));
-      
-      // Add border walls
-      for (let x = 0; x < width; x++) {
-        tiles[0][x] = TileType.WALL;
-        tiles[height - 1][x] = TileType.WALL;
-      }
-      for (let y = 0; y < height; y++) {
-        tiles[y][0] = TileType.WALL;
-        tiles[y][width - 1] = TileType.WALL;
-      }
-      
-      // Add internal walls (create interesting structure)
-      const wallCount = rng.randomInt(pass.wallRange[0], pass.wallRange[1]);
-      for (let i = 0; i < wallCount; i++) {
-        const wx = rng.randomInt(2, width - 2);
-        const wy = rng.randomInt(2, height - 2);
-        
-        // Create wall clusters
-        const clusterSize = rng.randomInt(2, 6);
-        for (let j = 0; j < clusterSize; j++) {
-          const cx = wx + rng.randomInt(-1, 2);
-          const cy = wy + rng.randomInt(-1, 2);
-          if (isValidPosition(cx, cy, width, height) && 
-              tiles[cy][cx] === TileType.FLOOR) {
-            tiles[cy][cx] = TileType.WALL;
-          }
-        }
-      }
-
-      // Add wall stripes to create choke points
-      const stripeCount = rng.randomInt(pass.stripeRange[0], pass.stripeRange[1]);
-      for (let i = 0; i < stripeCount; i++) {
-        const horizontal = rng.random() > 0.5;
-        if (horizontal) {
-          const row = rng.randomInt(2, height - 2);
-          const openings = new Set<number>();
-          const openingCount = rng.randomInt(pass.stripeOpenings[0], pass.stripeOpenings[1]);
-          while (openings.size < openingCount) {
-            openings.add(rng.randomInt(2, width - 2));
-          }
-          for (let x = 1; x < width - 1; x++) {
-            if (openings.has(x)) continue;
-            if (tiles[row][x] === TileType.FLOOR) {
-              tiles[row][x] = TileType.WALL;
-            }
-          }
-        } else {
-          const col = rng.randomInt(2, width - 2);
-          const openings = new Set<number>();
-          const openingCount = rng.randomInt(pass.stripeOpenings[0], pass.stripeOpenings[1]);
-          while (openings.size < openingCount) {
-            openings.add(rng.randomInt(2, height - 2));
-          }
-          for (let y = 1; y < height - 1; y++) {
-            if (openings.has(y)) continue;
-            if (tiles[y][col] === TileType.FLOOR) {
-              tiles[y][col] = TileType.WALL;
-            }
-          }
-        }
-      }
-
-      // Add small pillar clusters to force detours
-      const pillarCount = rng.randomInt(pass.pillarRange[0], pass.pillarRange[1]);
-      for (let i = 0; i < pillarCount; i++) {
-        const px = rng.randomInt(2, width - 2);
-        const py = rng.randomInt(2, height - 2);
-        const shapes = [
-          [{ dx: 0, dy: 0 }, { dx: 1, dy: 0 }, { dx: 0, dy: 1 }],
-          [{ dx: 0, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: -1 }],
-          [{ dx: 0, dy: 0 }, { dx: 1, dy: 0 }, { dx: 0, dy: -1 }],
-          [{ dx: 0, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }],
-        ];
-        const shape = rng.randomChoice(shapes);
-        for (const { dx, dy } of shape) {
-          const tx = px + dx;
-          const ty = py + dy;
-          if (isValidPosition(tx, ty, width, height) && tiles[ty][tx] === TileType.FLOOR) {
-            tiles[ty][tx] = TileType.WALL;
-          }
-        }
-      }
-      
-      // Add ice patches (sparingly, as per spec)
-      const useIce = rng.random() > 0.15; // 85% chance of ice
-      if (useIce) {
-        const icePatches = rng.randomInt(pass.icePatchRange[0], pass.icePatchRange[1]);
-        for (let i = 0; i < icePatches; i++) {
-          const ix = rng.randomInt(2, width - 2);
-          const iy = rng.randomInt(2, height - 2);
-          
-          // Create ice patch
-          const patchSize = rng.randomInt(pass.icePatchSizeRange[0], pass.icePatchSizeRange[1]);
-          for (let j = 0; j < patchSize; j++) {
-            const cx = ix + rng.randomInt(-1, 2);
-            const cy = iy + rng.randomInt(-1, 2);
-            if (isValidPosition(cx, cy, width, height) && 
-                tiles[cy][cx] === TileType.FLOOR) {
-              tiles[cy][cx] = TileType.ICE;
-            }
-          }
-        }
-
-        // Add a few sliding corridors aligned with stripes
-        const iceLines = rng.randomInt(pass.iceLinesRange[0], pass.iceLinesRange[1]);
-        for (let i = 0; i < iceLines; i++) {
-          const horizontal = rng.random() > 0.5;
-          if (horizontal) {
-            const row = rng.randomInt(2, height - 2);
-            const startX = rng.randomInt(1, Math.max(2, width - 6));
-            const length = rng.randomInt(4, Math.min(8, width - startX - 1));
-            for (let x = startX; x < startX + length; x++) {
-              if (tiles[row][x] === TileType.FLOOR) {
-                tiles[row][x] = TileType.ICE;
-              }
-            }
-          } else {
-            const col = rng.randomInt(2, width - 2);
-            const startY = rng.randomInt(1, Math.max(2, height - 6));
-            const length = rng.randomInt(4, Math.min(8, height - startY - 1));
-            for (let y = startY; y < startY + length; y++) {
-              if (tiles[y][col] === TileType.FLOOR) {
-                tiles[y][col] = TileType.ICE;
-              }
-            }
-          }
-        }
-      }
-      
-      // Add ledges (sparingly)
-      const useLedges = rng.random() > 0.3; // 70% chance of ledges
-      if (useLedges) {
-        const ledgeCount = rng.randomInt(pass.ledgeRange[0], pass.ledgeRange[1]);
-        for (let i = 0; i < ledgeCount; i++) {
-          const lx = rng.randomInt(2, width - 2);
-          const ly = rng.randomInt(2, height - 2);
-          if (tiles[ly][lx] === TileType.FLOOR) {
-            const ledgeType = rng.randomChoice([
-              TileType.LEDGE_UP,
-              TileType.LEDGE_DOWN,
-              TileType.LEDGE_LEFT,
-              TileType.LEDGE_RIGHT,
-            ]);
-            tiles[ly][lx] = ledgeType;
-          }
-        }
-      }
-      
-      // Find valid start and goal positions
-      const floorTiles: Position[] = [];
-      for (let y = 1; y < height - 1; y++) {
-        for (let x = 1; x < width - 1; x++) {
-          if (tiles[y][x] === TileType.FLOOR) {
-            floorTiles.push({ x, y });
-          }
-        }
-      }
-      
-      if (floorTiles.length < 10) continue;
-      
-      // Try to find good start/goal pair
-      rng.shuffle(floorTiles);
-      
-      let foundValidPuzzle = false;
-      for (let si = 0; si < Math.min(floorTiles.length, 80) && !foundValidPuzzle; si++) {
-        const start = floorTiles[si];
-        
-        for (let gi = si + 1; gi < Math.min(floorTiles.length, 120) && !foundValidPuzzle; gi++) {
-          const goal = floorTiles[gi];
-          
-          // Ensure some minimum distance
-          const dist = Math.abs(goal.x - start.x) + Math.abs(goal.y - start.y);
-          if (dist < pass.minDistance) continue;
-          
-          // Check path
-          const moves = findPath(tiles, start, goal, width, height);
-          
-          // Target deeper puzzles for 2-3 minute solves
-          if (moves !== null && moves >= pass.targetMinMoves && moves <= pass.targetMaxMoves) {
-            // Mark start and goal
-            tiles[start.y][start.x] = TileType.START;
-            tiles[goal.y][goal.x] = TileType.GOAL;
-            
-            bestPuzzle = {
-              width,
-              height,
-              tiles,
-              start,
-              goal,
-              optimalMoves: moves,
-            };
-            foundValidPuzzle = true;
-          }
+    // Find start and goal positions
+    const iceTiles: Position[] = [];
+    for (let y = 2; y < height - 2; y++) {
+      for (let x = 2; x < width - 2; x++) {
+        if (tiles[y][x] === TileType.ICE) {
+          iceTiles.push({ x, y });
         }
       }
     }
 
-    if (bestPuzzle) {
+    if (iceTiles.length < 20) continue;
+
+    // Pick start on left side, goal on right side
+    const leftTiles = iceTiles.filter(p => p.x < width / 3);
+    const rightTiles = iceTiles.filter(p => p.x > (2 * width) / 3);
+
+    if (leftTiles.length === 0 || rightTiles.length === 0) continue;
+
+    const start = rng.randomChoice(leftTiles);
+    const goal = rng.randomChoice(rightTiles);
+
+    // Widen some passages
+    widenPassages(tiles, width, height, rng);
+
+    // Add extra connections for alternative routes
+    addExtraConnections(tiles, start, goal, width, height, rng, rng.randomInt(5, 12));
+
+    // Add stop blocks to increase difficulty
+    addStopBlocks(tiles, start, goal, width, height, rng, rng.randomInt(8, 18));
+
+    // Add floor stopping points
+    addFloorStops(tiles, start, goal, width, height, rng, rng.randomInt(5, 12));
+
+    // Add ledges for directional challenge
+    addLedges(tiles, start, goal, width, height, rng, rng.randomInt(3, 8));
+
+    // Set start and goal
+    tiles[start.y][start.x] = TileType.START;
+    tiles[goal.y][goal.x] = TileType.GOAL;
+
+    // Verify solvability
+    const optimalMoves = findPath(tiles, start, goal, width, height);
+    if (optimalMoves === null) continue;
+
+    // Verify no stuck states
+    if (!hasNoStuckStates(tiles, start, goal, width, height)) continue;
+
+    // Score based on move count - prefer puzzles with 20-40 moves
+    const score = optimalMoves >= 20 && optimalMoves <= 45 ? optimalMoves : optimalMoves / 2;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestPuzzle = {
+        width,
+        height,
+        tiles,
+        start,
+        goal,
+        optimalMoves
+      };
+    }
+
+    // Good enough
+    if (optimalMoves >= 22 && optimalMoves <= 40) {
       break;
     }
   }
-  
-  // Fallback: generate a simple guaranteed-solvable puzzle
+
   if (!bestPuzzle) {
-    bestPuzzle = generateSimplePuzzle(rng);
+    // Fallback - try with different seed
+    if (!seed.includes('-fallback')) {
+      return generatePuzzle(seed + '-fallback');
+    }
+    // Ultimate fallback
+    return createSimplePuzzle(width, height, rng);
   }
-  
+
   return bestPuzzle;
 }
 
-// Simple fallback puzzle generator
-function generateSimplePuzzle(rng: SeededRandom): PuzzleData {
-  const width = 13;
-  const height = 13;
-  
-  const tiles: TileType[][] = Array(height)
-    .fill(null)
-    .map(() => Array(width).fill(TileType.FLOOR));
-  
-  // Border walls
-  for (let x = 0; x < width; x++) {
-  tiles[0][x] = TileType.WALL;
-  tiles[height - 1][x] = TileType.WALL;
-}
-for (let y = 0; y < height; y++) {
-  tiles[y][0] = TileType.WALL;
-  tiles[y][width - 1] = TileType.WALL;
-}
+// Simple fallback puzzle that's guaranteed to work
+function createSimplePuzzle(width: number, height: number, rng: SeededRandom): PuzzleData {
+  const tiles: TileType[][] = Array(height).fill(null).map(() => Array(width).fill(TileType.WALL));
 
-  // Random internal walls and choke points to avoid deterministic fallback
-  const scatterWalls = rng.randomInt(14, 22);
-  for (let i = 0; i < scatterWalls; i++) {
-    const wx = rng.randomInt(1, width - 1);
-    const wy = rng.randomInt(1, height - 1);
-    if (tiles[wy][wx] === TileType.FLOOR) {
-      tiles[wy][wx] = TileType.WALL;
+  // Create a simple connected ice area
+  for (let y = 2; y < height - 2; y++) {
+    for (let x = 2; x < width - 2; x++) {
+      if (rng.random() < 0.65) {
+        tiles[y][x] = TileType.ICE;
+      }
     }
   }
-  for (let x = 2; x < width - 2; x++) {
-    if (rng.random() > 0.7) continue;
-    tiles[7][x] = TileType.WALL;
-  }
-  
-  // Ice patch
-  const iceCount = rng.randomInt(8, 16);
-  for (let i = 0; i < iceCount; i++) {
-    const ix = rng.randomInt(2, width - 2);
-    const iy = rng.randomInt(2, height - 2);
-    if (tiles[iy][ix] === TileType.FLOOR) {
-      tiles[iy][ix] = TileType.ICE;
+
+  // Ensure connectivity with a guaranteed path
+  for (let y = height / 2 - 1; y <= height / 2 + 1; y++) {
+    for (let x = 2; x < width - 2; x++) {
+      tiles[Math.floor(y)][x] = TileType.ICE;
     }
   }
-  
-  // Ledge to force detours
-  const ledgeChoices = [TileType.LEDGE_RIGHT, TileType.LEDGE_DOWN, TileType.LEDGE_LEFT, TileType.LEDGE_UP];
-  const ledgeCount = rng.randomInt(2, 4);
-  for (let i = 0; i < ledgeCount; i++) {
-    const lx = rng.randomInt(2, width - 2);
-    const ly = rng.randomInt(2, height - 2);
-    if (tiles[ly][lx] === TileType.FLOOR) {
-      tiles[ly][lx] = rng.randomChoice(ledgeChoices);
+
+  const start = { x: 3, y: Math.floor(height / 2) };
+  const goal = { x: width - 4, y: Math.floor(height / 2) };
+
+  // Add some walls for interest
+  for (let i = 0; i < 15; i++) {
+    const x = rng.randomInt(4, width - 4);
+    const y = rng.randomInt(3, height - 3);
+    if (!posEq({ x, y }, start) && !posEq({ x, y }, goal) && tiles[y][x] === TileType.ICE) {
+      tiles[y][x] = TileType.WALL;
+      if (!isSolvable(tiles, start, goal, width, height)) {
+        tiles[y][x] = TileType.ICE;
+      }
     }
   }
-  
-  // Start and goal
-  const start = { x: 1, y: 1 };
-  const goal = { x: 11, y: 11 };
+
+  // Add floor stops
+  for (let i = 0; i < 8; i++) {
+    const x = rng.randomInt(3, width - 3);
+    const y = rng.randomInt(3, height - 3);
+    if (tiles[y][x] === TileType.ICE && !posEq({ x, y }, start) && !posEq({ x, y }, goal)) {
+      tiles[y][x] = TileType.FLOOR;
+    }
+  }
+
   tiles[start.y][start.x] = TileType.START;
   tiles[goal.y][goal.x] = TileType.GOAL;
-  
-  return {
-    width,
-    height,
-    tiles,
-    start,
-    goal,
-    optimalMoves: 28,
-  };
+
+  const optimalMoves = findPath(tiles, start, goal, width, height) || 15;
+
+  return { width, height, tiles, start, goal, optimalMoves };
 }
 
 // Get today's puzzle

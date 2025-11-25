@@ -6,6 +6,7 @@ services:
     build:
       context: .
       dockerfile: mazle.Dockerfile
+      target: deps
       <<: *build-network
       labels:
         com.docker.compose.project: ${COMPOSE_PROJECT_NAME:?Docker Compose Config Error! COMPOSE_PROJECT_NAME is not set!}
@@ -22,12 +23,20 @@ services:
     container_name: ${APP_NAME:?Docker Compose Config Error! APP_NAME is not set!}_instance
     environment:
       - ENV=${ENV}
-      - NODE_ENV=production
+      - NODE_ENV=development
       - NEXT_PUBLIC_ENV=${NEXT_PUBLIC_ENV}
       - NEXT_PUBLIC_DEVTOOLS_ENABLED=${NEXT_PUBLIC_DEVTOOLS_ENABLED:-0}
       - PORT=${APP_PORT:-3000}
+      - HOSTNAME=0.0.0.0
+      - CHOKIDAR_USEPOLLING=1
+      - WATCHPACK_POLLING=1
     ports:
       - "${APP_HOST_PORT:-3000}:${APP_PORT:-3000}"
+    command: ["npm", "run", "dev", "--", "--hostname", "0.0.0.0", "--port", "${APP_PORT:-3000}"]
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${APP_PORT:-3000}/api/health"]
       interval: 5s

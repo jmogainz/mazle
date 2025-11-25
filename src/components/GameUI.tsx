@@ -9,13 +9,15 @@ import styles from './GameUI.module.css';
 interface GameUIProps {
   puzzleNumber: number;
   optimalMoves: number;
+  puzzleLabel?: string;
 }
 
-export default function GameUI({ puzzleNumber, optimalMoves }: GameUIProps) {
+export default function GameUI({ puzzleNumber, optimalMoves, puzzleLabel }: GameUIProps) {
   const [moveCount, setMoveCount] = useState(0);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [startTime, setStartTime] = useState<number | null>(null);
   const [isComplete, setIsComplete] = useState(false);
+  const displayLabel = puzzleLabel ?? `#${puzzleNumber}`;
 
   useEffect(() => {
     const unsubscribe = onGameEvent('stateUpdate', (data) => {
@@ -44,7 +46,7 @@ export default function GameUI({ puzzleNumber, optimalMoves }: GameUIProps) {
       <div className={styles.header}>
         <div className={styles.puzzleInfo}>
           <span className={styles.puzzleLabel}>MAZLE</span>
-          <span className={styles.puzzleNumber}>#{puzzleNumber}</span>
+          <span className={styles.puzzleNumber}>{displayLabel}</span>
         </div>
       </div>
       
@@ -67,4 +69,3 @@ export default function GameUI({ puzzleNumber, optimalMoves }: GameUIProps) {
     </div>
   );
 }
-

@@ -3,7 +3,16 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { Header, GameUI, ShareCard, StatsModal, HelpModal, MobileControls } from '@/components';
-import { getTodaysPuzzle, getPuzzleNumber, onGameEvent, Direction, PuzzleData } from '@/game';
+import {
+  getTodaysPuzzle,
+  getPuzzleNumber,
+  onGameEvent,
+  Direction,
+  PuzzleData,
+  generatePuzzle,
+  getDailySeed,
+  getPuzzleForDate,
+} from '@/game';
 import { getPlayerStats, saveTodaysResult, getTodaysResult } from '@/utils/storage';
 import { PlayerStats, DailyStats } from '@/game/types';
 import type { GameControls } from '@/game/PhaserGame';
@@ -20,9 +29,16 @@ const PhaserGame = dynamic(() => import('@/game/PhaserGame'), {
   ),
 });
 
+const DEVTOOLS_ENABLED =
+  process.env.NEXT_PUBLIC_DEVTOOLS_ENABLED === '1' ||
+  process.env.NEXT_PUBLIC_DEVTOOLS_ENABLED === 'true';
+
 export default function Home() {
   const [puzzle, setPuzzle] = useState<PuzzleData | null>(null);
   const [puzzleNumber, setPuzzleNumber] = useState(0);
+  const [puzzleLabel, setPuzzleLabel] = useState<string | null>(null);
+  const [activeSeed, setActiveSeed] = useState('');
+  const [seedInput, setSeedInput] = useState('');
   const [stats, setStats] = useState<PlayerStats | null>(null);
   const [showShareCard, setShowShareCard] = useState(false);
   const [showStats, setShowStats] = useState(false);
@@ -31,24 +47,37 @@ export default function Home() {
   const [previousResult, setPreviousResult] = useState<DailyStats | null>(null);
   const [isGameReady, setIsGameReady] = useState(false);
   const gameControlsRef = useRef<GameControls | null>(null);
+  const debugModeRef = useRef(false);
 
-  // Initialize puzzle and stats
-  useEffect(() => {
+  const loadDailyPuzzle = useCallback(() => {
+    const today = new Date();
     const todayPuzzle = getTodaysPuzzle();
-    const todayNumber = getPuzzleNumber(new Date());
+    const todayNumber = getPuzzleNumber(today);
+    const todaySeed = getDailySeed(today);
     const playerStats = getPlayerStats();
     const existingResult = getTodaysResult();
 
+    debugModeRef.current = false;
     setPuzzle(todayPuzzle);
     setPuzzleNumber(todayNumber);
+    setPuzzleLabel(null);
+    setActiveSeed(todaySeed);
+    setSeedInput('');
     setStats(playerStats);
     setPreviousResult(existingResult);
+    setShowShareCard(false);
 
-    // If already played today, show the result
     if (existingResult?.completed) {
       setGameResult({ moveCount: existingResult.moveCount, timeMs: existingResult.timeMs });
+    } else {
+      setGameResult(null);
     }
   }, []);
+
+  // Initialize puzzle and stats
+  useEffect(() => {
+    loadDailyPuzzle();
+  }, [loadDailyPuzzle]);
 
   // Listen for game completion
   useEffect(() => {
@@ -56,6 +85,10 @@ export default function Home() {
       const result = data as { moveCount: number; timeMs: number; optimalMoves: number };
       setGameResult(result);
       setShowShareCard(true);
+
+      if (debugModeRef.current) {
+        return;
+      }
 
       // Save result if not already saved today
       if (!previousResult) {
@@ -85,6 +118,52 @@ export default function Home() {
     gameControlsRef.current?.restart();
     setShowShareCard(false);
   }, []);
+
+  const handleDevSeedGenerate = useCallback(
+    (rawSeed?: string) => {
+      if (!DEVTOOLS_ENABLED) return;
+
+      const trimmed = rawSeed?.trim() ?? '';
+      const isDateSeed = /^\d{4}-\d{2}-\d{2}$/.test(trimmed);
+
+      if (isDateSeed) {
+        const targetDate = new Date(trimmed);
+        const datedPuzzle = getPuzzleForDate(targetDate);
+        const dailySeed = getDailySeed(targetDate);
+        debugModeRef.current = true;
+        setPuzzle(datedPuzzle);
+        setPuzzleNumber(getPuzzleNumber(targetDate));
+        setPuzzleLabel(`DATE ${trimmed}`);
+        setActiveSeed(dailySeed);
+        setSeedInput(trimmed);
+        setGameResult(null);
+        setShowShareCard(false);
+        setPreviousResult(null);
+        return;
+      }
+
+      const newSeed =
+        trimmed ||
+        `dev-${Date.now()}-${Math.floor(Math.random() * 10000)
+          .toString()
+          .padStart(4, '0')}`;
+
+      const newPuzzle = generatePuzzle(newSeed);
+      debugModeRef.current = true;
+      setPuzzle(newPuzzle);
+      setPuzzleLabel(`DEV ${newSeed}`);
+      setActiveSeed(newSeed);
+      setSeedInput(newSeed);
+      setGameResult(null);
+      setShowShareCard(false);
+      setPreviousResult(null);
+    },
+    [],
+  );
+
+  const handleLoadDaily = useCallback(() => {
+    loadDailyPuzzle();
+  }, [loadDailyPuzzle]);
 
   const handleGameReady = useCallback((controls: GameControls) => {
     gameControlsRef.current = controls;
@@ -118,7 +197,48 @@ export default function Home() {
       />
 
       <div className={styles.gameWrapper}>
-        <GameUI puzzleNumber={puzzleNumber} optimalMoves={puzzle.optimalMoves} />
+        {DEVTOOLS_ENABLED && (
+          <div className={styles.devPanel}>
+            <div className={styles.devPanelHeader}>
+              <span className={styles.devPanelTitle}>Dev tools</span>
+              <span className={styles.devPanelSeed}>
+                {puzzleLabel ?? `Daily #${puzzleNumber}`} • Seed: {activeSeed || 'daily'}
+              </span>
+            </div>
+            <div className={styles.devControls}>
+              <input
+                value={seedInput}
+                onChange={(e) => setSeedInput(e.target.value)}
+                placeholder="Custom seed or YYYY-MM-DD"
+                className={styles.devInput}
+              />
+              <button
+                type="button"
+                className={styles.devButton}
+                onClick={() => handleDevSeedGenerate(seedInput)}
+              >
+                Load seed
+              </button>
+              <button
+                type="button"
+                className={styles.devButtonSecondary}
+                onClick={() => handleDevSeedGenerate()}
+              >
+                Random seed
+              </button>
+              <button type="button" className={styles.devButtonGhost} onClick={handleLoadDaily}>
+                Back to daily
+              </button>
+            </div>
+            <p className={styles.devHint}>Dev-test only. Dev runs are not saved to stats.</p>
+          </div>
+        )}
+
+        <GameUI
+          puzzleNumber={puzzleNumber}
+          optimalMoves={puzzle.optimalMoves}
+          puzzleLabel={puzzleLabel ?? undefined}
+        />
         
         <div className={styles.gameContainer}>
           <PhaserGame
@@ -150,6 +270,7 @@ export default function Home() {
       {showShareCard && gameResult && (
         <ShareCard
           puzzleNumber={puzzleNumber}
+          puzzleLabel={puzzleLabel ?? undefined}
           moveCount={gameResult.moveCount}
           timeMs={gameResult.timeMs}
           optimalMoves={puzzle.optimalMoves}
@@ -167,4 +288,3 @@ export default function Home() {
     </main>
   );
 }
-

@@ -7,6 +7,7 @@ import styles from './ShareCard.module.css';
 
 interface ShareCardProps {
   puzzleNumber: number;
+  puzzleLabel?: string;
   moveCount: number;
   timeMs: number;
   optimalMoves: number;
@@ -45,6 +46,7 @@ function generateMinimap(puzzle: PuzzleData): string {
 
 export default function ShareCard({
   puzzleNumber,
+  puzzleLabel,
   moveCount,
   timeMs,
   optimalMoves,
@@ -53,11 +55,12 @@ export default function ShareCard({
   onPlayAgain,
 }: ShareCardProps) {
   const [copied, setCopied] = useState(false);
+  const displayLabel = puzzleLabel ?? `#${puzzleNumber}`;
   
   const efficiency = Math.round((optimalMoves / moveCount) * 100);
   const rating = efficiency >= 100 ? '⭐⭐⭐' : efficiency >= 80 ? '⭐⭐' : efficiency >= 60 ? '⭐' : '';
 
-  const shareText = `Mazle #${puzzleNumber} ${rating}
+  const shareText = `Mazle ${displayLabel} ${rating}
 
 🎯 Moves: ${moveCount} (optimal: ${optimalMoves})
 ⏱️ Time: ${formatTime(timeMs)}
@@ -81,7 +84,7 @@ Play at mazle.vercel.app`;
     if (navigator.share) {
       try {
         await navigator.share({
-          title: `Mazle #${puzzleNumber}`,
+          title: `Mazle ${displayLabel}`,
           text: shareText,
         });
       } catch {
@@ -102,7 +105,7 @@ Play at mazle.vercel.app`;
         
         <div className={styles.header}>
           <h2 className={styles.title}>Puzzle Complete!</h2>
-          <span className={styles.puzzleNumber}>Mazle #{puzzleNumber}</span>
+          <span className={styles.puzzleNumber}>Mazle {displayLabel}</span>
         </div>
 
         <div className={styles.rating}>{rating}</div>
@@ -143,4 +146,3 @@ Play at mazle.vercel.app`;
     </div>
   );
 }
-

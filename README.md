@@ -97,7 +97,14 @@ vercel
 # Or connect your GitHub repo to Vercel for automatic deployments
 ```
 
+## 🛠 DevOps Toolkit Workflow
+
+This repo vendors the `devops-toolkit` from the mono-repo to keep build/deploy flows consistent.
+
+- **Local/dev-test stack:** `UNIQUE_RUNNER_ID=$(whoami) ENV=dev-test make up` builds the Docker image (`mazle.compose.yaml`) and runs `next start` in a container. Health is exposed at `/api/health`.
+- **Vercel production deploy:** `PROD_DEPLOY_TARGET=vercel ENV=prod make up` uses the Vercel CLI instead of Fly. Expect `VERCEL_TOKEN` (and optionally `VERCEL_ORG_ID` / `VERCEL_PROJECT_ID` if `.vercel/project.json` is absent) to be available in the environment or Bitwarden.
+- **Config knobs:** `NEXT_PUBLIC_ENV` and `NEXT_PUBLIC_DEVTOOLS_ENABLED` are injected at build time. Dev-test builds auto-enable the maze debug controls (seed regen) in the UI.
+
 ## 📜 License
 
 MIT
-

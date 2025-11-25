@@ -1,0 +1,10 @@
+.git
+.next
+node_modules
+devops-toolkit
+Dockerfile
+*.log
+npm-debug.log*
+*.swp
+.DS_Store
+tmp

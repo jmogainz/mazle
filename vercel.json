@@ -2,6 +2,12 @@
   "buildCommand": "npm run build",
   "devCommand": "npm run dev",
   "installCommand": "npm install",
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "build": {
+    "env": {
+      "NEXT_PUBLIC_DEVTOOLS_ENABLED": "1",
+      "NEXT_PUBLIC_ENV": "prod"
+    }
+  }
 }
 

@@ -40,7 +40,7 @@ VERCEL_PROJECT_NAME := mazle
 # Public env wiring
 export NEXT_PUBLIC_ENV := $(ENV)
 NEXT_PUBLIC_DEVTOOLS_ENABLED := 0
-ifneq (,$(filter $(ENV),$(DEV_TEST_ENV) $(PROD_ENV)))
+ifneq (,$(filter $(ENV),$(DEV_TEST_ENV)))
   NEXT_PUBLIC_DEVTOOLS_ENABLED := 1
 endif
 export NEXT_PUBLIC_DEVTOOLS_ENABLED

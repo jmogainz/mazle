@@ -8,6 +8,7 @@ import { PuzzleData, COLORS, Direction, TILE_SIZE } from './types';
 export interface GameControls {
   restart: () => void;
   movePlayer: (dir: Direction) => void;
+  start: () => void;
 }
 
 interface PhaserGameProps {
@@ -19,6 +20,7 @@ export interface PhaserGameRef {
   restart: () => void;
   getScene: () => GameScene | null;
   movePlayer: (dir: Direction) => void;
+  start: () => void;
 }
 
 export default function PhaserGame({ puzzle, onReady }: PhaserGameProps) {
@@ -36,6 +38,10 @@ export default function PhaserGame({ puzzle, onReady }: PhaserGameProps) {
     movePlayer: (dir: Direction) => {
       const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;
       scene?.movePlayer(dir);
+    },
+    start: () => {
+      const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;
+      scene?.startGame();
     },
   }), []);
 

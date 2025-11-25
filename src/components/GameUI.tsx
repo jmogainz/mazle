@@ -8,11 +8,10 @@ import styles from './GameUI.module.css';
 
 interface GameUIProps {
   puzzleNumber: number;
-  optimalMoves: number;
   puzzleLabel?: string;
 }
 
-export default function GameUI({ puzzleNumber, optimalMoves, puzzleLabel }: GameUIProps) {
+export default function GameUI({ puzzleNumber, puzzleLabel }: GameUIProps) {
   const [moveCount, setMoveCount] = useState(0);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [startTime, setStartTime] = useState<number | null>(null);
@@ -45,7 +44,6 @@ export default function GameUI({ puzzleNumber, optimalMoves, puzzleLabel }: Game
     <div className={styles.container}>
       <div className={styles.header}>
         <div className={styles.puzzleInfo}>
-          <span className={styles.puzzleLabel}>MAZLE</span>
           <span className={styles.puzzleNumber}>{displayLabel}</span>
         </div>
       </div>
@@ -59,11 +57,6 @@ export default function GameUI({ puzzleNumber, optimalMoves, puzzleLabel }: Game
         <div className={styles.stat}>
           <span className={styles.statValue}>{formatTime(elapsedTime)}</span>
           <span className={styles.statLabel}>TIME</span>
-        </div>
-        <div className={styles.statDivider} />
-        <div className={styles.stat}>
-          <span className={styles.statValue}>{optimalMoves}</span>
-          <span className={styles.statLabel}>OPTIMAL</span>
         </div>
       </div>
     </div>

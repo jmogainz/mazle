@@ -1,20 +1,64 @@
-# Mazle 🎮
+# Mazle 🧊
 
 A daily Pokémon-inspired puzzle game where players navigate compact, gym-style mazes using step movement, sliding on ice, and one-way ledges.
 
-## 🎯 Features
+## 🚀 Quick Start
 
-- **Daily Puzzles**: A new puzzle available globally each day
-- **Multiple Mechanics**: Floor tiles, walls, ice (sliding), and one-way ledges
-- **Scoring System**: Track moves and completion time
-- **Shareable Results**: Wordle-style share cards with emoji minimap
-- **Statistics**: Track your streak, win rate, and history
-- **Mobile Support**: Touch controls with swipe gestures and on-screen D-pad
+```bash
+# 1. Set your runner ID (add to your shell profile for convenience)
+export UNIQUE_RUNNER_ID=$(whoami)
+
+# 2. Start the development server
+make up
+
+# 3. Open http://localhost:3000
+```
+
+That's it! The app runs in Docker with hot-reload enabled.
+
+### Other Useful Commands
+
+```bash
+# See all available commands
+make help
+
+# Stop the development server
+make down
+
+# Full cleanup (containers, images, volumes)
+make clean
+
+# Run tests
+make ci
+```
+
+## 📦 Deployment
+
+### Production (Vercel)
+
+The app auto-deploys to [mazle.vercel.app](https://mazle.vercel.app) when changes are pushed to main.
+
+To deploy manually:
+
+```bash
+# Deploy to production
+ENV=prod make up
+```
+
+> **Note:** Requires `VERCEL_TOKEN` in your environment (or stored in Bitwarden).
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `UNIQUE_RUNNER_ID` | **Required.** Your identifier (e.g., `$(whoami)`) |
+| `ENV` | Environment: `dev-test` (default), `staging`, `prod` |
+| `VERCEL_TOKEN` | Required for production deploys |
 
 ## 🎮 How to Play
 
-1. Navigate from the start (green) to the goal (yellow star)
-2. Use arrow keys, WASD, or swipe on mobile
+1. Navigate from the **start** (green) to the **goal** (yellow star)
+2. Use **arrow keys**, **WASD**, or **swipe** on mobile
 3. **Floor tiles**: Normal step movement
 4. **Ice tiles**: Slide until hitting a wall
 5. **Ledges**: One-way movement (can only enter from one direction)
@@ -22,28 +66,22 @@ A daily Pokémon-inspired puzzle game where players navigate compact, gym-style 
 
 Complete the puzzle in as few moves as possible!
 
-## 🚀 Quick Start
+## 🎯 Features
 
-```bash
-# Install dependencies
-npm install
-
-# Run development server
-npm run dev
-
-# Build for production
-npm run build
-
-# Start production server
-npm start
-```
+- **Daily Puzzles**: A new puzzle available globally each day
+- **Multiple Mechanics**: Floor tiles, walls, ice (sliding), and one-way ledges
+- **Scoring System**: Track moves and completion time
+- **Shareable Results**: Clean share cards with efficiency bar
+- **Statistics**: Track your streak, win rate, and history
+- **Mobile Support**: Touch controls with swipe gestures
 
 ## 🛠️ Tech Stack
 
 - **Next.js 14** - React framework
-- **Phaser 3** - Game engine for rendering and physics
+- **Phaser 3** - Game engine for rendering
 - **TypeScript** - Type safety
 - **CSS Modules** - Scoped styling
+- **Docker** - Containerized development
 
 ## 📁 Project Structure
 
@@ -64,44 +102,32 @@ mazle/
 │   ├── game/             # Phaser game logic
 │   │   ├── GameScene.ts  # Main game scene
 │   │   ├── PhaserGame.tsx # React wrapper
-│   │   ├── puzzleGenerator.ts # Puzzle generation
-│   │   └── types.ts      # TypeScript types
+│   │   ├── puzzleGenerator.ts
+│   │   └── types.ts
 │   └── utils/
 │       └── storage.ts    # LocalStorage helpers
-├── public/               # Static assets
-└── package.json
+├── devops-toolkit/       # Build/deploy infrastructure
+├── Makefile              # Development commands
+└── mazle.compose.yaml    # Docker compose config
 ```
 
-## 🎨 Design
+## 🔧 Development Notes
 
-- **Pixel art aesthetic** with crisp rendering
-- **Dark theme** inspired by Pokémon gym interiors
-- **Responsive design** for desktop and mobile
-- **Accessible** with keyboard and touch support
+### Dev Tools
 
-## 🔄 Daily System
+In `dev-test` environment, a debug panel appears with:
+- Custom seed input for testing specific puzzles
+- Date-based seed loading (e.g., `2025-01-15`)
+- Random seed generation
 
-- Puzzles reset at midnight UTC
+### Daily System
+
+- Puzzles reset at **midnight UTC**
 - Same puzzle for all players globally
 - Deterministic generation using date-based seed
 - Streak tracking for consecutive daily completions
 
-## 📦 Deployment
+## 📚 Additional Resources
 
-This project is configured for deployment on Vercel:
-
-```bash
-# Deploy to Vercel
-vercel
-
-# Or connect your GitHub repo to Vercel for automatic deployments
-```
-
-## 🛠 DevOps Toolkit Workflow
-
-This repo vendors the `devops-toolkit` from the mono-repo to keep build/deploy flows consistent.
-
-- **Local/dev-test stack:** `UNIQUE_RUNNER_ID=$(whoami) ENV=dev-test make up` builds the Docker image (`mazle.compose.yaml`) and runs `next start` in a container. Health is exposed at `/api/health`.
-- **Vercel production deploy:** `PROD_DEPLOY_TARGET=vercel ENV=prod make up` uses the Vercel CLI instead of Fly. Expect `VERCEL_TOKEN` (and optionally `VERCEL_ORG_ID` / `VERCEL_PROJECT_ID` if `.vercel/project.json` is absent) to be available in the environment or Bitwarden.
-- **Config knobs:** `NEXT_PUBLIC_ENV` and `NEXT_PUBLIC_DEVTOOLS_ENABLED` are injected at build time. Dev-test builds auto-enable the maze debug controls (seed regen) in the UI.
-- **Hot-reload in Docker:** `UNIQUE_RUNNER_ID=$(whoami) ENV=dev-test make up` now mounts the repo into the container and runs `npm run dev` with polling watchers. Edits on your host live-reload in the browser while keeping ports/URLs identical to the normal `make up` flow.
+- [Full Spec](docs/mazle_spec.md) - Detailed game specification
+- [DevOps Toolkit](devops-toolkit/README.md) - Build/deploy documentation

@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { PuzzleData, TileType } from '@/game/types';
 import { formatTime } from '@/utils/storage';
 import styles from './ShareCard.module.css';
 
@@ -11,37 +10,47 @@ interface ShareCardProps {
   moveCount: number;
   timeMs: number;
   optimalMoves: number;
-  puzzle: PuzzleData;
   onClose: () => void;
   onPlayAgain: () => void;
 }
 
-// Generate emoji minimap of the puzzle
-function generateMinimap(puzzle: PuzzleData): string {
-  const emojiMap: Record<number, string> = {
-    [TileType.FLOOR]: '⬜',
-    [TileType.WALL]: '⬛',
-    [TileType.START]: '🟢',
-    [TileType.GOAL]: '⭐',
-    [TileType.ICE]: '🟦',
-    [TileType.LEDGE_UP]: '🔽',
-    [TileType.LEDGE_DOWN]: '🔼',
-    [TileType.LEDGE_LEFT]: '▶️',
-    [TileType.LEDGE_RIGHT]: '◀️',
-  };
+// Generate a clean efficiency bar
+function generateEfficiencyBar(efficiency: number): string {
+  const totalBlocks = 10;
+  const filledBlocks = Math.round((Math.min(efficiency, 100) / 100) * totalBlocks);
+  const emptyBlocks = totalBlocks - filledBlocks;
+  
+  // Use colored squares for a clean look
+  const filled = '🟩';
+  const empty = '⬜';
+  
+  return filled.repeat(filledBlocks) + empty.repeat(emptyBlocks);
+}
 
-  // Simplified minimap (sample every 2 tiles for smaller representation)
-  const rows: string[] = [];
-  for (let y = 0; y < puzzle.height; y += 2) {
-    let row = '';
-    for (let x = 0; x < puzzle.width; x += 2) {
-      const tile = puzzle.tiles[y][x];
-      row += emojiMap[tile] || '⬜';
-    }
-    rows.push(row);
+// Fallback copy method using execCommand for older browsers
+function fallbackCopyToClipboard(text: string): boolean {
+  const textArea = document.createElement('textarea');
+  textArea.value = text;
+  
+  // Avoid scrolling to bottom
+  textArea.style.top = '0';
+  textArea.style.left = '0';
+  textArea.style.position = 'fixed';
+  textArea.style.opacity = '0';
+  
+  document.body.appendChild(textArea);
+  textArea.focus();
+  textArea.select();
+  
+  let success = false;
+  try {
+    success = document.execCommand('copy');
+  } catch {
+    success = false;
   }
-
-  return rows.join('\n');
+  
+  document.body.removeChild(textArea);
+  return success;
 }
 
 export default function ShareCard({
@@ -50,49 +59,75 @@ export default function ShareCard({
   moveCount,
   timeMs,
   optimalMoves,
-  puzzle,
   onClose,
   onPlayAgain,
 }: ShareCardProps) {
-  const [copied, setCopied] = useState(false);
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
   const displayLabel = puzzleLabel ?? `#${puzzleNumber}`;
   
   const efficiency = Math.round((optimalMoves / moveCount) * 100);
   const rating = efficiency >= 100 ? '⭐⭐⭐' : efficiency >= 80 ? '⭐⭐' : efficiency >= 60 ? '⭐' : '';
+  
+  // Calculate move difference from optimal
+  const moveDiff = moveCount - optimalMoves;
 
-  const shareText = `Mazle ${displayLabel} ${rating}
+  const shareText = `🧊 Mazle ${displayLabel}
 
-🎯 Moves: ${moveCount} (optimal: ${optimalMoves})
-⏱️ Time: ${formatTime(timeMs)}
-📊 Efficiency: ${efficiency}%
+${generateEfficiencyBar(efficiency)} ${efficiency}%
 
-${generateMinimap(puzzle)}
+🎯 ${moveCount} moves${moveDiff === 0 ? ' · PERFECT!' : ` · +${moveDiff}`}
+⏱️ ${formatTime(timeMs)}
 
-Play at mazle.vercel.app`;
+mazle.vercel.app`;
 
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(shareText);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      console.error('Failed to copy');
+  const handleCopy = async (): Promise<boolean> => {
+    // Try modern clipboard API first
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(shareText);
+        return true;
+      } catch {
+        // Fall through to fallback
+      }
     }
+    
+    // Fallback for older browsers or when clipboard API fails
+    return fallbackCopyToClipboard(shareText);
   };
 
   const handleShare = async () => {
+    // Try native share first (mobile)
     if (navigator.share) {
       try {
         await navigator.share({
           title: `Mazle ${displayLabel}`,
           text: shareText,
         });
-      } catch {
-        // User cancelled or error
-        handleCopy();
+        return; // Native share succeeded, no need to show copied state
+      } catch (err) {
+        // User cancelled or share failed - fall through to copy
+        if (err instanceof Error && err.name === 'AbortError') {
+          return; // User cancelled, don't copy
+        }
       }
+    }
+    
+    // Fall back to clipboard copy
+    const success = await handleCopy();
+    if (success) {
+      setCopyState('copied');
+      setTimeout(() => setCopyState('idle'), 2500);
     } else {
-      handleCopy();
+      setCopyState('failed');
+      setTimeout(() => setCopyState('idle'), 2500);
+    }
+  };
+  
+  const getButtonText = () => {
+    switch (copyState) {
+      case 'copied': return '✓ Copied!';
+      case 'failed': return '✗ Copy failed';
+      default: return '📋 Share';
     }
   };
 
@@ -110,31 +145,31 @@ Play at mazle.vercel.app`;
 
         <div className={styles.rating}>{rating}</div>
 
-        <div className={styles.statsGrid}>
-          <div className={styles.statCard}>
-            <span className={styles.statIcon}>🎯</span>
-            <span className={styles.statValue}>{moveCount}</span>
-            <span className={styles.statLabel}>Moves</span>
+        <div className={styles.efficiencySection}>
+          <div className={styles.efficiencyBar}>
+            {generateEfficiencyBar(efficiency)}
           </div>
-          <div className={styles.statCard}>
-            <span className={styles.statIcon}>⏱️</span>
-            <span className={styles.statValue}>{formatTime(timeMs)}</span>
-            <span className={styles.statLabel}>Time</span>
-          </div>
-          <div className={styles.statCard}>
-            <span className={styles.statIcon}>📊</span>
-            <span className={styles.statValue}>{efficiency}%</span>
-            <span className={styles.statLabel}>Efficiency</span>
-          </div>
+          <span className={styles.efficiencyValue}>{efficiency}%</span>
         </div>
 
-        <div className={styles.minimapContainer}>
-          <pre className={styles.minimap}>{generateMinimap(puzzle)}</pre>
+        <div className={styles.statsRow}>
+          <div className={styles.statItem}>
+            <span className={styles.statValue}>{moveCount}</span>
+            <span className={styles.statLabel}>moves{moveDiff === 0 ? '' : ` (+${moveDiff})`}</span>
+          </div>
+          <div className={styles.statDivider} />
+          <div className={styles.statItem}>
+            <span className={styles.statValue}>{formatTime(timeMs)}</span>
+            <span className={styles.statLabel}>time</span>
+          </div>
         </div>
 
         <div className={styles.actions}>
-          <button className={styles.shareButton} onClick={handleShare}>
-            {copied ? '✓ Copied!' : '📤 Share'}
+          <button 
+            className={`${styles.shareButton} ${copyState === 'copied' ? styles.copied : ''} ${copyState === 'failed' ? styles.failed : ''}`} 
+            onClick={handleShare}
+          >
+            {getButtonText()}
           </button>
           <button className={styles.playAgainButton} onClick={onPlayAgain}>
             🔄 Play Again

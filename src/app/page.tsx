@@ -47,6 +47,7 @@ export default function Home() {
   const [gameResult, setGameResult] = useState<{ moveCount: number; timeMs: number } | null>(null);
   const [previousResult, setPreviousResult] = useState<DailyStats | null>(null);
   const [isGameReady, setIsGameReady] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
   const gameControlsRef = useRef<GameControls | null>(null);
   const debugModeRef = useRef(false);
 
@@ -68,6 +69,7 @@ export default function Home() {
     setStats(playerStats);
     setPreviousResult(existingResult);
     setShowShareCard(false);
+    setIsPlaying(false);
 
     if (existingResult?.completed) {
       setGameResult({ moveCount: existingResult.moveCount, timeMs: existingResult.timeMs });
@@ -117,8 +119,14 @@ export default function Home() {
   }, []);
 
   const handleRestart = useCallback(() => {
+    setIsPlaying(false);
     gameControlsRef.current?.restart();
     setShowShareCard(false);
+  }, []);
+
+  const handleBegin = useCallback(() => {
+    setIsPlaying(true);
+    gameControlsRef.current?.start();
   }, []);
 
   const handleDevSeedGenerate = useCallback(
@@ -141,6 +149,7 @@ export default function Home() {
         setGameResult(null);
         setShowShareCard(false);
         setPreviousResult(null);
+        setIsPlaying(false);
         return;
       }
 
@@ -160,6 +169,7 @@ export default function Home() {
       setGameResult(null);
       setShowShareCard(false);
       setPreviousResult(null);
+      setIsPlaying(false);
     },
     [],
   );
@@ -182,10 +192,10 @@ export default function Home() {
 
   if (!puzzle) {
     return (
-      <main className={styles.main}>
-        <div className={styles.loading}>
+      <main className={`${styles.main} bg-pattern`} style={{ justifyContent: 'center' }}>
+        <div className={styles.loading} style={{ minHeight: 'auto' }}>
           <div className={styles.loadingSpinner} />
-          <p>Generating puzzle...</p>
+          <p>Loading Mazle...</p>
         </div>
       </main>
     );
@@ -239,24 +249,40 @@ export default function Home() {
 
         <GameUI
           puzzleNumber={puzzleNumber}
-          optimalMoves={puzzle.optimalMoves}
           puzzleLabel={puzzleLabel ?? undefined}
         />
         
-        <div className={styles.gameContainer}>
-          <PhaserGame
-            key={renderKey}
-            puzzle={puzzle}
-            onReady={handleGameReady}
-          />
+        <div className={styles.gameFrame}>
+          <div 
+            className={styles.gameContainer}
+            style={{
+              aspectRatio: `${Math.max(420, puzzle.width * 32 + 64)} / ${Math.max(520, puzzle.height * 32 + 120)}`,
+              maxWidth: `${Math.max(420, puzzle.width * 32 + 64)}px`
+            }}
+          >
+            <div className={`${styles.gameContent} ${(!isPlaying && isGameReady) ? styles.blurred : ''}`}>
+              <PhaserGame
+                key={renderKey}
+                puzzle={puzzle}
+                onReady={handleGameReady}
+              />
+            </div>
+          </div>
+          {!isPlaying && isGameReady && (
+            <div className={styles.startOverlay}>
+              <button className={styles.startButton} onClick={handleBegin}>
+                Begin
+              </button>
+            </div>
+          )}
         </div>
 
         <MobileControls
           onMove={handleMobileMove}
-          disabled={!isGameReady || !!gameResult}
+          disabled={!isGameReady || !!gameResult || !isPlaying}
         />
 
-        {previousResult && !showShareCard && (
+        {previousResult && !showShareCard && !isPlaying && (
           <div className={styles.previousResult}>
             <p>You already completed today&apos;s puzzle!</p>
             <button onClick={() => setShowShareCard(true)} className={styles.viewResultButton}>
@@ -278,7 +304,6 @@ export default function Home() {
           moveCount={gameResult.moveCount}
           timeMs={gameResult.timeMs}
           optimalMoves={puzzle.optimalMoves}
-          puzzle={puzzle}
           onClose={() => setShowShareCard(false)}
           onPlayAgain={handleRestart}
         />

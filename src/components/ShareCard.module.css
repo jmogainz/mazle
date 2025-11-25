@@ -87,56 +87,64 @@
   min-height: 2.5rem;
 }
 
-.statsGrid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-}
-
-.statCard {
+.efficiencySection {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.25rem;
-  padding: 0.75rem 0.5rem;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+  padding: 1rem;
   background: var(--color-surface);
   border-radius: 8px;
   border: 1px solid var(--color-border);
 }
 
-.statIcon {
+.efficiencyBar {
   font-size: 1.25rem;
+  line-height: 1;
+  letter-spacing: 0.05em;
+}
+
+.efficiencyValue {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: var(--color-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.statsRow {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.statItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
 }
 
 .statValue {
-  font-size: 1.125rem;
+  font-size: 1.25rem;
   font-weight: bold;
   color: var(--color-text);
   font-variant-numeric: tabular-nums;
 }
 
 .statLabel {
-  font-size: 0.625rem;
+  font-size: 0.7rem;
   color: var(--color-secondary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
-.minimapContainer {
-  background: var(--color-surface);
-  border-radius: 8px;
-  padding: 0.75rem;
-  margin-bottom: 1rem;
-  display: flex;
-  justify-content: center;
-}
-
-.minimap {
-  font-size: 0.75rem;
-  line-height: 1.1;
-  margin: 0;
-  letter-spacing: 0;
+.statDivider {
+  width: 1px;
+  height: 32px;
+  background: var(--color-border);
 }
 
 .actions {
@@ -167,6 +175,18 @@
 .shareButton:hover {
   background: transparent;
   color: var(--color-primary);
+}
+
+.shareButton.copied {
+  background: #22c55e;
+  border-color: #22c55e;
+  color: white;
+}
+
+.shareButton.failed {
+  background: #ef4444;
+  border-color: #ef4444;
+  color: white;
 }
 
 .playAgainButton {

@@ -24,16 +24,19 @@ export class GameScene extends Phaser.Scene {
   private offsetX = 0;
   private offsetY = 0;
 
+  private isPlaying = false;
+
   constructor() {
     super({ key: 'GameScene' });
   }
 
   init(data: { puzzle: PuzzleData }) {
     this.puzzle = data.puzzle;
+    this.isPlaying = false;
     this.gameState = {
       playerPos: { ...this.puzzle.start },
       moveCount: 0,
-      startTime: Date.now(),
+      startTime: 0,
       endTime: null,
       isComplete: false,
       isSliding: false,
@@ -291,7 +294,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private handleMove(dir: Direction) {
-    if (this.isAnimating || this.gameState.isComplete) return;
+    if (this.isAnimating || this.gameState.isComplete || !this.isPlaying) return;
 
     const delta = this.getDirectionDelta(dir);
     const currentPos = { ...this.gameState.playerPos };
@@ -421,12 +424,21 @@ export class GameScene extends Phaser.Scene {
     this.handleMove(dir);
   }
 
+  public startGame() {
+    if (!this.isPlaying && !this.gameState.isComplete) {
+      this.isPlaying = true;
+      this.gameState.startTime = Date.now();
+      emitGameEvent('stateUpdate', { ...this.gameState });
+    }
+  }
+
   // Public method to restart the puzzle
   public restart() {
+    this.isPlaying = false;
     this.gameState = {
       playerPos: { ...this.puzzle.start },
       moveCount: 0,
-      startTime: Date.now(),
+      startTime: 0,
       endTime: null,
       isComplete: false,
       isSliding: false,

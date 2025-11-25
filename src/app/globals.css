@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+:root {
+  --foreground-rgb: 255, 255, 255;
+  --background-start-rgb: 0, 0, 0;
+  --background-end-rgb: 0, 0, 0;
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: linear-gradient(
+      to bottom,
+      transparent,
+      rgb(var(--background-end-rgb))
+    )
+    rgb(var(--background-start-rgb));
+  font-family: 'Courier New', Courier, monospace;
+  overflow: hidden; 
+}
+
+.pixel-font {
+  font-family: 'Courier New', Courier, monospace;
+  letter-spacing: -1px;
+  text-transform: uppercase;
+}
+
+canvas {
+  image-rendering: pixelated;
+}

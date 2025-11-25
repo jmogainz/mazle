@@ -76,9 +76,7 @@ export default function ShareCard({
 ${generateEfficiencyBar(efficiency)} ${efficiency}%
 
 🎯 ${moveCount} moves${moveDiff === 0 ? ' · PERFECT!' : ` · +${moveDiff}`}
-⏱️ ${formatTime(timeMs)}
-
-mazle.vercel.app`;
+⏱️ ${formatTime(timeMs)}`;
 
   const handleCopy = async (): Promise<boolean> => {
     // Try modern clipboard API first

@@ -28,6 +28,7 @@ yarn-error.log*
 
 # Vercel
 .vercel/README.txt
+.vercel/output
 
 # TypeScript
 *.tsbuildinfo

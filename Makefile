@@ -35,7 +35,7 @@ override APP_PORT := 3000
 PROD_DEPLOY_TARGET := vercel
 STAGING_DEPLOY_TARGET := vercel
 VERCEL_PROJECT_NAME := mazle
-VERCEL_PROD_URL ?= https://mazle.vercel.app
+# Production URL is auto-assigned by Vercel - check dashboard for actual domain
 
 # Public env wiring
 export NEXT_PUBLIC_ENV := $(ENV)

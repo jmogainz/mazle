@@ -36,16 +36,14 @@ make ci
 
 ### Production (Vercel)
 
-The app auto-deploys to [mazle.vercel.app](https://mazle.vercel.app) when changes are pushed to main.
-
-To deploy manually:
+The app is deployed to Vercel. To deploy manually:
 
 ```bash
-# Deploy to production
-ENV=prod make up
+# Deploy to production (uses vercel --prod)
+VERCEL_TOKEN=... ENV=prod make up
 ```
 
-> **Note:** Requires `VERCEL_TOKEN` in your environment (or stored in Bitwarden).
+> **Note:** Requires `VERCEL_TOKEN` in your environment. If `.vercel/project.json` is not committed, also provide `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID`.
 
 ### Environment Variables
 
@@ -53,7 +51,8 @@ ENV=prod make up
 |----------|-------------|
 | `UNIQUE_RUNNER_ID` | **Required.** Your identifier (e.g., `$(whoami)`) |
 | `ENV` | Environment: `dev-test` (default), `staging`, `prod` |
-| `VERCEL_TOKEN` | Required for production deploys |
+| `VERCEL_TOKEN` | Required for Vercel deploys |
+| `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` | Only required if `.vercel/project.json` is not checked in |
 
 ## 🎮 How to Play
 

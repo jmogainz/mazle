@@ -39,6 +39,7 @@ export default function Home() {
   const [puzzleLabel, setPuzzleLabel] = useState<string | null>(null);
   const [activeSeed, setActiveSeed] = useState('');
   const [seedInput, setSeedInput] = useState('');
+  const [renderKey, setRenderKey] = useState(0);
   const [stats, setStats] = useState<PlayerStats | null>(null);
   const [showShareCard, setShowShareCard] = useState(false);
   const [showStats, setShowStats] = useState(false);
@@ -63,6 +64,7 @@ export default function Home() {
     setPuzzleLabel(null);
     setActiveSeed(todaySeed);
     setSeedInput('');
+    setRenderKey((prev) => prev + 1);
     setStats(playerStats);
     setPreviousResult(existingResult);
     setShowShareCard(false);
@@ -154,6 +156,7 @@ export default function Home() {
       setPuzzleLabel(`DEV ${newSeed}`);
       setActiveSeed(newSeed);
       setSeedInput(newSeed);
+      setRenderKey((prev) => prev + 1);
       setGameResult(null);
       setShowShareCard(false);
       setPreviousResult(null);
@@ -242,6 +245,7 @@ export default function Home() {
         
         <div className={styles.gameContainer}>
           <PhaserGame
+            key={renderKey}
             puzzle={puzzle}
             onReady={handleGameReady}
           />

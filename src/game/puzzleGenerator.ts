@@ -1,0 +1,365 @@
+import seedrandom from 'seedrandom';
+import { TileType, Position, PuzzleData, Direction } from './types';
+
+// Server salt for puzzle generation (in production, this would come from server)
+const SERVER_SALT = 'mazle-daily-v1-2024';
+
+// Get deterministic seed for a given date
+export function getDailySeed(date: Date): string {
+  const dateStr = date.toISOString().split('T')[0]; // YYYY-MM-DD
+  return `${dateStr}-${SERVER_SALT}`;
+}
+
+// Get puzzle number (days since launch)
+export function getPuzzleNumber(date: Date): number {
+  const launchDate = new Date('2024-01-01');
+  const diffTime = date.getTime() - launchDate.getTime();
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  return diffDays + 1;
+}
+
+// Seeded random number generator wrapper
+class SeededRandom {
+  private rng: seedrandom.PRNG;
+
+  constructor(seed: string) {
+    this.rng = seedrandom(seed);
+  }
+
+  // Returns float between 0 and 1
+  random(): number {
+    return this.rng();
+  }
+
+  // Returns int between min (inclusive) and max (exclusive)
+  randomInt(min: number, max: number): number {
+    return Math.floor(this.random() * (max - min)) + min;
+  }
+
+  // Returns random element from array
+  randomChoice<T>(arr: T[]): T {
+    return arr[this.randomInt(0, arr.length)];
+  }
+
+  // Shuffle array in place
+  shuffle<T>(arr: T[]): T[] {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = this.randomInt(0, i + 1);
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+}
+
+// Check if a position is valid on the grid
+function isValidPosition(x: number, y: number, width: number, height: number): boolean {
+  return x >= 0 && x < width && y >= 0 && y < height;
+}
+
+// Get direction delta
+function getDirectionDelta(dir: Direction): Position {
+  switch (dir) {
+    case Direction.UP: return { x: 0, y: -1 };
+    case Direction.DOWN: return { x: 0, y: 1 };
+    case Direction.LEFT: return { x: -1, y: 0 };
+    case Direction.RIGHT: return { x: 1, y: 0 };
+  }
+}
+
+// Simulate a move and return final position
+function simulateMove(
+  tiles: TileType[][],
+  start: Position,
+  dir: Direction,
+  width: number,
+  height: number
+): Position | null {
+  const delta = getDirectionDelta(dir);
+  let x = start.x + delta.x;
+  let y = start.y + delta.y;
+
+  // Check if initial move is valid
+  if (!isValidPosition(x, y, width, height)) return null;
+  
+  const targetTile = tiles[y][x];
+  if (targetTile === TileType.WALL) return null;
+
+  // Check ledge entry rules
+  if (targetTile >= TileType.LEDGE_UP && targetTile <= TileType.LEDGE_RIGHT) {
+    // Ledges can only be entered from specific directions
+    const ledgeDir = targetTile - TileType.LEDGE_UP; // 0=up, 1=down, 2=left, 3=right
+    const allowedDirs = [Direction.DOWN, Direction.UP, Direction.RIGHT, Direction.LEFT];
+    if (dir !== allowedDirs[ledgeDir]) return null;
+  }
+
+  // Handle ice sliding
+  if (targetTile === TileType.ICE) {
+    while (true) {
+      const nextX = x + delta.x;
+      const nextY = y + delta.y;
+      
+      if (!isValidPosition(nextX, nextY, width, height)) break;
+      
+      const nextTile = tiles[nextY][nextX];
+      if (nextTile === TileType.WALL) break;
+      if (nextTile >= TileType.LEDGE_UP && nextTile <= TileType.LEDGE_RIGHT) break;
+      
+      x = nextX;
+      y = nextY;
+      
+      if (nextTile !== TileType.ICE) break;
+    }
+  }
+
+  return { x, y };
+}
+
+// BFS to find if goal is reachable and minimum moves
+function findPath(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number
+): number | null {
+  const queue: { pos: Position; moves: number }[] = [{ pos: start, moves: 0 }];
+  const visited = new Set<string>();
+  visited.add(`${start.x},${start.y}`);
+
+  const directions = [Direction.UP, Direction.DOWN, Direction.LEFT, Direction.RIGHT];
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    
+    if (current.pos.x === goal.x && current.pos.y === goal.y) {
+      return current.moves;
+    }
+
+    for (const dir of directions) {
+      const newPos = simulateMove(tiles, current.pos, dir, width, height);
+      if (newPos) {
+        const key = `${newPos.x},${newPos.y}`;
+        if (!visited.has(key)) {
+          visited.add(key);
+          queue.push({ pos: newPos, moves: current.moves + 1 });
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+// Generate a puzzle for a given seed
+export function generatePuzzle(seed: string): PuzzleData {
+  const rng = new SeededRandom(seed);
+  
+  // Variable puzzle size for variety
+  const sizeOptions = [
+    { width: 10, height: 10 },
+    { width: 11, height: 9 },
+    { width: 9, height: 11 },
+    { width: 12, height: 10 },
+    { width: 10, height: 12 },
+  ];
+  
+  const { width, height } = rng.randomChoice(sizeOptions);
+  
+  let bestPuzzle: PuzzleData | null = null;
+  let attempts = 0;
+  const maxAttempts = 100;
+
+  while (!bestPuzzle && attempts < maxAttempts) {
+    attempts++;
+    
+    // Initialize grid with floors
+    const tiles: TileType[][] = Array(height)
+      .fill(null)
+      .map(() => Array(width).fill(TileType.FLOOR));
+    
+    // Add border walls
+    for (let x = 0; x < width; x++) {
+      tiles[0][x] = TileType.WALL;
+      tiles[height - 1][x] = TileType.WALL;
+    }
+    for (let y = 0; y < height; y++) {
+      tiles[y][0] = TileType.WALL;
+      tiles[y][width - 1] = TileType.WALL;
+    }
+    
+    // Add internal walls (create interesting structure)
+    const wallCount = rng.randomInt(5, 15);
+    for (let i = 0; i < wallCount; i++) {
+      const wx = rng.randomInt(2, width - 2);
+      const wy = rng.randomInt(2, height - 2);
+      
+      // Create wall clusters
+      const clusterSize = rng.randomInt(1, 4);
+      for (let j = 0; j < clusterSize; j++) {
+        const cx = wx + rng.randomInt(-1, 2);
+        const cy = wy + rng.randomInt(-1, 2);
+        if (isValidPosition(cx, cy, width, height) && 
+            tiles[cy][cx] === TileType.FLOOR) {
+          tiles[cy][cx] = TileType.WALL;
+        }
+      }
+    }
+    
+    // Add ice patches (sparingly, as per spec)
+    const useIce = rng.random() > 0.3; // 70% chance of ice
+    if (useIce) {
+      const icePatches = rng.randomInt(1, 4);
+      for (let i = 0; i < icePatches; i++) {
+        const ix = rng.randomInt(2, width - 2);
+        const iy = rng.randomInt(2, height - 2);
+        
+        // Create ice patch
+        const patchSize = rng.randomInt(2, 5);
+        for (let j = 0; j < patchSize; j++) {
+          const cx = ix + rng.randomInt(-1, 2);
+          const cy = iy + rng.randomInt(-1, 2);
+          if (isValidPosition(cx, cy, width, height) && 
+              tiles[cy][cx] === TileType.FLOOR) {
+            tiles[cy][cx] = TileType.ICE;
+          }
+        }
+      }
+    }
+    
+    // Add ledges (sparingly)
+    const useLedges = rng.random() > 0.5; // 50% chance of ledges
+    if (useLedges) {
+      const ledgeCount = rng.randomInt(1, 3);
+      for (let i = 0; i < ledgeCount; i++) {
+        const lx = rng.randomInt(2, width - 2);
+        const ly = rng.randomInt(2, height - 2);
+        if (tiles[ly][lx] === TileType.FLOOR) {
+          const ledgeType = rng.randomChoice([
+            TileType.LEDGE_UP,
+            TileType.LEDGE_DOWN,
+            TileType.LEDGE_LEFT,
+            TileType.LEDGE_RIGHT,
+          ]);
+          tiles[ly][lx] = ledgeType;
+        }
+      }
+    }
+    
+    // Find valid start and goal positions
+    const floorTiles: Position[] = [];
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        if (tiles[y][x] === TileType.FLOOR) {
+          floorTiles.push({ x, y });
+        }
+      }
+    }
+    
+    if (floorTiles.length < 10) continue;
+    
+    // Try to find good start/goal pair
+    rng.shuffle(floorTiles);
+    
+    let foundValidPuzzle = false;
+    for (let si = 0; si < Math.min(floorTiles.length, 20) && !foundValidPuzzle; si++) {
+      const start = floorTiles[si];
+      
+      for (let gi = si + 1; gi < Math.min(floorTiles.length, 30) && !foundValidPuzzle; gi++) {
+        const goal = floorTiles[gi];
+        
+        // Ensure some minimum distance
+        const dist = Math.abs(goal.x - start.x) + Math.abs(goal.y - start.y);
+        if (dist < 5) continue;
+        
+        // Check path
+        const moves = findPath(tiles, start, goal, width, height);
+        
+        // Target ~15-25 moves for good puzzle depth
+        if (moves !== null && moves >= 10 && moves <= 30) {
+          // Mark start and goal
+          tiles[start.y][start.x] = TileType.START;
+          tiles[goal.y][goal.x] = TileType.GOAL;
+          
+          bestPuzzle = {
+            width,
+            height,
+            tiles,
+            start,
+            goal,
+            optimalMoves: moves,
+          };
+          foundValidPuzzle = true;
+        }
+      }
+    }
+  }
+  
+  // Fallback: generate a simple guaranteed-solvable puzzle
+  if (!bestPuzzle) {
+    bestPuzzle = generateSimplePuzzle(rng);
+  }
+  
+  return bestPuzzle;
+}
+
+// Simple fallback puzzle generator
+function generateSimplePuzzle(rng: SeededRandom): PuzzleData {
+  const width = 10;
+  const height = 10;
+  
+  const tiles: TileType[][] = Array(height)
+    .fill(null)
+    .map(() => Array(width).fill(TileType.FLOOR));
+  
+  // Border walls
+  for (let x = 0; x < width; x++) {
+    tiles[0][x] = TileType.WALL;
+    tiles[height - 1][x] = TileType.WALL;
+  }
+  for (let y = 0; y < height; y++) {
+    tiles[y][0] = TileType.WALL;
+    tiles[y][width - 1] = TileType.WALL;
+  }
+  
+  // Some internal walls
+  tiles[3][3] = TileType.WALL;
+  tiles[3][4] = TileType.WALL;
+  tiles[4][3] = TileType.WALL;
+  tiles[6][6] = TileType.WALL;
+  tiles[6][7] = TileType.WALL;
+  tiles[5][6] = TileType.WALL;
+  
+  // Ice patch
+  tiles[4][6] = TileType.ICE;
+  tiles[4][7] = TileType.ICE;
+  tiles[5][7] = TileType.ICE;
+  
+  // Start and goal
+  const start = { x: 1, y: 1 };
+  const goal = { x: 8, y: 8 };
+  tiles[start.y][start.x] = TileType.START;
+  tiles[goal.y][goal.x] = TileType.GOAL;
+  
+  return {
+    width,
+    height,
+    tiles,
+    start,
+    goal,
+    optimalMoves: 15,
+  };
+}
+
+// Get today's puzzle
+export function getTodaysPuzzle(): PuzzleData {
+  const today = new Date();
+  const seed = getDailySeed(today);
+  return generatePuzzle(seed);
+}
+
+// Get puzzle for a specific date
+export function getPuzzleForDate(date: Date): PuzzleData {
+  const seed = getDailySeed(date);
+  return generatePuzzle(seed);
+}
+

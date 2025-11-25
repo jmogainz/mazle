@@ -1,0 +1,68 @@
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 2px solid var(--color-border);
+  background: var(--color-background);
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.logoText {
+  font-family: var(--font-pixel);
+  font-size: 1.75rem;
+  font-weight: bold;
+  color: var(--color-primary);
+  letter-spacing: 0.15em;
+  text-shadow: 2px 2px 0 rgba(255, 209, 102, 0.3);
+}
+
+.rightSection {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.streak {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  background: var(--color-surface);
+  border-radius: 6px;
+  margin-right: 0.5rem;
+}
+
+.streakIcon {
+  font-size: 1rem;
+}
+
+.streakCount {
+  font-size: 0.875rem;
+  font-weight: bold;
+  color: var(--color-primary);
+}
+
+.iconButton {
+  background: none;
+  border: none;
+  color: var(--color-text);
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 6px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.iconButton:hover {
+  background: var(--color-surface);
+  color: var(--color-primary);
+}
+

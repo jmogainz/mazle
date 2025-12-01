@@ -956,6 +956,139 @@ function createCommitmentTraps(
 }
 
 // ============================================================================
+// DIFFICULTY VALIDATION - Ensure no easy puzzles
+// ============================================================================
+
+// Simulate a "greedy" player who always tries to move toward the goal
+// Returns the "penalty" - how many extra moves greedy takes vs optimal
+// Higher penalty = more deceptive puzzle (greedy approach fails)
+function evaluateGreedyPath(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number
+): number {
+  const optimalMoves = findPath(tiles, start, goal, width, height);
+  if (optimalMoves === null) return 0;
+  
+  let pos = { ...start };
+  let moves = 0;
+  const maxMoves = optimalMoves * 5; // Prevent infinite loops
+  const visited = new Map<string, number>(); // Track visit counts
+  
+  while (!posEq(pos, goal) && moves < maxMoves) {
+    const key = posKey(pos);
+    visited.set(key, (visited.get(key) || 0) + 1);
+    
+    // If we've visited this position 3+ times, we're stuck in a loop
+    if ((visited.get(key) || 0) >= 3) {
+      // Greedy got stuck - this is good! Return high penalty
+      return maxMoves - optimalMoves;
+    }
+    
+    // Greedy strategy: prefer moves that decrease distance to goal
+    const intuitiveDirs = getIntuitiveDirection(pos, goal);
+    let moved = false;
+    
+    // First try intuitive directions (toward goal)
+    for (const dir of intuitiveDirs) {
+      const result = simulateMove(tiles, pos, dir, width, height);
+      if (result.valid && !posEq(result.pos, pos)) {
+        // Check if this move actually gets us closer
+        const oldDist = manhattanDist(pos, goal);
+        const newDist = manhattanDist(result.pos, goal);
+        if (newDist < oldDist) {
+          pos = result.pos;
+          moves++;
+          moved = true;
+          break;
+        }
+      }
+    }
+    
+    // If intuitive didn't work, try any valid move
+    if (!moved) {
+      for (const dir of getAllDirs()) {
+        const result = simulateMove(tiles, pos, dir, width, height);
+        if (result.valid && !posEq(result.pos, pos)) {
+          pos = result.pos;
+          moves++;
+          moved = true;
+          break;
+        }
+      }
+    }
+    
+    // If no move possible, stuck
+    if (!moved) {
+      return maxMoves - optimalMoves;
+    }
+  }
+  
+  // If reached goal, penalty is extra moves taken
+  if (posEq(pos, goal)) {
+    return moves - optimalMoves;
+  }
+  
+  // Didn't reach goal in time - greedy failed badly
+  return maxMoves - optimalMoves;
+}
+
+// Check if the first few moves from start have an "obvious" path
+// Returns true if the puzzle feels too straightforward at the beginning
+function hasObviousStart(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number
+): boolean {
+  const optimalPath = findOptimalPath(tiles, start, goal, width, height);
+  if (!optimalPath || optimalPath.length < 5) return true;
+  
+  // Check first 3 moves of optimal path
+  // If they're all in intuitive directions, puzzle starts too obviously
+  let intuitiveCount = 0;
+  
+  for (let i = 0; i < Math.min(3, optimalPath.length - 1); i++) {
+    const from = optimalPath[i];
+    const to = optimalPath[i + 1];
+    
+    const intuitiveDirs = getIntuitiveDirection(from, goal);
+    const actualDir = getDirectionBetween(from, to);
+    
+    if (actualDir && intuitiveDirs.includes(actualDir)) {
+      intuitiveCount++;
+    }
+  }
+  
+  // If 3+ of first moves are intuitive, start is too obvious
+  return intuitiveCount >= 3;
+}
+
+// Helper: get direction from one position to adjacent position
+function getDirectionBetween(from: Position, to: Position): Direction | null {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  
+  // Only works for cardinal directions
+  if (dx > 0 && dy === 0) return Direction.RIGHT;
+  if (dx < 0 && dy === 0) return Direction.LEFT;
+  if (dy > 0 && dx === 0) return Direction.DOWN;
+  if (dy < 0 && dx === 0) return Direction.UP;
+  
+  // For ice slides, check dominant direction
+  if (Math.abs(dx) > Math.abs(dy)) {
+    return dx > 0 ? Direction.RIGHT : Direction.LEFT;
+  } else if (Math.abs(dy) > Math.abs(dx)) {
+    return dy > 0 ? Direction.DOWN : Direction.UP;
+  }
+  
+  return null;
+}
+
+// ============================================================================
 // PUZZLE GENERATION - Large, challenging mazes
 // ============================================================================
 
@@ -1798,8 +1931,8 @@ export function generatePuzzle(seed: string): PuzzleData {
   let bestPuzzle: PuzzleData | null = null;
   let bestScore = 0;
 
-  // More attempts to find truly challenging layouts
-  for (let attempt = 0; attempt < 120; attempt++) {
+  // Keep trying until we find a truly challenging puzzle
+  for (let attempt = 0; attempt < 300; attempt++) {
     // Create base maze with guaranteed connectivity
     const tiles = createBaseMaze(width, height, rng);
 
@@ -1851,7 +1984,7 @@ export function generatePuzzle(seed: string): PuzzleData {
 
     // ============================================
     // GENIUS-LEVEL DECEPTION ENGINE
-    // Psychological misdirection + counter-intuitive design
+    // All 10 psychological misdirection algorithms
     // ============================================
     
     // ALGORITHM 1: Force counter-intuitive paths (block obvious approaches)
@@ -1907,10 +2040,10 @@ export function generatePuzzle(seed: string): PuzzleData {
     addStopBlocks(tiles, start, goal, width, height, rng, rng.randomInt(25, 45));
 
     // MINIMAL floor stopping points (force long ice planning chains)
-    addFloorStops(tiles, start, goal, width, height, rng, rng.randomInt(1, 3));
+    addFloorStops(tiles, start, goal, width, height, rng, rng.randomInt(2, 5));
     
     // Convert MOST floor tiles back to ice (maximize planning difficulty)
-    convertFloorsToIce(tiles, start, goal, width, height, rng, 0.75);
+    convertFloorsToIce(tiles, start, goal, width, height, rng, 0.7);
 
     // Ledges for complex directional puzzles
     addLedges(tiles, start, goal, width, height, rng, rng.randomInt(15, 25));
@@ -1926,7 +2059,14 @@ export function generatePuzzle(seed: string): PuzzleData {
     // Verify no stuck states
     if (!hasNoStuckStates(tiles, start, goal, width, height)) continue;
 
-    // Calculate complexity metrics for scoring
+    // ============================================
+    // CALCULATE DIFFICULTY METRICS (Don't reject - just score)
+    // ============================================
+    
+    // Only hard reject trivially short puzzles
+    if (optimalMoves < 20) continue;
+    
+    // Calculate all complexity metrics
     const branchingFactor = calculateBranchingFactor(tiles, start, goal, width, height);
     const trapPotential = countTrapPotential(tiles, start, goal, width, height);
     
@@ -1934,55 +2074,46 @@ export function generatePuzzle(seed: string): PuzzleData {
     const reachableCount = getReachable(tiles, start, width, height).size;
     const explorationDensity = reachableCount / (width * height);
     
-    // NEW: Calculate "deceptiveness" - how counter-intuitive is the optimal path?
-    // Compare Manhattan distance (intuitive) vs actual optimal moves
+    // Calculate "deceptiveness" - how counter-intuitive is the optimal path?
     const intuitiveDist = manhattanDist(start, goal);
     const deceptivenessRatio = optimalMoves / Math.max(intuitiveDist, 1);
     
-    // GENIUS scoring: prioritize puzzles that ACTIVELY DECEIVE
-    // - HIGH optimal moves (100-200 range for truly challenging puzzles)
-    // - High branching factor (decision paralysis)
-    // - High trap potential (mistakes are punishing)
-    // - High deceptiveness ratio (optimal path is NOT the intuitive one)
-    // - High exploration density (lots of places to get lost)
-    let score = optimalMoves;
+    // Calculate greedy penalty (how badly greedy approach fails)
+    const greedyPenalty = evaluateGreedyPath(tiles, start, goal, width, height);
     
-    // Strong bonus for being in the extreme target range (100-200 moves)
-    if (optimalMoves >= 100 && optimalMoves <= 200) {
+    // ============================================
+    // AGGRESSIVE SCORING - Heavily reward difficulty
+    // Best puzzle wins, no matter what
+    // ============================================
+    
+    // Start with base score from optimal moves (exponential scaling)
+    let score = Math.pow(optimalMoves, 1.5);
+    
+    // HUGE bonus for high move counts
+    if (optimalMoves >= 100) {
+      score *= 3.0;
+    } else if (optimalMoves >= 80) {
       score *= 2.5;
-    } else if (optimalMoves >= 80 && optimalMoves <= 100) {
-      score *= 1.8;
-    } else if (optimalMoves >= 60 && optimalMoves <= 80) {
-      score *= 1.3;
+    } else if (optimalMoves >= 60) {
+      score *= 2.0;
+    } else if (optimalMoves >= 40) {
+      score *= 1.5;
     }
     
-    // Bonus for high branching (many wrong choices possible)
-    if (branchingFactor >= 3.5) {
-      score *= 1.6;
-    } else if (branchingFactor >= 3.0) {
-      score *= 1.4;
-    } else if (branchingFactor >= 2.5) {
-      score *= 1.2;
-    }
+    // HUGE bonus for high branching (many wrong choices)
+    score *= (1 + branchingFactor * 0.3);
     
-    // Significant bonus for trap potential (mistakes are punishing)
-    score += Math.min(trapPotential / 4, 50);
+    // HUGE bonus for deceptiveness (optimal path != intuitive)
+    score *= (1 + deceptivenessRatio * 0.4);
     
-    // NEW: Big bonus for deceptive puzzles (optimal != intuitive)
-    if (deceptivenessRatio >= 3.0) {
-      score *= 1.5; // Optimal path is 3x+ longer than intuitive
-    } else if (deceptivenessRatio >= 2.5) {
-      score *= 1.3;
-    } else if (deceptivenessRatio >= 2.0) {
-      score *= 1.2;
-    }
+    // HUGE bonus for greedy penalty (greedy approach fails badly)
+    score *= (1 + Math.min(greedyPenalty, 50) * 0.05);
     
-    // Bonus for high exploration density (lots of reachable positions)
-    if (explorationDensity >= 0.45) {
-      score *= 1.3;
-    } else if (explorationDensity >= 0.35) {
-      score *= 1.15;
-    }
+    // Bonus for trap potential
+    score += trapPotential * 2;
+    
+    // Bonus for exploration density
+    score *= (1 + explorationDensity);
 
     if (score > bestScore) {
       bestScore = score;
@@ -1992,81 +2123,106 @@ export function generatePuzzle(seed: string): PuzzleData {
         tiles,
         start,
         goal,
-        optimalMoves
+        optimalMoves,
+        // Include difficulty metrics for dev display
+        difficultyScore: Math.round(score),
+        branchingFactor: Math.round(branchingFactor * 100) / 100,
+        deceptivenessRatio: Math.round(deceptivenessRatio * 100) / 100,
+        greedyPenalty: greedyPenalty,
       };
     }
 
-    // Target 100+ optimal moves with excellent complexity for 2+ min solves
-    // Also require good deceptiveness ratio
-    if (optimalMoves >= 100 && optimalMoves <= 180 && 
-        branchingFactor >= 3.0 && deceptivenessRatio >= 2.5) {
+    // Only break early if we find a truly excellent puzzle
+    if (optimalMoves >= 70 && branchingFactor >= 2.2 && 
+        deceptivenessRatio >= 2.0 && greedyPenalty >= 8) {
       break;
     }
   }
 
+  // We should always have SOMETHING since we don't reject
+  // But if somehow we don't, use fallback
   if (!bestPuzzle) {
-    if (!seed.includes('-fallback')) {
-      return generatePuzzle(seed + '-fallback');
-    }
-    return createSimplePuzzle(width, height, rng);
+    return createGuaranteedHardPuzzle(width, height, rng);
   }
 
   return bestPuzzle;
 }
 
-// Simple fallback puzzle - still challenging but guaranteed to work
-function createSimplePuzzle(width: number, height: number, rng: SeededRandom): PuzzleData {
+// GUARANTEED HARD PUZZLE - Uses deliberate counter-intuitive design
+// This is the fallback when random generation fails to produce a hard enough puzzle
+function createGuaranteedHardPuzzle(width: number, height: number, rng: SeededRandom): PuzzleData {
   const tiles: TileType[][] = Array(height).fill(null).map(() => Array(width).fill(TileType.WALL));
 
-  // Create connected ice area with higher density
-  for (let y = 2; y < height - 2; y++) {
+  // Create a deliberately serpentine path structure
+  // The key: goal is opposite corner, but direct path is blocked
+  // Player must navigate a winding route
+  
+  // Create main corridors that DON'T go directly to goal
+  // Horizontal corridors at different heights
+  const corridorY1 = Math.floor(height * 0.2);
+  const corridorY2 = Math.floor(height * 0.5);
+  const corridorY3 = Math.floor(height * 0.8);
+  
+  // Vertical corridors at different positions
+  const corridorX1 = Math.floor(width * 0.15);
+  const corridorX2 = Math.floor(width * 0.4);
+  const corridorX3 = Math.floor(width * 0.6);
+  const corridorX4 = Math.floor(width * 0.85);
+  
+  // Create horizontal corridors (2 tiles wide for ice sliding)
+  for (const cy of [corridorY1, corridorY2, corridorY3]) {
     for (let x = 2; x < width - 2; x++) {
-      if (rng.random() < 0.7) {
-        tiles[y][x] = TileType.ICE;
+      for (let dy = -1; dy <= 1; dy++) {
+        const y = cy + dy;
+        if (isInner(x, y, width, height)) {
+          tiles[y][x] = TileType.ICE;
+        }
       }
     }
   }
-
-  // Ensure connectivity with guaranteed paths (multiple corridors)
-  for (let y = Math.floor(height / 2) - 1; y <= Math.floor(height / 2) + 1; y++) {
-    for (let x = 2; x < width - 2; x++) {
-      tiles[y][x] = TileType.ICE;
-    }
-  }
-  // Additional horizontal corridors
-  for (let y = Math.floor(height / 4) - 1; y <= Math.floor(height / 4) + 1; y++) {
-    for (let x = 2; x < width - 2; x++) {
-      tiles[y][x] = TileType.ICE;
-    }
-  }
-  for (let y = Math.floor(3 * height / 4) - 1; y <= Math.floor(3 * height / 4) + 1; y++) {
-    for (let x = 2; x < width - 2; x++) {
-      tiles[y][x] = TileType.ICE;
-    }
-  }
-  // Vertical corridors
-  for (let x = Math.floor(width / 4); x <= Math.floor(width / 4) + 1; x++) {
+  
+  // Create vertical corridors (2 tiles wide)
+  for (const cx of [corridorX1, corridorX2, corridorX3, corridorX4]) {
     for (let y = 2; y < height - 2; y++) {
-      tiles[y][x] = TileType.ICE;
+      for (let dx = -1; dx <= 1; dx++) {
+        const x = cx + dx;
+        if (isInner(x, y, width, height)) {
+          tiles[y][x] = TileType.ICE;
+        }
+      }
     }
   }
-  for (let x = Math.floor(width / 2); x <= Math.floor(width / 2) + 1; x++) {
-    for (let y = 2; y < height - 2; y++) {
-      tiles[y][x] = TileType.ICE;
+  
+  // Start in top-left area, goal in bottom-right
+  // But block the direct diagonal!
+  const start = { x: corridorX1, y: corridorY1 };
+  const goal = { x: corridorX4, y: corridorY3 };
+  
+  // Block direct approaches to goal from intuitive directions
+  // Create walls that force counter-intuitive routing
+  
+  // Block the straightforward right-then-down path
+  for (let x = corridorX3 + 3; x < corridorX4 - 2; x++) {
+    for (let y = corridorY2 - 2; y <= corridorY2 + 2; y++) {
+      if (isInner(x, y, width, height) && 
+          !posEq({ x, y }, start) && !posEq({ x, y }, goal)) {
+        tiles[y][x] = TileType.WALL;
+      }
     }
   }
-  for (let x = Math.floor(3 * width / 4); x <= Math.floor(3 * width / 4) + 1; x++) {
-    for (let y = 2; y < height - 2; y++) {
-      tiles[y][x] = TileType.ICE;
+  
+  // Block approach to goal from above
+  for (let y = corridorY2 + 3; y < corridorY3 - 2; y++) {
+    const x = corridorX4;
+    if (isInner(x, y, width, height)) {
+      tiles[y][x] = TileType.WALL;
+      tiles[y][x - 1] = TileType.WALL;
     }
   }
-
-  const start = { x: 3, y: Math.floor(height / 4) };
-  const goal = { x: width - 4, y: Math.floor(3 * height / 4) };
-
-  // Add MANY walls for complexity
-  for (let i = 0; i < 60; i++) {
-    const x = rng.randomInt(4, width - 4);
+  
+  // Add many walls to create maze-like complexity
+  for (let i = 0; i < 100; i++) {
+    const x = rng.randomInt(3, width - 3);
     const y = rng.randomInt(3, height - 3);
     if (!posEq({ x, y }, start) && !posEq({ x, y }, goal) && tiles[y][x] === TileType.ICE) {
       tiles[y][x] = TileType.WALL;
@@ -2075,20 +2231,53 @@ function createSimplePuzzle(width: number, height: number, rng: SeededRandom): P
       }
     }
   }
-
-  // Add MINIMAL floor stops (force planning)
-  for (let i = 0; i < 4; i++) {
-    const x = rng.randomInt(3, width - 3);
-    const y = rng.randomInt(3, height - 3);
-    if (tiles[y][x] === TileType.ICE && !posEq({ x, y }, start) && !posEq({ x, y }, goal)) {
-      tiles[y][x] = TileType.FLOOR;
+  
+  // Add ledges to create commitment points
+  const ledgePositions = [
+    { x: corridorX2, y: corridorY1 + 2, type: TileType.LEDGE_DOWN },
+    { x: corridorX3, y: corridorY2 - 2, type: TileType.LEDGE_UP },
+    { x: corridorX2 + 2, y: corridorY2, type: TileType.LEDGE_RIGHT },
+    { x: corridorX3 - 2, y: corridorY3, type: TileType.LEDGE_LEFT },
+  ];
+  
+  for (const lp of ledgePositions) {
+    if (isInner(lp.x, lp.y, width, height) && 
+        tiles[lp.y][lp.x] === TileType.ICE &&
+        !posEq({ x: lp.x, y: lp.y }, start) && 
+        !posEq({ x: lp.x, y: lp.y }, goal)) {
+      tiles[lp.y][lp.x] = lp.type;
+      if (!isSolvable(tiles, start, goal, width, height) ||
+          !hasNoStuckStates(tiles, start, goal, width, height)) {
+        tiles[lp.y][lp.x] = TileType.ICE;
+      }
+    }
+  }
+  
+  // Ensure solvability by opening a guaranteed (but non-obvious) path
+  // Open a path that requires going LEFT first (counter-intuitive)
+  const escapeX = corridorX1 - 2;
+  for (let y = corridorY1; y <= corridorY3; y++) {
+    if (isInner(escapeX, y, width, height)) {
+      tiles[y][escapeX] = TileType.ICE;
+    }
+  }
+  
+  tiles[start.y][start.x] = TileType.START;
+  tiles[goal.y][goal.x] = TileType.GOAL;
+  
+  // Final solvability check
+  if (!isSolvable(tiles, start, goal, width, height)) {
+    // Emergency: open more paths
+    for (let y = corridorY2 - 1; y <= corridorY2 + 1; y++) {
+      for (let x = corridorX1; x <= corridorX4; x++) {
+        if (isInner(x, y, width, height)) {
+          tiles[y][x] = TileType.ICE;
+        }
+      }
     }
   }
 
-  tiles[start.y][start.x] = TileType.START;
-  tiles[goal.y][goal.x] = TileType.GOAL;
-
-  const optimalMoves = findPath(tiles, start, goal, width, height) || 50;
+  const optimalMoves = findPath(tiles, start, goal, width, height) || 60;
 
   return { width, height, tiles, start, goal, optimalMoves };
 }

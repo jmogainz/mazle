@@ -48,6 +48,7 @@ export default function Home() {
   const [previousResult, setPreviousResult] = useState<DailyStats | null>(null);
   const [isGameReady, setIsGameReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const gameControlsRef = useRef<GameControls | null>(null);
   const debugModeRef = useRef(false);
 
@@ -137,19 +138,24 @@ export default function Home() {
       const isDateSeed = /^\d{4}-\d{2}-\d{2}$/.test(trimmed);
 
       if (isDateSeed) {
-        const targetDate = new Date(trimmed);
-        const datedPuzzle = getPuzzleForDate(targetDate);
-        const dailySeed = getDailySeed(targetDate);
-        debugModeRef.current = true;
-        setPuzzle(datedPuzzle);
-        setPuzzleNumber(getPuzzleNumber(targetDate));
-        setPuzzleLabel(`DATE ${trimmed}`);
-        setActiveSeed(dailySeed);
-        setSeedInput(trimmed);
-        setGameResult(null);
-        setShowShareCard(false);
-        setPreviousResult(null);
-        setIsPlaying(false);
+        setIsGenerating(true);
+        // Use setTimeout to allow spinner to render
+        setTimeout(() => {
+          const targetDate = new Date(trimmed);
+          const datedPuzzle = getPuzzleForDate(targetDate);
+          const dailySeed = getDailySeed(targetDate);
+          debugModeRef.current = true;
+          setPuzzle(datedPuzzle);
+          setPuzzleNumber(getPuzzleNumber(targetDate));
+          setPuzzleLabel(`DATE ${trimmed}`);
+          setActiveSeed(dailySeed);
+          setSeedInput(trimmed);
+          setGameResult(null);
+          setShowShareCard(false);
+          setPreviousResult(null);
+          setIsPlaying(false);
+          setIsGenerating(false);
+        }, 50);
         return;
       }
 
@@ -159,17 +165,22 @@ export default function Home() {
           .toString()
           .padStart(4, '0')}`;
 
-      const newPuzzle = generatePuzzle(newSeed);
-      debugModeRef.current = true;
-      setPuzzle(newPuzzle);
-      setPuzzleLabel(`DEV ${newSeed}`);
-      setActiveSeed(newSeed);
-      setSeedInput(newSeed);
-      setRenderKey((prev) => prev + 1);
-      setGameResult(null);
-      setShowShareCard(false);
-      setPreviousResult(null);
-      setIsPlaying(false);
+      setIsGenerating(true);
+      // Use setTimeout to allow spinner to render before CPU-intensive generation
+      setTimeout(() => {
+        const newPuzzle = generatePuzzle(newSeed);
+        debugModeRef.current = true;
+        setPuzzle(newPuzzle);
+        setPuzzleLabel(`DEV ${newSeed}`);
+        setActiveSeed(newSeed);
+        setSeedInput(newSeed);
+        setRenderKey((prev) => prev + 1);
+        setGameResult(null);
+        setShowShareCard(false);
+        setPreviousResult(null);
+        setIsPlaying(false);
+        setIsGenerating(false);
+      }, 50);
     },
     [],
   );
@@ -218,17 +229,44 @@ export default function Home() {
                 {puzzleLabel ?? `Daily #${puzzleNumber}`} • Seed: {activeSeed || 'daily'}
               </span>
             </div>
+            
+            {/* Difficulty Metrics */}
+            <div className={styles.devMetrics}>
+              <div className={styles.devMetric}>
+                <span className={styles.devMetricLabel}>Score</span>
+                <span className={styles.devMetricValue}>{puzzle.difficultyScore ?? '—'}</span>
+              </div>
+              <div className={styles.devMetric}>
+                <span className={styles.devMetricLabel}>Moves</span>
+                <span className={styles.devMetricValue}>{puzzle.optimalMoves}</span>
+              </div>
+              <div className={styles.devMetric}>
+                <span className={styles.devMetricLabel}>Branch</span>
+                <span className={styles.devMetricValue}>{puzzle.branchingFactor ?? '—'}</span>
+              </div>
+              <div className={styles.devMetric}>
+                <span className={styles.devMetricLabel}>Deceptive</span>
+                <span className={styles.devMetricValue}>{puzzle.deceptivenessRatio ?? '—'}</span>
+              </div>
+              <div className={styles.devMetric}>
+                <span className={styles.devMetricLabel}>Greedy Pen.</span>
+                <span className={styles.devMetricValue}>{puzzle.greedyPenalty ?? '—'}</span>
+              </div>
+            </div>
+
             <div className={styles.devControls}>
               <input
                 value={seedInput}
                 onChange={(e) => setSeedInput(e.target.value)}
                 placeholder="Custom seed or YYYY-MM-DD"
                 className={styles.devInput}
+                disabled={isGenerating}
               />
               <button
                 type="button"
                 className={styles.devButton}
                 onClick={() => handleDevSeedGenerate(seedInput)}
+                disabled={isGenerating}
               >
                 Load seed
               </button>
@@ -236,10 +274,23 @@ export default function Home() {
                 type="button"
                 className={styles.devButtonSecondary}
                 onClick={() => handleDevSeedGenerate()}
+                disabled={isGenerating}
               >
-                Random seed
+                {isGenerating ? (
+                  <>
+                    <span className={styles.buttonSpinner} />
+                    Generating...
+                  </>
+                ) : (
+                  'Random seed'
+                )}
               </button>
-              <button type="button" className={styles.devButtonGhost} onClick={handleLoadDaily}>
+              <button 
+                type="button" 
+                className={styles.devButtonGhost} 
+                onClick={handleLoadDaily}
+                disabled={isGenerating}
+              >
                 Back to daily
               </button>
             </div>

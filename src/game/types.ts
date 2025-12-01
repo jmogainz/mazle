@@ -30,6 +30,11 @@ export interface PuzzleData {
   start: Position;
   goal: Position;
   optimalMoves: number;
+  // Difficulty metrics (for dev mode display)
+  difficultyScore?: number;
+  branchingFactor?: number;
+  deceptivenessRatio?: number;
+  greedyPenalty?: number;
 }
 
 export interface GameState {

@@ -956,6 +956,403 @@ function createCommitmentTraps(
 }
 
 // ============================================================================
+// ADVANCED INTELLIGENCE SYSTEMS
+// Heat Map Analysis, Critical Path Obfuscation, Cognitive Load
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// SYSTEM 1: HEAT MAP / ATTRACTION FIELD ANALYSIS
+// Models where humans naturally WANT to go, then ensures optimal path avoids it
+// ----------------------------------------------------------------------------
+
+// Calculate "attraction score" for a tile - higher = more appealing to humans
+function calculateTileAttraction(
+  x: number, 
+  y: number, 
+  goal: Position, 
+  tiles: TileType[][], 
+  width: number, 
+  height: number
+): number {
+  // Base attraction: inverse distance to goal (closer = more attractive)
+  const distToGoal = manhattanDist({ x, y }, goal);
+  const maxDist = width + height;
+  const distanceAttraction = (maxDist - distToGoal) / maxDist; // 0-1, higher when closer
+  
+  // Openness attraction: open areas look more inviting
+  let openNeighbors = 0;
+  for (const dir of getAllDirs()) {
+    const delta = getDelta(dir);
+    const nx = x + delta.x;
+    const ny = y + delta.y;
+    if (isValid(nx, ny, width, height) && tiles[ny][nx] !== TileType.WALL) {
+      openNeighbors++;
+    }
+  }
+  const opennessAttraction = openNeighbors / 4; // 0-1
+  
+  // Line-of-sight to goal (can you "see" toward goal direction?)
+  const goalDir = { 
+    x: Math.sign(goal.x - x), 
+    y: Math.sign(goal.y - y) 
+  };
+  let lineOfSight = 0;
+  let checkX = x + goalDir.x;
+  let checkY = y + goalDir.y;
+  let losSteps = 0;
+  while (isValid(checkX, checkY, width, height) && 
+         tiles[checkY][checkX] !== TileType.WALL && 
+         losSteps < 10) {
+    losSteps++;
+    checkX += goalDir.x;
+    checkY += goalDir.y;
+  }
+  lineOfSight = Math.min(losSteps / 5, 1); // 0-1
+  
+  // Combine factors (weighted)
+  return distanceAttraction * 0.5 + opennessAttraction * 0.25 + lineOfSight * 0.25;
+}
+
+// Generate full heat map for the puzzle
+function generateHeatMap(
+  tiles: TileType[][],
+  goal: Position,
+  width: number,
+  height: number
+): number[][] {
+  const heatMap: number[][] = Array(height).fill(null).map(() => Array(width).fill(0));
+  
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (tiles[y][x] !== TileType.WALL) {
+        heatMap[y][x] = calculateTileAttraction(x, y, goal, tiles, width, height);
+      }
+    }
+  }
+  
+  return heatMap;
+}
+
+// Calculate how "cold" the optimal path is (lower = better puzzle)
+// Returns average attraction of tiles on optimal path
+function calculatePathTemperature(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number
+): number {
+  const optimalPath = findOptimalPath(tiles, start, goal, width, height);
+  if (!optimalPath || optimalPath.length < 2) return 1; // Hot = bad
+  
+  const heatMap = generateHeatMap(tiles, goal, width, height);
+  
+  let totalHeat = 0;
+  for (const pos of optimalPath) {
+    totalHeat += heatMap[pos.y][pos.x];
+  }
+  
+  return totalHeat / optimalPath.length;
+}
+
+// Modification pass: Block hot paths to force cold routing
+function coolDownHotPaths(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number,
+  rng: SeededRandom,
+  iterations: number
+): void {
+  const heatMap = generateHeatMap(tiles, goal, width, height);
+  
+  for (let i = 0; i < iterations; i++) {
+    // Find hottest non-path ice tile
+    let hottestPos: Position | null = null;
+    let hottestTemp = 0;
+    
+    for (let y = 2; y < height - 2; y++) {
+      for (let x = 2; x < width - 2; x++) {
+        if (tiles[y][x] === TileType.ICE && 
+            heatMap[y][x] > hottestTemp &&
+            !posEq({ x, y }, start) && 
+            !posEq({ x, y }, goal)) {
+          hottestTemp = heatMap[y][x];
+          hottestPos = { x, y };
+        }
+      }
+    }
+    
+    if (!hottestPos || hottestTemp < 0.6) break; // No hot tiles left
+    
+    // Try to place a wall on this hot tile
+    tiles[hottestPos.y][hottestPos.x] = TileType.WALL;
+    
+    if (!isSolvable(tiles, start, goal, width, height)) {
+      tiles[hottestPos.y][hottestPos.x] = TileType.ICE;
+    } else {
+      // Update heat map for changed tile
+      heatMap[hottestPos.y][hottestPos.x] = 0;
+    }
+  }
+}
+
+// ----------------------------------------------------------------------------
+// SYSTEM 2: CRITICAL PATH OBFUSCATION
+// Find the optimal path and systematically camouflage each key move
+// ----------------------------------------------------------------------------
+
+// Identify "key moves" on the optimal path - moves that aren't obvious
+function identifyKeyMoves(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number
+): Position[] {
+  const optimalPath = findOptimalPath(tiles, start, goal, width, height);
+  if (!optimalPath || optimalPath.length < 3) return [];
+  
+  const keyMoves: Position[] = [];
+  
+  for (let i = 0; i < optimalPath.length - 1; i++) {
+    const current = optimalPath[i];
+    const next = optimalPath[i + 1];
+    
+    // Determine direction of this move
+    const moveDir = getDirectionBetween(current, next);
+    if (!moveDir) continue;
+    
+    // Check if this move goes AWAY from goal (counter-intuitive)
+    const intuitiveDirs = getIntuitiveDirection(current, goal);
+    const isCounterIntuitive = !intuitiveDirs.includes(moveDir);
+    
+    // Check if there are multiple valid moves from this position
+    let validMoveCount = 0;
+    for (const dir of getAllDirs()) {
+      const result = simulateMove(tiles, current, dir, width, height);
+      if (result.valid && !posEq(result.pos, current)) {
+        validMoveCount++;
+      }
+    }
+    
+    // Key move if: counter-intuitive OR at a decision point with 3+ options
+    if (isCounterIntuitive || validMoveCount >= 3) {
+      keyMoves.push(current);
+    }
+  }
+  
+  return keyMoves;
+}
+
+// Add decoy paths near key moves to camouflage them
+function obfuscateCriticalPath(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number,
+  rng: SeededRandom
+): void {
+  const keyMoves = identifyKeyMoves(tiles, start, goal, width, height);
+  
+  for (const keyPos of keyMoves) {
+    // For each key position, try to open up decoy paths
+    const decoyDirs = getAllDirs().filter(dir => {
+      const intuitiveDirs = getIntuitiveDirection(keyPos, goal);
+      return intuitiveDirs.includes(dir); // Decoys go toward goal (look good)
+    });
+    
+    for (const dir of decoyDirs) {
+      const delta = getDelta(dir);
+      
+      // Try to create a short decoy path in this direction
+      for (let dist = 1; dist <= 3; dist++) {
+        const decoyX = keyPos.x + delta.x * dist;
+        const decoyY = keyPos.y + delta.y * dist;
+        
+        if (!isInner(decoyX, decoyY, width, height)) break;
+        if (posEq({ x: decoyX, y: decoyY }, start) || 
+            posEq({ x: decoyX, y: decoyY }, goal)) break;
+        
+        if (tiles[decoyY][decoyX] === TileType.WALL) {
+          // Open this wall to create decoy path
+          tiles[decoyY][decoyX] = TileType.ICE;
+          
+          // Verify still solvable and optimal path unchanged
+          const newOptimal = findPath(tiles, start, goal, width, height);
+          const oldOptimal = findPath(tiles, start, goal, width, height);
+          
+          if (newOptimal === null || (oldOptimal !== null && newOptimal < oldOptimal)) {
+            // This actually created a shortcut - revert!
+            tiles[decoyY][decoyX] = TileType.WALL;
+            break;
+          }
+        }
+      }
+    }
+  }
+  
+  // Also add walls near key moves to make them look like dead ends
+  for (const keyPos of keyMoves) {
+    // Find the optimal direction from this key move
+    const optPath = findOptimalPath(tiles, start, goal, width, height);
+    if (!optPath) continue;
+    
+    const keyIdx = optPath.findIndex(p => posEq(p, keyPos));
+    if (keyIdx < 0 || keyIdx >= optPath.length - 1) continue;
+    
+    const nextPos = optPath[keyIdx + 1];
+    const optimalDir = getDirectionBetween(keyPos, nextPos);
+    if (!optimalDir) continue;
+    
+    // Add "warning" walls near the optimal direction to make it look bad
+    const perpDirs = optimalDir === Direction.UP || optimalDir === Direction.DOWN
+      ? [Direction.LEFT, Direction.RIGHT]
+      : [Direction.UP, Direction.DOWN];
+    
+    for (const perpDir of perpDirs) {
+      const pd = getDelta(perpDir);
+      const od = getDelta(optimalDir);
+      
+      // Place wall diagonally ahead in optimal direction (makes it look blocked)
+      const wallX = keyPos.x + od.x * 2 + pd.x;
+      const wallY = keyPos.y + od.y * 2 + pd.y;
+      
+      if (isInner(wallX, wallY, width, height) && 
+          tiles[wallY][wallX] === TileType.ICE &&
+          !posEq({ x: wallX, y: wallY }, start) &&
+          !posEq({ x: wallX, y: wallY }, goal)) {
+        tiles[wallY][wallX] = TileType.WALL;
+        
+        if (!isSolvable(tiles, start, goal, width, height)) {
+          tiles[wallY][wallX] = TileType.ICE;
+        }
+      }
+    }
+  }
+}
+
+// ----------------------------------------------------------------------------
+// SYSTEM 3: COGNITIVE LOAD ANALYSIS
+// Measure and maximize required lookahead depth
+// ----------------------------------------------------------------------------
+
+// Calculate the longest sequence of moves without a "safe" decision point
+// Higher = requires more working memory = harder
+function calculateLookaheadDepth(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number
+): number {
+  const optimalPath = findOptimalPath(tiles, start, goal, width, height);
+  if (!optimalPath || optimalPath.length < 2) return 0;
+  
+  let maxSequence = 0;
+  let currentSequence = 0;
+  
+  for (let i = 0; i < optimalPath.length; i++) {
+    const pos = optimalPath[i];
+    const tile = tiles[pos.y][pos.x];
+    
+    // Count valid moves from this position
+    let validMoves = 0;
+    for (const dir of getAllDirs()) {
+      const result = simulateMove(tiles, pos, dir, width, height);
+      if (result.valid && !posEq(result.pos, pos)) {
+        validMoves++;
+      }
+    }
+    
+    // "Safe" points are floor tiles or positions with only 1-2 valid moves
+    // (easy to reason about)
+    const isSafePoint = tile === TileType.FLOOR || 
+                        tile === TileType.START || 
+                        validMoves <= 2;
+    
+    if (isSafePoint) {
+      maxSequence = Math.max(maxSequence, currentSequence);
+      currentSequence = 0;
+    } else {
+      currentSequence++;
+    }
+  }
+  
+  maxSequence = Math.max(maxSequence, currentSequence);
+  return maxSequence;
+}
+
+// Count total "high-stakes" decision points (3+ valid moves, on ice)
+function countHighStakesDecisions(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number
+): number {
+  const reachable = getReachable(tiles, start, width, height);
+  let highStakes = 0;
+  
+  for (const key of reachable) {
+    const [x, y] = key.split(',').map(Number);
+    const tile = tiles[y][x];
+    
+    // Only count ice tiles (where you can't easily correct mistakes)
+    if (tile !== TileType.ICE) continue;
+    
+    let validMoves = 0;
+    for (const dir of getAllDirs()) {
+      const result = simulateMove(tiles, { x, y }, dir, width, height);
+      if (result.valid && !posEq(result.pos, { x, y })) {
+        validMoves++;
+      }
+    }
+    
+    if (validMoves >= 3) {
+      highStakes++;
+    }
+  }
+  
+  return highStakes;
+}
+
+// Extend cognitive load by converting floor tiles to ice in key locations
+function extendCognitiveChains(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number,
+  rng: SeededRandom,
+  targetDepth: number
+): void {
+  const optimalPath = findOptimalPath(tiles, start, goal, width, height);
+  if (!optimalPath) return;
+  
+  // Find floor tiles on the optimal path that could be converted to ice
+  for (const pos of optimalPath) {
+    if (tiles[pos.y][pos.x] !== TileType.FLOOR) continue;
+    if (posEq(pos, start) || posEq(pos, goal)) continue;
+    
+    // Check current lookahead depth
+    const currentDepth = calculateLookaheadDepth(tiles, start, goal, width, height);
+    if (currentDepth >= targetDepth) break;
+    
+    // Convert to ice
+    tiles[pos.y][pos.x] = TileType.ICE;
+    
+    // Verify still solvable
+    if (!isSolvable(tiles, start, goal, width, height) ||
+        !hasNoStuckStates(tiles, start, goal, width, height)) {
+      tiles[pos.y][pos.x] = TileType.FLOOR;
+    }
+  }
+}
+
+// ============================================================================
 // DIFFICULTY VALIDATION - Ensure no easy puzzles
 // ============================================================================
 
@@ -1908,6 +2305,353 @@ function addWindingCorridors(
   }
 }
 
+// ============================================================================
+// CONSTRAINT-BASED PUZZLE GENERATION (Backwards Design)
+// Designs puzzles from the goal backwards, ensuring every step is counter-intuitive
+// ============================================================================
+
+interface WaypointConstraint {
+  pos: Position;
+  requiredApproachDir: Direction; // Must approach from this direction to reach
+  slideDistance: number; // How far you slide to reach this point
+}
+
+// Generate a puzzle by designing the solution path backwards from goal
+function generateConstraintBasedPuzzle(
+  width: number,
+  height: number,
+  rng: SeededRandom,
+  chainLength: number = 15 // Number of required waypoints
+): { tiles: TileType[][], start: Position, goal: Position } | null {
+  
+  // Initialize with all walls
+  const tiles: TileType[][] = Array(height).fill(null).map(() => 
+    Array(width).fill(TileType.WALL)
+  );
+  
+  // Place goal near a corner (but not on edge)
+  const corners = [
+    { x: width - 4, y: height - 4 }, // bottom-right
+    { x: 4, y: height - 4 },          // bottom-left
+    { x: width - 4, y: 4 },           // top-right
+    { x: 4, y: 4 },                    // top-left
+  ];
+  const goal = rng.randomChoice(corners);
+  
+  // Create the solution chain working backwards from goal
+  const waypoints: WaypointConstraint[] = [];
+  let currentPos = { ...goal };
+  
+  // Track which cells are part of the solution path
+  const solutionPath = new Set<string>();
+  solutionPath.add(posKey(goal));
+  
+  for (let i = 0; i < chainLength; i++) {
+    // Determine the "intuitive" direction (toward where start likely is - opposite corner)
+    const intuitiveDir = getOppositeCornerDirection(currentPos, goal, width, height);
+    
+    // Choose approach direction - AVOID the intuitive direction
+    const possibleApproachDirs = getAllDirs().filter(d => {
+      // Don't use the intuitive direction
+      if (d === intuitiveDir) return false;
+      // Don't use the opposite of intuitive (too predictable)
+      if (d === getOppositeDir(intuitiveDir) && rng.random() < 0.7) return false;
+      return true;
+    });
+    
+    if (possibleApproachDirs.length === 0) break;
+    
+    const approachDir = rng.randomChoice(possibleApproachDirs);
+    const oppDir = getOppositeDir(approachDir);
+    const delta = getDelta(oppDir); // Direction to look for source position
+    
+    // Determine slide distance (longer slides = harder to plan)
+    const slideDistance = rng.randomInt(3, 8);
+    
+    // Find source position (where player starts the slide FROM)
+    const sourcePos = {
+      x: currentPos.x + delta.x * slideDistance,
+      y: currentPos.y + delta.y * slideDistance
+    };
+    
+    // Check if source is valid
+    if (!isInner(sourcePos.x, sourcePos.y, width, height)) {
+      // Try shorter distance
+      let found = false;
+      for (let dist = slideDistance - 1; dist >= 2; dist--) {
+        const tryPos = {
+          x: currentPos.x + delta.x * dist,
+          y: currentPos.y + delta.y * dist
+        };
+        if (isInner(tryPos.x, tryPos.y, width, height)) {
+          sourcePos.x = tryPos.x;
+          sourcePos.y = tryPos.y;
+          found = true;
+          break;
+        }
+      }
+      if (!found) continue;
+    }
+    
+    // Carve the ice path from source to current (player slides this path)
+    const pathDelta = getDelta(approachDir);
+    let carveX = sourcePos.x;
+    let carveY = sourcePos.y;
+    
+    while (!posEq({ x: carveX, y: carveY }, currentPos)) {
+      if (!isInner(carveX, carveY, width, height)) break;
+      tiles[carveY][carveX] = TileType.ICE;
+      solutionPath.add(posKey({ x: carveX, y: carveY }));
+      carveX += pathDelta.x;
+      carveY += pathDelta.y;
+    }
+    tiles[currentPos.y][currentPos.x] = TileType.ICE;
+    
+    // Place WALL as stopper (why player stops at currentPos)
+    const stopperX = currentPos.x + pathDelta.x;
+    const stopperY = currentPos.y + pathDelta.y;
+    if (isValid(stopperX, stopperY, width, height)) {
+      tiles[stopperY][stopperX] = TileType.WALL;
+    }
+    
+    // Record this waypoint
+    waypoints.push({
+      pos: { ...currentPos },
+      requiredApproachDir: approachDir,
+      slideDistance: Math.abs(sourcePos.x - currentPos.x) + Math.abs(sourcePos.y - currentPos.y)
+    });
+    
+    // Move to source for next iteration
+    currentPos = sourcePos;
+  }
+  
+  if (waypoints.length < 5) {
+    return null; // Failed to create enough complexity
+  }
+  
+  // Start position is the last source we reached
+  const start = { ...currentPos };
+  tiles[start.y][start.x] = TileType.ICE;
+  
+  // Now add DECOY paths - paths that look good but lead nowhere
+  addDecoyBranches(tiles, waypoints, goal, width, height, rng);
+  
+  // Add some additional ice to make the map less obviously linear
+  fillWithDecoyIce(tiles, solutionPath, start, goal, width, height, rng);
+  
+  // Add strategic walls to block "shortcut" attempts
+  addShortcutBlockers(tiles, waypoints, start, goal, width, height, rng);
+  
+  // Set start and goal tiles
+  tiles[start.y][start.x] = TileType.START;
+  tiles[goal.y][goal.x] = TileType.GOAL;
+  
+  // Verify solvability
+  if (!isSolvable(tiles, start, goal, width, height)) {
+    return null;
+  }
+  
+  // Verify no stuck states
+  if (!hasNoStuckStates(tiles, start, goal, width, height)) {
+    return null;
+  }
+  
+  return { tiles, start, goal };
+}
+
+// Get the direction toward the opposite corner from goal
+function getOppositeCornerDirection(pos: Position, goal: Position, width: number, height: number): Direction {
+  // If goal is in bottom-right, intuitive is toward top-left, etc.
+  const centerX = width / 2;
+  const centerY = height / 2;
+  
+  // Primary direction away from goal's corner
+  if (goal.x > centerX && goal.y > centerY) {
+    // Goal bottom-right, intuitive toward top-left
+    return pos.y > centerY ? Direction.UP : Direction.LEFT;
+  } else if (goal.x < centerX && goal.y > centerY) {
+    // Goal bottom-left, intuitive toward top-right
+    return pos.y > centerY ? Direction.UP : Direction.RIGHT;
+  } else if (goal.x > centerX && goal.y < centerY) {
+    // Goal top-right, intuitive toward bottom-left
+    return pos.y < centerY ? Direction.DOWN : Direction.LEFT;
+  } else {
+    // Goal top-left, intuitive toward bottom-right
+    return pos.y < centerY ? Direction.DOWN : Direction.RIGHT;
+  }
+}
+
+// Add decoy branches at waypoints - paths that look promising but dead-end
+function addDecoyBranches(
+  tiles: TileType[][],
+  waypoints: WaypointConstraint[],
+  goal: Position,
+  width: number,
+  height: number,
+  rng: SeededRandom
+): void {
+  for (const wp of waypoints) {
+    // At each waypoint, create decoy paths in the "intuitive" directions
+    const intuitiveDirs = getIntuitiveDirection(wp.pos, goal);
+    
+    for (const decoyDir of intuitiveDirs) {
+      // Don't create decoy in the correct approach direction
+      if (decoyDir === wp.requiredApproachDir) continue;
+      
+      // Create a decoy path that looks like progress but dead-ends
+      const decoyLength = rng.randomInt(4, 10);
+      const delta = getDelta(decoyDir);
+      
+      let x = wp.pos.x + delta.x;
+      let y = wp.pos.y + delta.y;
+      
+      // Carve decoy path
+      for (let i = 0; i < decoyLength; i++) {
+        if (!isInner(x, y, width, height)) break;
+        if (tiles[y][x] === TileType.WALL) {
+          tiles[y][x] = TileType.ICE;
+        }
+        x += delta.x;
+        y += delta.y;
+      }
+      
+      // Make sure it dead-ends (wall at the end)
+      if (isValid(x, y, width, height)) {
+        tiles[y][x] = TileType.WALL;
+      }
+      
+      // Add a perpendicular dead-end for extra misdirection
+      if (rng.random() < 0.6 && decoyLength > 3) {
+        const perpDir = rng.randomChoice(
+          decoyDir === Direction.UP || decoyDir === Direction.DOWN
+            ? [Direction.LEFT, Direction.RIGHT]
+            : [Direction.UP, Direction.DOWN]
+        );
+        const perpDelta = getDelta(perpDir);
+        const branchX = wp.pos.x + delta.x * Math.floor(decoyLength / 2);
+        const branchY = wp.pos.y + delta.y * Math.floor(decoyLength / 2);
+        
+        for (let i = 1; i <= rng.randomInt(3, 6); i++) {
+          const bx = branchX + perpDelta.x * i;
+          const by = branchY + perpDelta.y * i;
+          if (!isInner(bx, by, width, height)) break;
+          if (tiles[by][bx] === TileType.WALL) {
+            tiles[by][bx] = TileType.ICE;
+          }
+        }
+      }
+    }
+  }
+}
+
+// Fill some areas with ice to make map less obviously a single path
+function fillWithDecoyIce(
+  tiles: TileType[][],
+  solutionPath: Set<string>,
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number,
+  rng: SeededRandom
+): void {
+  const fillAttempts = Math.floor(width * height * 0.15);
+  
+  for (let i = 0; i < fillAttempts; i++) {
+    const x = rng.randomInt(2, width - 2);
+    const y = rng.randomInt(2, height - 2);
+    
+    if (tiles[y][x] !== TileType.WALL) continue;
+    if (posEq({ x, y }, start) || posEq({ x, y }, goal)) continue;
+    
+    // Only fill if adjacent to existing ice (creates connected areas)
+    let hasAdjacentIce = false;
+    for (const dir of getAllDirs()) {
+      const d = getDelta(dir);
+      const nx = x + d.x;
+      const ny = y + d.y;
+      if (isValid(nx, ny, width, height) && 
+          (tiles[ny][nx] === TileType.ICE || tiles[ny][nx] === TileType.FLOOR)) {
+        hasAdjacentIce = true;
+        break;
+      }
+    }
+    
+    if (hasAdjacentIce && rng.random() < 0.4) {
+      tiles[y][x] = TileType.ICE;
+    }
+  }
+}
+
+// Add walls that block intuitive "shortcuts"
+function addShortcutBlockers(
+  tiles: TileType[][],
+  waypoints: WaypointConstraint[],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number,
+  rng: SeededRandom
+): void {
+  // For each pair of non-adjacent waypoints, try to block direct paths
+  for (let i = 0; i < waypoints.length - 2; i++) {
+    const wp1 = waypoints[i];
+    const wp2 = waypoints[i + 2]; // Skip one waypoint
+    
+    // Find midpoint
+    const midX = Math.floor((wp1.pos.x + wp2.pos.x) / 2);
+    const midY = Math.floor((wp1.pos.y + wp2.pos.y) / 2);
+    
+    // Try to place a wall near the midpoint
+    for (let dx = -2; dx <= 2; dx++) {
+      for (let dy = -2; dy <= 2; dy++) {
+        const wx = midX + dx;
+        const wy = midY + dy;
+        
+        if (!isInner(wx, wy, width, height)) continue;
+        if (tiles[wy][wx] !== TileType.ICE) continue;
+        if (posEq({ x: wx, y: wy }, start) || posEq({ x: wx, y: wy }, goal)) continue;
+        
+        // Temporarily place wall
+        tiles[wy][wx] = TileType.WALL;
+        
+        // Check if still solvable
+        if (!isSolvable(tiles, start, goal, width, height)) {
+          tiles[wy][wx] = TileType.ICE; // Revert
+        } else if (rng.random() < 0.5) {
+          break; // Keep this blocker
+        } else {
+          tiles[wy][wx] = TileType.ICE; // Revert, try another spot
+        }
+      }
+    }
+  }
+  
+  // Add some random blockers in areas that look like shortcuts to goal
+  const goalApproachDirs = getIntuitiveDirection(start, goal);
+  for (const dir of goalApproachDirs) {
+    const delta = getDelta(dir);
+    
+    // Walk from start toward goal, adding occasional blockers
+    let x = start.x + delta.x * 3;
+    let y = start.y + delta.y * 3;
+    
+    for (let step = 0; step < 15; step++) {
+      if (!isInner(x, y, width, height)) break;
+      
+      if (tiles[y][x] === TileType.ICE && rng.random() < 0.25) {
+        tiles[y][x] = TileType.WALL;
+        
+        if (!isSolvable(tiles, start, goal, width, height)) {
+          tiles[y][x] = TileType.ICE;
+        }
+      }
+      
+      x += delta.x;
+      y += delta.y;
+    }
+  }
+}
+
 // Main puzzle generation - EXTREME DIFFICULTY (targeting 2+ minute solves)
 export function generatePuzzle(seed: string): PuzzleData {
   const rng = new SeededRandom(seed);
@@ -1928,11 +2672,80 @@ export function generatePuzzle(seed: string): PuzzleData {
 
   const { width, height } = rng.randomChoice(sizeOptions);
 
+  // ============================================
+  // PHASE 1: Try Constraint-Based Generation (Primary Method)
+  // This designs puzzles backwards from goal for guaranteed difficulty
+  // ============================================
+  
   let bestPuzzle: PuzzleData | null = null;
   let bestScore = 0;
+  
+  for (let cbAttempt = 0; cbAttempt < 50; cbAttempt++) {
+    const cbRng = new SeededRandom(seed + '-cb-' + cbAttempt);
+    const chainLength = cbRng.randomInt(12, 20); // Longer chains = harder
+    
+    const result = generateConstraintBasedPuzzle(width, height, cbRng, chainLength);
+    if (!result) continue;
+    
+    const { tiles, start, goal } = result;
+    
+    // Calculate metrics
+    const optimalMoves = findPath(tiles, start, goal, width, height);
+    if (optimalMoves === null || optimalMoves < 25) continue;
+    
+    const branchingFactor = calculateBranchingFactor(tiles, start, goal, width, height);
+    const trapPotential = countTrapPotential(tiles, start, goal, width, height);
+    const intuitiveDist = manhattanDist(start, goal);
+    const deceptivenessRatio = optimalMoves / Math.max(intuitiveDist, 1);
+    const greedyPenalty = evaluateGreedyPath(tiles, start, goal, width, height);
+    const pathTemperature = calculatePathTemperature(tiles, start, goal, width, height);
+    const lookaheadDepth = calculateLookaheadDepth(tiles, start, goal, width, height);
+    const highStakesDecisions = countHighStakesDecisions(tiles, start, goal, width, height);
+    
+    // Score this puzzle
+    let score = Math.pow(optimalMoves, 1.5);
+    score *= (1 + branchingFactor * 0.3);
+    score *= (1 + deceptivenessRatio * 0.5); // Higher weight for constraint-based
+    score *= (1 + Math.min(greedyPenalty, 50) * 0.08); // Higher weight
+    score *= (1 - pathTemperature * 0.3 + 1); // Cold paths bonus
+    score *= (1 + lookaheadDepth * 0.1);
+    
+    if (score > bestScore) {
+      bestScore = score;
+      bestPuzzle = {
+        width,
+        height,
+        tiles,
+        start,
+        goal,
+        optimalMoves,
+        difficultyScore: Math.round(score),
+        branchingFactor: Math.round(branchingFactor * 100) / 100,
+        deceptivenessRatio: Math.round(deceptivenessRatio * 100) / 100,
+        greedyPenalty,
+        pathTemperature: Math.round(pathTemperature * 100) / 100,
+        lookaheadDepth,
+        highStakesDecisions,
+      };
+    }
+    
+    // Found excellent constraint-based puzzle
+    if (optimalMoves >= 40 && deceptivenessRatio >= 2.5 && greedyPenalty >= 10) {
+      return bestPuzzle!;
+    }
+  }
+  
+  // If constraint-based found something good, use it
+  if (bestPuzzle && bestPuzzle.optimalMoves >= 30 && (bestPuzzle.deceptivenessRatio ?? 0) >= 2.0) {
+    return bestPuzzle;
+  }
 
+  // ============================================
+  // PHASE 2: Fallback to Traditional Generation
+  // ============================================
+  
   // Keep trying until we find a truly challenging puzzle
-  for (let attempt = 0; attempt < 300; attempt++) {
+  for (let attempt = 0; attempt < 200; attempt++) {
     // Create base maze with guaranteed connectivity
     const tiles = createBaseMaze(width, height, rng);
 
@@ -2052,7 +2865,7 @@ export function generatePuzzle(seed: string): PuzzleData {
     tiles[start.y][start.x] = TileType.START;
     tiles[goal.y][goal.x] = TileType.GOAL;
 
-    // Verify solvability
+    // Verify solvability after all modifications
     const optimalMoves = findPath(tiles, start, goal, width, height);
     if (optimalMoves === null) continue;
 
@@ -2069,6 +2882,11 @@ export function generatePuzzle(seed: string): PuzzleData {
     // Calculate all complexity metrics
     const branchingFactor = calculateBranchingFactor(tiles, start, goal, width, height);
     const trapPotential = countTrapPotential(tiles, start, goal, width, height);
+    
+    // NEW: Advanced intelligence metrics
+    const pathTemperature = calculatePathTemperature(tiles, start, goal, width, height);
+    const lookaheadDepth = calculateLookaheadDepth(tiles, start, goal, width, height);
+    const highStakesDecisions = countHighStakesDecisions(tiles, start, goal, width, height);
     
     // Count reachable positions for exploration complexity
     const reachableCount = getReachable(tiles, start, width, height).size;
@@ -2114,6 +2932,28 @@ export function generatePuzzle(seed: string): PuzzleData {
     
     // Bonus for exploration density
     score *= (1 + explorationDensity);
+    
+    // ============================================
+    // NEW: Advanced Intelligence Scoring
+    // ============================================
+    
+    // BONUS for cold paths (optimal path through unattractive areas)
+    // pathTemperature is 0-1, lower is better (colder)
+    const coldPathBonus = (1 - pathTemperature) * 0.5 + 1; // 1.0 to 1.5
+    score *= coldPathBonus;
+    
+    // BONUS for high cognitive load (long lookahead sequences)
+    // Humans can plan ~5-7 moves; reward 8+
+    if (lookaheadDepth >= 10) {
+      score *= 1.5;
+    } else if (lookaheadDepth >= 8) {
+      score *= 1.3;
+    } else if (lookaheadDepth >= 6) {
+      score *= 1.15;
+    }
+    
+    // BONUS for high-stakes decision points
+    score *= (1 + highStakesDecisions * 0.03);
 
     if (score > bestScore) {
       bestScore = score;
@@ -2129,12 +2969,18 @@ export function generatePuzzle(seed: string): PuzzleData {
         branchingFactor: Math.round(branchingFactor * 100) / 100,
         deceptivenessRatio: Math.round(deceptivenessRatio * 100) / 100,
         greedyPenalty: greedyPenalty,
+        // NEW: Advanced metrics
+        pathTemperature: Math.round(pathTemperature * 100) / 100,
+        lookaheadDepth: lookaheadDepth,
+        highStakesDecisions: highStakesDecisions,
       };
     }
 
     // Only break early if we find a truly excellent puzzle
+    // Now also considers advanced metrics
     if (optimalMoves >= 70 && branchingFactor >= 2.2 && 
-        deceptivenessRatio >= 2.0 && greedyPenalty >= 8) {
+        deceptivenessRatio >= 2.0 && greedyPenalty >= 8 &&
+        pathTemperature <= 0.5 && lookaheadDepth >= 6) {
       break;
     }
   }

@@ -35,6 +35,10 @@ export interface PuzzleData {
   branchingFactor?: number;
   deceptivenessRatio?: number;
   greedyPenalty?: number;
+  // Advanced intelligence metrics
+  pathTemperature?: number;    // 0-1, lower = colder = better hidden path
+  lookaheadDepth?: number;     // Max moves needed to plan ahead
+  highStakesDecisions?: number; // Count of 3+ option decision points on ice
 }
 
 export interface GameState {

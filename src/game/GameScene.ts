@@ -135,14 +135,23 @@ export class GameScene extends Phaser.Scene {
         const cy = py + size / 2;
         const arrowSize = 8;
         
-        if (tile === TileType.LEDGE_DOWN) {
+        // Arrow points in the direction you TRAVEL when entering (away from you)
+        // LEDGE_UP = enter from above, moving DOWN → arrow points DOWN
+        // LEDGE_DOWN = enter from below, moving UP → arrow points UP
+        // LEDGE_LEFT = enter from right, moving LEFT → arrow points LEFT
+        // LEDGE_RIGHT = enter from left, moving RIGHT → arrow points RIGHT
+        if (tile === TileType.LEDGE_UP) {
+          // Arrow pointing DOWN (you enter moving down)
           g.fillTriangle(cx, cy + arrowSize, cx - arrowSize, cy - arrowSize/2, cx + arrowSize, cy - arrowSize/2);
-        } else if (tile === TileType.LEDGE_UP) {
+        } else if (tile === TileType.LEDGE_DOWN) {
+          // Arrow pointing UP (you enter moving up)
           g.fillTriangle(cx, cy - arrowSize, cx - arrowSize, cy + arrowSize/2, cx + arrowSize, cy + arrowSize/2);
-        } else if (tile === TileType.LEDGE_LEFT) {
-          g.fillTriangle(cx - arrowSize, cy, cx + arrowSize/2, cy - arrowSize, cx + arrowSize/2, cy + arrowSize);
-        } else {
+        } else if (tile === TileType.LEDGE_RIGHT) {
+          // Arrow pointing RIGHT (you enter moving right)
           g.fillTriangle(cx + arrowSize, cy, cx - arrowSize/2, cy - arrowSize, cx - arrowSize/2, cy + arrowSize);
+        } else {
+          // LEDGE_LEFT - Arrow pointing LEFT (you enter moving left)
+          g.fillTriangle(cx - arrowSize, cy, cx + arrowSize/2, cy - arrowSize, cx + arrowSize/2, cy + arrowSize);
         }
         break;
     }

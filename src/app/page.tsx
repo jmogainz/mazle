@@ -249,8 +249,23 @@ export default function Home() {
                 <span className={styles.devMetricValue}>{puzzle.deceptivenessRatio ?? '—'}</span>
               </div>
               <div className={styles.devMetric}>
-                <span className={styles.devMetricLabel}>Greedy Pen.</span>
+                <span className={styles.devMetricLabel}>Greedy</span>
                 <span className={styles.devMetricValue}>{puzzle.greedyPenalty ?? '—'}</span>
+              </div>
+            </div>
+            {/* Advanced Intelligence Metrics */}
+            <div className={styles.devMetrics}>
+              <div className={styles.devMetric}>
+                <span className={styles.devMetricLabel}>Path Temp</span>
+                <span className={styles.devMetricValue}>{puzzle.pathTemperature ?? '—'}</span>
+              </div>
+              <div className={styles.devMetric}>
+                <span className={styles.devMetricLabel}>Lookahead</span>
+                <span className={styles.devMetricValue}>{puzzle.lookaheadDepth ?? '—'}</span>
+              </div>
+              <div className={styles.devMetric}>
+                <span className={styles.devMetricLabel}>High Stakes</span>
+                <span className={styles.devMetricValue}>{puzzle.highStakesDecisions ?? '—'}</span>
               </div>
             </div>
 

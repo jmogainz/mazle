@@ -958,6 +958,300 @@ function createCommitmentTraps(
 }
 
 // ============================================================================
+// PSYCHOLOGY-BASED DIFFICULTY SCORING SYSTEM
+// Measures what actually makes puzzles hard for HUMANS, not algorithms
+// ============================================================================
+
+interface PsychologyMetrics {
+  // Core metrics (these determine actual human difficulty)
+  counterIntuitiveMoves: number;      // Moves that go away from goal
+  attractiveDecoys: number;           // Wrong moves that look better than optimal
+  commitmentGates: number;            // Points where wrong choice is very costly
+  falseProgressPaths: number;         // Paths that look good but dead-end or add moves
+  
+  // Secondary metrics
+  optimalMoves: number;
+  
+  // Computed final score
+  psychologyScore: number;
+}
+
+// Calculate how many moves on the optimal path require going AWAY from the goal
+// This is the core of what makes puzzles feel "tricky"
+function countCounterIntuitiveMoves(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number
+): number {
+  const optimalPath = findOptimalPath(tiles, start, goal, width, height);
+  if (!optimalPath || optimalPath.length < 2) return 0;
+  
+  let counterIntuitiveCount = 0;
+  
+  for (let i = 0; i < optimalPath.length - 1; i++) {
+    const current = optimalPath[i];
+    const next = optimalPath[i + 1];
+    
+    // What direction did we move?
+    const moveDir = getDirectionBetween(current, next);
+    if (!moveDir) continue;
+    
+    // What directions would bring us closer to the goal?
+    const intuitiveDirs = getIntuitiveDirection(current, goal);
+    
+    // If our move is NOT in the intuitive directions, it's counter-intuitive
+    if (!intuitiveDirs.includes(moveDir)) {
+      counterIntuitiveCount++;
+    }
+  }
+  
+  return counterIntuitiveCount;
+}
+
+// Count "attractive decoys" - positions where a wrong move LOOKS better than the optimal move
+// This is the key insight: difficulty isn't about having choices, it's about WRONG choices looking RIGHT
+function countAttractiveDecoys(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number
+): number {
+  const optimalPath = findOptimalPath(tiles, start, goal, width, height);
+  if (!optimalPath || optimalPath.length < 2) return 0;
+  
+  let decoyCount = 0;
+  
+  // For each position on the optimal path
+  for (let i = 0; i < optimalPath.length - 1; i++) {
+    const current = optimalPath[i];
+    const optimalNext = optimalPath[i + 1];
+    
+    // Get the optimal direction
+    const optimalDir = getDirectionBetween(current, optimalNext);
+    if (!optimalDir) continue;
+    
+    // Check all other valid moves from this position
+    for (const dir of getAllDirs()) {
+      if (dir === optimalDir) continue;
+      
+      const result = simulateMove(tiles, current, dir, width, height);
+      if (!result.valid || posEq(result.pos, current)) continue;
+      
+      // This is a valid alternative move - is it "attractive"?
+      const isAttractive = isMoveAttractive(current, result.pos, optimalNext, goal, tiles, width, height);
+      
+      if (isAttractive) {
+        decoyCount++;
+      }
+    }
+  }
+  
+  return decoyCount;
+}
+
+// Determine if a move looks "attractive" compared to the optimal move
+function isMoveAttractive(
+  from: Position,
+  alternativePos: Position,
+  optimalPos: Position,
+  goal: Position,
+  tiles: TileType[][],
+  width: number,
+  height: number
+): boolean {
+  // Calculate distances to goal
+  const altDistToGoal = manhattanDist(alternativePos, goal);
+  const optDistToGoal = manhattanDist(optimalPos, goal);
+  
+  // If alternative gets us closer to goal than optimal, it's VERY attractive (a decoy)
+  if (altDistToGoal < optDistToGoal) {
+    return true;
+  }
+  
+  // If alternative is same distance but moves toward goal direction, it's attractive
+  if (altDistToGoal === optDistToGoal) {
+    const intuitiveDirs = getIntuitiveDirection(from, goal);
+    const altDir = getDirectionBetween(from, alternativePos);
+    if (altDir && intuitiveDirs.includes(altDir)) {
+      return true;
+    }
+  }
+  
+  // Check if alternative looks like "progress" (more open space, toward center, etc.)
+  // A move that leads to more options often feels safer/better to humans
+  let altOptions = 0;
+  let optOptions = 0;
+  
+  for (const dir of getAllDirs()) {
+    const altResult = simulateMove(tiles, alternativePos, dir, width, height);
+    if (altResult.valid && !posEq(altResult.pos, alternativePos)) altOptions++;
+    
+    const optResult = simulateMove(tiles, optimalPos, dir, width, height);
+    if (optResult.valid && !posEq(optResult.pos, optimalPos)) optOptions++;
+  }
+  
+  // If alternative has MORE options than optimal, humans may prefer it
+  if (altOptions > optOptions + 1) {
+    return true;
+  }
+  
+  return false;
+}
+
+// Count "commitment gates" - positions where making the wrong choice is VERY costly
+// These are high-stakes decision points that create real difficulty
+function countCommitmentGates(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number
+): number {
+  const optimalPath = findOptimalPath(tiles, start, goal, width, height);
+  if (!optimalPath || optimalPath.length < 2) return 0;
+  
+  const optimalMoves = optimalPath.length - 1;
+  let gateCount = 0;
+  
+  // For each position on the optimal path
+  for (let i = 0; i < optimalPath.length - 1; i++) {
+    const current = optimalPath[i];
+    const optimalNext = optimalPath[i + 1];
+    const optimalDir = getDirectionBetween(current, optimalNext);
+    if (!optimalDir) continue;
+    
+    // Check the cost of each wrong move from this position
+    let maxWrongMoveCost = 0;
+    
+    for (const dir of getAllDirs()) {
+      if (dir === optimalDir) continue;
+      
+      const result = simulateMove(tiles, current, dir, width, height);
+      if (!result.valid || posEq(result.pos, current)) continue;
+      
+      // How many moves to reach goal from this wrong position?
+      const wrongPathLength = findPath(tiles, result.pos, goal, width, height);
+      if (wrongPathLength === null) continue; // Dead end - not a commitment gate, just blocked
+      
+      // How many moves SHOULD it take from current to goal on optimal path?
+      const remainingOptimal = optimalMoves - i;
+      
+      // The "cost" of this wrong move
+      const wrongMoveCost = (wrongPathLength + 1) - remainingOptimal;
+      maxWrongMoveCost = Math.max(maxWrongMoveCost, wrongMoveCost);
+    }
+    
+    // If taking the wrong move costs 5+ extra moves, this is a commitment gate
+    if (maxWrongMoveCost >= 5) {
+      gateCount++;
+    }
+  }
+  
+  return gateCount;
+}
+
+// Count "false progress paths" - paths that FEEL like progress but waste moves
+// These are psychologically frustrating because you feel like you're doing well
+function countFalseProgressPaths(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number
+): number {
+  const optimalMoves = findPath(tiles, start, goal, width, height);
+  if (optimalMoves === null) return 0;
+  
+  let falsePathCount = 0;
+  const checked = new Set<string>();
+  
+  // BFS from start to find paths that look promising
+  const queue: { pos: Position; distFromStart: number; minDistToGoalSeen: number }[] = [
+    { pos: start, distFromStart: 0, minDistToGoalSeen: manhattanDist(start, goal) }
+  ];
+  checked.add(posKey(start));
+  
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (current.distFromStart > optimalMoves + 10) continue; // Don't explore too far
+    
+    for (const dir of getAllDirs()) {
+      const result = simulateMove(tiles, current.pos, dir, width, height);
+      if (!result.valid || posEq(result.pos, current.pos)) continue;
+      
+      const key = posKey(result.pos);
+      if (checked.has(key)) continue;
+      checked.add(key);
+      
+      const newDistToGoal = manhattanDist(result.pos, goal);
+      const newDistFromStart = current.distFromStart + 1;
+      
+      // Is this move "progress"? (getting closer to goal)
+      const isProgress = newDistToGoal < current.minDistToGoalSeen;
+      
+      if (isProgress) {
+        // This feels like progress - but is it actually on an optimal path?
+        const pathFromHere = findPath(tiles, result.pos, goal, width, height);
+        if (pathFromHere !== null) {
+          const totalPath = newDistFromStart + pathFromHere;
+          
+          // If this "progress" path is actually suboptimal by 3+ moves, it's a false progress path
+          if (totalPath > optimalMoves + 3) {
+            falsePathCount++;
+          }
+        }
+      }
+      
+      queue.push({
+        pos: result.pos,
+        distFromStart: newDistFromStart,
+        minDistToGoalSeen: Math.min(current.minDistToGoalSeen, newDistToGoal)
+      });
+    }
+  }
+  
+  return falsePathCount;
+}
+
+// THE NEW SCORING FORMULA: Simple, additive, psychology-based
+function calculatePsychologyScore(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number
+): PsychologyMetrics {
+  const optimalMoves = findPath(tiles, start, goal, width, height) ?? 0;
+  
+  // Calculate the four core psychological difficulty metrics
+  const counterIntuitiveMoves = countCounterIntuitiveMoves(tiles, start, goal, width, height);
+  const attractiveDecoys = countAttractiveDecoys(tiles, start, goal, width, height);
+  const commitmentGates = countCommitmentGates(tiles, start, goal, width, height);
+  const falseProgressPaths = countFalseProgressPaths(tiles, start, goal, width, height);
+  
+  // SIMPLE ADDITIVE SCORING
+  // Each metric contributes directly - no multiplicative explosion
+  const psychologyScore = 
+    (counterIntuitiveMoves * 50) +    // Each counter-intuitive move is significant
+    (attractiveDecoys * 30) +          // Decoys that look better than optimal
+    (commitmentGates * 40) +           // High-stakes decision points
+    (falseProgressPaths * 20) +        // Paths that waste time while feeling good
+    (optimalMoves * 2);                // Small bonus for length (secondary factor)
+  
+  return {
+    counterIntuitiveMoves,
+    attractiveDecoys,
+    commitmentGates,
+    falseProgressPaths,
+    optimalMoves,
+    psychologyScore
+  };
+}
+
+// ============================================================================
 // ADVANCED INTELLIGENCE SYSTEMS
 // Heat Map Analysis, Critical Path Obfuscation, Cognitive Load
 // ============================================================================
@@ -2691,26 +2985,13 @@ export function generatePuzzle(seed: string): PuzzleData {
     
     const { tiles, start, goal } = result;
     
-    // Calculate metrics
+    // Calculate metrics using psychology-based scoring
     const optimalMoves = findPath(tiles, start, goal, width, height);
-    if (optimalMoves === null || optimalMoves < 32) continue;
+    if (optimalMoves === null || optimalMoves < 20) continue;
     
-    const branchingFactor = calculateBranchingFactor(tiles, start, goal, width, height);
-    const trapPotential = countTrapPotential(tiles, start, goal, width, height);
-    const intuitiveDist = manhattanDist(start, goal);
-    const deceptivenessRatio = optimalMoves / Math.max(intuitiveDist, 1);
-    const greedyPenalty = evaluateGreedyPath(tiles, start, goal, width, height);
-    const pathTemperature = calculatePathTemperature(tiles, start, goal, width, height);
-    const lookaheadDepth = calculateLookaheadDepth(tiles, start, goal, width, height);
-    const highStakesDecisions = countHighStakesDecisions(tiles, start, goal, width, height);
-    
-    // Score this puzzle
-    let score = Math.pow(optimalMoves, 1.5);
-    score *= (1 + branchingFactor * 0.3);
-    score *= (1 + deceptivenessRatio * 0.5); // Higher weight for constraint-based
-    score *= (1 + Math.min(greedyPenalty, 50) * 0.08); // Higher weight
-    score *= (1 - pathTemperature * 0.3 + 1); // Cold paths bonus
-    score *= (1 + lookaheadDepth * 0.1);
+    // Use psychology-based difficulty metrics
+    const psychMetrics = calculatePsychologyScore(tiles, start, goal, width, height);
+    const score = psychMetrics.psychologyScore;
     
     if (score > bestScore) {
       bestScore = score;
@@ -2722,23 +3003,23 @@ export function generatePuzzle(seed: string): PuzzleData {
         goal,
         optimalMoves,
         difficultyScore: Math.round(score),
-        branchingFactor: Math.round(branchingFactor * 100) / 100,
-        deceptivenessRatio: Math.round(deceptivenessRatio * 100) / 100,
-        greedyPenalty,
-        pathTemperature: Math.round(pathTemperature * 100) / 100,
-        lookaheadDepth,
-        highStakesDecisions,
+        counterIntuitiveMoves: psychMetrics.counterIntuitiveMoves,
+        attractiveDecoys: psychMetrics.attractiveDecoys,
+        commitmentGates: psychMetrics.commitmentGates,
+        falseProgressPaths: psychMetrics.falseProgressPaths,
       };
     }
     
-    // Found excellent constraint-based puzzle
-    if (optimalMoves >= 50 && deceptivenessRatio >= 2.8 && greedyPenalty >= 14) {
+    // Found excellent psychology-based puzzle
+    if (psychMetrics.counterIntuitiveMoves >= 8 && 
+        psychMetrics.attractiveDecoys >= 10 &&
+        psychMetrics.commitmentGates >= 3) {
       return bestPuzzle!;
     }
   }
   
   // If constraint-based found something good, use it
-  if (bestPuzzle && bestPuzzle.optimalMoves >= 40 && (bestPuzzle.deceptivenessRatio ?? 0) >= 2.4) {
+  if (bestPuzzle && bestPuzzle.counterIntuitiveMoves && bestPuzzle.counterIntuitiveMoves >= 5) {
     return bestPuzzle;
   }
 
@@ -2876,91 +3157,18 @@ export function generatePuzzle(seed: string): PuzzleData {
     if (!hasNoStuckStates(tiles, start, goal, width, height)) continue;
 
     // ============================================
-    // CALCULATE DIFFICULTY METRICS (Don't reject - just score)
+    // PSYCHOLOGY-BASED DIFFICULTY SCORING
+    // Measures what actually makes puzzles hard for HUMANS
     // ============================================
     
     // Only hard reject trivially short puzzles
-    if (optimalMoves < 28) continue;
+    if (optimalMoves < 20) continue;
     
-    // Calculate all complexity metrics
-    const branchingFactor = calculateBranchingFactor(tiles, start, goal, width, height);
-    const trapPotential = countTrapPotential(tiles, start, goal, width, height);
+    // Calculate psychology-based difficulty metrics
+    const psychMetrics = calculatePsychologyScore(tiles, start, goal, width, height);
     
-    // NEW: Advanced intelligence metrics
-    const pathTemperature = calculatePathTemperature(tiles, start, goal, width, height);
-    const lookaheadDepth = calculateLookaheadDepth(tiles, start, goal, width, height);
-    const highStakesDecisions = countHighStakesDecisions(tiles, start, goal, width, height);
-    
-    // Count reachable positions for exploration complexity
-    const reachableCount = getReachable(tiles, start, width, height).size;
-    const explorationDensity = reachableCount / (width * height);
-    
-    // Calculate "deceptiveness" - how counter-intuitive is the optimal path?
-    const intuitiveDist = manhattanDist(start, goal);
-    const deceptivenessRatio = optimalMoves / Math.max(intuitiveDist, 1);
-    
-    // Calculate greedy penalty (how badly greedy approach fails)
-    const greedyPenalty = evaluateGreedyPath(tiles, start, goal, width, height);
-    
-    // ============================================
-    // AGGRESSIVE SCORING - Heavily reward difficulty
-    // Best puzzle wins, no matter what
-    // ============================================
-    
-    // Start with base score from optimal moves (exponential scaling)
-    let score = Math.pow(optimalMoves, 1.5);
-    
-    // HUGE bonus for high move counts
-    if (optimalMoves >= 120) {
-      score *= 4.0;
-    } else if (optimalMoves >= 100) {
-      score *= 3.0;
-    } else if (optimalMoves >= 80) {
-      score *= 2.5;
-    } else if (optimalMoves >= 60) {
-      score *= 2.0;
-    } else if (optimalMoves >= 45) {
-      score *= 1.5;
-    }
-    
-    // HUGE bonus for high branching (many wrong choices)
-    score *= (1 + branchingFactor * 0.3);
-    
-    // HUGE bonus for deceptiveness (optimal path != intuitive)
-    score *= (1 + deceptivenessRatio * 0.4);
-    
-    // HUGE bonus for greedy penalty (greedy approach fails badly)
-    score *= (1 + Math.min(greedyPenalty, 50) * 0.05);
-    
-    // Bonus for trap potential
-    score += trapPotential * 2;
-    
-    // Bonus for exploration density
-    score *= (1 + explorationDensity);
-    
-    // ============================================
-    // NEW: Advanced Intelligence Scoring
-    // ============================================
-    
-    // BONUS for cold paths (optimal path through unattractive areas)
-    // pathTemperature is 0-1, lower is better (colder)
-    const coldPathBonus = (1 - pathTemperature) * 0.5 + 1; // 1.0 to 1.5
-    score *= coldPathBonus;
-    
-    // BONUS for high cognitive load (long lookahead sequences)
-    // Humans can plan ~5-7 moves; reward 8+
-    if (lookaheadDepth >= 12) {
-      score *= 2.0;
-    } else if (lookaheadDepth >= 10) {
-      score *= 1.7;
-    } else if (lookaheadDepth >= 8) {
-      score *= 1.4;
-    } else if (lookaheadDepth >= 6) {
-      score *= 1.2;
-    }
-    
-    // BONUS for high-stakes decision points
-    score *= (1 + highStakesDecisions * 0.05);
+    // Use the new psychology score directly
+    const score = psychMetrics.psychologyScore;
 
     if (score > bestScore) {
       bestScore = score;
@@ -2971,23 +3179,20 @@ export function generatePuzzle(seed: string): PuzzleData {
         start,
         goal,
         optimalMoves,
-        // Include difficulty metrics for dev display
+        // Psychology-based difficulty metrics for dev display
         difficultyScore: Math.round(score),
-        branchingFactor: Math.round(branchingFactor * 100) / 100,
-        deceptivenessRatio: Math.round(deceptivenessRatio * 100) / 100,
-        greedyPenalty: greedyPenalty,
-        // NEW: Advanced metrics
-        pathTemperature: Math.round(pathTemperature * 100) / 100,
-        lookaheadDepth: lookaheadDepth,
-        highStakesDecisions: highStakesDecisions,
+        counterIntuitiveMoves: psychMetrics.counterIntuitiveMoves,
+        attractiveDecoys: psychMetrics.attractiveDecoys,
+        commitmentGates: psychMetrics.commitmentGates,
+        falseProgressPaths: psychMetrics.falseProgressPaths,
       };
     }
 
-    // Only break early if we find a truly excellent puzzle
-    // Now also considers advanced metrics
-    if (optimalMoves >= 85 && branchingFactor >= 2.4 && 
-        deceptivenessRatio >= 2.5 && greedyPenalty >= 12 &&
-        pathTemperature <= 0.45 && lookaheadDepth >= 8) {
+    // Break early if we find an excellent psychology-based puzzle
+    // A good puzzle has multiple counter-intuitive moves AND attractive decoys
+    if (psychMetrics.counterIntuitiveMoves >= 8 && 
+        psychMetrics.attractiveDecoys >= 10 &&
+        psychMetrics.commitmentGates >= 3) {
       break;
     }
   }

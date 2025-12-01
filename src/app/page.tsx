@@ -230,10 +230,10 @@ export default function Home() {
               </span>
             </div>
             
-            {/* Difficulty Metrics */}
+            {/* Psychology-Based Difficulty Metrics */}
             <div className={styles.devMetrics}>
               <div className={styles.devMetric}>
-                <span className={styles.devMetricLabel}>Score</span>
+                <span className={styles.devMetricLabel}>Psych Score</span>
                 <span className={styles.devMetricValue}>{puzzle.difficultyScore ?? '—'}</span>
               </div>
               <div className={styles.devMetric}>
@@ -241,31 +241,23 @@ export default function Home() {
                 <span className={styles.devMetricValue}>{puzzle.optimalMoves}</span>
               </div>
               <div className={styles.devMetric}>
-                <span className={styles.devMetricLabel}>Branch</span>
-                <span className={styles.devMetricValue}>{puzzle.branchingFactor ?? '—'}</span>
+                <span className={styles.devMetricLabel}>Counter-Int</span>
+                <span className={styles.devMetricValue}>{puzzle.counterIntuitiveMoves ?? '—'}</span>
               </div>
               <div className={styles.devMetric}>
-                <span className={styles.devMetricLabel}>Deceptive</span>
-                <span className={styles.devMetricValue}>{puzzle.deceptivenessRatio ?? '—'}</span>
-              </div>
-              <div className={styles.devMetric}>
-                <span className={styles.devMetricLabel}>Greedy</span>
-                <span className={styles.devMetricValue}>{puzzle.greedyPenalty ?? '—'}</span>
+                <span className={styles.devMetricLabel}>Decoys</span>
+                <span className={styles.devMetricValue}>{puzzle.attractiveDecoys ?? '—'}</span>
               </div>
             </div>
-            {/* Advanced Intelligence Metrics */}
+            {/* More Psychology Metrics */}
             <div className={styles.devMetrics}>
               <div className={styles.devMetric}>
-                <span className={styles.devMetricLabel}>Path Temp</span>
-                <span className={styles.devMetricValue}>{puzzle.pathTemperature ?? '—'}</span>
+                <span className={styles.devMetricLabel}>Commit Gates</span>
+                <span className={styles.devMetricValue}>{puzzle.commitmentGates ?? '—'}</span>
               </div>
               <div className={styles.devMetric}>
-                <span className={styles.devMetricLabel}>Lookahead</span>
-                <span className={styles.devMetricValue}>{puzzle.lookaheadDepth ?? '—'}</span>
-              </div>
-              <div className={styles.devMetric}>
-                <span className={styles.devMetricLabel}>High Stakes</span>
-                <span className={styles.devMetricValue}>{puzzle.highStakesDecisions ?? '—'}</span>
+                <span className={styles.devMetricLabel}>False Prog</span>
+                <span className={styles.devMetricValue}>{puzzle.falseProgressPaths ?? '—'}</span>
               </div>
             </div>
 

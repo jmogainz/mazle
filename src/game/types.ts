@@ -30,15 +30,12 @@ export interface PuzzleData {
   start: Position;
   goal: Position;
   optimalMoves: number;
-  // Difficulty metrics (for dev mode display)
-  difficultyScore?: number;
-  branchingFactor?: number;
-  deceptivenessRatio?: number;
-  greedyPenalty?: number;
-  // Advanced intelligence metrics
-  pathTemperature?: number;    // 0-1, lower = colder = better hidden path
-  lookaheadDepth?: number;     // Max moves needed to plan ahead
-  highStakesDecisions?: number; // Count of 3+ option decision points on ice
+  // Psychology-based difficulty metrics (for dev mode display)
+  difficultyScore?: number;           // Overall psychology score
+  counterIntuitiveMoves?: number;     // Moves that go away from goal
+  attractiveDecoys?: number;          // Wrong moves that look better than optimal
+  commitmentGates?: number;           // Points where wrong choice is very costly
+  falseProgressPaths?: number;        // Paths that look good but waste moves
 }
 
 export interface GameState {

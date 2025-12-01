@@ -17,8 +17,8 @@ export class GameScene extends Phaser.Scene {
   private tileGraphics!: Phaser.GameObjects.Graphics;
   private goalSprite!: Phaser.GameObjects.Container;
   private isAnimating = false;
-  private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
-  private wasd!: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key };
+  private cursors: Phaser.Types.Input.Keyboard.CursorKeys | null = null;
+  private wasd: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key } | null = null;
   private swipeStartX = 0;
   private swipeStartY = 0;
   private offsetX = 0;
@@ -257,8 +257,8 @@ export class GameScene extends Phaser.Scene {
   update() {
     if (this.isAnimating || this.gameState.isComplete) return;
 
-    // Check keyboard input
-    if (this.input.keyboard) {
+    // Check keyboard input (only if keyboard and cursors are available)
+    if (this.input.keyboard && this.cursors && this.wasd) {
       if (Phaser.Input.Keyboard.JustDown(this.cursors.up) || Phaser.Input.Keyboard.JustDown(this.wasd.W)) {
         this.handleMove(Direction.UP);
       } else if (Phaser.Input.Keyboard.JustDown(this.cursors.down) || Phaser.Input.Keyboard.JustDown(this.wasd.S)) {

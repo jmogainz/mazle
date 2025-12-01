@@ -65,7 +65,7 @@ export default function PhaserGame({ puzzle, onReady }: PhaserGameProps) {
     }
 
     const config: Phaser.Types.Core.GameConfig = {
-      type: Phaser.AUTO,
+      type: Phaser.CANVAS, // Force Canvas renderer for better mobile compatibility
       parent: gameContainerRef.current,
       backgroundColor: COLORS.BACKGROUND,
       pixelArt: true,
@@ -75,19 +75,28 @@ export default function PhaserGame({ puzzle, onReady }: PhaserGameProps) {
         width: baseWidth,
         height: baseHeight,
       },
-      scene: [], // Don't auto-start any scenes
+      scene: [], // We'll add scene manually
+      // Mobile-specific settings
+      input: {
+        touch: true,
+      },
+      render: {
+        pixelArt: true,
+        antialias: false,
+      },
     };
 
     const game = new Phaser.Game(config);
     gameRef.current = game;
     
-    // Add and start scene with puzzle data after game is ready
-    game.events.once('ready', () => {
-      if (game.scene) {
-        game.scene.add('GameScene', GameScene, true, { puzzle });
-        onReady?.(getControls());
-      }
-    });
+    // Add scene immediately after game creation, then start it
+    game.scene.add('GameScene', GameScene, false);
+    game.scene.start('GameScene', { puzzle });
+    
+    // Notify when ready (use a small delay to ensure scene is initialized)
+    setTimeout(() => {
+      onReady?.(getControls());
+    }, 100);
 
     return () => {
       if (gameRef.current) {
@@ -104,7 +113,9 @@ export default function PhaserGame({ puzzle, onReady }: PhaserGameProps) {
       style={{
         width: '100%',
         maxWidth: `${baseWidth}px`,
+        // Use padding-bottom fallback for older browsers that don't support aspectRatio
         aspectRatio: `${baseWidth} / ${baseHeight}`,
+        minHeight: `${baseHeight}px`,
         margin: '0 auto',
       }}
     />

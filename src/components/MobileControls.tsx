@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { Direction } from '@/game/types';
 import styles from './MobileControls.module.css';
 
@@ -10,26 +10,52 @@ interface MobileControlsProps {
 }
 
 export default function MobileControls({ onMove, disabled }: MobileControlsProps) {
-  const handleMove = useCallback((dir: Direction) => {
+  const [pressedDir, setPressedDir] = useState<Direction | null>(null);
+
+  const handleTouchStart = useCallback((dir: Direction) => {
+    if (!disabled) {
+      setPressedDir(dir);
+    }
+  }, [disabled]);
+
+  const handleTouchEnd = useCallback((dir: Direction) => {
+    if (!disabled && pressedDir === dir) {
+      onMove(dir);
+    }
+    setPressedDir(null);
+  }, [disabled, onMove, pressedDir]);
+
+  const handleClick = useCallback((dir: Direction) => {
+    // Fallback for non-touch devices
     if (!disabled) {
       onMove(dir);
     }
-  }, [onMove, disabled]);
+  }, [disabled, onMove]);
+
+  const getButtonClass = (dir: Direction) => {
+    const dirClass = styles[dir];
+    const pressed = pressedDir === dir ? styles.pressed : '';
+    return `${styles.button} ${dirClass} ${pressed}`;
+  };
 
   return (
     <div className={styles.container}>
       <div className={styles.dpad}>
         <button
-          className={`${styles.button} ${styles.up}`}
-          onClick={() => handleMove(Direction.UP)}
+          className={getButtonClass(Direction.UP)}
+          onTouchStart={() => handleTouchStart(Direction.UP)}
+          onTouchEnd={() => handleTouchEnd(Direction.UP)}
+          onClick={() => handleClick(Direction.UP)}
           disabled={disabled}
           aria-label="Move up"
         >
           ▲
         </button>
         <button
-          className={`${styles.button} ${styles.left}`}
-          onClick={() => handleMove(Direction.LEFT)}
+          className={getButtonClass(Direction.LEFT)}
+          onTouchStart={() => handleTouchStart(Direction.LEFT)}
+          onTouchEnd={() => handleTouchEnd(Direction.LEFT)}
+          onClick={() => handleClick(Direction.LEFT)}
           disabled={disabled}
           aria-label="Move left"
         >
@@ -37,16 +63,20 @@ export default function MobileControls({ onMove, disabled }: MobileControlsProps
         </button>
         <div className={styles.center} />
         <button
-          className={`${styles.button} ${styles.right}`}
-          onClick={() => handleMove(Direction.RIGHT)}
+          className={getButtonClass(Direction.RIGHT)}
+          onTouchStart={() => handleTouchStart(Direction.RIGHT)}
+          onTouchEnd={() => handleTouchEnd(Direction.RIGHT)}
+          onClick={() => handleClick(Direction.RIGHT)}
           disabled={disabled}
           aria-label="Move right"
         >
           ▶
         </button>
         <button
-          className={`${styles.button} ${styles.down}`}
-          onClick={() => handleMove(Direction.DOWN)}
+          className={getButtonClass(Direction.DOWN)}
+          onTouchStart={() => handleTouchStart(Direction.DOWN)}
+          onTouchEnd={() => handleTouchEnd(Direction.DOWN)}
+          onClick={() => handleClick(Direction.DOWN)}
           disabled={disabled}
           aria-label="Move down"
         >

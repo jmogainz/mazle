@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
-import { Header, GameUI, ShareCard, StatsModal, HelpModal, MobileControls } from '@/components';
+import { Header, GameUI, ShareCard, StatsModal, HelpModal, MobileControls, ErrorBoundary } from '@/components';
 import {
   getTodaysPuzzle,
   getPuzzleNumber,
@@ -213,6 +213,7 @@ export default function Home() {
   }
 
   return (
+    <ErrorBoundary>
     <main className={`${styles.main} bg-pattern`}>
       <Header
         streak={stats?.currentStreak || 0}
@@ -373,5 +374,6 @@ export default function Home() {
 
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
     </main>
+    </ErrorBoundary>
   );
 }

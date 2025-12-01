@@ -2,7 +2,7 @@ import seedrandom from 'seedrandom';
 import { TileType, Position, PuzzleData, Direction } from './types';
 
 // Server salt for puzzle generation
-const SERVER_SALT = 'mazle-daily-v6-2024-elite';
+const SERVER_SALT = 'mazle-daily-v8-2024-genius';
 
 // Get deterministic seed for a given date
 export function getDailySeed(date: Date): string {
@@ -219,6 +219,740 @@ function hasNoStuckStates(tiles: TileType[][], start: Position, goal: Position, 
     }
   }
   return true;
+}
+
+// ============================================================================
+// GENIUS-LEVEL DECEPTION ENGINE
+// Human-engineered psychological misdirection algorithms
+// ============================================================================
+
+// Calculate the "intuitive direction" - where a human would naturally want to go
+function getIntuitiveDirection(from: Position, to: Position): Direction[] {
+  const dirs: Direction[] = [];
+  if (to.x > from.x) dirs.push(Direction.RIGHT);
+  if (to.x < from.x) dirs.push(Direction.LEFT);
+  if (to.y > from.y) dirs.push(Direction.DOWN);
+  if (to.y < from.y) dirs.push(Direction.UP);
+  return dirs;
+}
+
+// Get opposite direction
+function getOppositeDir(dir: Direction): Direction {
+  switch (dir) {
+    case Direction.UP: return Direction.DOWN;
+    case Direction.DOWN: return Direction.UP;
+    case Direction.LEFT: return Direction.RIGHT;
+    case Direction.RIGHT: return Direction.LEFT;
+  }
+}
+
+// Calculate Manhattan distance
+function manhattanDist(a: Position, b: Position): number {
+  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+}
+
+// Get positions along the direct line from start to goal (the "obvious" path)
+function getDirectPathZone(start: Position, goal: Position, width: number, height: number, thickness: number): Set<string> {
+  const zone = new Set<string>();
+  const dx = goal.x - start.x;
+  const dy = goal.y - start.y;
+  const steps = Math.max(Math.abs(dx), Math.abs(dy));
+  
+  for (let i = 0; i <= steps; i++) {
+    const t = steps > 0 ? i / steps : 0;
+    const cx = Math.round(start.x + dx * t);
+    const cy = Math.round(start.y + dy * t);
+    
+    // Add thickness around the line
+    for (let ox = -thickness; ox <= thickness; ox++) {
+      for (let oy = -thickness; oy <= thickness; oy++) {
+        const x = cx + ox;
+        const y = cy + oy;
+        if (isValid(x, y, width, height)) {
+          zone.add(posKey({ x, y }));
+        }
+      }
+    }
+  }
+  return zone;
+}
+
+// Find the actual optimal path using BFS with path reconstruction
+function findOptimalPath(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number
+): Position[] | null {
+  const queue: { pos: Position; path: Position[] }[] = [{ pos: start, path: [start] }];
+  const visited = new Set<string>();
+  visited.add(posKey(start));
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+
+    if (posEq(current.pos, goal)) {
+      return current.path;
+    }
+
+    for (const dir of getAllDirs()) {
+      const result = simulateMove(tiles, current.pos, dir, width, height);
+      if (result.valid) {
+        const key = posKey(result.pos);
+        if (!visited.has(key)) {
+          visited.add(key);
+          queue.push({ pos: result.pos, path: [...current.path, result.pos] });
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+// GENIUS ALGORITHM 1: Reverse Path Engineering
+// Build the optimal path to be counter-intuitive - force backtracking
+function engineerCounterIntuitivePath(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number,
+  rng: SeededRandom
+): void {
+  const intuitiveZone = getDirectPathZone(start, goal, width, height, 4);
+  const intuitiveDirs = getIntuitiveDirection(start, goal);
+  
+  // Block the "obvious" approaches near the goal to force roundabout paths
+  const goalApproaches: Position[] = [];
+  for (let r = 2; r <= 6; r++) {
+    for (const dir of intuitiveDirs) {
+      const delta = getDelta(dir);
+      // Positions approaching goal from the intuitive direction
+      const x = goal.x - delta.x * r;
+      const y = goal.y - delta.y * r;
+      if (isInner(x, y, width, height)) {
+        goalApproaches.push({ x, y });
+      }
+    }
+  }
+  
+  // Place walls to block intuitive approaches
+  for (const pos of goalApproaches) {
+    if (tiles[pos.y][pos.x] === TileType.ICE && 
+        !posEq(pos, start) && !posEq(pos, goal)) {
+      tiles[pos.y][pos.x] = TileType.WALL;
+      if (!isSolvable(tiles, start, goal, width, height)) {
+        tiles[pos.y][pos.x] = TileType.ICE;
+      }
+    }
+  }
+}
+
+// GENIUS ALGORITHM 2: The "Almost There" Trap
+// Create positions very close to goal that slide past it
+function createAlmostThereTraps(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number,
+  rng: SeededRandom,
+  count: number
+): void {
+  for (let t = 0; t < count; t++) {
+    // Pick a direction to approach the goal
+    const approachDir = rng.randomChoice(getAllDirs());
+    const delta = getDelta(approachDir);
+    const oppositeDelta = getDelta(getOppositeDir(approachDir));
+    
+    // Create an ice runway that PASSES the goal
+    const runwayStart = {
+      x: goal.x + oppositeDelta.x * rng.randomInt(4, 8),
+      y: goal.y + oppositeDelta.y * rng.randomInt(4, 8)
+    };
+    const runwayEnd = {
+      x: goal.x + delta.x * rng.randomInt(3, 6),
+      y: goal.y + delta.y * rng.randomInt(3, 6)
+    };
+    
+    // Ensure runway is all ice (player will slide past goal)
+    const backup: { pos: Position; tile: TileType }[] = [];
+    let valid = true;
+    
+    // Clear the runway
+    let rx = runwayStart.x;
+    let ry = runwayStart.y;
+    while ((delta.x !== 0 && rx !== runwayEnd.x) || (delta.y !== 0 && ry !== runwayEnd.y)) {
+      if (!isInner(rx, ry, width, height)) {
+        valid = false;
+        break;
+      }
+      
+      if (!posEq({ x: rx, y: ry }, goal) && 
+          !posEq({ x: rx, y: ry }, start) &&
+          tiles[ry][rx] === TileType.WALL) {
+        backup.push({ pos: { x: rx, y: ry }, tile: tiles[ry][rx] });
+        tiles[ry][rx] = TileType.ICE;
+      }
+      
+      rx += delta.x;
+      ry += delta.y;
+    }
+    
+    // Remove any walls adjacent to goal that would stop the slide
+    const perpDirs = approachDir === Direction.UP || approachDir === Direction.DOWN 
+      ? [Direction.LEFT, Direction.RIGHT]
+      : [Direction.UP, Direction.DOWN];
+    
+    for (const perpDir of perpDirs) {
+      const pd = getDelta(perpDir);
+      const adjX = goal.x + pd.x;
+      const adjY = goal.y + pd.y;
+      if (isInner(adjX, adjY, width, height) && 
+          tiles[adjY][adjX] === TileType.WALL &&
+          !posEq({ x: adjX, y: adjY }, start)) {
+        // Keep walls on sides - this makes them slide past!
+      }
+    }
+    
+    if (!valid || !isSolvable(tiles, start, goal, width, height)) {
+      for (const { pos, tile } of backup) {
+        tiles[pos.y][pos.x] = tile;
+      }
+    }
+  }
+}
+
+// GENIUS ALGORITHM 3: Decoy Open Areas
+// Create large, inviting open areas that lead nowhere useful
+function createDecoyOpenAreas(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number,
+  rng: SeededRandom,
+  count: number
+): void {
+  const intuitiveDirs = getIntuitiveDirection(start, goal);
+  
+  for (let d = 0; d < count; d++) {
+    // Place decoy in the intuitive direction from start (looks like progress)
+    const primaryDir = rng.randomChoice(intuitiveDirs);
+    const delta = getDelta(primaryDir);
+    
+    // Calculate decoy center - in the "feels right" direction
+    const distFromStart = rng.randomInt(6, 12);
+    const cx = start.x + delta.x * distFromStart + rng.randomInt(-3, 4);
+    const cy = start.y + delta.y * distFromStart + rng.randomInt(-3, 4);
+    
+    if (!isInner(cx, cy, width, height)) continue;
+    
+    // Create a large open ice area (looks inviting!)
+    const areaSize = rng.randomInt(4, 7);
+    const backup: { pos: Position; tile: TileType }[] = [];
+    
+    for (let dy = -areaSize; dy <= areaSize; dy++) {
+      for (let dx = -areaSize; dx <= areaSize; dx++) {
+        // Circular-ish area
+        if (Math.abs(dx) + Math.abs(dy) > areaSize + 2) continue;
+        
+        const x = cx + dx;
+        const y = cy + dy;
+        
+        if (!isInner(x, y, width, height)) continue;
+        if (posEq({ x, y }, start) || posEq({ x, y }, goal)) continue;
+        
+        if (tiles[y][x] === TileType.WALL) {
+          backup.push({ pos: { x, y }, tile: tiles[y][x] });
+          tiles[y][x] = TileType.ICE;
+        }
+      }
+    }
+    
+    // Now BLOCK the far side of the decoy area (make it a dead end)
+    const blockDist = areaSize + 2;
+    for (let i = -areaSize; i <= areaSize; i++) {
+      const bx = cx + delta.x * blockDist + (delta.x === 0 ? i : 0);
+      const by = cy + delta.y * blockDist + (delta.y === 0 ? i : 0);
+      
+      if (isInner(bx, by, width, height) && 
+          tiles[by][bx] === TileType.ICE &&
+          !posEq({ x: bx, y: by }, start) && 
+          !posEq({ x: bx, y: by }, goal)) {
+        backup.push({ pos: { x: bx, y: by }, tile: tiles[by][bx] });
+        tiles[by][bx] = TileType.WALL;
+      }
+    }
+    
+    if (!isSolvable(tiles, start, goal, width, height)) {
+      for (const { pos, tile } of backup) {
+        tiles[pos.y][pos.x] = tile;
+      }
+    }
+  }
+}
+
+// GENIUS ALGORITHM 4: Hidden Choke Point
+// Create a critical narrow passage that's easy to miss
+function createHiddenChokePoints(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number,
+  rng: SeededRandom,
+  count: number
+): void {
+  for (let c = 0; c < count; c++) {
+    // Find a position NOT on the intuitive path
+    const directZone = getDirectPathZone(start, goal, width, height, 5);
+    
+    let cx: number, cy: number;
+    let attempts = 0;
+    do {
+      cx = rng.randomInt(4, width - 4);
+      cy = rng.randomInt(4, height - 4);
+      attempts++;
+    } while (directZone.has(posKey({ x: cx, y: cy })) && attempts < 50);
+    
+    if (attempts >= 50) continue;
+    
+    // Create a wall barrier with a single-tile gap (the hidden choke)
+    const isHorizontal = rng.random() < 0.5;
+    const barrierLength = rng.randomInt(8, 14);
+    const gapPos = rng.randomInt(2, barrierLength - 2);
+    
+    const backup: { pos: Position; tile: TileType }[] = [];
+    
+    for (let i = 0; i < barrierLength; i++) {
+      const x = isHorizontal ? cx + i - Math.floor(barrierLength / 2) : cx;
+      const y = isHorizontal ? cy : cy + i - Math.floor(barrierLength / 2);
+      
+      if (i === gapPos) continue; // The hidden gap
+      if (!isInner(x, y, width, height)) continue;
+      if (posEq({ x, y }, start) || posEq({ x, y }, goal)) continue;
+      
+      if (tiles[y][x] === TileType.ICE) {
+        backup.push({ pos: { x, y }, tile: tiles[y][x] });
+        tiles[y][x] = TileType.WALL;
+      }
+    }
+    
+    // Verify solvability - if this barrier makes it unsolvable, the gap IS critical
+    const stillSolvable = isSolvable(tiles, start, goal, width, height);
+    
+    if (!stillSolvable) {
+      // Revert - this barrier blocks all paths
+      for (const { pos, tile } of backup) {
+        tiles[pos.y][pos.x] = tile;
+      }
+    } else if (!hasNoStuckStates(tiles, start, goal, width, height)) {
+      // Creates stuck states - revert
+      for (const { pos, tile } of backup) {
+        tiles[pos.y][pos.x] = tile;
+      }
+    }
+    // If still solvable, the choke point is working as a misdirection
+  }
+}
+
+// GENIUS ALGORITHM 5: Momentum Traps
+// Create ice slides that feel natural but overshoot important positions
+function createMomentumTraps(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number,
+  rng: SeededRandom,
+  count: number
+): void {
+  // Find current optimal path
+  const optimalPath = findOptimalPath(tiles, start, goal, width, height);
+  if (!optimalPath || optimalPath.length < 5) return;
+  
+  // For each key position on the optimal path, try to create momentum traps nearby
+  for (let t = 0; t < count; t++) {
+    // Pick a point on the optimal path (not start/end)
+    const pathIdx = rng.randomInt(1, Math.min(optimalPath.length - 1, 10));
+    const keyPos = optimalPath[pathIdx];
+    
+    // Create an ice runway that crosses near this position but overshoots
+    const runwayDir = rng.randomChoice(getAllDirs());
+    const delta = getDelta(runwayDir);
+    
+    // Build a long ice runway perpendicular or parallel
+    const runwayLength = rng.randomInt(8, 15);
+    const backup: { pos: Position; tile: TileType }[] = [];
+    
+    // Offset the runway so it goes PAST the key position
+    const offsetDist = rng.randomInt(2, 5);
+    const runwayStartX = keyPos.x - delta.x * offsetDist;
+    const runwayStartY = keyPos.y - delta.y * offsetDist;
+    
+    for (let i = 0; i < runwayLength; i++) {
+      const x = runwayStartX + delta.x * i;
+      const y = runwayStartY + delta.y * i;
+      
+      if (!isInner(x, y, width, height)) continue;
+      if (posEq({ x, y }, start) || posEq({ x, y }, goal)) continue;
+      
+      // Remove walls to create ice runway
+      if (tiles[y][x] === TileType.WALL) {
+        backup.push({ pos: { x, y }, tile: tiles[y][x] });
+        tiles[y][x] = TileType.ICE;
+      }
+      // Convert floors to ice (remove stopping points)
+      if (tiles[y][x] === TileType.FLOOR) {
+        backup.push({ pos: { x, y }, tile: tiles[y][x] });
+        tiles[y][x] = TileType.ICE;
+      }
+    }
+    
+    if (!isSolvable(tiles, start, goal, width, height)) {
+      for (const { pos, tile } of backup) {
+        tiles[pos.y][pos.x] = tile;
+      }
+    }
+  }
+}
+
+// GENIUS ALGORITHM 6: Anti-Gradient Zones  
+// Create areas where moving toward goal actually increases path length
+function createAntiGradientZones(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number,
+  rng: SeededRandom,
+  count: number
+): void {
+  const intuitiveDirs = getIntuitiveDirection(start, goal);
+  
+  for (let z = 0; z < count; z++) {
+    // Pick a zone between start and goal
+    const t = rng.random() * 0.6 + 0.2; // 20-80% along the path
+    const zoneX = Math.round(start.x + (goal.x - start.x) * t);
+    const zoneY = Math.round(start.y + (goal.y - start.y) * t);
+    
+    if (!isInner(zoneX, zoneY, width, height)) continue;
+    
+    // In this zone, block the intuitive directions and open counter-intuitive ones
+    const backup: { pos: Position; tile: TileType }[] = [];
+    const zoneRadius = rng.randomInt(3, 6);
+    
+    for (let dy = -zoneRadius; dy <= zoneRadius; dy++) {
+      for (let dx = -zoneRadius; dx <= zoneRadius; dx++) {
+        const x = zoneX + dx;
+        const y = zoneY + dy;
+        
+        if (!isInner(x, y, width, height)) continue;
+        if (posEq({ x, y }, start) || posEq({ x, y }, goal)) continue;
+        
+        // Determine if this position is in an "intuitive" direction from zone center
+        const isIntuitive = intuitiveDirs.some(dir => {
+          const d = getDelta(dir);
+          return (d.x > 0 && dx > 0) || (d.x < 0 && dx < 0) || 
+                 (d.y > 0 && dy > 0) || (d.y < 0 && dy < 0);
+        });
+        
+        if (isIntuitive && tiles[y][x] === TileType.ICE && rng.random() < 0.4) {
+          // Block intuitive directions
+          backup.push({ pos: { x, y }, tile: tiles[y][x] });
+          tiles[y][x] = TileType.WALL;
+        } else if (!isIntuitive && tiles[y][x] === TileType.WALL && rng.random() < 0.3) {
+          // Open counter-intuitive directions
+          backup.push({ pos: { x, y }, tile: tiles[y][x] });
+          tiles[y][x] = TileType.ICE;
+        }
+      }
+    }
+    
+    if (!isSolvable(tiles, start, goal, width, height)) {
+      for (const { pos, tile } of backup) {
+        tiles[pos.y][pos.x] = tile;
+      }
+    }
+  }
+}
+
+// GENIUS ALGORITHM 7: Parallel Path Illusion
+// Create two similar-looking paths - one efficient, one wasteful
+function createParallelPathIllusion(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number,
+  rng: SeededRandom,
+  count: number
+): void {
+  for (let p = 0; p < count; p++) {
+    const originalMoves = findPath(tiles, start, goal, width, height);
+    if (originalMoves === null) continue;
+    
+    // Find a wall that, if removed, creates a "shortcut looking" path
+    const candidates: Position[] = [];
+    
+    for (let y = 4; y < height - 4; y++) {
+      for (let x = 4; x < width - 4; x++) {
+        if (tiles[y][x] !== TileType.WALL) continue;
+        
+        // Check if wall is between two ice areas
+        let iceNeighbors = 0;
+        for (const dir of getAllDirs()) {
+          const d = getDelta(dir);
+          if (isValid(x + d.x, y + d.y, width, height) && 
+              tiles[y + d.y][x + d.x] === TileType.ICE) {
+            iceNeighbors++;
+          }
+        }
+        
+        if (iceNeighbors >= 2) {
+          candidates.push({ x, y });
+        }
+      }
+    }
+    
+    if (candidates.length === 0) continue;
+    
+    // Try each candidate to find one that creates a longer path (the illusion)
+    const shuffled = rng.shuffle(candidates);
+    
+    for (const pos of shuffled.slice(0, 20)) {
+      tiles[pos.y][pos.x] = TileType.ICE;
+      
+      const newMoves = findPath(tiles, start, goal, width, height);
+      
+      // We WANT the new path to be longer or same - creates illusion of shortcut
+      if (newMoves !== null && newMoves >= originalMoves) {
+        // Success - this "shortcut" is actually not shorter
+        break;
+      } else {
+        // Revert - this actually was a shortcut
+        tiles[pos.y][pos.x] = TileType.WALL;
+      }
+    }
+  }
+}
+
+// GENIUS ALGORITHM 8: Ledge Misdirection
+// Place ledges that look like shortcuts but commit you to longer routes
+function createLedgeMisdirection(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number,
+  rng: SeededRandom,
+  count: number
+): void {
+  const intuitiveDirs = getIntuitiveDirection(start, goal);
+  
+  for (let l = 0; l < count; l++) {
+    // Find a position in the intuitive direction from start
+    const dir = rng.randomChoice(intuitiveDirs);
+    const delta = getDelta(dir);
+    
+    // Ledge should be on the "shortcut" path
+    const dist = rng.randomInt(5, 12);
+    const lx = start.x + delta.x * dist + rng.randomInt(-2, 3);
+    const ly = start.y + delta.y * dist + rng.randomInt(-2, 3);
+    
+    if (!isInner(lx, ly, width, height)) continue;
+    if (tiles[ly][lx] !== TileType.ICE) continue;
+    if (posEq({ x: lx, y: ly }, start) || posEq({ x: lx, y: ly }, goal)) continue;
+    
+    const beforeMoves = findPath(tiles, start, goal, width, height);
+    if (beforeMoves === null) continue;
+    
+    // Place a ledge pointing in the intuitive direction (looks like progress!)
+    // LEDGE_UP = can only enter from above (moving down)
+    // LEDGE_DOWN = can only enter from below (moving up)
+    // etc.
+    let ledgeType: TileType;
+    switch (dir) {
+      case Direction.RIGHT: ledgeType = TileType.LEDGE_RIGHT; break;
+      case Direction.LEFT: ledgeType = TileType.LEDGE_LEFT; break;
+      case Direction.DOWN: ledgeType = TileType.LEDGE_DOWN; break;
+      case Direction.UP: ledgeType = TileType.LEDGE_UP; break;
+    }
+    
+    const oldTile = tiles[ly][lx];
+    tiles[ly][lx] = ledgeType;
+    
+    const afterMoves = findPath(tiles, start, goal, width, height);
+    
+    // Keep ledge if it increases path length (creates a trap) or maintains solvability
+    if (afterMoves === null || !hasNoStuckStates(tiles, start, goal, width, height)) {
+      tiles[ly][lx] = oldTile;
+    } else if (afterMoves < beforeMoves) {
+      // This ledge actually helps - we don't want that
+      tiles[ly][lx] = oldTile;
+    }
+    // If afterMoves >= beforeMoves, the ledge is a misdirection - keep it!
+  }
+}
+
+// GENIUS ALGORITHM 9: Goal Proximity Dead Ends
+// Create tantalizing dead ends very close to the goal
+function createGoalProximityDeadEnds(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number,
+  rng: SeededRandom,
+  count: number
+): void {
+  for (let d = 0; d < count; d++) {
+    // Create a pocket 2-4 tiles from the goal
+    const dist = rng.randomInt(2, 5);
+    const angle = rng.random() * Math.PI * 2;
+    
+    const pocketX = Math.round(goal.x + Math.cos(angle) * dist);
+    const pocketY = Math.round(goal.y + Math.sin(angle) * dist);
+    
+    if (!isInner(pocketX, pocketY, width, height)) continue;
+    
+    // Create a small open area (the pocket)
+    const backup: { pos: Position; tile: TileType }[] = [];
+    const pocketSize = 2;
+    
+    for (let dy = -pocketSize; dy <= pocketSize; dy++) {
+      for (let dx = -pocketSize; dx <= pocketSize; dx++) {
+        const x = pocketX + dx;
+        const y = pocketY + dy;
+        
+        if (!isInner(x, y, width, height)) continue;
+        if (posEq({ x, y }, start) || posEq({ x, y }, goal)) continue;
+        
+        if (tiles[y][x] === TileType.WALL) {
+          backup.push({ pos: { x, y }, tile: tiles[y][x] });
+          tiles[y][x] = TileType.ICE;
+        }
+      }
+    }
+    
+    // Now block the connection TO the goal from this pocket
+    // This makes it a dead end despite being so close
+    const dirToGoal = {
+      x: Math.sign(goal.x - pocketX),
+      y: Math.sign(goal.y - pocketY)
+    };
+    
+    // Place walls between pocket and goal
+    for (let i = 1; i < dist; i++) {
+      const blockX = pocketX + dirToGoal.x * i;
+      const blockY = pocketY + dirToGoal.y * i;
+      
+      if (isInner(blockX, blockY, width, height) &&
+          tiles[blockY][blockX] === TileType.ICE &&
+          !posEq({ x: blockX, y: blockY }, goal)) {
+        backup.push({ pos: { x: blockX, y: blockY }, tile: tiles[blockY][blockX] });
+        tiles[blockY][blockX] = TileType.WALL;
+      }
+    }
+    
+    if (!isSolvable(tiles, start, goal, width, height) ||
+        !hasNoStuckStates(tiles, start, goal, width, height)) {
+      for (const { pos, tile } of backup) {
+        tiles[pos.y][pos.x] = tile;
+      }
+    }
+  }
+}
+
+// GENIUS ALGORITHM 10: Commitment Traps
+// Create decision points where wrong choice commits you to long detours
+function createCommitmentTraps(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number,
+  rng: SeededRandom,
+  count: number
+): void {
+  for (let c = 0; c < count; c++) {
+    // Find a floor tile or stopping point (decision point)
+    const decisionPoints: Position[] = [];
+    
+    for (let y = 3; y < height - 3; y++) {
+      for (let x = 3; x < width - 3; x++) {
+        if ((tiles[y][x] === TileType.FLOOR || tiles[y][x] === TileType.ICE) &&
+            !posEq({ x, y }, start) && !posEq({ x, y }, goal)) {
+          // Check if this position has multiple valid moves
+          let validMoves = 0;
+          for (const dir of getAllDirs()) {
+            const result = simulateMove(tiles, { x, y }, dir, width, height);
+            if (result.valid && !posEq(result.pos, { x, y })) {
+              validMoves++;
+            }
+          }
+          if (validMoves >= 3) {
+            decisionPoints.push({ x, y });
+          }
+        }
+      }
+    }
+    
+    if (decisionPoints.length === 0) continue;
+    
+    const dp = rng.randomChoice(decisionPoints);
+    
+    // For each direction from this decision point, calculate path cost to goal
+    const pathCosts: { dir: Direction; cost: number }[] = [];
+    
+    for (const dir of getAllDirs()) {
+      const result = simulateMove(tiles, dp, dir, width, height);
+      if (result.valid && !posEq(result.pos, dp)) {
+        const costFromThere = findPath(tiles, result.pos, goal, width, height);
+        if (costFromThere !== null) {
+          pathCosts.push({ dir, cost: costFromThere });
+        }
+      }
+    }
+    
+    if (pathCosts.length < 2) continue;
+    
+    // Sort by cost
+    pathCosts.sort((a, b) => a.cost - b.cost);
+    
+    // Try to block the optimal direction with a ledge (one-way)
+    // This forces commitment if player takes the wrong direction
+    const optimalDir = pathCosts[0].dir;
+    const delta = getDelta(optimalDir);
+    
+    // Find a tile in the optimal direction and place a ledge facing away
+    const ledgeX = dp.x + delta.x * 2;
+    const ledgeY = dp.y + delta.y * 2;
+    
+    if (isInner(ledgeX, ledgeY, width, height) && 
+        tiles[ledgeY][ledgeX] === TileType.ICE) {
+      // Place ledge that blocks return
+      const oppDir = getOppositeDir(optimalDir);
+      let ledgeType: TileType;
+      switch (oppDir) {
+        case Direction.DOWN: ledgeType = TileType.LEDGE_UP; break;
+        case Direction.UP: ledgeType = TileType.LEDGE_DOWN; break;
+        case Direction.RIGHT: ledgeType = TileType.LEDGE_LEFT; break;
+        case Direction.LEFT: ledgeType = TileType.LEDGE_RIGHT; break;
+      }
+      
+      const oldTile = tiles[ledgeY][ledgeX];
+      tiles[ledgeY][ledgeX] = ledgeType;
+      
+      if (!isSolvable(tiles, start, goal, width, height) ||
+          !hasNoStuckStates(tiles, start, goal, width, height)) {
+        tiles[ledgeY][ledgeX] = oldTile;
+      }
+    }
+  }
 }
 
 // ============================================================================
@@ -882,7 +1616,105 @@ function convertFloorsToIce(
   }
 }
 
-// Add winding corridors that force longer paths
+// Add "dead-end magnets" - attractive looking areas that are actually dead ends
+// These look like shortcuts toward the goal but lead nowhere useful
+function addDeadEndMagnets(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number,
+  rng: SeededRandom,
+  count: number
+): void {
+  const goalDir = { 
+    x: goal.x > start.x ? 1 : -1, 
+    y: goal.y > start.y ? 1 : -1 
+  };
+  
+  for (let m = 0; m < count; m++) {
+    // Find a position that's roughly between start and goal
+    const midX = Math.floor((start.x + goal.x) / 2);
+    const midY = Math.floor((start.y + goal.y) / 2);
+    
+    const cx = rng.randomInt(
+      Math.min(midX - 8, width - 10),
+      Math.min(midX + 8, width - 6)
+    );
+    const cy = rng.randomInt(
+      Math.min(midY - 6, height - 8),
+      Math.min(midY + 6, height - 6)
+    );
+    
+    if (!isInner(cx, cy, width, height)) continue;
+    if (tiles[cy][cx] !== TileType.ICE) continue;
+    
+    // Create a small open area that looks inviting (toward goal direction)
+    const backup: { pos: Position; tile: TileType }[] = [];
+    const magnetPositions: Position[] = [];
+    
+    // Open space toward goal
+    for (let dy = 0; dy <= 3; dy++) {
+      for (let dx = 0; dx <= 3; dx++) {
+        const x = cx + dx * goalDir.x;
+        const y = cy + dy * goalDir.y;
+        
+        if (isInner(x, y, width, height) && 
+            tiles[y][x] === TileType.WALL &&
+            !posEq({ x, y }, start) && !posEq({ x, y }, goal)) {
+          magnetPositions.push({ x, y });
+        }
+      }
+    }
+    
+    // Open up the magnet area
+    for (const pos of magnetPositions) {
+      backup.push({ pos, tile: tiles[pos.y][pos.x] });
+      tiles[pos.y][pos.x] = TileType.ICE;
+    }
+    
+    // Now block the far end to make it a dead end
+    const deadEndWalls: Position[] = [];
+    const farX = cx + 4 * goalDir.x;
+    const farY = cy + 4 * goalDir.y;
+    
+    for (let i = -2; i <= 2; i++) {
+      const blockX = farX;
+      const blockY = farY + i;
+      if (isInner(blockX, blockY, width, height) && 
+          tiles[blockY][blockX] === TileType.ICE &&
+          !posEq({ x: blockX, y: blockY }, start) && 
+          !posEq({ x: blockX, y: blockY }, goal)) {
+        deadEndWalls.push({ x: blockX, y: blockY });
+      }
+      
+      const blockX2 = farX + i;
+      const blockY2 = farY;
+      if (isInner(blockX2, blockY2, width, height) && 
+          tiles[blockY2][blockX2] === TileType.ICE &&
+          !posEq({ x: blockX2, y: blockY2 }, start) && 
+          !posEq({ x: blockX2, y: blockY2 }, goal)) {
+        deadEndWalls.push({ x: blockX2, y: blockY2 });
+      }
+    }
+    
+    // Place dead-end walls
+    for (const pos of deadEndWalls) {
+      backup.push({ pos, tile: tiles[pos.y][pos.x] });
+      tiles[pos.y][pos.x] = TileType.WALL;
+    }
+    
+    // Verify still solvable
+    if (!isSolvable(tiles, start, goal, width, height)) {
+      // Revert all changes
+      for (const { pos, tile } of backup) {
+        tiles[pos.y][pos.x] = tile;
+      }
+    }
+  }
+}
+
+// Add winding corridors that force longer paths - EXTREME VERSION
 function addWindingCorridors(
   tiles: TileType[][],
   start: Position,
@@ -891,8 +1723,8 @@ function addWindingCorridors(
   height: number,
   rng: SeededRandom
 ): void {
-  // Add horizontal and vertical wall segments that force detours
-  const numSegments = rng.randomInt(4, 8);
+  // Add MANY horizontal and vertical wall segments that force detours
+  const numSegments = rng.randomInt(8, 15);
 
   for (let seg = 0; seg < numSegments; seg++) {
     const isHorizontal = rng.random() < 0.5;
@@ -900,13 +1732,14 @@ function addWindingCorridors(
 
     if (isHorizontal) {
       const y = rng.randomInt(4, height - 4);
-      const startX = rng.randomInt(3, width / 2);
-      const length = rng.randomInt(4, 12);
-      const gapPos = rng.randomInt(0, length);
+      const startX = rng.randomInt(3, Math.floor(width * 0.6));
+      const length = rng.randomInt(8, 18); // Longer segments
+      const gapPos = rng.randomInt(1, length - 1);
+      const gapSize = rng.randomInt(1, 3); // Variable gap sizes
 
       for (let i = 0; i < length; i++) {
         const x = startX + i;
-        if (i === gapPos) continue; // Leave a gap
+        if (i >= gapPos && i < gapPos + gapSize) continue; // Leave a gap
         if (!isInner(x, y, width, height)) continue;
         if (tiles[y][x] !== TileType.ICE) continue;
         if (posEq({ x, y }, start) || posEq({ x, y }, goal)) continue;
@@ -916,13 +1749,14 @@ function addWindingCorridors(
       }
     } else {
       const x = rng.randomInt(4, width - 4);
-      const startY = rng.randomInt(3, height / 2);
-      const length = rng.randomInt(4, 12);
-      const gapPos = rng.randomInt(0, length);
+      const startY = rng.randomInt(3, Math.floor(height * 0.6));
+      const length = rng.randomInt(8, 16); // Longer segments
+      const gapPos = rng.randomInt(1, length - 1);
+      const gapSize = rng.randomInt(1, 3);
 
       for (let i = 0; i < length; i++) {
         const y = startY + i;
-        if (i === gapPos) continue;
+        if (i >= gapPos && i < gapPos + gapSize) continue;
         if (!isInner(x, y, width, height)) continue;
         if (tiles[y][x] !== TileType.ICE) continue;
         if (posEq({ x, y }, start) || posEq({ x, y }, goal)) continue;
@@ -941,19 +1775,22 @@ function addWindingCorridors(
   }
 }
 
-// Main puzzle generation - ELITE DIFFICULTY
+// Main puzzle generation - EXTREME DIFFICULTY (targeting 2+ minute solves)
 export function generatePuzzle(seed: string): PuzzleData {
   const rng = new SeededRandom(seed);
 
-  // Keep puzzle sizes moderate - difficulty comes from complexity, not size
+  // LARGER puzzle sizes - more ground to cover, more complexity
   const sizeOptions = [
-    { width: 23, height: 19 },
-    { width: 25, height: 19 },
-    { width: 23, height: 21 },
-    { width: 25, height: 21 },
-    { width: 27, height: 21 },
-    { width: 25, height: 23 },
-    { width: 27, height: 23 },
+    { width: 29, height: 23 },
+    { width: 31, height: 23 },
+    { width: 29, height: 25 },
+    { width: 31, height: 25 },
+    { width: 33, height: 25 },
+    { width: 31, height: 27 },
+    { width: 33, height: 27 },
+    { width: 35, height: 27 },
+    { width: 35, height: 29 },
+    { width: 37, height: 29 },
   ];
 
   const { width, height } = rng.randomChoice(sizeOptions);
@@ -961,7 +1798,8 @@ export function generatePuzzle(seed: string): PuzzleData {
   let bestPuzzle: PuzzleData | null = null;
   let bestScore = 0;
 
-  for (let attempt = 0; attempt < 80; attempt++) {
+  // More attempts to find truly challenging layouts
+  for (let attempt = 0; attempt < 120; attempt++) {
     // Create base maze with guaranteed connectivity
     const tiles = createBaseMaze(width, height, rng);
 
@@ -975,56 +1813,107 @@ export function generatePuzzle(seed: string): PuzzleData {
       }
     }
 
-    if (iceTiles.length < 40) continue;
+    // Require more ice tiles for larger mazes
+    if (iceTiles.length < 60) continue;
 
-    // Pick start on left side, goal on right side (far apart)
-    const leftTiles = iceTiles.filter(p => p.x < width / 4);
-    const rightTiles = iceTiles.filter(p => p.x > (3 * width) / 4);
+    // Pick start on left side, goal on right side (maximize distance)
+    const leftTiles = iceTiles.filter(p => p.x < width / 5);
+    const rightTiles = iceTiles.filter(p => p.x > (4 * width) / 5);
+    
+    // Also consider corner positions for extra path length
+    const topLeftTiles = iceTiles.filter(p => p.x < width / 4 && p.y < height / 3);
+    const bottomRightTiles = iceTiles.filter(p => p.x > (3 * width) / 4 && p.y > (2 * height) / 3);
 
-    if (leftTiles.length === 0 || rightTiles.length === 0) continue;
+    // Prefer diagonal placements when possible
+    let start: Position, goal: Position;
+    if (topLeftTiles.length > 0 && bottomRightTiles.length > 0 && rng.random() < 0.6) {
+      start = rng.randomChoice(topLeftTiles);
+      goal = rng.randomChoice(bottomRightTiles);
+    } else if (leftTiles.length > 0 && rightTiles.length > 0) {
+      start = rng.randomChoice(leftTiles);
+      goal = rng.randomChoice(rightTiles);
+    } else {
+      continue;
+    }
 
-    const start = rng.randomChoice(leftTiles);
-    const goal = rng.randomChoice(rightTiles);
+    // Widen passages for larger sliding areas - INCREASED
+    widenPassages(tiles, width, height, rng, 0.20);
 
-    // Widen passages for larger sliding areas (more ice = more planning needed)
-    widenPassages(tiles, width, height, rng, 0.15);
+    // MANY alternative routes (creates decision paralysis)
+    addExtraConnections(tiles, start, goal, width, height, rng, rng.randomInt(25, 45));
 
-    // Add extra connections for MANY alternative routes (most are suboptimal)
-    addExtraConnections(tiles, start, goal, width, height, rng, rng.randomInt(15, 30));
-
-    // Add winding corridors to force longer paths
+    // MORE winding corridors - call multiple times for layered complexity
+    addWindingCorridors(tiles, start, goal, width, height, rng);
     addWindingCorridors(tiles, start, goal, width, height, rng);
 
-    // Add island obstacles
-    addIslandObstacles(tiles, start, goal, width, height, rng, rng.randomInt(4, 8));
+    // MORE island obstacles for redirection
+    addIslandObstacles(tiles, start, goal, width, height, rng, rng.randomInt(6, 12));
 
     // ============================================
-    // HIGH IQ DIFFICULTY MECHANICS
+    // GENIUS-LEVEL DECEPTION ENGINE
+    // Psychological misdirection + counter-intuitive design
     // ============================================
     
-    // Add precision gates - narrow passages requiring exact positioning
-    addPrecisionGates(tiles, start, goal, width, height, rng, rng.randomInt(3, 6));
+    // ALGORITHM 1: Force counter-intuitive paths (block obvious approaches)
+    engineerCounterIntuitivePath(tiles, start, goal, width, height, rng);
     
-    // Add funnel patterns that force specific approaches
-    addFunnelPatterns(tiles, start, goal, width, height, rng, rng.randomInt(2, 5));
+    // ALGORITHM 2: "Almost there" traps - slide past the goal
+    createAlmostThereTraps(tiles, start, goal, width, height, rng, rng.randomInt(3, 6));
     
-    // Add trap alcoves - easy to enter, costly to escape
-    addTrapAlcoves(tiles, start, goal, width, height, rng, rng.randomInt(3, 7));
+    // ALGORITHM 3: Decoy open areas - inviting areas that waste moves
+    createDecoyOpenAreas(tiles, start, goal, width, height, rng, rng.randomInt(4, 8));
     
-    // Add deceptive paths - routes that look good but waste moves
-    addDeceptivePaths(tiles, start, goal, width, height, rng, rng.randomInt(8, 15));
+    // ALGORITHM 4: Hidden choke points - critical passages easy to miss
+    createHiddenChokePoints(tiles, start, goal, width, height, rng, rng.randomInt(3, 6));
+    
+    // ALGORITHM 5: Momentum traps - ice slides that overshoot
+    createMomentumTraps(tiles, start, goal, width, height, rng, rng.randomInt(5, 10));
+    
+    // ALGORITHM 6: Anti-gradient zones - moving toward goal increases cost
+    createAntiGradientZones(tiles, start, goal, width, height, rng, rng.randomInt(3, 6));
+    
+    // ALGORITHM 7: Parallel path illusion - similar paths, different costs
+    createParallelPathIllusion(tiles, start, goal, width, height, rng, rng.randomInt(4, 8));
+    
+    // ALGORITHM 8: Ledge misdirection - one-way tiles that look helpful
+    createLedgeMisdirection(tiles, start, goal, width, height, rng, rng.randomInt(6, 12));
+    
+    // ALGORITHM 9: Goal proximity dead ends - tantalizingly close but blocked
+    createGoalProximityDeadEnds(tiles, start, goal, width, height, rng, rng.randomInt(4, 8));
+    
+    // ALGORITHM 10: Commitment traps - wrong choices lock you in
+    createCommitmentTraps(tiles, start, goal, width, height, rng, rng.randomInt(4, 8));
 
-    // Add stop blocks strategically (fewer = more planning required)
-    addStopBlocks(tiles, start, goal, width, height, rng, rng.randomInt(15, 30));
-
-    // Add MINIMAL floor stopping points (force long ice slide chains)
-    addFloorStops(tiles, start, goal, width, height, rng, rng.randomInt(3, 7));
+    // ============================================
+    // ADDITIONAL COMPLEXITY LAYERS
+    // ============================================
     
-    // Convert some floor tiles back to ice (reduce safe stopping points)
-    convertFloorsToIce(tiles, start, goal, width, height, rng, 0.4);
+    // Precision gates - narrow passages requiring exact positioning
+    addPrecisionGates(tiles, start, goal, width, height, rng, rng.randomInt(5, 10));
+    
+    // Funnel patterns that force specific approaches
+    addFunnelPatterns(tiles, start, goal, width, height, rng, rng.randomInt(4, 8));
+    
+    // Trap alcoves - easy to enter, costly to escape
+    addTrapAlcoves(tiles, start, goal, width, height, rng, rng.randomInt(6, 12));
+    
+    // Deceptive paths - routes that look good but waste moves
+    addDeceptivePaths(tiles, start, goal, width, height, rng, rng.randomInt(15, 30));
+    
+    // Dead-end magnets - attractive looking dead ends
+    addDeadEndMagnets(tiles, start, goal, width, height, rng, rng.randomInt(4, 8));
 
-    // Add MORE ledges for complex directional puzzles
-    addLedges(tiles, start, goal, width, height, rng, rng.randomInt(8, 16));
+    // Stop blocks for redirect complexity
+    addStopBlocks(tiles, start, goal, width, height, rng, rng.randomInt(25, 45));
+
+    // MINIMAL floor stopping points (force long ice planning chains)
+    addFloorStops(tiles, start, goal, width, height, rng, rng.randomInt(1, 3));
+    
+    // Convert MOST floor tiles back to ice (maximize planning difficulty)
+    convertFloorsToIce(tiles, start, goal, width, height, rng, 0.75);
+
+    // Ledges for complex directional puzzles
+    addLedges(tiles, start, goal, width, height, rng, rng.randomInt(15, 25));
 
     // Set start and goal
     tiles[start.y][start.x] = TileType.START;
@@ -1041,24 +1930,59 @@ export function generatePuzzle(seed: string): PuzzleData {
     const branchingFactor = calculateBranchingFactor(tiles, start, goal, width, height);
     const trapPotential = countTrapPotential(tiles, start, goal, width, height);
     
-    // Elite scoring: prioritize puzzles with:
-    // - High optimal moves (50-80 range ideal)
-    // - High branching factor (more decision points)
-    // - High trap potential (wrong moves are costly)
+    // Count reachable positions for exploration complexity
+    const reachableCount = getReachable(tiles, start, width, height).size;
+    const explorationDensity = reachableCount / (width * height);
+    
+    // NEW: Calculate "deceptiveness" - how counter-intuitive is the optimal path?
+    // Compare Manhattan distance (intuitive) vs actual optimal moves
+    const intuitiveDist = manhattanDist(start, goal);
+    const deceptivenessRatio = optimalMoves / Math.max(intuitiveDist, 1);
+    
+    // GENIUS scoring: prioritize puzzles that ACTIVELY DECEIVE
+    // - HIGH optimal moves (100-200 range for truly challenging puzzles)
+    // - High branching factor (decision paralysis)
+    // - High trap potential (mistakes are punishing)
+    // - High deceptiveness ratio (optimal path is NOT the intuitive one)
+    // - High exploration density (lots of places to get lost)
     let score = optimalMoves;
     
-    // Bonus for being in the sweet spot
-    if (optimalMoves >= 45 && optimalMoves <= 80) {
-      score *= 1.5;
-    }
-    
-    // Bonus for high branching (many wrong choices possible)
-    if (branchingFactor >= 2.5) {
+    // Strong bonus for being in the extreme target range (100-200 moves)
+    if (optimalMoves >= 100 && optimalMoves <= 200) {
+      score *= 2.5;
+    } else if (optimalMoves >= 80 && optimalMoves <= 100) {
+      score *= 1.8;
+    } else if (optimalMoves >= 60 && optimalMoves <= 80) {
       score *= 1.3;
     }
     
-    // Bonus for trap potential (mistakes are punishing)
-    score += Math.min(trapPotential / 10, 20);
+    // Bonus for high branching (many wrong choices possible)
+    if (branchingFactor >= 3.5) {
+      score *= 1.6;
+    } else if (branchingFactor >= 3.0) {
+      score *= 1.4;
+    } else if (branchingFactor >= 2.5) {
+      score *= 1.2;
+    }
+    
+    // Significant bonus for trap potential (mistakes are punishing)
+    score += Math.min(trapPotential / 4, 50);
+    
+    // NEW: Big bonus for deceptive puzzles (optimal != intuitive)
+    if (deceptivenessRatio >= 3.0) {
+      score *= 1.5; // Optimal path is 3x+ longer than intuitive
+    } else if (deceptivenessRatio >= 2.5) {
+      score *= 1.3;
+    } else if (deceptivenessRatio >= 2.0) {
+      score *= 1.2;
+    }
+    
+    // Bonus for high exploration density (lots of reachable positions)
+    if (explorationDensity >= 0.45) {
+      score *= 1.3;
+    } else if (explorationDensity >= 0.35) {
+      score *= 1.15;
+    }
 
     if (score > bestScore) {
       bestScore = score;
@@ -1072,8 +1996,10 @@ export function generatePuzzle(seed: string): PuzzleData {
       };
     }
 
-    // Target 50+ optimal moves with good complexity
-    if (optimalMoves >= 50 && optimalMoves <= 75 && branchingFactor >= 2.3) {
+    // Target 100+ optimal moves with excellent complexity for 2+ min solves
+    // Also require good deceptiveness ratio
+    if (optimalMoves >= 100 && optimalMoves <= 180 && 
+        branchingFactor >= 3.0 && deceptivenessRatio >= 2.5) {
       break;
     }
   }
@@ -1088,41 +2014,58 @@ export function generatePuzzle(seed: string): PuzzleData {
   return bestPuzzle;
 }
 
-// Simple fallback puzzle
+// Simple fallback puzzle - still challenging but guaranteed to work
 function createSimplePuzzle(width: number, height: number, rng: SeededRandom): PuzzleData {
   const tiles: TileType[][] = Array(height).fill(null).map(() => Array(width).fill(TileType.WALL));
 
-  // Create connected ice area
+  // Create connected ice area with higher density
   for (let y = 2; y < height - 2; y++) {
     for (let x = 2; x < width - 2; x++) {
-      if (rng.random() < 0.6) {
+      if (rng.random() < 0.7) {
         tiles[y][x] = TileType.ICE;
       }
     }
   }
 
-  // Ensure connectivity with guaranteed paths
+  // Ensure connectivity with guaranteed paths (multiple corridors)
   for (let y = Math.floor(height / 2) - 1; y <= Math.floor(height / 2) + 1; y++) {
     for (let x = 2; x < width - 2; x++) {
       tiles[y][x] = TileType.ICE;
     }
   }
-  for (let x = Math.floor(width / 3); x <= Math.floor(width / 3) + 1; x++) {
+  // Additional horizontal corridors
+  for (let y = Math.floor(height / 4) - 1; y <= Math.floor(height / 4) + 1; y++) {
+    for (let x = 2; x < width - 2; x++) {
+      tiles[y][x] = TileType.ICE;
+    }
+  }
+  for (let y = Math.floor(3 * height / 4) - 1; y <= Math.floor(3 * height / 4) + 1; y++) {
+    for (let x = 2; x < width - 2; x++) {
+      tiles[y][x] = TileType.ICE;
+    }
+  }
+  // Vertical corridors
+  for (let x = Math.floor(width / 4); x <= Math.floor(width / 4) + 1; x++) {
     for (let y = 2; y < height - 2; y++) {
       tiles[y][x] = TileType.ICE;
     }
   }
-  for (let x = Math.floor(2 * width / 3); x <= Math.floor(2 * width / 3) + 1; x++) {
+  for (let x = Math.floor(width / 2); x <= Math.floor(width / 2) + 1; x++) {
+    for (let y = 2; y < height - 2; y++) {
+      tiles[y][x] = TileType.ICE;
+    }
+  }
+  for (let x = Math.floor(3 * width / 4); x <= Math.floor(3 * width / 4) + 1; x++) {
     for (let y = 2; y < height - 2; y++) {
       tiles[y][x] = TileType.ICE;
     }
   }
 
-  const start = { x: 3, y: Math.floor(height / 2) };
-  const goal = { x: width - 4, y: Math.floor(height / 2) };
+  const start = { x: 3, y: Math.floor(height / 4) };
+  const goal = { x: width - 4, y: Math.floor(3 * height / 4) };
 
-  // Add walls
-  for (let i = 0; i < 30; i++) {
+  // Add MANY walls for complexity
+  for (let i = 0; i < 60; i++) {
     const x = rng.randomInt(4, width - 4);
     const y = rng.randomInt(3, height - 3);
     if (!posEq({ x, y }, start) && !posEq({ x, y }, goal) && tiles[y][x] === TileType.ICE) {
@@ -1133,8 +2076,8 @@ function createSimplePuzzle(width: number, height: number, rng: SeededRandom): P
     }
   }
 
-  // Add floor stops
-  for (let i = 0; i < 12; i++) {
+  // Add MINIMAL floor stops (force planning)
+  for (let i = 0; i < 4; i++) {
     const x = rng.randomInt(3, width - 3);
     const y = rng.randomInt(3, height - 3);
     if (tiles[y][x] === TileType.ICE && !posEq({ x, y }, start) && !posEq({ x, y }, goal)) {
@@ -1145,7 +2088,7 @@ function createSimplePuzzle(width: number, height: number, rng: SeededRandom): P
   tiles[start.y][start.x] = TileType.START;
   tiles[goal.y][goal.x] = TileType.GOAL;
 
-  const optimalMoves = findPath(tiles, start, goal, width, height) || 25;
+  const optimalMoves = findPath(tiles, start, goal, width, height) || 50;
 
   return { width, height, tiles, start, goal, optimalMoves };
 }

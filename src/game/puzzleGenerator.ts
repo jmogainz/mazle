@@ -100,9 +100,11 @@ function simulateMove(
   }
 
   // Check ledge entry rules
+  // LEDGE_UP: enter from above (moving DOWN), LEDGE_DOWN: enter from below (moving UP)
+  // LEDGE_LEFT: enter from right (moving LEFT), LEDGE_RIGHT: enter from left (moving RIGHT)
   if (targetTile >= TileType.LEDGE_UP && targetTile <= TileType.LEDGE_RIGHT) {
     const ledgeDir = targetTile - TileType.LEDGE_UP;
-    const allowedDirs = [Direction.DOWN, Direction.UP, Direction.RIGHT, Direction.LEFT];
+    const allowedDirs = [Direction.DOWN, Direction.UP, Direction.LEFT, Direction.RIGHT];
     if (dir !== allowedDirs[ledgeDir]) {
       return { pos: start, valid: false };
     }
@@ -124,7 +126,7 @@ function simulateMove(
       // Check ledge
       if (nextTile >= TileType.LEDGE_UP && nextTile <= TileType.LEDGE_RIGHT) {
         const ledgeDir = nextTile - TileType.LEDGE_UP;
-        const allowedDirs = [Direction.DOWN, Direction.UP, Direction.RIGHT, Direction.LEFT];
+        const allowedDirs = [Direction.DOWN, Direction.UP, Direction.LEFT, Direction.RIGHT];
         if (dir !== allowedDirs[ledgeDir]) break;
         x = nextX;
         y = nextY;
@@ -2658,16 +2660,16 @@ export function generatePuzzle(seed: string): PuzzleData {
 
   // LARGER puzzle sizes - more ground to cover, more complexity
   const sizeOptions = [
-    { width: 29, height: 23 },
-    { width: 31, height: 23 },
-    { width: 29, height: 25 },
-    { width: 31, height: 25 },
-    { width: 33, height: 25 },
-    { width: 31, height: 27 },
-    { width: 33, height: 27 },
     { width: 35, height: 27 },
+    { width: 37, height: 27 },
     { width: 35, height: 29 },
     { width: 37, height: 29 },
+    { width: 39, height: 29 },
+    { width: 37, height: 31 },
+    { width: 39, height: 31 },
+    { width: 41, height: 31 },
+    { width: 41, height: 33 },
+    { width: 43, height: 33 },
   ];
 
   const { width, height } = rng.randomChoice(sizeOptions);
@@ -2680,9 +2682,9 @@ export function generatePuzzle(seed: string): PuzzleData {
   let bestPuzzle: PuzzleData | null = null;
   let bestScore = 0;
   
-  for (let cbAttempt = 0; cbAttempt < 50; cbAttempt++) {
+  for (let cbAttempt = 0; cbAttempt < 80; cbAttempt++) {
     const cbRng = new SeededRandom(seed + '-cb-' + cbAttempt);
-    const chainLength = cbRng.randomInt(12, 20); // Longer chains = harder
+    const chainLength = cbRng.randomInt(16, 26); // Longer chains = harder
     
     const result = generateConstraintBasedPuzzle(width, height, cbRng, chainLength);
     if (!result) continue;
@@ -2691,7 +2693,7 @@ export function generatePuzzle(seed: string): PuzzleData {
     
     // Calculate metrics
     const optimalMoves = findPath(tiles, start, goal, width, height);
-    if (optimalMoves === null || optimalMoves < 25) continue;
+    if (optimalMoves === null || optimalMoves < 32) continue;
     
     const branchingFactor = calculateBranchingFactor(tiles, start, goal, width, height);
     const trapPotential = countTrapPotential(tiles, start, goal, width, height);
@@ -2730,13 +2732,13 @@ export function generatePuzzle(seed: string): PuzzleData {
     }
     
     // Found excellent constraint-based puzzle
-    if (optimalMoves >= 40 && deceptivenessRatio >= 2.5 && greedyPenalty >= 10) {
+    if (optimalMoves >= 50 && deceptivenessRatio >= 2.8 && greedyPenalty >= 14) {
       return bestPuzzle!;
     }
   }
   
   // If constraint-based found something good, use it
-  if (bestPuzzle && bestPuzzle.optimalMoves >= 30 && (bestPuzzle.deceptivenessRatio ?? 0) >= 2.0) {
+  if (bestPuzzle && bestPuzzle.optimalMoves >= 40 && (bestPuzzle.deceptivenessRatio ?? 0) >= 2.4) {
     return bestPuzzle;
   }
 
@@ -2760,7 +2762,7 @@ export function generatePuzzle(seed: string): PuzzleData {
     }
 
     // Require more ice tiles for larger mazes
-    if (iceTiles.length < 60) continue;
+    if (iceTiles.length < 90) continue;
 
     // Pick start on left side, goal on right side (maximize distance)
     const leftTiles = iceTiles.filter(p => p.x < width / 5);
@@ -2786,14 +2788,15 @@ export function generatePuzzle(seed: string): PuzzleData {
     widenPassages(tiles, width, height, rng, 0.20);
 
     // MANY alternative routes (creates decision paralysis)
-    addExtraConnections(tiles, start, goal, width, height, rng, rng.randomInt(25, 45));
+    addExtraConnections(tiles, start, goal, width, height, rng, rng.randomInt(35, 60));
 
     // MORE winding corridors - call multiple times for layered complexity
     addWindingCorridors(tiles, start, goal, width, height, rng);
     addWindingCorridors(tiles, start, goal, width, height, rng);
+    addWindingCorridors(tiles, start, goal, width, height, rng);
 
     // MORE island obstacles for redirection
-    addIslandObstacles(tiles, start, goal, width, height, rng, rng.randomInt(6, 12));
+    addIslandObstacles(tiles, start, goal, width, height, rng, rng.randomInt(10, 18));
 
     // ============================================
     // GENIUS-LEVEL DECEPTION ENGINE
@@ -2804,62 +2807,62 @@ export function generatePuzzle(seed: string): PuzzleData {
     engineerCounterIntuitivePath(tiles, start, goal, width, height, rng);
     
     // ALGORITHM 2: "Almost there" traps - slide past the goal
-    createAlmostThereTraps(tiles, start, goal, width, height, rng, rng.randomInt(3, 6));
+    createAlmostThereTraps(tiles, start, goal, width, height, rng, rng.randomInt(5, 10));
     
     // ALGORITHM 3: Decoy open areas - inviting areas that waste moves
-    createDecoyOpenAreas(tiles, start, goal, width, height, rng, rng.randomInt(4, 8));
+    createDecoyOpenAreas(tiles, start, goal, width, height, rng, rng.randomInt(6, 12));
     
     // ALGORITHM 4: Hidden choke points - critical passages easy to miss
-    createHiddenChokePoints(tiles, start, goal, width, height, rng, rng.randomInt(3, 6));
+    createHiddenChokePoints(tiles, start, goal, width, height, rng, rng.randomInt(5, 10));
     
     // ALGORITHM 5: Momentum traps - ice slides that overshoot
-    createMomentumTraps(tiles, start, goal, width, height, rng, rng.randomInt(5, 10));
+    createMomentumTraps(tiles, start, goal, width, height, rng, rng.randomInt(8, 16));
     
     // ALGORITHM 6: Anti-gradient zones - moving toward goal increases cost
-    createAntiGradientZones(tiles, start, goal, width, height, rng, rng.randomInt(3, 6));
+    createAntiGradientZones(tiles, start, goal, width, height, rng, rng.randomInt(5, 10));
     
     // ALGORITHM 7: Parallel path illusion - similar paths, different costs
-    createParallelPathIllusion(tiles, start, goal, width, height, rng, rng.randomInt(4, 8));
+    createParallelPathIllusion(tiles, start, goal, width, height, rng, rng.randomInt(6, 12));
     
     // ALGORITHM 8: Ledge misdirection - one-way tiles that look helpful
-    createLedgeMisdirection(tiles, start, goal, width, height, rng, rng.randomInt(6, 12));
+    createLedgeMisdirection(tiles, start, goal, width, height, rng, rng.randomInt(10, 18));
     
     // ALGORITHM 9: Goal proximity dead ends - tantalizingly close but blocked
-    createGoalProximityDeadEnds(tiles, start, goal, width, height, rng, rng.randomInt(4, 8));
+    createGoalProximityDeadEnds(tiles, start, goal, width, height, rng, rng.randomInt(6, 12));
     
     // ALGORITHM 10: Commitment traps - wrong choices lock you in
-    createCommitmentTraps(tiles, start, goal, width, height, rng, rng.randomInt(4, 8));
+    createCommitmentTraps(tiles, start, goal, width, height, rng, rng.randomInt(6, 12));
 
     // ============================================
     // ADDITIONAL COMPLEXITY LAYERS
     // ============================================
     
     // Precision gates - narrow passages requiring exact positioning
-    addPrecisionGates(tiles, start, goal, width, height, rng, rng.randomInt(5, 10));
+    addPrecisionGates(tiles, start, goal, width, height, rng, rng.randomInt(8, 16));
     
     // Funnel patterns that force specific approaches
-    addFunnelPatterns(tiles, start, goal, width, height, rng, rng.randomInt(4, 8));
+    addFunnelPatterns(tiles, start, goal, width, height, rng, rng.randomInt(6, 12));
     
     // Trap alcoves - easy to enter, costly to escape
-    addTrapAlcoves(tiles, start, goal, width, height, rng, rng.randomInt(6, 12));
+    addTrapAlcoves(tiles, start, goal, width, height, rng, rng.randomInt(10, 18));
     
     // Deceptive paths - routes that look good but waste moves
-    addDeceptivePaths(tiles, start, goal, width, height, rng, rng.randomInt(15, 30));
+    addDeceptivePaths(tiles, start, goal, width, height, rng, rng.randomInt(25, 45));
     
     // Dead-end magnets - attractive looking dead ends
-    addDeadEndMagnets(tiles, start, goal, width, height, rng, rng.randomInt(4, 8));
+    addDeadEndMagnets(tiles, start, goal, width, height, rng, rng.randomInt(6, 12));
 
     // Stop blocks for redirect complexity
-    addStopBlocks(tiles, start, goal, width, height, rng, rng.randomInt(25, 45));
+    addStopBlocks(tiles, start, goal, width, height, rng, rng.randomInt(35, 60));
 
     // MINIMAL floor stopping points (force long ice planning chains)
-    addFloorStops(tiles, start, goal, width, height, rng, rng.randomInt(2, 5));
+    addFloorStops(tiles, start, goal, width, height, rng, rng.randomInt(2, 4));
     
     // Convert MOST floor tiles back to ice (maximize planning difficulty)
-    convertFloorsToIce(tiles, start, goal, width, height, rng, 0.7);
+    convertFloorsToIce(tiles, start, goal, width, height, rng, 0.82);
 
     // Ledges for complex directional puzzles
-    addLedges(tiles, start, goal, width, height, rng, rng.randomInt(15, 25));
+    addLedges(tiles, start, goal, width, height, rng, rng.randomInt(20, 35));
 
     // Set start and goal
     tiles[start.y][start.x] = TileType.START;
@@ -2877,7 +2880,7 @@ export function generatePuzzle(seed: string): PuzzleData {
     // ============================================
     
     // Only hard reject trivially short puzzles
-    if (optimalMoves < 20) continue;
+    if (optimalMoves < 28) continue;
     
     // Calculate all complexity metrics
     const branchingFactor = calculateBranchingFactor(tiles, start, goal, width, height);
@@ -2908,13 +2911,15 @@ export function generatePuzzle(seed: string): PuzzleData {
     let score = Math.pow(optimalMoves, 1.5);
     
     // HUGE bonus for high move counts
-    if (optimalMoves >= 100) {
+    if (optimalMoves >= 120) {
+      score *= 4.0;
+    } else if (optimalMoves >= 100) {
       score *= 3.0;
     } else if (optimalMoves >= 80) {
       score *= 2.5;
     } else if (optimalMoves >= 60) {
       score *= 2.0;
-    } else if (optimalMoves >= 40) {
+    } else if (optimalMoves >= 45) {
       score *= 1.5;
     }
     
@@ -2944,16 +2949,18 @@ export function generatePuzzle(seed: string): PuzzleData {
     
     // BONUS for high cognitive load (long lookahead sequences)
     // Humans can plan ~5-7 moves; reward 8+
-    if (lookaheadDepth >= 10) {
-      score *= 1.5;
+    if (lookaheadDepth >= 12) {
+      score *= 2.0;
+    } else if (lookaheadDepth >= 10) {
+      score *= 1.7;
     } else if (lookaheadDepth >= 8) {
-      score *= 1.3;
+      score *= 1.4;
     } else if (lookaheadDepth >= 6) {
-      score *= 1.15;
+      score *= 1.2;
     }
     
     // BONUS for high-stakes decision points
-    score *= (1 + highStakesDecisions * 0.03);
+    score *= (1 + highStakesDecisions * 0.05);
 
     if (score > bestScore) {
       bestScore = score;
@@ -2978,9 +2985,9 @@ export function generatePuzzle(seed: string): PuzzleData {
 
     // Only break early if we find a truly excellent puzzle
     // Now also considers advanced metrics
-    if (optimalMoves >= 70 && branchingFactor >= 2.2 && 
-        deceptivenessRatio >= 2.0 && greedyPenalty >= 8 &&
-        pathTemperature <= 0.5 && lookaheadDepth >= 6) {
+    if (optimalMoves >= 85 && branchingFactor >= 2.4 && 
+        deceptivenessRatio >= 2.5 && greedyPenalty >= 12 &&
+        pathTemperature <= 0.45 && lookaheadDepth >= 8) {
       break;
     }
   }

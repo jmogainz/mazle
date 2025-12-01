@@ -293,9 +293,11 @@ export class GameScene extends Phaser.Scene {
     if (tile === TileType.WALL) return false;
     
     // Ledge entry rules
+    // LEDGE_UP: enter from above (moving DOWN), LEDGE_DOWN: enter from below (moving UP)
+    // LEDGE_LEFT: enter from right (moving LEFT), LEDGE_RIGHT: enter from left (moving RIGHT)
     if (tile >= TileType.LEDGE_UP && tile <= TileType.LEDGE_RIGHT) {
       const ledgeIndex = tile - TileType.LEDGE_UP;
-      const allowedDirs = [Direction.DOWN, Direction.UP, Direction.RIGHT, Direction.LEFT];
+      const allowedDirs = [Direction.DOWN, Direction.UP, Direction.LEFT, Direction.RIGHT];
       if (dir !== allowedDirs[ledgeIndex]) return false;
     }
     

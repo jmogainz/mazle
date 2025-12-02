@@ -12,7 +12,7 @@ import {
   getDailySeed,
   GenerationProgress,
 } from '@/game';
-import { getPlayerStats, saveTodaysResult, getTodaysResult } from '@/utils/storage';
+import { getPlayerStats, saveTodaysResult, getTodaysResult, getCachedPuzzle, cachePuzzle } from '@/utils/storage';
 import { PlayerStats, DailyStats } from '@/game/types';
 import type { GameControls } from '@/game/PhaserGame';
 import styles from './page.module.css';
@@ -76,6 +76,14 @@ export default function Home() {
       setGameResult(null);
     }
 
+    // Check cache first for instant loading
+    const cachedPuzzle = getCachedPuzzle(todaySeed);
+    if (cachedPuzzle) {
+      setPuzzle(cachedPuzzle);
+      setRenderKey((prev) => prev + 1);
+      return;
+    }
+
     // Generate puzzle in parallel (non-blocking)
     setIsGenerating(true);
     setGenerationProgress(null);
@@ -84,6 +92,8 @@ export default function Home() {
       const todayPuzzle = await generatePuzzleParallel(todaySeed, setGenerationProgress);
       setPuzzle(todayPuzzle);
       setRenderKey((prev) => prev + 1);
+      // Cache for future visits
+      cachePuzzle(todaySeed, todayPuzzle);
     } finally {
       setIsGenerating(false);
       setGenerationProgress(null);

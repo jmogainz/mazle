@@ -1,7 +1,8 @@
-import { PlayerStats, DailyStats } from '@/game/types';
+import { PlayerStats, DailyStats, PuzzleData, TileType } from '@/game/types';
 
 const STATS_KEY = 'mazle_stats';
 const DAILY_KEY = 'mazle_daily';
+const PUZZLE_CACHE_KEY = 'mazle_puzzle_cache_v1';
 
 // Get default player stats
 function getDefaultStats(): PlayerStats {
@@ -145,3 +146,69 @@ export function formatTimeDetailed(ms: number): string {
   return `${minutes}:${seconds.toString().padStart(2, '0')}.${Math.floor(millis / 100)}`;
 }
 
+interface CachedPuzzle {
+  seed: string;
+  puzzle: PuzzleData;
+  generatedAt: number;
+}
+
+function isPuzzleData(value: unknown): value is PuzzleData {
+  if (!value || typeof value !== 'object') return false;
+  const puzzle = value as PuzzleData;
+  if (typeof puzzle.width !== 'number' || typeof puzzle.height !== 'number') return false;
+  if (!Array.isArray(puzzle.tiles) || puzzle.tiles.length === 0) return false;
+  if (typeof puzzle.start?.x !== 'number' || typeof puzzle.start?.y !== 'number') return false;
+  if (typeof puzzle.goal?.x !== 'number' || typeof puzzle.goal?.y !== 'number') return false;
+
+  // Spot check a tile to make sure it looks like serialized enum values
+  const firstRow = puzzle.tiles[0];
+  if (!Array.isArray(firstRow) || firstRow.length === 0) return false;
+  const firstTile = firstRow[0];
+  if (typeof firstTile !== 'number' || firstTile < TileType.FLOOR || firstTile > TileType.LEDGE_RIGHT) {
+    return false;
+  }
+
+  return true;
+}
+
+// Get cached puzzle if it matches the seed
+export function getCachedPuzzle(seed: string): PuzzleData | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const stored = localStorage.getItem(PUZZLE_CACHE_KEY);
+    if (!stored) return null;
+
+    const cached = JSON.parse(stored) as CachedPuzzle;
+    if (cached.seed !== seed) {
+      return null;
+    }
+
+    if (!isPuzzleData(cached.puzzle)) {
+      // Corrupted cache, clear it so we don't keep returning bad data
+      localStorage.removeItem(PUZZLE_CACHE_KEY);
+      return null;
+    }
+
+    return cached.puzzle;
+  } catch (error) {
+    console.error('Failed to load cached puzzle', error);
+    return null;
+  }
+}
+
+// Save puzzle to cache (overwrites previous seed)
+export function cachePuzzle(seed: string, puzzle: PuzzleData): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const cached: CachedPuzzle = {
+      seed,
+      puzzle,
+      generatedAt: Date.now(),
+    };
+    localStorage.setItem(PUZZLE_CACHE_KEY, JSON.stringify(cached));
+  } catch (error) {
+    console.error('Failed to cache puzzle', error);
+  }
+}

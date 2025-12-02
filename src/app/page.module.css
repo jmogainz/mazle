@@ -312,8 +312,14 @@
 /* Desktop layout */
 @media (min-width: 769px) {
   .gameWrapper {
-    padding: 2rem;
+    padding: 1.5rem;
     justify-content: center;
+  }
+
+  .gameFrame {
+    height: min(75vh, 600px);
+    width: auto !important;
+    max-width: none !important;
   }
 
   .devControls {

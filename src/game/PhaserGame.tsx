@@ -13,6 +13,8 @@ export interface GameControls {
 
 interface PhaserGameProps {
   puzzle: PuzzleData;
+  viewportWidth?: number;
+  viewportHeight?: number;
   onReady?: (controls: GameControls) => void;
 }
 
@@ -23,12 +25,12 @@ export interface PhaserGameRef {
   start: () => void;
 }
 
-export default function PhaserGame({ puzzle, onReady }: PhaserGameProps) {
+export default function PhaserGame({ puzzle, viewportWidth, viewportHeight, onReady }: PhaserGameProps) {
   const gameContainerRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
   
-  const baseWidth = Math.max(420, puzzle.width * TILE_SIZE + 64);
-  const baseHeight = Math.max(520, puzzle.height * TILE_SIZE + 120);
+  const baseWidth = viewportWidth ?? Math.max(420, puzzle.width * TILE_SIZE + 64);
+  const baseHeight = viewportHeight ?? Math.max(520, puzzle.height * TILE_SIZE + 120);
   
   const getControls = useCallback((): GameControls => ({
     restart: () => {
@@ -117,9 +119,7 @@ export default function PhaserGame({ puzzle, onReady }: PhaserGameProps) {
       className="game-container"
       style={{
         width: '100%',
-        maxWidth: `${baseWidth}px`,
-        aspectRatio: `${baseWidth} / ${baseHeight}`,
-        margin: '0 auto',
+        height: '100%',
       }}
     />
   );

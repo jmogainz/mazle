@@ -11,6 +11,7 @@ import {
   generatePuzzleParallel,
   getDailySeed,
   GenerationProgress,
+  TILE_SIZE,
 } from '@/game';
 import { getPlayerStats, saveTodaysResult, getTodaysResult, getCachedPuzzle, cachePuzzle } from '@/utils/storage';
 import { PlayerStats, DailyStats } from '@/game/types';
@@ -249,6 +250,11 @@ export default function Home() {
     );
   }
 
+  const puzzleWidth = puzzle?.width ?? 10;
+  const puzzleHeight = puzzle?.height ?? 10;
+  const baseWidth = Math.max(420, puzzleWidth * TILE_SIZE + 64);
+  const baseHeight = Math.max(520, puzzleHeight * TILE_SIZE + 120);
+
   return (
     <ErrorBoundary>
     <main className={`${styles.main} bg-pattern`}>
@@ -350,18 +356,20 @@ export default function Home() {
           puzzleLabel={puzzleLabel ?? undefined}
         />
         
-        <div className={styles.gameFrame}>
-          <div 
-            className={styles.gameContainer}
-            style={{
-              aspectRatio: `${Math.max(420, puzzle.width * 32 + 64)} / ${Math.max(520, puzzle.height * 32 + 120)}`,
-              maxWidth: `${Math.max(420, puzzle.width * 32 + 64)}px`
-            }}
-          >
+        <div
+          className={styles.gameFrame}
+          style={{
+            maxWidth: `${baseWidth}px`,
+            aspectRatio: `${baseWidth} / ${baseHeight}`,
+          }}
+        >
+          <div className={styles.gameContainer}>
             <div className={`${styles.gameContent} ${(!isPlaying && isGameReady) ? styles.blurred : ''}`}>
               <PhaserGame
                 key={renderKey}
                 puzzle={puzzle}
+                viewportWidth={baseWidth}
+                viewportHeight={baseHeight}
                 onReady={handleGameReady}
               />
             </div>

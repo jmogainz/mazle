@@ -156,11 +156,15 @@
 .gameFrame {
   position: relative;
   width: 100%;
-  max-width: 560px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 .gameContainer {
   width: 100%;
+  height: 100%;
   display: flex;
   justify-content: center;
   border-radius: 12px;
@@ -171,8 +175,10 @@
 
 .gameContent {
   width: 100%;
+  height: 100%;
   display: flex;
   justify-content: center;
+  align-items: center;
   transition: filter 0.5s ease;
 }
 

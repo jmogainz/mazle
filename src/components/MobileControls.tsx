@@ -12,16 +12,6 @@ interface MobileControlsProps {
 export default function MobileControls({ onMove, disabled }: MobileControlsProps) {
   const [pressedDir, setPressedDir] = useState<Direction | null>(null);
 
-  const vibrateLight = useCallback(() => {
-    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
-      try {
-        navigator.vibrate(10);
-      } catch {
-        // noop if vibration not allowed
-      }
-    }
-  }, []);
-
   const handleTouchStart = useCallback((dir: Direction) => {
     if (!disabled) {
       setPressedDir(dir);
@@ -31,18 +21,16 @@ export default function MobileControls({ onMove, disabled }: MobileControlsProps
   const handleTouchEnd = useCallback((dir: Direction) => {
     if (!disabled && pressedDir === dir) {
       onMove(dir);
-      vibrateLight();
     }
     setPressedDir(null);
-  }, [disabled, onMove, pressedDir, vibrateLight]);
+  }, [disabled, onMove, pressedDir]);
 
   const handleClick = useCallback((dir: Direction) => {
     // Fallback for non-touch devices
     if (!disabled) {
       onMove(dir);
-      vibrateLight();
     }
-  }, [disabled, onMove, vibrateLight]);
+  }, [disabled, onMove]);
 
   const getButtonClass = (dir: Direction) => {
     const dirClass = styles[dir];

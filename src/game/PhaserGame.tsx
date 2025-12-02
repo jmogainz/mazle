@@ -76,6 +76,9 @@ export default function PhaserGame({ puzzle, viewportWidth, viewportHeight, onRe
       parent: gameContainerRef.current,
       backgroundColor: COLORS.BACKGROUND,
       pixelArt: true,
+      audio: {
+        noAudio: true,
+      },
       scale: {
         mode: Phaser.Scale.FIT,
         autoCenter: Phaser.Scale.CENTER_BOTH,

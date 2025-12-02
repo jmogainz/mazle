@@ -142,7 +142,6 @@ export default function Home() {
 
   // Handle mobile control input
   const handleMobileMove = useCallback((direction: Direction) => {
-    // Directly call the game's movePlayer method
     gameControlsRef.current?.movePlayer(direction);
   }, []);
 
@@ -385,7 +384,7 @@ export default function Home() {
 
         <MobileControls
           onMove={handleMobileMove}
-          disabled={!isGameReady || !!gameResult || !isPlaying}
+          disabled={!isGameReady || !isPlaying}
         />
 
         {previousResult && !showShareCard && !isPlaying && (

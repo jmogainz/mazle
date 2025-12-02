@@ -4,14 +4,13 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { Header, GameUI, ShareCard, StatsModal, HelpModal, MobileControls, ErrorBoundary } from '@/components';
 import {
-  getTodaysPuzzle,
   getPuzzleNumber,
   onGameEvent,
   Direction,
   PuzzleData,
-  generatePuzzle,
+  generatePuzzleParallel,
   getDailySeed,
-  getPuzzleForDate,
+  GenerationProgress,
 } from '@/game';
 import { getPlayerStats, saveTodaysResult, getTodaysResult } from '@/utils/storage';
 import { PlayerStats, DailyStats } from '@/game/types';
@@ -49,24 +48,23 @@ export default function Home() {
   const [isGameReady, setIsGameReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState<GenerationProgress | null>(null);
   const gameControlsRef = useRef<GameControls | null>(null);
   const debugModeRef = useRef(false);
 
-  const loadDailyPuzzle = useCallback(() => {
+  const loadDailyPuzzle = useCallback(async () => {
     const today = new Date();
-    const todayPuzzle = getTodaysPuzzle();
     const todayNumber = getPuzzleNumber(today);
     const todaySeed = getDailySeed(today);
     const playerStats = getPlayerStats();
     const existingResult = getTodaysResult();
 
+    // Set initial state immediately so UI renders
     debugModeRef.current = false;
-    setPuzzle(todayPuzzle);
     setPuzzleNumber(todayNumber);
     setPuzzleLabel(null);
     setActiveSeed(todaySeed);
     setSeedInput('');
-    setRenderKey((prev) => prev + 1);
     setStats(playerStats);
     setPreviousResult(existingResult);
     setShowShareCard(false);
@@ -77,11 +75,29 @@ export default function Home() {
     } else {
       setGameResult(null);
     }
+
+    // Generate puzzle in parallel (non-blocking)
+    setIsGenerating(true);
+    setGenerationProgress(null);
+    
+    try {
+      const todayPuzzle = await generatePuzzleParallel(todaySeed, setGenerationProgress);
+      setPuzzle(todayPuzzle);
+      setRenderKey((prev) => prev + 1);
+    } finally {
+      setIsGenerating(false);
+      setGenerationProgress(null);
+    }
   }, []);
 
-  // Initialize puzzle and stats
+  // Initialize puzzle and stats - use requestAnimationFrame to ensure first paint
   useEffect(() => {
-    loadDailyPuzzle();
+    // Ensure the loading UI renders before starting heavy computation
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        loadDailyPuzzle();
+      });
+    });
   }, [loadDailyPuzzle]);
 
   // Listen for game completion
@@ -131,7 +147,7 @@ export default function Home() {
   }, []);
 
   const handleDevSeedGenerate = useCallback(
-    (rawSeed?: string) => {
+    async (rawSeed?: string) => {
       if (!DEVTOOLS_ENABLED) return;
 
       const trimmed = rawSeed?.trim() ?? '';
@@ -139,11 +155,13 @@ export default function Home() {
 
       if (isDateSeed) {
         setIsGenerating(true);
-        // Use setTimeout to allow spinner to render
-        setTimeout(() => {
-          const targetDate = new Date(trimmed);
-          const datedPuzzle = getPuzzleForDate(targetDate);
-          const dailySeed = getDailySeed(targetDate);
+        setGenerationProgress(null);
+        
+        const targetDate = new Date(trimmed);
+        const dailySeed = getDailySeed(targetDate);
+        
+        try {
+          const datedPuzzle = await generatePuzzleParallel(dailySeed, setGenerationProgress);
           debugModeRef.current = true;
           setPuzzle(datedPuzzle);
           setPuzzleNumber(getPuzzleNumber(targetDate));
@@ -154,8 +172,10 @@ export default function Home() {
           setShowShareCard(false);
           setPreviousResult(null);
           setIsPlaying(false);
+        } finally {
           setIsGenerating(false);
-        }, 50);
+          setGenerationProgress(null);
+        }
         return;
       }
 
@@ -166,9 +186,10 @@ export default function Home() {
           .padStart(4, '0')}`;
 
       setIsGenerating(true);
-      // Use setTimeout to allow spinner to render before CPU-intensive generation
-      setTimeout(() => {
-        const newPuzzle = generatePuzzle(newSeed);
+      setGenerationProgress(null);
+      
+      try {
+        const newPuzzle = await generatePuzzleParallel(newSeed, setGenerationProgress);
         debugModeRef.current = true;
         setPuzzle(newPuzzle);
         setPuzzleLabel(`DEV ${newSeed}`);
@@ -179,8 +200,10 @@ export default function Home() {
         setShowShareCard(false);
         setPreviousResult(null);
         setIsPlaying(false);
+      } finally {
         setIsGenerating(false);
-      }, 50);
+        setGenerationProgress(null);
+      }
     },
     [],
   );
@@ -206,7 +229,11 @@ export default function Home() {
       <main className={`${styles.main} bg-pattern`} style={{ justifyContent: 'center' }}>
         <div className={styles.loading} style={{ minHeight: 'auto' }}>
           <div className={styles.loadingSpinner} />
-          <p>Loading Mazle...</p>
+          <p>
+            {generationProgress 
+              ? `Generating puzzle... ${generationProgress.workersComplete}/${generationProgress.totalWorkers} workers complete`
+              : 'Loading Mazle...'}
+          </p>
         </div>
       </main>
     );
@@ -287,7 +314,9 @@ export default function Home() {
                 {isGenerating ? (
                   <>
                     <span className={styles.buttonSpinner} />
-                    Generating...
+                    {generationProgress 
+                      ? `${generationProgress.workersComplete}/${generationProgress.totalWorkers} done`
+                      : 'Starting...'}
                   </>
                 ) : (
                   'Random seed'

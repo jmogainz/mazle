@@ -64,8 +64,13 @@ export default function PhaserGame({ puzzle, onReady }: PhaserGameProps) {
       return;
     }
 
+    // Detect mobile devices for renderer selection
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+      navigator.userAgent
+    ) || window.innerWidth <= 768;
+    
     const config: Phaser.Types.Core.GameConfig = {
-      type: Phaser.CANVAS, // Force Canvas renderer for better mobile compatibility
+      type: isMobile ? Phaser.CANVAS : Phaser.WEBGL, // Canvas on mobile, WebGL on desktop
       parent: gameContainerRef.current,
       backgroundColor: COLORS.BACKGROUND,
       pixelArt: true,
@@ -113,9 +118,7 @@ export default function PhaserGame({ puzzle, onReady }: PhaserGameProps) {
       style={{
         width: '100%',
         maxWidth: `${baseWidth}px`,
-        // Use padding-bottom fallback for older browsers that don't support aspectRatio
         aspectRatio: `${baseWidth} / ${baseHeight}`,
-        minHeight: `${baseHeight}px`,
         margin: '0 auto',
       }}
     />

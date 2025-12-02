@@ -361,17 +361,21 @@ export class GameScene extends Phaser.Scene {
     const px = this.offsetX + finalPos.x * TILE_SIZE + TILE_SIZE / 2;
     const py = this.offsetY + finalPos.y * TILE_SIZE + TILE_SIZE / 2;
     
-    // Calculate duration based on distance traveled
-    // ~25% slower: 150ms first step + 75ms per additional tile
-    const baseDuration = 150;
-    const slideDuration = baseDuration + (path.length - 1) * 75;
+    const isSliding = path.length > 1;
+    
+    // Different timing for walking vs sliding:
+    // - Regular step: 110ms, snappy and responsive
+    // - Ice slide: 180ms + 90ms per tile, smooth leisurely glide
+    const duration = isSliding 
+      ? 180 + (path.length - 1) * 90 
+      : 110;
     
     this.tweens.add({
       targets: this.player,
       x: px,
       y: py,
-      duration: slideDuration,
-      ease: path.length > 1 ? 'Linear' : 'Quad.easeOut', // Linear for ice sliding like original
+      duration,
+      ease: isSliding ? 'Sine.easeOut' : 'Quad.easeOut',
       onComplete: onComplete,
     });
   }

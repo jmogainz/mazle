@@ -355,24 +355,23 @@ export class GameScene extends Phaser.Scene {
   }
 
   private animatePath(path: Position[], onComplete: () => void) {
-    // Build chain of tweens for the path
-    const tweenConfigs: Phaser.Types.Tweens.TweenBuilderConfig[] = path.map((pos, index) => {
-      const px = this.offsetX + pos.x * TILE_SIZE + TILE_SIZE / 2;
-      const py = this.offsetY + pos.y * TILE_SIZE + TILE_SIZE / 2;
-      const duration = index === 0 ? 120 : 60; // First step slower, sliding fast
-      
-      return {
-        targets: this.player,
-        x: px,
-        y: py,
-        duration,
-        ease: path.length > 1 ? 'Linear' : 'Quad.easeOut',
-      };
-    });
-
-    // Chain the tweens together
-    this.tweens.chain({
-      tweens: tweenConfigs,
+    // For smooth ice sliding, animate directly to final position
+    // instead of chaining many tiny tweens (which can look choppy)
+    const finalPos = path[path.length - 1];
+    const px = this.offsetX + finalPos.x * TILE_SIZE + TILE_SIZE / 2;
+    const py = this.offsetY + finalPos.y * TILE_SIZE + TILE_SIZE / 2;
+    
+    // Calculate duration based on distance traveled
+    // Match original timing: 120ms first step + 60ms per additional tile
+    const baseDuration = 120;
+    const slideDuration = baseDuration + (path.length - 1) * 60;
+    
+    this.tweens.add({
+      targets: this.player,
+      x: px,
+      y: py,
+      duration: slideDuration,
+      ease: path.length > 1 ? 'Linear' : 'Quad.easeOut', // Linear for ice sliding like original
       onComplete: onComplete,
     });
   }

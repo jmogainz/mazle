@@ -362,9 +362,9 @@ export class GameScene extends Phaser.Scene {
     const py = this.offsetY + finalPos.y * TILE_SIZE + TILE_SIZE / 2;
     
     // Calculate duration based on distance traveled
-    // Match original timing: 120ms first step + 60ms per additional tile
-    const baseDuration = 120;
-    const slideDuration = baseDuration + (path.length - 1) * 60;
+    // ~25% slower: 150ms first step + 75ms per additional tile
+    const baseDuration = 150;
+    const slideDuration = baseDuration + (path.length - 1) * 75;
     
     this.tweens.add({
       targets: this.player,

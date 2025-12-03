@@ -12,6 +12,7 @@ export interface WorkerRequest {
   constraintEnd: number;
   traditionalStart: number;
   traditionalEnd: number;
+  forceMapType?: MapType;
 }
 
 export interface WorkerResponse {
@@ -26,7 +27,7 @@ export interface WorkerResponse {
 // Handle messages from main thread
 self.onmessage = (e: MessageEvent<WorkerRequest>) => {
   if (e.data.type === 'generate') {
-    const { seed, workerId, constraintStart, constraintEnd, traditionalStart, traditionalEnd } = e.data;
+    const { seed, workerId, constraintStart, constraintEnd, traditionalStart, traditionalEnd, forceMapType } = e.data;
     
     try {
       const result = generatePuzzlePartial(
@@ -34,7 +35,8 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
         constraintStart,
         constraintEnd,
         traditionalStart,
-        traditionalEnd
+        traditionalEnd,
+        forceMapType
       );
       
       const response: WorkerResponse = {

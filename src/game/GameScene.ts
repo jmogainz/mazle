@@ -15,6 +15,10 @@ import {
   getDelta,
   getMovementConfig,
   MovementConfig,
+  positionKey,
+  simulateGroundMove,
+  createGroundState,
+  GroundPuzzleState,
 } from './movement';
 
 export class GameScene extends Phaser.Scene {
@@ -33,6 +37,10 @@ export class GameScene extends Phaser.Scene {
   private offsetY = 0;
 
   private isPlaying = false;
+  
+  // Boulder state tracking (for ground maps)
+  private boulderPositions: Set<string> = new Set();
+  private boulderSprites: Map<string, Phaser.GameObjects.Container> = new Map();
 
   constructor() {
     super({ key: 'GameScene' });
@@ -52,6 +60,17 @@ export class GameScene extends Phaser.Scene {
       isSliding: false,
       moveHistory: [{ ...this.puzzle.start }],
     };
+    
+    // Initialize boulder positions from puzzle tiles
+    this.boulderPositions = new Set();
+    this.boulderSprites = new Map();
+    for (let y = 0; y < this.puzzle.height; y++) {
+      for (let x = 0; x < this.puzzle.width; x++) {
+        if (this.puzzle.tiles[y][x] === TileType.BOULDER) {
+          this.boulderPositions.add(positionKey({ x, y }));
+        }
+      }
+    }
   }
 
   create() {
@@ -64,6 +83,9 @@ export class GameScene extends Phaser.Scene {
     // Draw tiles
     this.drawTiles();
     
+    // Create boulder sprites (for ground maps)
+    this.createBoulderSprites();
+    
     // Create goal with animation
     this.createGoal();
     
@@ -75,6 +97,47 @@ export class GameScene extends Phaser.Scene {
     
     // Emit initial state
     emitGameEvent('stateUpdate', { ...this.gameState });
+  }
+  
+  private createBoulderSprites() {
+    // Create sprites for each boulder position
+    for (const key of this.boulderPositions) {
+      const [x, y] = key.split(',').map(Number);
+      this.createBoulderSprite(x, y);
+    }
+  }
+  
+  private createBoulderSprite(gridX: number, gridY: number): Phaser.GameObjects.Container {
+    const px = this.offsetX + gridX * TILE_SIZE + TILE_SIZE / 2;
+    const py = this.offsetY + gridY * TILE_SIZE + TILE_SIZE / 2;
+    
+    const boulder = this.add.container(px, py);
+    const key = positionKey({ x: gridX, y: gridY });
+    
+    // Boulder graphics - matches the tile drawing
+    const g = this.add.graphics();
+    const size = TILE_SIZE;
+    const boulderSize = size * 0.75;
+    const halfSize = boulderSize / 2;
+    
+    // Main boulder body
+    g.fillStyle(COLORS.BOULDER);
+    g.fillRoundedRect(-halfSize, -halfSize, boulderSize, boulderSize, 6);
+    
+    // Shadow
+    g.fillStyle(COLORS.BOULDER_SHADOW);
+    g.fillRoundedRect(-halfSize + 3, -halfSize + boulderSize - 6, boulderSize - 6, 4, 2);
+    g.fillRoundedRect(-halfSize + boulderSize - 6, -halfSize + 3, 4, boulderSize - 6, 2);
+    
+    // Highlight
+    g.fillStyle(COLORS.BOULDER_HIGHLIGHT);
+    g.fillCircle(-halfSize + 8, -halfSize + 8, 3);
+    g.fillRoundedRect(-halfSize + 4, -halfSize + 3, boulderSize * 0.4, 3, 1);
+    
+    boulder.add(g);
+    this.boulderSprites.set(key, boulder);
+    
+    return boulder;
   }
 
   private drawTiles() {
@@ -163,6 +226,14 @@ export class GameScene extends Phaser.Scene {
           // LEDGE_LEFT - Arrow pointing LEFT (you enter moving left)
           g.fillTriangle(cx - arrowSize, cy, cx + arrowSize/2, cy - arrowSize, cx + arrowSize/2, cy + arrowSize);
         }
+        break;
+
+      case TileType.BOULDER:
+        // Draw ground underneath boulder (the boulder sprite is drawn separately)
+        const isAltBoulder = (gridX + gridY) % 2 === 0;
+        g.fillStyle(isAltBoulder ? COLORS.GROUND : COLORS.GROUND_ALT);
+        g.fillRect(px + padding, py + padding, size - padding * 2, size - padding * 2);
+        // Boulder is rendered as a sprite for animation purposes
         break;
     }
   }
@@ -286,6 +357,22 @@ export class GameScene extends Phaser.Scene {
 
     const currentPos = { ...this.gameState.playerPos };
     
+    // Check if this is a ground map with boulders
+    const isGroundMap = this.puzzle.mapType === MapType.GROUND;
+    const hasBoulders = this.boulderPositions.size > 0;
+    
+    if (isGroundMap && hasBoulders) {
+      // Use ground movement simulation with boulder support
+      this.handleGroundMove(dir);
+    } else {
+      // Use standard movement simulation (ice maps or ground without boulders)
+      this.handleStandardMove(dir);
+    }
+  }
+  
+  private handleStandardMove(dir: Direction) {
+    const currentPos = { ...this.gameState.playerPos };
+    
     // Use shared movement simulation
     const result = simulateMove(
       this.puzzle.tiles,
@@ -315,6 +402,85 @@ export class GameScene extends Phaser.Scene {
     emitGameEvent('stateUpdate', { ...this.gameState });
 
     // Animate through path
+    this.animatePath(path, () => {
+      this.isAnimating = false;
+      
+      // Check win condition
+      if (newPos.x === this.puzzle.goal.x && newPos.y === this.puzzle.goal.y) {
+        this.handleWin();
+      }
+    });
+  }
+  
+  private handleGroundMove(dir: Direction) {
+    const currentPos = { ...this.gameState.playerPos };
+    
+    // Create ground state with current boulder positions
+    const groundState: GroundPuzzleState = {
+      tiles: this.puzzle.tiles,
+      boulderPositions: this.boulderPositions,
+      width: this.puzzle.width,
+      height: this.puzzle.height,
+    };
+    
+    // Simulate ground move with boulder mechanics
+    const result = simulateGroundMove(groundState, currentPos, dir);
+    
+    // If move is invalid, play bump animation
+    if (!result.valid) {
+      this.playBumpAnimation(dir);
+      return;
+    }
+
+    const newPos = result.playerPos;
+    const path = result.path ?? [newPos];
+
+    // Animate movement
+    this.isAnimating = true;
+    this.gameState.moveCount++;
+    this.gameState.playerPos = newPos;
+    this.gameState.moveHistory.push({ ...newPos });
+
+    // Emit state update
+    emitGameEvent('stateUpdate', { ...this.gameState });
+    
+    // Handle boulder push animation
+    if (result.boulderPushed && result.boulderFrom && result.boulderTo && result.newBoulderPositions) {
+      const oldKey = positionKey(result.boulderFrom);
+      const newKey = positionKey(result.boulderTo);
+      
+      // Update boulder positions
+      this.boulderPositions = result.newBoulderPositions;
+      
+      // Animate boulder and player together
+      const boulderSprite = this.boulderSprites.get(oldKey);
+      if (boulderSprite) {
+        // Update sprite map
+        this.boulderSprites.delete(oldKey);
+        this.boulderSprites.set(newKey, boulderSprite);
+        
+        // Calculate boulder target position
+        const boulderPath = result.boulderPath ?? [result.boulderTo];
+        const finalBoulderPos = boulderPath[boulderPath.length - 1];
+        const boulderPx = this.offsetX + finalBoulderPos.x * TILE_SIZE + TILE_SIZE / 2;
+        const boulderPy = this.offsetY + finalBoulderPos.y * TILE_SIZE + TILE_SIZE / 2;
+        
+        // Animate boulder
+        const boulderDuration = boulderPath.length > 1 
+          ? 180 + (boulderPath.length - 1) * 90  // Ice slide
+          : 110;  // Single push
+        
+        this.tweens.add({
+          targets: boulderSprite,
+          x: boulderPx,
+          y: boulderPy,
+          duration: boulderDuration,
+          ease: boulderPath.length > 1 ? 'Sine.easeOut' : 'Quad.easeOut',
+        });
+      }
+    }
+
+    // Animate player through path
     this.animatePath(path, () => {
       this.isAnimating = false;
       

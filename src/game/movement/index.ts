@@ -17,6 +17,22 @@ export {
 export { iceMovementConfig } from './configs/ice';
 export { groundMovementConfig } from './configs/ground';
 
+// Ground-specific movement with boulder support
+export {
+  simulateGroundMove,
+  createGroundState,
+  getValidMoves,
+  findGroundPath,
+  findOptimalGroundPath,
+  isGroundPuzzleSolvable,
+  getGroundReachable,
+  hasNoStuckStates as hasNoGroundStuckStates,
+} from './groundMovement';
+export type { GroundPuzzleState, GroundMoveResult } from './groundMovement';
+
+// Also export hasNoStuckStates directly for ground movement
+export { hasNoStuckStates } from './groundMovement';
+
 // Re-export a helper to get config by map type
 import { MapType } from '../types';
 import { iceMovementConfig } from './configs/ice';

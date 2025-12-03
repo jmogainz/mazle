@@ -10,6 +10,7 @@ import { PuzzleData, MapType } from './types';
 import { MAP_REGISTRY } from './maps/registry';
 // Import maps to trigger registration
 import './maps/ice';
+import './maps/ground';
 
 // Server salt for puzzle generation
 const SERVER_SALT = 'mazle-daily-v8-2024-genius';
@@ -67,9 +68,12 @@ function selectMapType(seed: string): MapType {
 /**
  * Generate a puzzle for the given seed.
  * Delegates to the appropriate map type generator.
+ * 
+ * @param seed - The seed for puzzle generation
+ * @param forceMapType - Optional: force a specific map type (for dev tools)
  */
-export function generatePuzzle(seed: string): PuzzleData {
-  const mapType = selectMapType(seed);
+export function generatePuzzle(seed: string, forceMapType?: MapType): PuzzleData {
+  const mapType = forceMapType ?? selectMapType(seed);
   const mapDef = MAP_REGISTRY.get(mapType);
   
   if (!mapDef) {
@@ -82,15 +86,18 @@ export function generatePuzzle(seed: string): PuzzleData {
 /**
  * Partial puzzle generation for parallel workers.
  * Each worker processes a subset of attempts and returns the best found.
+ * 
+ * @param forceMapType - Optional: force a specific map type (for dev tools)
  */
 export function generatePuzzlePartial(
   seed: string,
   constraintStart: number,
   constraintEnd: number,
   traditionalStart: number,
-  traditionalEnd: number
+  traditionalEnd: number,
+  forceMapType?: MapType
 ): { puzzle: PuzzleData | null; score: number } {
-  const mapType = selectMapType(seed);
+  const mapType = forceMapType ?? selectMapType(seed);
   const mapDef = MAP_REGISTRY.get(mapType);
   
   if (!mapDef) {

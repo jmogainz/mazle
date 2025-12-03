@@ -15,6 +15,7 @@ export enum TileType {
   LEDGE_DOWN = 6,  // Can only enter from below, exits up
   LEDGE_LEFT = 7,  // Can only enter from right, exits left
   LEDGE_RIGHT = 8, // Can only enter from left, exits right
+  BOULDER = 9,     // Pushable boulder - blocks movement but can be pushed
 }
 
 export enum Direction {
@@ -92,6 +93,10 @@ export const COLORS = {
   BACKGROUND: 0x0f0f1a,
   UI_PRIMARY: 0xffffff,
   UI_SECONDARY: 0x888888,
+  // Boulder colors
+  BOULDER: 0x7a6855,      // Rocky brown-gray
+  BOULDER_HIGHLIGHT: 0x9a8875, // Lighter highlight for 3D effect
+  BOULDER_SHADOW: 0x5a4835,    // Darker shadow
 };
 
 export const TILE_SIZE = 32;

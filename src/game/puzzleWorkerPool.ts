@@ -1,5 +1,5 @@
 // Worker pool for TRUE parallel puzzle generation across multiple CPU cores
-import type { PuzzleData } from './types';
+import type { PuzzleData, MapType } from './types';
 
 export interface WorkerRequest {
   type: 'generate';
@@ -9,6 +9,7 @@ export interface WorkerRequest {
   constraintEnd: number;
   traditionalStart: number;
   traditionalEnd: number;
+  forceMapType?: MapType;
 }
 
 export interface WorkerResponse {
@@ -73,10 +74,11 @@ class WorkerPool {
 
   async generate(
     seed: string,
-    onProgress?: (progress: GenerationProgress) => void
+    onProgress?: (progress: GenerationProgress) => void,
+    forceMapType?: MapType
   ): Promise<PuzzleData> {
     const startTime = performance.now();
-    console.log(`[WorkerPool] Starting parallel generation for seed: ${seed}`);
+    console.log(`[WorkerPool] Starting parallel generation for seed: ${seed}${forceMapType ? ` (forced: ${forceMapType})` : ''}`);
 
     await this.init();
 
@@ -84,7 +86,7 @@ class WorkerPool {
     if (this.workers.length === 0) {
       console.warn('[WorkerPool] No workers available, falling back to main thread');
       const { generatePuzzle } = await import('./puzzleGenerator');
-      return generatePuzzle(seed);
+      return generatePuzzle(seed, forceMapType);
     }
 
     const numWorkers = this.workers.length;
@@ -175,6 +177,7 @@ class WorkerPool {
           constraintEnd,
           traditionalStart,
           traditionalEnd,
+          forceMapType,
         };
 
         console.log(`[WorkerPool] Worker ${i}: constraints ${constraintStart}-${constraintEnd}, traditional ${traditionalStart}-${traditionalEnd}`);
@@ -204,9 +207,10 @@ function getPool(): WorkerPool {
 // Main export - generate puzzle using parallel workers
 export async function generatePuzzleParallel(
   seed: string,
-  onProgress?: (progress: GenerationProgress) => void
+  onProgress?: (progress: GenerationProgress) => void,
+  forceMapType?: MapType
 ): Promise<PuzzleData> {
-  return getPool().generate(seed, onProgress);
+  return getPool().generate(seed, onProgress, forceMapType);
 }
 
 export function getWorkerPool() {

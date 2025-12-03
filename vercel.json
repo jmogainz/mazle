@@ -5,7 +5,7 @@
   "framework": "nextjs",
   "build": {
     "env": {
-      "NEXT_PUBLIC_DEVTOOLS_ENABLED": "1",
+      "NEXT_PUBLIC_DEVTOOLS_ENABLED": "0",
       "NEXT_PUBLIC_ENV": "prod"
     }
   }

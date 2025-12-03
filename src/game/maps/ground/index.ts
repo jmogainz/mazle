@@ -1,8 +1,17 @@
 /**
  * Ground Map Type
  * 
- * Step-based movement puzzles without ice sliding mechanics.
- * Currently disabled (weight: 0) pending full implementation.
+ * Sokoban-inspired puzzle mechanics featuring:
+ * - Step-based movement on ground tiles
+ * - Pushable boulders (Sokoban mechanics)
+ * - Strategic ice patches (local sliding zones)
+ * - One-way ledges (commitment points)
+ * 
+ * Psychology-based difficulty creates challenging puzzles through:
+ * - Counter-intuitive boulder pushes
+ * - Boulder commitment gates (wrong push blocks progress)
+ * - Ice patch surprises (unexpected sliding)
+ * - Ledge irreversibility
  */
 
 import { MapType } from '../../types';
@@ -14,7 +23,7 @@ import { scoreGroundPuzzle } from './psychology';
 
 /**
  * Ground map type definition.
- * Step-based puzzles without sliding mechanics.
+ * Sokoban-style puzzles with boulders, ice patches, and ledges.
  */
 export const groundMapDefinition: MapTypeDefinition = {
   type: MapType.GROUND,
@@ -23,7 +32,7 @@ export const groundMapDefinition: MapTypeDefinition = {
   generatePartial: generatePuzzlePartial,
   movementConfig: groundMovementConfig,
   tileset: groundTileset,
-  weight: 0, // DISABLED - Enable when ground generation is ready
+  weight: 1, // ENABLED - Equal weight with ice maps
   psychologyScorer: scoreGroundPuzzle,
 };
 
@@ -34,4 +43,5 @@ registerMapType(groundMapDefinition);
 export { generatePuzzle, generatePuzzlePartial } from './generator';
 export { groundTileset } from './tileset';
 export { scoreGroundPuzzle } from './psychology';
+export type { GroundPsychologyMetrics } from './psychology';
 

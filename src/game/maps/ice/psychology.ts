@@ -31,3 +31,4 @@ export function scoreIcePuzzle(puzzle: PuzzleData): PsychologyMetrics {
 // Re-export the raw calculator for advanced use cases
 export { calculatePsychologyScore } from './generator';
 
+

@@ -1,6 +1,11 @@
 import seedrandom from 'seedrandom';
 import { TileType, Position, PuzzleData, Direction, MapType } from '../../types';
 
+// Tuning knobs for harder puzzles
+const TARGET_PSYCHOLOGY_SCORE = 2000;
+const CONSTRAINT_ATTEMPTS = 160;
+const TRADITIONAL_ATTEMPTS = 400;
+
 // Seeded random number generator
 class SeededRandom {
   private rng: seedrandom.PRNG;
@@ -2959,7 +2964,7 @@ export function generatePuzzle(seed: string): PuzzleData {
   let bestPuzzle: PuzzleData | null = null;
   let bestScore = 0;
   
-  for (let cbAttempt = 0; cbAttempt < 80; cbAttempt++) {
+  for (let cbAttempt = 0; cbAttempt < CONSTRAINT_ATTEMPTS; cbAttempt++) {
     const cbRng = new SeededRandom(seed + '-cb-' + cbAttempt);
     const chainLength = cbRng.randomInt(16, 26); // Longer chains = harder
     
@@ -2995,7 +3000,8 @@ export function generatePuzzle(seed: string): PuzzleData {
     }
     
     // Found excellent psychology-based puzzle
-    if (psychMetrics.counterIntuitiveMoves >= 8 && 
+    if (score >= TARGET_PSYCHOLOGY_SCORE &&
+        psychMetrics.counterIntuitiveMoves >= 8 && 
         psychMetrics.attractiveDecoys >= 10 &&
         psychMetrics.commitmentGates >= 3) {
       return bestPuzzle!;
@@ -3003,7 +3009,7 @@ export function generatePuzzle(seed: string): PuzzleData {
   }
   
   // If constraint-based found something good, use it
-  if (bestPuzzle && bestPuzzle.counterIntuitiveMoves && bestPuzzle.counterIntuitiveMoves >= 5) {
+  if (bestPuzzle && bestScore >= TARGET_PSYCHOLOGY_SCORE) {
     return bestPuzzle;
   }
 
@@ -3012,7 +3018,7 @@ export function generatePuzzle(seed: string): PuzzleData {
   // ============================================
   
   // Keep trying until we find a truly challenging puzzle
-  for (let attempt = 0; attempt < 200; attempt++) {
+  for (let attempt = 0; attempt < TRADITIONAL_ATTEMPTS; attempt++) {
     // Create base maze with guaranteed connectivity
     const tiles = createBaseMaze(width, height, rng);
 
@@ -3175,7 +3181,8 @@ export function generatePuzzle(seed: string): PuzzleData {
 
     // Break early if we find an excellent psychology-based puzzle
     // A good puzzle has multiple counter-intuitive moves AND attractive decoys
-    if (psychMetrics.counterIntuitiveMoves >= 8 && 
+    if (score >= TARGET_PSYCHOLOGY_SCORE &&
+        psychMetrics.counterIntuitiveMoves >= 8 && 
         psychMetrics.attractiveDecoys >= 10 &&
         psychMetrics.commitmentGates >= 3) {
       break;
@@ -3254,8 +3261,9 @@ export function generatePuzzlePartial(
       };
     }
     
-    // Found excellent puzzle - return early
-    if (psychMetrics.counterIntuitiveMoves >= 8 && 
+    // Found excellent puzzle - return early when score target is hit
+    if (score >= TARGET_PSYCHOLOGY_SCORE &&
+        psychMetrics.counterIntuitiveMoves >= 8 && 
         psychMetrics.attractiveDecoys >= 10 &&
         psychMetrics.commitmentGates >= 3) {
       return { puzzle: bestPuzzle, score: bestScore };
@@ -3263,7 +3271,7 @@ export function generatePuzzlePartial(
   }
   
   // If constraint-based found something good, skip traditional
-  if (bestPuzzle && bestPuzzle.counterIntuitiveMoves && bestPuzzle.counterIntuitiveMoves >= 5) {
+  if (bestPuzzle && bestScore >= TARGET_PSYCHOLOGY_SCORE) {
     return { puzzle: bestPuzzle, score: bestScore };
   }
 
@@ -3361,7 +3369,8 @@ export function generatePuzzlePartial(
     }
 
     // Found excellent puzzle - return early
-    if (psychMetrics.counterIntuitiveMoves >= 8 && 
+    if (score >= TARGET_PSYCHOLOGY_SCORE &&
+        psychMetrics.counterIntuitiveMoves >= 8 && 
         psychMetrics.attractiveDecoys >= 10 &&
         psychMetrics.commitmentGates >= 3) {
       return { puzzle: bestPuzzle, score: bestScore };
@@ -3504,4 +3513,3 @@ function createGuaranteedHardPuzzle(width: number, height: number, rng: SeededRa
 
   return { width, height, tiles, start, goal, optimalMoves, mapType: MapType.ICE };
 }
-

@@ -28,8 +28,8 @@ export interface GenerationProgress {
 }
 
 // Constants for work distribution
-const TOTAL_CONSTRAINT_ATTEMPTS = 80;
-const TOTAL_TRADITIONAL_ATTEMPTS = 200;
+const TOTAL_CONSTRAINT_ATTEMPTS = 160;
+const TOTAL_TRADITIONAL_ATTEMPTS = 400;
 
 class WorkerPool {
   private workers: Worker[] = [];

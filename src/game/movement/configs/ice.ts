@@ -14,3 +14,4 @@ export const iceMovementConfig: MovementConfig = {
   maxSlideDistance: 100,
 };
 
+

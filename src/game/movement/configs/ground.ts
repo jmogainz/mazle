@@ -18,3 +18,4 @@ export const groundMovementConfig: MovementConfig = {
   maxSlideDistance: 100, // For ice patches
 };
 
+

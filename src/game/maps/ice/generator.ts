@@ -964,6 +964,22 @@ export interface PsychologyMetrics {
   psychologyScore: number;
 }
 
+// Weighting knobs for psychology scoring (emphasize traps over length)
+const PSYCH_WEIGHTS = {
+  counterIntuitive: 70,
+  attractiveDecoys: 80,
+  commitmentGates: 70,
+  falseProgress: 100,
+  moveBonus: 0.5, // Move count is a tiny bonus, not a driver
+};
+
+// Nonlinear bonuses to reward truly trap-heavy layouts
+function trapBonus(falseProgressPaths: number, attractiveDecoys: number): number {
+  const fpBonus = falseProgressPaths > 8 ? (falseProgressPaths - 8) * 40 : 0;
+  const decoyBonus = attractiveDecoys > 12 ? (attractiveDecoys - 12) * 25 : 0;
+  return fpBonus + decoyBonus;
+}
+
 // Calculate how many moves on the optimal path require going AWAY from the goal
 // This is the core of what makes puzzles feel "tricky"
 function countCounterIntuitiveMoves(
@@ -1223,20 +1239,36 @@ export function calculatePsychologyScore(
   // SIMPLE ADDITIVE SCORING
   // Each metric contributes directly - no multiplicative explosion
   const psychologyScore = 
-    (counterIntuitiveMoves * 50) +    // Each counter-intuitive move is significant
-    (attractiveDecoys * 30) +          // Decoys that look better than optimal
-    (commitmentGates * 40) +           // High-stakes decision points
-    (falseProgressPaths * 20) +        // Paths that waste time while feeling good
-    (optimalMoves * 2);                // Small bonus for length (secondary factor)
+    (counterIntuitiveMoves * PSYCH_WEIGHTS.counterIntuitive) +
+    (attractiveDecoys * PSYCH_WEIGHTS.attractiveDecoys) +
+    (commitmentGates * PSYCH_WEIGHTS.commitmentGates) +
+    (falseProgressPaths * PSYCH_WEIGHTS.falseProgress) +
+    (optimalMoves * PSYCH_WEIGHTS.moveBonus) +
+    trapBonus(falseProgressPaths, attractiveDecoys);
   
   return {
     counterIntuitiveMoves,
     attractiveDecoys,
     commitmentGates,
-    falseProgressPaths,
-    optimalMoves,
-    psychologyScore
+  falseProgressPaths,
+  optimalMoves,
+  psychologyScore
   };
+}
+
+// Prefilter thresholds to avoid wasting attempts on obviously easy maps
+const PREFILTER_MIN = {
+  counterIntuitive: 6,
+  attractiveDecoys: 8,
+  commitmentGates: 3,
+  falseProgress: 8,
+};
+
+function passesPsychologyPrefilters(metrics: PsychologyMetrics): boolean {
+  return metrics.counterIntuitiveMoves >= PREFILTER_MIN.counterIntuitive &&
+    metrics.attractiveDecoys >= PREFILTER_MIN.attractiveDecoys &&
+    metrics.commitmentGates >= PREFILTER_MIN.commitmentGates &&
+    metrics.falseProgressPaths >= PREFILTER_MIN.falseProgress;
 }
 
 // ============================================================================
@@ -2955,247 +2987,248 @@ export function generatePuzzle(seed: string): PuzzleData {
   ];
 
   const { width, height } = rng.randomChoice(sizeOptions);
+  let batch = 0;
 
-  // ============================================
-  // PHASE 1: Try Constraint-Based Generation (Primary Method)
-  // This designs puzzles backwards from goal for guaranteed difficulty
-  // ============================================
-  
-  let bestPuzzle: PuzzleData | null = null;
-  let bestScore = 0;
-  
-  for (let cbAttempt = 0; cbAttempt < CONSTRAINT_ATTEMPTS; cbAttempt++) {
-    const cbRng = new SeededRandom(seed + '-cb-' + cbAttempt);
-    const chainLength = cbRng.randomInt(16, 26); // Longer chains = harder
+  while (true) {
+    let bestPuzzle: PuzzleData | null = null;
+    let bestScore = 0;
+    const cbStart = batch * CONSTRAINT_ATTEMPTS;
+    const cbEnd = cbStart + CONSTRAINT_ATTEMPTS;
+    const tradStart = batch * TRADITIONAL_ATTEMPTS;
+    const tradEnd = tradStart + TRADITIONAL_ATTEMPTS;
+
+    // ============================================
+    // PHASE 1: Constraint-Based Generation
+    // ============================================
     
-    const result = generateConstraintBasedPuzzle(width, height, cbRng, chainLength);
-    if (!result) continue;
-    
-    const { tiles, start, goal } = result;
-    
-    // Calculate metrics using psychology-based scoring
-    const optimalMoves = findPath(tiles, start, goal, width, height);
-    if (optimalMoves === null || optimalMoves < 20) continue;
-    
-    // Use psychology-based difficulty metrics
-    const psychMetrics = calculatePsychologyScore(tiles, start, goal, width, height);
-    const score = psychMetrics.psychologyScore;
-    
-    if (score > bestScore) {
-      bestScore = score;
-      bestPuzzle = {
-        width,
-        height,
-        tiles,
-        start,
-        goal,
-        optimalMoves,
-        mapType: MapType.ICE,
-        difficultyScore: Math.round(score),
-        counterIntuitiveMoves: psychMetrics.counterIntuitiveMoves,
-        attractiveDecoys: psychMetrics.attractiveDecoys,
-        commitmentGates: psychMetrics.commitmentGates,
-        falseProgressPaths: psychMetrics.falseProgressPaths,
-      };
+    for (let cbAttempt = cbStart; cbAttempt < cbEnd; cbAttempt++) {
+      const cbRng = new SeededRandom(seed + '-cb-' + cbAttempt);
+      const chainLength = cbRng.randomInt(16, 26); // Longer chains = harder
+      
+      const result = generateConstraintBasedPuzzle(width, height, cbRng, chainLength);
+      if (!result) continue;
+      
+      const { tiles, start, goal } = result;
+      
+      // Calculate metrics using psychology-based scoring
+      const optimalMoves = findPath(tiles, start, goal, width, height);
+      if (optimalMoves === null || optimalMoves < 20) continue;
+      
+      // Use psychology-based difficulty metrics
+      const psychMetrics = calculatePsychologyScore(tiles, start, goal, width, height);
+      if (!passesPsychologyPrefilters(psychMetrics)) continue;
+      const score = psychMetrics.psychologyScore;
+      
+      if (score > bestScore) {
+        bestScore = score;
+        bestPuzzle = {
+          width,
+          height,
+          tiles,
+          start,
+          goal,
+          optimalMoves,
+          mapType: MapType.ICE,
+          difficultyScore: Math.round(score),
+          counterIntuitiveMoves: psychMetrics.counterIntuitiveMoves,
+          attractiveDecoys: psychMetrics.attractiveDecoys,
+          commitmentGates: psychMetrics.commitmentGates,
+          falseProgressPaths: psychMetrics.falseProgressPaths,
+        };
+      }
+      
+      // Found excellent psychology-based puzzle
+      if (score >= TARGET_PSYCHOLOGY_SCORE &&
+          psychMetrics.counterIntuitiveMoves >= 8 && 
+          psychMetrics.attractiveDecoys >= 10 &&
+          psychMetrics.commitmentGates >= 3) {
+        return bestPuzzle!;
+      }
     }
     
-    // Found excellent psychology-based puzzle
-    if (score >= TARGET_PSYCHOLOGY_SCORE &&
-        psychMetrics.counterIntuitiveMoves >= 8 && 
-        psychMetrics.attractiveDecoys >= 10 &&
-        psychMetrics.commitmentGates >= 3) {
-      return bestPuzzle!;
-    }
-  }
-  
-  // If constraint-based found something good, use it
-  if (bestPuzzle && bestScore >= TARGET_PSYCHOLOGY_SCORE) {
-    return bestPuzzle;
-  }
+    // ============================================
+    // PHASE 2: Traditional Generation
+    // ============================================
+    
+    for (let attempt = tradStart; attempt < tradEnd; attempt++) {
+      // Create base maze with guaranteed connectivity
+      const tiles = createBaseMaze(width, height, rng);
 
-  // ============================================
-  // PHASE 2: Fallback to Traditional Generation
-  // ============================================
-  
-  // Keep trying until we find a truly challenging puzzle
-  for (let attempt = 0; attempt < TRADITIONAL_ATTEMPTS; attempt++) {
-    // Create base maze with guaranteed connectivity
-    const tiles = createBaseMaze(width, height, rng);
-
-    // Find start and goal positions
-    const iceTiles: Position[] = [];
-    for (let y = 2; y < height - 2; y++) {
-      for (let x = 2; x < width - 2; x++) {
-        if (tiles[y][x] === TileType.ICE) {
-          iceTiles.push({ x, y });
+      // Find start and goal positions
+      const iceTiles: Position[] = [];
+      for (let y = 2; y < height - 2; y++) {
+        for (let x = 2; x < width - 2; x++) {
+          if (tiles[y][x] === TileType.ICE) {
+            iceTiles.push({ x, y });
+          }
         }
+      }
+
+      // Require more ice tiles for larger mazes
+      if (iceTiles.length < 90) continue;
+
+      // Pick start on left side, goal on right side (maximize distance)
+      const leftTiles = iceTiles.filter(p => p.x < width / 5);
+      const rightTiles = iceTiles.filter(p => p.x > (4 * width) / 5);
+      
+      // Also consider corner positions for extra path length
+      const topLeftTiles = iceTiles.filter(p => p.x < width / 4 && p.y < height / 3);
+      const bottomRightTiles = iceTiles.filter(p => p.x > (3 * width) / 4 && p.y > (2 * height) / 3);
+
+      // Prefer diagonal placements when possible
+      let start: Position, goal: Position;
+      if (topLeftTiles.length > 0 && bottomRightTiles.length > 0 && rng.random() < 0.6) {
+        start = rng.randomChoice(topLeftTiles);
+        goal = rng.randomChoice(bottomRightTiles);
+      } else if (leftTiles.length > 0 && rightTiles.length > 0) {
+        start = rng.randomChoice(leftTiles);
+        goal = rng.randomChoice(rightTiles);
+      } else {
+        continue;
+      }
+
+      // Widen passages for larger sliding areas - INCREASED
+      widenPassages(tiles, width, height, rng, 0.20);
+
+      // MANY alternative routes (creates decision paralysis)
+      addExtraConnections(tiles, start, goal, width, height, rng, rng.randomInt(35, 60));
+
+      // MORE winding corridors - call multiple times for layered complexity
+      addWindingCorridors(tiles, start, goal, width, height, rng);
+      addWindingCorridors(tiles, start, goal, width, height, rng);
+      addWindingCorridors(tiles, start, goal, width, height, rng);
+
+      // MORE island obstacles for redirection
+      addIslandObstacles(tiles, start, goal, width, height, rng, rng.randomInt(10, 18));
+
+      // ============================================
+      // GENIUS-LEVEL DECEPTION ENGINE
+      // All 10 psychological misdirection algorithms
+      // ============================================
+      
+      // ALGORITHM 1: Force counter-intuitive paths (block obvious approaches)
+      engineerCounterIntuitivePath(tiles, start, goal, width, height, rng);
+      
+      // ALGORITHM 2: "Almost there" traps - slide past the goal
+      createAlmostThereTraps(tiles, start, goal, width, height, rng, rng.randomInt(5, 10));
+      
+      // ALGORITHM 3: Decoy open areas - inviting areas that waste moves
+      createDecoyOpenAreas(tiles, start, goal, width, height, rng, rng.randomInt(6, 12));
+      
+      // ALGORITHM 4: Hidden choke points - critical passages easy to miss
+      createHiddenChokePoints(tiles, start, goal, width, height, rng, rng.randomInt(5, 10));
+      
+      // ALGORITHM 5: Momentum traps - ice slides that overshoot
+      createMomentumTraps(tiles, start, goal, width, height, rng, rng.randomInt(8, 16));
+      
+      // ALGORITHM 6: Anti-gradient zones - moving toward goal increases cost
+      createAntiGradientZones(tiles, start, goal, width, height, rng, rng.randomInt(5, 10));
+      
+      // ALGORITHM 7: Parallel path illusion - similar paths, different costs
+      createParallelPathIllusion(tiles, start, goal, width, height, rng, rng.randomInt(6, 12));
+      
+      // ALGORITHM 8: Ledge misdirection - one-way tiles that look helpful
+      createLedgeMisdirection(tiles, start, goal, width, height, rng, rng.randomInt(10, 18));
+      
+      // ALGORITHM 9: Goal proximity dead ends - tantalizingly close but blocked
+      createGoalProximityDeadEnds(tiles, start, goal, width, height, rng, rng.randomInt(6, 12));
+      
+      // ALGORITHM 10: Commitment traps - wrong choices lock you in
+      createCommitmentTraps(tiles, start, goal, width, height, rng, rng.randomInt(6, 12));
+
+      // ============================================
+      // ADDITIONAL COMPLEXITY LAYERS
+      // ============================================
+      
+      // Precision gates - narrow passages requiring exact positioning
+      addPrecisionGates(tiles, start, goal, width, height, rng, rng.randomInt(8, 16));
+      
+      // Funnel patterns that force specific approaches
+      addFunnelPatterns(tiles, start, goal, width, height, rng, rng.randomInt(6, 12));
+      
+      // Trap alcoves - easy to enter, costly to escape
+      addTrapAlcoves(tiles, start, goal, width, height, rng, rng.randomInt(10, 18));
+      
+      // Deceptive paths - routes that look good but waste moves
+      addDeceptivePaths(tiles, start, goal, width, height, rng, rng.randomInt(25, 45));
+      
+      // Dead-end magnets - attractive looking dead ends
+      addDeadEndMagnets(tiles, start, goal, width, height, rng, rng.randomInt(6, 12));
+
+      // Stop blocks for redirect complexity
+      addStopBlocks(tiles, start, goal, width, height, rng, rng.randomInt(35, 60));
+
+      // MINIMAL floor stopping points (force long ice planning chains)
+      addFloorStops(tiles, start, goal, width, height, rng, rng.randomInt(2, 4));
+      
+      // Convert MOST floor tiles back to ice (maximize planning difficulty)
+      convertFloorsToIce(tiles, start, goal, width, height, rng, 0.82);
+
+      // Ledges for complex directional puzzles
+      addLedges(tiles, start, goal, width, height, rng, rng.randomInt(20, 35));
+
+      // Set start and goal
+      tiles[start.y][start.x] = TileType.START;
+      tiles[goal.y][goal.x] = TileType.GOAL;
+
+      // Verify solvability after all modifications
+      const optimalMoves = findPath(tiles, start, goal, width, height);
+      if (optimalMoves === null) continue;
+
+      // Verify no stuck states
+      if (!hasNoStuckStates(tiles, start, goal, width, height)) continue;
+
+      // ============================================
+      // PSYCHOLOGY-BASED DIFFICULTY SCORING
+      // Measures what actually makes puzzles hard for HUMANS
+      // ============================================
+      
+      // Only hard reject trivially short puzzles
+      if (optimalMoves < 20) continue;
+      
+      // Calculate psychology-based difficulty metrics
+      const psychMetrics = calculatePsychologyScore(tiles, start, goal, width, height);
+      if (!passesPsychologyPrefilters(psychMetrics)) continue;
+      
+      // Use the new psychology score directly
+      const score = psychMetrics.psychologyScore;
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestPuzzle = {
+          width,
+          height,
+          tiles,
+          start,
+          goal,
+          optimalMoves,
+          mapType: MapType.ICE,
+          // Psychology-based difficulty metrics for dev display
+          difficultyScore: Math.round(score),
+          counterIntuitiveMoves: psychMetrics.counterIntuitiveMoves,
+          attractiveDecoys: psychMetrics.attractiveDecoys,
+          commitmentGates: psychMetrics.commitmentGates,
+          falseProgressPaths: psychMetrics.falseProgressPaths,
+        };
+      }
+
+      // Break early if we find an excellent psychology-based puzzle
+      // A good puzzle has multiple counter-intuitive moves AND attractive decoys
+      if (score >= TARGET_PSYCHOLOGY_SCORE &&
+          psychMetrics.counterIntuitiveMoves >= 8 && 
+          psychMetrics.attractiveDecoys >= 10 &&
+          psychMetrics.commitmentGates >= 3) {
+        return bestPuzzle!;
       }
     }
 
-    // Require more ice tiles for larger mazes
-    if (iceTiles.length < 90) continue;
-
-    // Pick start on left side, goal on right side (maximize distance)
-    const leftTiles = iceTiles.filter(p => p.x < width / 5);
-    const rightTiles = iceTiles.filter(p => p.x > (4 * width) / 5);
-    
-    // Also consider corner positions for extra path length
-    const topLeftTiles = iceTiles.filter(p => p.x < width / 4 && p.y < height / 3);
-    const bottomRightTiles = iceTiles.filter(p => p.x > (3 * width) / 4 && p.y > (2 * height) / 3);
-
-    // Prefer diagonal placements when possible
-    let start: Position, goal: Position;
-    if (topLeftTiles.length > 0 && bottomRightTiles.length > 0 && rng.random() < 0.6) {
-      start = rng.randomChoice(topLeftTiles);
-      goal = rng.randomChoice(bottomRightTiles);
-    } else if (leftTiles.length > 0 && rightTiles.length > 0) {
-      start = rng.randomChoice(leftTiles);
-      goal = rng.randomChoice(rightTiles);
-    } else {
-      continue;
+    if (bestPuzzle) {
+      return bestPuzzle;
     }
 
-    // Widen passages for larger sliding areas - INCREASED
-    widenPassages(tiles, width, height, rng, 0.20);
-
-    // MANY alternative routes (creates decision paralysis)
-    addExtraConnections(tiles, start, goal, width, height, rng, rng.randomInt(35, 60));
-
-    // MORE winding corridors - call multiple times for layered complexity
-    addWindingCorridors(tiles, start, goal, width, height, rng);
-    addWindingCorridors(tiles, start, goal, width, height, rng);
-    addWindingCorridors(tiles, start, goal, width, height, rng);
-
-    // MORE island obstacles for redirection
-    addIslandObstacles(tiles, start, goal, width, height, rng, rng.randomInt(10, 18));
-
-    // ============================================
-    // GENIUS-LEVEL DECEPTION ENGINE
-    // All 10 psychological misdirection algorithms
-    // ============================================
-    
-    // ALGORITHM 1: Force counter-intuitive paths (block obvious approaches)
-    engineerCounterIntuitivePath(tiles, start, goal, width, height, rng);
-    
-    // ALGORITHM 2: "Almost there" traps - slide past the goal
-    createAlmostThereTraps(tiles, start, goal, width, height, rng, rng.randomInt(5, 10));
-    
-    // ALGORITHM 3: Decoy open areas - inviting areas that waste moves
-    createDecoyOpenAreas(tiles, start, goal, width, height, rng, rng.randomInt(6, 12));
-    
-    // ALGORITHM 4: Hidden choke points - critical passages easy to miss
-    createHiddenChokePoints(tiles, start, goal, width, height, rng, rng.randomInt(5, 10));
-    
-    // ALGORITHM 5: Momentum traps - ice slides that overshoot
-    createMomentumTraps(tiles, start, goal, width, height, rng, rng.randomInt(8, 16));
-    
-    // ALGORITHM 6: Anti-gradient zones - moving toward goal increases cost
-    createAntiGradientZones(tiles, start, goal, width, height, rng, rng.randomInt(5, 10));
-    
-    // ALGORITHM 7: Parallel path illusion - similar paths, different costs
-    createParallelPathIllusion(tiles, start, goal, width, height, rng, rng.randomInt(6, 12));
-    
-    // ALGORITHM 8: Ledge misdirection - one-way tiles that look helpful
-    createLedgeMisdirection(tiles, start, goal, width, height, rng, rng.randomInt(10, 18));
-    
-    // ALGORITHM 9: Goal proximity dead ends - tantalizingly close but blocked
-    createGoalProximityDeadEnds(tiles, start, goal, width, height, rng, rng.randomInt(6, 12));
-    
-    // ALGORITHM 10: Commitment traps - wrong choices lock you in
-    createCommitmentTraps(tiles, start, goal, width, height, rng, rng.randomInt(6, 12));
-
-    // ============================================
-    // ADDITIONAL COMPLEXITY LAYERS
-    // ============================================
-    
-    // Precision gates - narrow passages requiring exact positioning
-    addPrecisionGates(tiles, start, goal, width, height, rng, rng.randomInt(8, 16));
-    
-    // Funnel patterns that force specific approaches
-    addFunnelPatterns(tiles, start, goal, width, height, rng, rng.randomInt(6, 12));
-    
-    // Trap alcoves - easy to enter, costly to escape
-    addTrapAlcoves(tiles, start, goal, width, height, rng, rng.randomInt(10, 18));
-    
-    // Deceptive paths - routes that look good but waste moves
-    addDeceptivePaths(tiles, start, goal, width, height, rng, rng.randomInt(25, 45));
-    
-    // Dead-end magnets - attractive looking dead ends
-    addDeadEndMagnets(tiles, start, goal, width, height, rng, rng.randomInt(6, 12));
-
-    // Stop blocks for redirect complexity
-    addStopBlocks(tiles, start, goal, width, height, rng, rng.randomInt(35, 60));
-
-    // MINIMAL floor stopping points (force long ice planning chains)
-    addFloorStops(tiles, start, goal, width, height, rng, rng.randomInt(2, 4));
-    
-    // Convert MOST floor tiles back to ice (maximize planning difficulty)
-    convertFloorsToIce(tiles, start, goal, width, height, rng, 0.82);
-
-    // Ledges for complex directional puzzles
-    addLedges(tiles, start, goal, width, height, rng, rng.randomInt(20, 35));
-
-    // Set start and goal
-    tiles[start.y][start.x] = TileType.START;
-    tiles[goal.y][goal.x] = TileType.GOAL;
-
-    // Verify solvability after all modifications
-    const optimalMoves = findPath(tiles, start, goal, width, height);
-    if (optimalMoves === null) continue;
-
-    // Verify no stuck states
-    if (!hasNoStuckStates(tiles, start, goal, width, height)) continue;
-
-    // ============================================
-    // PSYCHOLOGY-BASED DIFFICULTY SCORING
-    // Measures what actually makes puzzles hard for HUMANS
-    // ============================================
-    
-    // Only hard reject trivially short puzzles
-    if (optimalMoves < 20) continue;
-    
-    // Calculate psychology-based difficulty metrics
-    const psychMetrics = calculatePsychologyScore(tiles, start, goal, width, height);
-    
-    // Use the new psychology score directly
-    const score = psychMetrics.psychologyScore;
-
-    if (score > bestScore) {
-      bestScore = score;
-      bestPuzzle = {
-        width,
-        height,
-        tiles,
-        start,
-        goal,
-        optimalMoves,
-        mapType: MapType.ICE,
-        // Psychology-based difficulty metrics for dev display
-        difficultyScore: Math.round(score),
-        counterIntuitiveMoves: psychMetrics.counterIntuitiveMoves,
-        attractiveDecoys: psychMetrics.attractiveDecoys,
-        commitmentGates: psychMetrics.commitmentGates,
-        falseProgressPaths: psychMetrics.falseProgressPaths,
-      };
-    }
-
-    // Break early if we find an excellent psychology-based puzzle
-    // A good puzzle has multiple counter-intuitive moves AND attractive decoys
-    if (score >= TARGET_PSYCHOLOGY_SCORE &&
-        psychMetrics.counterIntuitiveMoves >= 8 && 
-        psychMetrics.attractiveDecoys >= 10 &&
-        psychMetrics.commitmentGates >= 3) {
-      break;
-    }
+    // Nothing accepted in this batch; keep generating with new attempt ranges
+    batch++;
   }
-
-  // We should always have SOMETHING since we don't reject
-  // But if somehow we don't, use fallback
-  if (!bestPuzzle) {
-    return createGuaranteedHardPuzzle(width, height, rng);
-  }
-
-  return bestPuzzle;
 }
 
 // Partial puzzle generation for parallel workers
@@ -3223,161 +3256,171 @@ export function generatePuzzlePartial(
   ];
 
   const { width, height } = rng.randomChoice(sizeOptions);
+  const constraintRange = constraintEnd - constraintStart;
+  const traditionalRange = traditionalEnd - traditionalStart;
+  let batch = 0;
 
-  let bestPuzzle: PuzzleData | null = null;
-  let bestScore = 0;
+  while (true) {
+    let bestPuzzle: PuzzleData | null = null;
+    let bestScore = 0;
+    const cbBase = constraintStart + batch * constraintRange;
+    const cbLimit = cbBase + constraintRange;
+    const tradBase = traditionalStart + batch * traditionalRange;
+    const tradLimit = tradBase + traditionalRange;
 
-  // PHASE 1: Constraint-Based Generation (partial range)
-  for (let cbAttempt = constraintStart; cbAttempt < constraintEnd; cbAttempt++) {
-    const cbRng = new SeededRandom(seed + '-cb-' + cbAttempt);
-    const chainLength = cbRng.randomInt(16, 26);
-    
-    const result = generateConstraintBasedPuzzle(width, height, cbRng, chainLength);
-    if (!result) continue;
-    
-    const { tiles, start, goal } = result;
-    
-    const optimalMoves = findPath(tiles, start, goal, width, height);
-    if (optimalMoves === null || optimalMoves < 20) continue;
-    
-    const psychMetrics = calculatePsychologyScore(tiles, start, goal, width, height);
-    const score = psychMetrics.psychologyScore;
-    
-    if (score > bestScore) {
-      bestScore = score;
-      bestPuzzle = {
-        width,
-        height,
-        tiles,
-        start,
-        goal,
-        optimalMoves,
-        mapType: MapType.ICE,
-        difficultyScore: Math.round(score),
-        counterIntuitiveMoves: psychMetrics.counterIntuitiveMoves,
-        attractiveDecoys: psychMetrics.attractiveDecoys,
-        commitmentGates: psychMetrics.commitmentGates,
-        falseProgressPaths: psychMetrics.falseProgressPaths,
-      };
+    // PHASE 1: Constraint-Based Generation (partial range, repeated per batch)
+    for (let cbAttempt = cbBase; cbAttempt < cbLimit; cbAttempt++) {
+      const cbRng = new SeededRandom(seed + '-cb-' + cbAttempt);
+      const chainLength = cbRng.randomInt(16, 26);
+      
+      const result = generateConstraintBasedPuzzle(width, height, cbRng, chainLength);
+      if (!result) continue;
+      
+      const { tiles, start, goal } = result;
+      
+      const optimalMoves = findPath(tiles, start, goal, width, height);
+      if (optimalMoves === null || optimalMoves < 20) continue;
+      
+      const psychMetrics = calculatePsychologyScore(tiles, start, goal, width, height);
+      if (!passesPsychologyPrefilters(psychMetrics)) continue;
+      const score = psychMetrics.psychologyScore;
+      
+      if (score > bestScore) {
+        bestScore = score;
+        bestPuzzle = {
+          width,
+          height,
+          tiles,
+          start,
+          goal,
+          optimalMoves,
+          mapType: MapType.ICE,
+          difficultyScore: Math.round(score),
+          counterIntuitiveMoves: psychMetrics.counterIntuitiveMoves,
+          attractiveDecoys: psychMetrics.attractiveDecoys,
+          commitmentGates: psychMetrics.commitmentGates,
+          falseProgressPaths: psychMetrics.falseProgressPaths,
+        };
+      }
+      
+      // Found excellent puzzle - return early when score target is hit
+      if (score >= TARGET_PSYCHOLOGY_SCORE &&
+          psychMetrics.counterIntuitiveMoves >= 8 && 
+          psychMetrics.attractiveDecoys >= 10 &&
+          psychMetrics.commitmentGates >= 3) {
+        return { puzzle: bestPuzzle, score: bestScore };
+      }
     }
     
-    // Found excellent puzzle - return early when score target is hit
-    if (score >= TARGET_PSYCHOLOGY_SCORE &&
-        psychMetrics.counterIntuitiveMoves >= 8 && 
-        psychMetrics.attractiveDecoys >= 10 &&
-        psychMetrics.commitmentGates >= 3) {
-      return { puzzle: bestPuzzle, score: bestScore };
-    }
-  }
-  
-  // If constraint-based found something good, skip traditional
-  if (bestPuzzle && bestScore >= TARGET_PSYCHOLOGY_SCORE) {
-    return { puzzle: bestPuzzle, score: bestScore };
-  }
+    // PHASE 2: Traditional Generation (partial range, repeated per batch)
+    for (let attempt = tradBase; attempt < tradLimit; attempt++) {
+      const attemptRng = new SeededRandom(seed + '-trad-' + attempt);
+      
+      const tiles = createBaseMaze(width, height, attemptRng);
 
-  // PHASE 2: Traditional Generation (partial range)
-  // Each attempt gets its own RNG so workers can process ranges independently
-  for (let attempt = traditionalStart; attempt < traditionalEnd; attempt++) {
-    const attemptRng = new SeededRandom(seed + '-trad-' + attempt);
-    
-    const tiles = createBaseMaze(width, height, attemptRng);
-
-    const iceTiles: Position[] = [];
-    for (let y = 2; y < height - 2; y++) {
-      for (let x = 2; x < width - 2; x++) {
-        if (tiles[y][x] === TileType.ICE) {
-          iceTiles.push({ x, y });
+      const iceTiles: Position[] = [];
+      for (let y = 2; y < height - 2; y++) {
+        for (let x = 2; x < width - 2; x++) {
+          if (tiles[y][x] === TileType.ICE) {
+            iceTiles.push({ x, y });
+          }
         }
+      }
+
+      if (iceTiles.length < 90) continue;
+
+      const leftTiles = iceTiles.filter(p => p.x < width / 5);
+      const rightTiles = iceTiles.filter(p => p.x > (4 * width) / 5);
+      const topLeftTiles = iceTiles.filter(p => p.x < width / 4 && p.y < height / 3);
+      const bottomRightTiles = iceTiles.filter(p => p.x > (3 * width) / 4 && p.y > (2 * height) / 3);
+
+      let start: Position, goal: Position;
+      if (topLeftTiles.length > 0 && bottomRightTiles.length > 0 && attemptRng.random() < 0.6) {
+        start = attemptRng.randomChoice(topLeftTiles);
+        goal = attemptRng.randomChoice(bottomRightTiles);
+      } else if (leftTiles.length > 0 && rightTiles.length > 0) {
+        start = attemptRng.randomChoice(leftTiles);
+        goal = attemptRng.randomChoice(rightTiles);
+      } else {
+        continue;
+      }
+
+      widenPassages(tiles, width, height, attemptRng, 0.20);
+      addExtraConnections(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(35, 60));
+      addWindingCorridors(tiles, start, goal, width, height, attemptRng);
+      addWindingCorridors(tiles, start, goal, width, height, attemptRng);
+      addWindingCorridors(tiles, start, goal, width, height, attemptRng);
+      addIslandObstacles(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(10, 18));
+      
+      engineerCounterIntuitivePath(tiles, start, goal, width, height, attemptRng);
+      createAlmostThereTraps(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(5, 10));
+      createDecoyOpenAreas(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(6, 12));
+      createHiddenChokePoints(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(5, 10));
+      createMomentumTraps(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(8, 16));
+      createAntiGradientZones(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(5, 10));
+      createParallelPathIllusion(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(6, 12));
+      createLedgeMisdirection(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(10, 18));
+      createGoalProximityDeadEnds(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(6, 12));
+      createCommitmentTraps(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(6, 12));
+      
+      addPrecisionGates(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(8, 16));
+      addFunnelPatterns(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(6, 12));
+      addTrapAlcoves(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(10, 18));
+      addDeceptivePaths(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(25, 45));
+      addDeadEndMagnets(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(6, 12));
+      addStopBlocks(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(35, 60));
+      addFloorStops(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(2, 4));
+      convertFloorsToIce(tiles, start, goal, width, height, attemptRng, 0.82);
+      addLedges(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(20, 35));
+
+      tiles[start.y][start.x] = TileType.START;
+      tiles[goal.y][goal.x] = TileType.GOAL;
+
+      const optimalMoves = findPath(tiles, start, goal, width, height);
+      if (optimalMoves === null) continue;
+
+      if (!hasNoStuckStates(tiles, start, goal, width, height)) continue;
+
+      if (optimalMoves < 20) continue;
+      
+      const psychMetrics = calculatePsychologyScore(tiles, start, goal, width, height);
+      if (!passesPsychologyPrefilters(psychMetrics)) continue;
+      const score = psychMetrics.psychologyScore;
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestPuzzle = {
+          width,
+          height,
+          tiles,
+          start,
+          goal,
+          optimalMoves,
+          mapType: MapType.ICE,
+          difficultyScore: Math.round(score),
+          counterIntuitiveMoves: psychMetrics.counterIntuitiveMoves,
+          attractiveDecoys: psychMetrics.attractiveDecoys,
+          commitmentGates: psychMetrics.commitmentGates,
+          falseProgressPaths: psychMetrics.falseProgressPaths,
+        };
+      }
+
+      // Found excellent puzzle - return early
+      if (score >= TARGET_PSYCHOLOGY_SCORE &&
+          psychMetrics.counterIntuitiveMoves >= 8 && 
+          psychMetrics.attractiveDecoys >= 10 &&
+          psychMetrics.commitmentGates >= 3) {
+        return { puzzle: bestPuzzle, score: bestScore };
       }
     }
 
-    if (iceTiles.length < 90) continue;
-
-    const leftTiles = iceTiles.filter(p => p.x < width / 5);
-    const rightTiles = iceTiles.filter(p => p.x > (4 * width) / 5);
-    const topLeftTiles = iceTiles.filter(p => p.x < width / 4 && p.y < height / 3);
-    const bottomRightTiles = iceTiles.filter(p => p.x > (3 * width) / 4 && p.y > (2 * height) / 3);
-
-    let start: Position, goal: Position;
-    if (topLeftTiles.length > 0 && bottomRightTiles.length > 0 && attemptRng.random() < 0.6) {
-      start = attemptRng.randomChoice(topLeftTiles);
-      goal = attemptRng.randomChoice(bottomRightTiles);
-    } else if (leftTiles.length > 0 && rightTiles.length > 0) {
-      start = attemptRng.randomChoice(leftTiles);
-      goal = attemptRng.randomChoice(rightTiles);
-    } else {
-      continue;
-    }
-
-    widenPassages(tiles, width, height, attemptRng, 0.20);
-    addExtraConnections(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(35, 60));
-    addWindingCorridors(tiles, start, goal, width, height, attemptRng);
-    addWindingCorridors(tiles, start, goal, width, height, attemptRng);
-    addWindingCorridors(tiles, start, goal, width, height, attemptRng);
-    addIslandObstacles(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(10, 18));
-    
-    engineerCounterIntuitivePath(tiles, start, goal, width, height, attemptRng);
-    createAlmostThereTraps(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(5, 10));
-    createDecoyOpenAreas(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(6, 12));
-    createHiddenChokePoints(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(5, 10));
-    createMomentumTraps(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(8, 16));
-    createAntiGradientZones(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(5, 10));
-    createParallelPathIllusion(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(6, 12));
-    createLedgeMisdirection(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(10, 18));
-    createGoalProximityDeadEnds(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(6, 12));
-    createCommitmentTraps(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(6, 12));
-    
-    addPrecisionGates(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(8, 16));
-    addFunnelPatterns(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(6, 12));
-    addTrapAlcoves(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(10, 18));
-    addDeceptivePaths(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(25, 45));
-    addDeadEndMagnets(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(6, 12));
-    addStopBlocks(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(35, 60));
-    addFloorStops(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(2, 4));
-    convertFloorsToIce(tiles, start, goal, width, height, attemptRng, 0.82);
-    addLedges(tiles, start, goal, width, height, attemptRng, attemptRng.randomInt(20, 35));
-
-    tiles[start.y][start.x] = TileType.START;
-    tiles[goal.y][goal.x] = TileType.GOAL;
-
-    const optimalMoves = findPath(tiles, start, goal, width, height);
-    if (optimalMoves === null) continue;
-
-    if (!hasNoStuckStates(tiles, start, goal, width, height)) continue;
-
-    if (optimalMoves < 20) continue;
-    
-    const psychMetrics = calculatePsychologyScore(tiles, start, goal, width, height);
-    const score = psychMetrics.psychologyScore;
-
-    if (score > bestScore) {
-      bestScore = score;
-      bestPuzzle = {
-        width,
-        height,
-        tiles,
-        start,
-        goal,
-        optimalMoves,
-        mapType: MapType.ICE,
-        difficultyScore: Math.round(score),
-        counterIntuitiveMoves: psychMetrics.counterIntuitiveMoves,
-        attractiveDecoys: psychMetrics.attractiveDecoys,
-        commitmentGates: psychMetrics.commitmentGates,
-        falseProgressPaths: psychMetrics.falseProgressPaths,
-      };
-    }
-
-    // Found excellent puzzle - return early
-    if (score >= TARGET_PSYCHOLOGY_SCORE &&
-        psychMetrics.counterIntuitiveMoves >= 8 && 
-        psychMetrics.attractiveDecoys >= 10 &&
-        psychMetrics.commitmentGates >= 3) {
+    if (bestPuzzle) {
       return { puzzle: bestPuzzle, score: bestScore };
     }
-  }
 
-  return { puzzle: bestPuzzle, score: bestScore };
+    // Nothing accepted in this batch; move to next batch of attempts
+    batch++;
+  }
 }
 
 // GUARANTEED HARD PUZZLE - Uses deliberate counter-intuitive design

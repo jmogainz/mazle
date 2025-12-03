@@ -131,7 +131,7 @@ function simulateMove(
   return { pos: { x, y }, valid: true };
 }
 
-// BFS pathfinding
+// BFS pathfinding - optimized with index-based queue (avoids O(n) shift)
 function findPath(
   tiles: TileType[][],
   start: Position,
@@ -142,9 +142,10 @@ function findPath(
   const queue: { pos: Position; moves: number }[] = [{ pos: start, moves: 0 }];
   const visited = new Set<string>();
   visited.add(posKey(start));
+  let head = 0;
 
-  while (queue.length > 0) {
-    const current = queue.shift()!;
+  while (head < queue.length) {
+    const current = queue[head++];
 
     if (posEq(current.pos, goal)) {
       return current.moves;
@@ -165,7 +166,7 @@ function findPath(
   return null;
 }
 
-// Get all reachable positions
+// Get all reachable positions - optimized with index-based queue
 function getReachable(
   tiles: TileType[][],
   start: Position,
@@ -175,9 +176,10 @@ function getReachable(
   const reachable = new Set<string>();
   const queue: Position[] = [start];
   reachable.add(posKey(start));
+  let head = 0;
 
-  while (queue.length > 0) {
-    const current = queue.shift()!;
+  while (head < queue.length) {
+    const current = queue[head++];
 
     for (const dir of getAllDirs()) {
       const result = simulateMove(tiles, current, dir, width, height);
@@ -199,12 +201,82 @@ function isSolvable(tiles: TileType[][], start: Position, goal: Position, w: num
   return findPath(tiles, start, goal, w, h) !== null;
 }
 
+// Build reverse graph: for each position, list all positions that can reach it in one move
+// This is O(W*H) and enables O(W*H) stuck-state checking instead of O(R*W*H)
+function buildReverseGraph(
+  tiles: TileType[][],
+  width: number,
+  height: number
+): Map<string, Position[]> {
+  const reverseGraph = new Map<string, Position[]>();
+  
+  // For each position, compute where it can go, and add reverse edge
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (tiles[y][x] === TileType.WALL) continue;
+      
+      for (const dir of getAllDirs()) {
+        const result = simulateMove(tiles, { x, y }, dir, width, height);
+        if (result.valid && !posEq(result.pos, { x, y })) {
+          // Forward edge: (x,y) -> result.pos
+          // Reverse edge: result.pos -> (x,y)
+          const destKey = posKey(result.pos);
+          let sources = reverseGraph.get(destKey);
+          if (!sources) {
+            sources = [];
+            reverseGraph.set(destKey, sources);
+          }
+          sources.push({ x, y });
+        }
+      }
+    }
+  }
+  
+  return reverseGraph;
+}
+
+// Get all positions that can reach the goal using reverse BFS
+// O(W*H) instead of running forward BFS from each position
+function getCanReachGoal(
+  tiles: TileType[][],
+  goal: Position,
+  width: number,
+  height: number
+): Set<string> {
+  const reverseGraph = buildReverseGraph(tiles, width, height);
+  
+  const canReachGoal = new Set<string>();
+  const queue: Position[] = [goal];
+  canReachGoal.add(posKey(goal));
+  let head = 0;
+
+  while (head < queue.length) {
+    const current = queue[head++];
+    const sources = reverseGraph.get(posKey(current));
+    
+    if (sources) {
+      for (const source of sources) {
+        const key = posKey(source);
+        if (!canReachGoal.has(key)) {
+          canReachGoal.add(key);
+          queue.push(source);
+        }
+      }
+    }
+  }
+
+  return canReachGoal;
+}
+
 // Verify no stuck states - all reachable positions can reach the goal
+// OPTIMIZED: O(W*H) instead of O(R*W*H) by using reverse BFS
 function hasNoStuckStates(tiles: TileType[][], start: Position, goal: Position, w: number, h: number): boolean {
   const reachable = getReachable(tiles, start, w, h);
+  const canReachGoal = getCanReachGoal(tiles, goal, w, h);
+  
+  // Check if every reachable position can reach the goal
   for (const key of reachable) {
-    const [x, y] = key.split(',').map(Number);
-    if (!isSolvable(tiles, { x, y }, goal, w, h)) {
+    if (!canReachGoal.has(key)) {
       return false;
     }
   }
@@ -268,6 +340,7 @@ function getDirectPathZone(start: Position, goal: Position, width: number, heigh
 }
 
 // Find the actual optimal path using BFS with path reconstruction
+// Optimized: index-based queue + parent map instead of copying paths
 function findOptimalPath(
   tiles: TileType[][],
   start: Position,
@@ -275,24 +348,36 @@ function findOptimalPath(
   width: number,
   height: number
 ): Position[] | null {
-  const queue: { pos: Position; path: Position[] }[] = [{ pos: start, path: [start] }];
+  const queue: Position[] = [start];
   const visited = new Set<string>();
-  visited.add(posKey(start));
+  const parent = new Map<string, Position | null>();
+  const startKey = posKey(start);
+  visited.add(startKey);
+  parent.set(startKey, null);
+  let head = 0;
 
-  while (queue.length > 0) {
-    const current = queue.shift()!;
+  while (head < queue.length) {
+    const current = queue[head++];
 
-    if (posEq(current.pos, goal)) {
-      return current.path;
+    if (posEq(current, goal)) {
+      // Reconstruct path from goal to start using parent map
+      const path: Position[] = [];
+      let pos: Position | null = current;
+      while (pos !== null) {
+        path.push(pos);
+        pos = parent.get(posKey(pos)) ?? null;
+      }
+      return path.reverse();
     }
 
     for (const dir of getAllDirs()) {
-      const result = simulateMove(tiles, current.pos, dir, width, height);
+      const result = simulateMove(tiles, current, dir, width, height);
       if (result.valid) {
         const key = posKey(result.pos);
         if (!visited.has(key)) {
           visited.add(key);
-          queue.push({ pos: result.pos, path: [...current.path, result.pos] });
+          parent.set(key, current);
+          queue.push(result.pos);
         }
       }
     }
@@ -982,15 +1067,12 @@ function trapBonus(falseProgressPaths: number, attractiveDecoys: number): number
 
 // Calculate how many moves on the optimal path require going AWAY from the goal
 // This is the core of what makes puzzles feel "tricky"
-function countCounterIntuitiveMoves(
-  tiles: TileType[][],
-  start: Position,
+// Optimized version that accepts precomputed optimal path
+function countCounterIntuitiveMovesOptimized(
   goal: Position,
-  width: number,
-  height: number
+  optimalPath: Position[]
 ): number {
-  const optimalPath = findOptimalPath(tiles, start, goal, width, height);
-  if (!optimalPath || optimalPath.length < 2) return 0;
+  if (optimalPath.length < 2) return 0;
   
   let counterIntuitiveCount = 0;
   
@@ -1014,9 +1096,8 @@ function countCounterIntuitiveMoves(
   return counterIntuitiveCount;
 }
 
-// Count "attractive decoys" - positions where a wrong move LOOKS better than the optimal move
-// This is the key insight: difficulty isn't about having choices, it's about WRONG choices looking RIGHT
-function countAttractiveDecoys(
+// Legacy wrapper for backward compatibility
+function countCounterIntuitiveMoves(
   tiles: TileType[][],
   start: Position,
   goal: Position,
@@ -1024,7 +1105,21 @@ function countAttractiveDecoys(
   height: number
 ): number {
   const optimalPath = findOptimalPath(tiles, start, goal, width, height);
-  if (!optimalPath || optimalPath.length < 2) return 0;
+  if (!optimalPath) return 0;
+  return countCounterIntuitiveMovesOptimized(goal, optimalPath);
+}
+
+// Count "attractive decoys" - positions where a wrong move LOOKS better than the optimal move
+// This is the key insight: difficulty isn't about having choices, it's about WRONG choices looking RIGHT
+// Optimized version that accepts precomputed optimal path
+function countAttractiveDecoysOptimized(
+  tiles: TileType[][],
+  goal: Position,
+  width: number,
+  height: number,
+  optimalPath: Position[]
+): number {
+  if (optimalPath.length < 2) return 0;
   
   let decoyCount = 0;
   
@@ -1054,6 +1149,19 @@ function countAttractiveDecoys(
   }
   
   return decoyCount;
+}
+
+// Legacy wrapper for backward compatibility
+function countAttractiveDecoys(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number
+): number {
+  const optimalPath = findOptimalPath(tiles, start, goal, width, height);
+  if (!optimalPath) return 0;
+  return countAttractiveDecoysOptimized(tiles, goal, width, height, optimalPath);
 }
 
 // Determine if a move looks "attractive" compared to the optimal move
@@ -1107,15 +1215,16 @@ function isMoveAttractive(
 
 // Count "commitment gates" - positions where making the wrong choice is VERY costly
 // These are high-stakes decision points that create real difficulty
-function countCommitmentGates(
+// Optimized version that accepts precomputed path and distance map
+function countCommitmentGatesOptimized(
   tiles: TileType[][],
-  start: Position,
   goal: Position,
   width: number,
-  height: number
+  height: number,
+  optimalPath: Position[],
+  distanceToGoal: Map<string, number>
 ): number {
-  const optimalPath = findOptimalPath(tiles, start, goal, width, height);
-  if (!optimalPath || optimalPath.length < 2) return 0;
+  if (optimalPath.length < 2) return 0;
   
   const optimalMoves = optimalPath.length - 1;
   let gateCount = 0;
@@ -1137,8 +1246,9 @@ function countCommitmentGates(
       if (!result.valid || posEq(result.pos, current)) continue;
       
       // How many moves to reach goal from this wrong position?
-      const wrongPathLength = findPath(tiles, result.pos, goal, width, height);
-      if (wrongPathLength === null) continue; // Dead end - not a commitment gate, just blocked
+      // Use precomputed distance instead of calling findPath
+      const wrongPathLength = distanceToGoal.get(posKey(result.pos));
+      if (wrongPathLength === undefined) continue; // Dead end - not a commitment gate, just blocked
       
       // How many moves SHOULD it take from current to goal on optimal path?
       const remainingOptimal = optimalMoves - i;
@@ -1157,18 +1267,67 @@ function countCommitmentGates(
   return gateCount;
 }
 
-// Count "false progress paths" - paths that FEEL like progress but waste moves
-// These are psychologically frustrating because you feel like you're doing well
-function countFalseProgressPaths(
+// Legacy wrapper for backward compatibility
+function countCommitmentGates(
   tiles: TileType[][],
   start: Position,
   goal: Position,
   width: number,
   height: number
 ): number {
-  const optimalMoves = findPath(tiles, start, goal, width, height);
-  if (optimalMoves === null) return 0;
+  const optimalPath = findOptimalPath(tiles, start, goal, width, height);
+  if (!optimalPath || optimalPath.length < 2) return 0;
+  const distanceToGoal = computeDistanceToGoal(tiles, goal, width, height);
+  return countCommitmentGatesOptimized(tiles, goal, width, height, optimalPath, distanceToGoal);
+}
+
+// Precompute distance from every position to goal using BFS from goal
+// Returns a Map from position key to number of moves to reach goal
+// O(W*H) - much faster than calling findPath repeatedly
+function computeDistanceToGoal(
+  tiles: TileType[][],
+  goal: Position,
+  width: number,
+  height: number
+): Map<string, number> {
+  const distances = new Map<string, number>();
+  const reverseGraph = buildReverseGraph(tiles, width, height);
   
+  // BFS from goal using reverse edges
+  const queue: { pos: Position; dist: number }[] = [{ pos: goal, dist: 0 }];
+  distances.set(posKey(goal), 0);
+  let head = 0;
+  
+  while (head < queue.length) {
+    const current = queue[head++];
+    const sources = reverseGraph.get(posKey(current.pos));
+    
+    if (sources) {
+      for (const source of sources) {
+        const key = posKey(source);
+        if (!distances.has(key)) {
+          distances.set(key, current.dist + 1);
+          queue.push({ pos: source, dist: current.dist + 1 });
+        }
+      }
+    }
+  }
+  
+  return distances;
+}
+
+// Count "false progress paths" - paths that FEEL like progress but waste moves
+// These are psychologically frustrating because you feel like you're doing well
+// Optimized version that accepts precomputed distance map
+function countFalseProgressPathsOptimized(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number,
+  optimalMoves: number,
+  distanceToGoal: Map<string, number>
+): number {
   let falsePathCount = 0;
   const checked = new Set<string>();
   
@@ -1177,9 +1336,10 @@ function countFalseProgressPaths(
     { pos: start, distFromStart: 0, minDistToGoalSeen: manhattanDist(start, goal) }
   ];
   checked.add(posKey(start));
+  let head = 0;
   
-  while (queue.length > 0) {
-    const current = queue.shift()!;
+  while (head < queue.length) {
+    const current = queue[head++];
     if (current.distFromStart > optimalMoves + 10) continue; // Don't explore too far
     
     for (const dir of getAllDirs()) {
@@ -1198,8 +1358,9 @@ function countFalseProgressPaths(
       
       if (isProgress) {
         // This feels like progress - but is it actually on an optimal path?
-        const pathFromHere = findPath(tiles, result.pos, goal, width, height);
-        if (pathFromHere !== null) {
+        // Use precomputed distance instead of calling findPath
+        const pathFromHere = distanceToGoal.get(key);
+        if (pathFromHere !== undefined) {
           const totalPath = newDistFromStart + pathFromHere;
           
           // If this "progress" path is actually suboptimal by 3+ moves, it's a false progress path
@@ -1220,7 +1381,22 @@ function countFalseProgressPaths(
   return falsePathCount;
 }
 
+// Legacy wrapper for backward compatibility
+function countFalseProgressPaths(
+  tiles: TileType[][],
+  start: Position,
+  goal: Position,
+  width: number,
+  height: number
+): number {
+  const optimalMoves = findPath(tiles, start, goal, width, height);
+  if (optimalMoves === null) return 0;
+  const distanceToGoal = computeDistanceToGoal(tiles, goal, width, height);
+  return countFalseProgressPathsOptimized(tiles, start, goal, width, height, optimalMoves, distanceToGoal);
+}
+
 // THE NEW SCORING FORMULA: Simple, additive, psychology-based
+// OPTIMIZED: Computes optimal path and distance map ONCE, passes to all metric functions
 export function calculatePsychologyScore(
   tiles: TileType[][],
   start: Position,
@@ -1228,13 +1404,29 @@ export function calculatePsychologyScore(
   width: number,
   height: number
 ): PsychologyMetrics {
-  const optimalMoves = findPath(tiles, start, goal, width, height) ?? 0;
+  // Compute these ONCE and reuse across all metrics
+  const optimalPath = findOptimalPath(tiles, start, goal, width, height);
+  const optimalMoves = optimalPath ? optimalPath.length - 1 : 0;
   
-  // Calculate the four core psychological difficulty metrics
-  const counterIntuitiveMoves = countCounterIntuitiveMoves(tiles, start, goal, width, height);
-  const attractiveDecoys = countAttractiveDecoys(tiles, start, goal, width, height);
-  const commitmentGates = countCommitmentGates(tiles, start, goal, width, height);
-  const falseProgressPaths = countFalseProgressPaths(tiles, start, goal, width, height);
+  if (!optimalPath || optimalPath.length < 2) {
+    return {
+      counterIntuitiveMoves: 0,
+      attractiveDecoys: 0,
+      commitmentGates: 0,
+      falseProgressPaths: 0,
+      optimalMoves: 0,
+      psychologyScore: 0
+    };
+  }
+  
+  // Compute distance map ONCE for commitment gates and false progress
+  const distanceToGoal = computeDistanceToGoal(tiles, goal, width, height);
+  
+  // Calculate the four core psychological difficulty metrics using optimized functions
+  const counterIntuitiveMoves = countCounterIntuitiveMovesOptimized(goal, optimalPath);
+  const attractiveDecoys = countAttractiveDecoysOptimized(tiles, goal, width, height, optimalPath);
+  const commitmentGates = countCommitmentGatesOptimized(tiles, goal, width, height, optimalPath, distanceToGoal);
+  const falseProgressPaths = countFalseProgressPathsOptimized(tiles, start, goal, width, height, optimalMoves, distanceToGoal);
   
   // SIMPLE ADDITIVE SCORING
   // Each metric contributes directly - no multiplicative explosion
@@ -1250,9 +1442,9 @@ export function calculatePsychologyScore(
     counterIntuitiveMoves,
     attractiveDecoys,
     commitmentGates,
-  falseProgressPaths,
-  optimalMoves,
-  psychologyScore
+    falseProgressPaths,
+    optimalMoves,
+    psychologyScore
   };
 }
 
@@ -2084,12 +2276,13 @@ function calculateBranchingFactor(
   const visited = new Set<string>();
   const queue: { pos: Position; depth: number }[] = [{ pos: start, depth: 0 }];
   visited.add(posKey(start));
+  let head = 0;
   
   let totalBranches = 0;
   let decisionPoints = 0;
   
-  while (queue.length > 0) {
-    const current = queue.shift()!;
+  while (head < queue.length) {
+    const current = queue[head++];
     
     let validMoves = 0;
     const validDirs: Direction[] = [];

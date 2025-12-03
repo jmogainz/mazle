@@ -1,6 +1,12 @@
+// Map types for different puzzle variants
+export enum MapType {
+  ICE = 'ice',
+  GROUND = 'ground',
+}
+
 // Tile types for the puzzle
 export enum TileType {
-  FLOOR = 0,
+  GROUND = 0,  // Renamed from FLOOR - normal walkable tile
   WALL = 1,
   START = 2,
   GOAL = 3,
@@ -30,6 +36,7 @@ export interface PuzzleData {
   start: Position;
   goal: Position;
   optimalMoves: number;
+  mapType: MapType;  // Type of map/puzzle variant
   // Psychology-based difficulty metrics (for dev mode display)
   difficultyScore?: number;           // Overall psychology score
   counterIntuitiveMoves?: number;     // Moves that go away from goal
@@ -54,6 +61,7 @@ export interface DailyStats {
   moveCount: number;
   timeMs: number;
   puzzleNumber: number;
+  mapType?: MapType;  // Optional for legacy compatibility
 }
 
 export interface PlayerStats {
@@ -68,8 +76,8 @@ export interface PlayerStats {
 // Colors for the pixel art theme
 export const COLORS = {
   // Deep blue-green Pokemon gym aesthetic
-  FLOOR: 0x2d5a4f,
-  FLOOR_ALT: 0x3d6a5f,
+  GROUND: 0x2d5a4f,      // Renamed from FLOOR
+  GROUND_ALT: 0x3d6a5f,  // Renamed from FLOOR_ALT
   WALL: 0x1a1a2e,
   WALL_HIGHLIGHT: 0x2a2a4e,
   ICE: 0x8ecae6,
@@ -87,4 +95,3 @@ export const COLORS = {
 };
 
 export const TILE_SIZE = 32;
-

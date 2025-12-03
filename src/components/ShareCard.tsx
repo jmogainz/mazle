@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { MapType } from '@/game/types';
 import { formatTime } from '@/utils/storage';
 import styles from './ShareCard.module.css';
 
@@ -10,8 +11,21 @@ interface ShareCardProps {
   moveCount: number;
   timeMs: number;
   optimalMoves: number;
+  mapType?: MapType;
   onClose: () => void;
   onPlayAgain: () => void;
+}
+
+// Get emoji for map type
+function getMapEmoji(mapType: MapType): string {
+  switch (mapType) {
+    case MapType.ICE:
+      return '🧊';
+    case MapType.GROUND:
+      return '🟤';
+    default:
+      return '🧩';
+  }
 }
 
 // Generate a clean efficiency bar
@@ -59,11 +73,13 @@ export default function ShareCard({
   moveCount,
   timeMs,
   optimalMoves,
+  mapType = MapType.ICE,
   onClose,
   onPlayAgain,
 }: ShareCardProps) {
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
   const displayLabel = puzzleLabel ?? `#${puzzleNumber}`;
+  const mapEmoji = getMapEmoji(mapType);
   
   const efficiency = Math.round((optimalMoves / moveCount) * 100);
   const rating = efficiency >= 100 ? '⭐⭐⭐' : efficiency >= 80 ? '⭐⭐' : efficiency >= 60 ? '⭐' : '';
@@ -71,7 +87,7 @@ export default function ShareCard({
   // Calculate move difference from optimal
   const moveDiff = moveCount - optimalMoves;
 
-  const shareText = `🧊 Mazle ${displayLabel}
+  const shareText = `${mapEmoji} Mazle ${displayLabel}
 
 ${generateEfficiencyBar(efficiency)} ${efficiency}%
 
@@ -138,7 +154,7 @@ ${generateEfficiencyBar(efficiency)} ${efficiency}%
         
         <div className={styles.header}>
           <h2 className={styles.title}>Puzzle Complete!</h2>
-          <span className={styles.puzzleNumber}>Mazle {displayLabel}</span>
+          <span className={styles.puzzleNumber}>{mapEmoji} Mazle {displayLabel}</span>
         </div>
 
         <div className={styles.rating}>{rating}</div>

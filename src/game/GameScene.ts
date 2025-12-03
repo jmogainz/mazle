@@ -7,12 +7,20 @@ import {
   GameState,
   COLORS,
   TILE_SIZE,
+  MapType,
 } from './types';
 import { emitGameEvent } from './events';
+import {
+  simulateMove,
+  getDelta,
+  getMovementConfig,
+  MovementConfig,
+} from './movement';
 
 export class GameScene extends Phaser.Scene {
   private puzzle!: PuzzleData;
   private gameState!: GameState;
+  private movementConfig!: MovementConfig;
   private player!: Phaser.GameObjects.Container;
   private tileGraphics!: Phaser.GameObjects.Graphics;
   private goalSprite!: Phaser.GameObjects.Container;
@@ -32,6 +40,8 @@ export class GameScene extends Phaser.Scene {
 
   init(data: { puzzle: PuzzleData }) {
     this.puzzle = data.puzzle;
+    // Get movement config based on map type (defaults to ice for legacy puzzles)
+    this.movementConfig = getMovementConfig(this.puzzle.mapType ?? MapType.ICE);
     this.isPlaying = false;
     this.gameState = {
       playerPos: { ...this.puzzle.start },
@@ -87,11 +97,11 @@ export class GameScene extends Phaser.Scene {
     const padding = 1;
 
     switch (tile) {
-      case TileType.FLOOR:
+      case TileType.GROUND:
       case TileType.START:
         // Checkerboard pattern for depth
         const isAlt = (gridX + gridY) % 2 === 0;
-        g.fillStyle(isAlt ? COLORS.FLOOR : COLORS.FLOOR_ALT);
+        g.fillStyle(isAlt ? COLORS.GROUND : COLORS.GROUND_ALT);
         g.fillRect(px + padding, py + padding, size - padding * 2, size - padding * 2);
         break;
 
@@ -106,7 +116,7 @@ export class GameScene extends Phaser.Scene {
 
       case TileType.GOAL:
         // Goal has floor underneath
-        g.fillStyle(COLORS.FLOOR);
+        g.fillStyle(COLORS.GROUND);
         g.fillRect(px + padding, py + padding, size - padding * 2, size - padding * 2);
         break;
 
@@ -271,68 +281,29 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private getDirectionDelta(dir: Direction): Position {
-    switch (dir) {
-      case Direction.UP: return { x: 0, y: -1 };
-      case Direction.DOWN: return { x: 0, y: 1 };
-      case Direction.LEFT: return { x: -1, y: 0 };
-      case Direction.RIGHT: return { x: 1, y: 0 };
-    }
-  }
-
-  private canEnterTile(fromPos: Position, toPos: Position, dir: Direction): boolean {
-    // Check bounds
-    if (toPos.x < 0 || toPos.x >= this.puzzle.width || 
-        toPos.y < 0 || toPos.y >= this.puzzle.height) {
-      return false;
-    }
-
-    const tile = this.puzzle.tiles[toPos.y][toPos.x];
-    
-    // Walls always block
-    if (tile === TileType.WALL) return false;
-    
-    // Ledge entry rules
-    // LEDGE_UP: enter from above (moving DOWN), LEDGE_DOWN: enter from below (moving UP)
-    // LEDGE_LEFT: enter from right (moving LEFT), LEDGE_RIGHT: enter from left (moving RIGHT)
-    if (tile >= TileType.LEDGE_UP && tile <= TileType.LEDGE_RIGHT) {
-      const ledgeIndex = tile - TileType.LEDGE_UP;
-      const allowedDirs = [Direction.DOWN, Direction.UP, Direction.LEFT, Direction.RIGHT];
-      if (dir !== allowedDirs[ledgeIndex]) return false;
-    }
-    
-    return true;
-  }
-
   private handleMove(dir: Direction) {
     if (this.isAnimating || this.gameState.isComplete || !this.isPlaying) return;
 
-    const delta = this.getDirectionDelta(dir);
     const currentPos = { ...this.gameState.playerPos };
-    let newPos = { x: currentPos.x + delta.x, y: currentPos.y + delta.y };
+    
+    // Use shared movement simulation
+    const result = simulateMove(
+      this.puzzle.tiles,
+      currentPos,
+      dir,
+      this.puzzle.width,
+      this.puzzle.height,
+      this.movementConfig
+    );
 
-    // Check if initial move is valid
-    if (!this.canEnterTile(currentPos, newPos, dir)) {
+    // If move is invalid, play bump animation
+    if (!result.valid) {
       this.playBumpAnimation(dir);
       return;
     }
 
-    // Calculate final position (handling ice sliding)
-    const path: Position[] = [newPos];
-    let currentTile = this.puzzle.tiles[newPos.y][newPos.x];
-    
-    // Handle ice sliding
-    while (currentTile === TileType.ICE) {
-      const nextPos = { x: newPos.x + delta.x, y: newPos.y + delta.y };
-      
-      if (!this.canEnterTile(newPos, nextPos, dir)) {
-        break;
-      }
-      
-      newPos = nextPos;
-      path.push(newPos);
-      currentTile = this.puzzle.tiles[newPos.y][newPos.x];
-    }
+    const newPos = result.pos;
+    const path = result.path ?? [newPos];
 
     // Animate movement
     this.isAnimating = true;
@@ -381,7 +352,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private playBumpAnimation(dir: Direction) {
-    const delta = this.getDirectionDelta(dir);
+    const delta = getDelta(dir);
     const bumpDist = 4;
     
     this.tweens.add({
@@ -474,4 +445,3 @@ export class GameScene extends Phaser.Scene {
     emitGameEvent('stateUpdate', { ...this.gameState });
   }
 }
-

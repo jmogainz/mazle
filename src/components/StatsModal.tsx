@@ -1,11 +1,23 @@
 'use client';
 
-import { PlayerStats } from '@/game/types';
+import { PlayerStats, MapType } from '@/game/types';
 import styles from './StatsModal.module.css';
 
 interface StatsModalProps {
   stats: PlayerStats;
   onClose: () => void;
+}
+
+// Get emoji for map type (for history display)
+function getMapEmoji(mapType?: MapType): string {
+  switch (mapType) {
+    case MapType.ICE:
+      return '🧊';
+    case MapType.GROUND:
+      return '🟤';
+    default:
+      return ''; // Legacy entries without map type
+  }
 }
 
 export default function StatsModal({ stats, onClose }: StatsModalProps) {
@@ -48,7 +60,7 @@ export default function StatsModal({ stats, onClose }: StatsModalProps) {
               {stats.history.slice(-7).reverse().map((game, index) => (
                 <div key={index} className={styles.historyItem}>
                   <span className={styles.historyDate}>
-                    #{game.puzzleNumber}
+                    {getMapEmoji(game.mapType)}#{game.puzzleNumber}
                   </span>
                   <span className={styles.historyMoves}>
                     {game.completed ? `${game.moveCount} moves` : 'DNF'}
@@ -65,4 +77,3 @@ export default function StatsModal({ stats, onClose }: StatsModalProps) {
     </div>
   );
 }
-

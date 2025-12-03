@@ -2,7 +2,7 @@
 // This allows parallelization across multiple workers
 
 import { generatePuzzlePartial } from './puzzleGenerator';
-import type { PuzzleData } from './types';
+import type { PuzzleData, MapType } from './types';
 
 export interface WorkerRequest {
   type: 'generate';
@@ -19,6 +19,7 @@ export interface WorkerResponse {
   workerId: number;
   puzzle?: PuzzleData;
   score?: number;
+  mapType?: MapType;  // Explicit map type for the generated puzzle
   error?: string;
 }
 
@@ -41,6 +42,7 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
         workerId,
         puzzle: result.puzzle ?? undefined,
         score: result.score,
+        mapType: result.puzzle?.mapType,
       };
       self.postMessage(response);
     } catch (error) {

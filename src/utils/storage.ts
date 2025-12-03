@@ -164,7 +164,7 @@ function isPuzzleData(value: unknown): value is PuzzleData {
   const firstRow = puzzle.tiles[0];
   if (!Array.isArray(firstRow) || firstRow.length === 0) return false;
   const firstTile = firstRow[0];
-  if (typeof firstTile !== 'number' || firstTile < TileType.FLOOR || firstTile > TileType.LEDGE_RIGHT) {
+  if (typeof firstTile !== 'number' || firstTile < TileType.GROUND || firstTile > TileType.LEDGE_RIGHT) {
     return false;
   }
 

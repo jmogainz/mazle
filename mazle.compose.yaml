@@ -1,6 +1,10 @@
 x-build-network: &build-network
   network: host
 
+x-networks: &networks
+  networks:
+    - app_network
+
 services:
   mazle:
     build:
@@ -15,6 +19,7 @@ services:
         ENV: ${ENV:?Docker Compose Config Error! ENV is not set!}
         NEXT_PUBLIC_ENV: ${NEXT_PUBLIC_ENV:?Docker Compose Config Error! NEXT_PUBLIC_ENV is not set!}
         NEXT_PUBLIC_DEVTOOLS_ENABLED: ${NEXT_PUBLIC_DEVTOOLS_ENABLED:-0}
+        NEXT_PUBLIC_GENERATOR_URL: ${NEXT_PUBLIC_GENERATOR_URL:-http://localhost:3001}
 
       # Have to do this until there is a better option to control this from the compose cli
       platforms:
@@ -26,6 +31,7 @@ services:
       - NODE_ENV=development
       - NEXT_PUBLIC_ENV=${NEXT_PUBLIC_ENV}
       - NEXT_PUBLIC_DEVTOOLS_ENABLED=${NEXT_PUBLIC_DEVTOOLS_ENABLED:-0}
+      - NEXT_PUBLIC_GENERATOR_URL=${NEXT_PUBLIC_GENERATOR_URL:-http://localhost:3001}
       - PORT=${APP_PORT:-3000}
       - HOSTNAME=0.0.0.0
       - CHOKIDAR_USEPOLLING=1
@@ -42,5 +48,11 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    <<: *networks
     profiles:
       - app
+
+networks:
+  app_network:
+    external: true
+    name: ${COMPOSE_NETWORK_NAME:?Docker Compose Config Error! COMPOSE_NETWORK_NAME is not set!}

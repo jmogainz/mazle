@@ -1,0 +1,16 @@
+{
+  "name": "mazle-generator",
+  "type": "module",
+  "description": "High-performance puzzle generator for Mazle",
+  "version": "0.1.0",
+  "files": [
+    "mazle_generator_bg.wasm",
+    "mazle_generator.js",
+    "mazle_generator.d.ts"
+  ],
+  "main": "mazle_generator.js",
+  "types": "mazle_generator.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

@@ -314,7 +314,9 @@ export default function Home() {
           <div className={styles.loadingSpinner} />
           <p>
             {generationProgress 
-              ? `Generating puzzle... ${generationProgress.workersComplete}/${generationProgress.totalWorkers} workers complete`
+              ? generationProgress.phase === 'rust-backend'
+                ? 'Generating puzzle via Rust backend...'
+                : `Generating puzzle... ${generationProgress.workersComplete}/${generationProgress.totalWorkers} workers complete`
               : 'Loading Mazle...'}
           </p>
         </div>
@@ -440,7 +442,9 @@ export default function Home() {
                   <>
                     <span className={styles.buttonSpinner} />
                     {generationProgress 
-                      ? `${generationProgress.workersComplete}/${generationProgress.totalWorkers}`
+                      ? generationProgress.phase === 'rust-backend'
+                        ? '🦀'
+                        : `${generationProgress.workersComplete}/${generationProgress.totalWorkers}`
                       : '...'}
                   </>
                 ) : (

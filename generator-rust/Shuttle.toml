@@ -1,0 +1,8 @@
+# Shuttle.rs deployment configuration for mazle-generator
+# https://docs.shuttle.rs/
+
+name = "mazle-generator"
+
+[build]
+# Enable the shuttle feature flag for Shuttle-specific code
+features = ["shuttle"]

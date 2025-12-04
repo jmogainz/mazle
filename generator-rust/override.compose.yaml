@@ -5,6 +5,8 @@ services:
   rust-app:
     build:
       target: runner
+    # Clear the dev command - runner uses ENTRYPOINT only
+    command: []
     profiles:
       - app
 

@@ -21,7 +21,7 @@ make up
 | `make up` | Start frontend (ENV=dev-test default, WASM fallback) |
 | `make up ENV=dev` | Start with Rust backend auto-launching |
 | `make up ENV=dev WITH_DEPS=0` | Dev mode, frontend only |
-| `make up ENV=prod` | Deploy backend (Shuttle) + frontend (Vercel) |
+| `make up ENV=prod` | Deploy backend (Fly.io) + frontend (Vercel) |
 | `make down` | Stop containers |
 | `make clean` | Full cleanup (containers, images, volumes) |
 | `make wasm` | Rebuild WASM from Rust sources |
@@ -33,8 +33,8 @@ make up
 |-----|-----------|---------|----------|
 | `dev-test` | 0 | WASM fallback | Default, quick iteration |
 | `dev` | 1 | Auto-starts (port 3001) | Full stack local dev |
-| `staging` | 1 | Shuttle | Pre-prod testing |
-| `prod` | 1 | Shuttle | Production |
+| `staging` | 1 | Fly.io | Pre-prod testing |
+| `prod` | 1 | Fly.io | Production |
 
 Override backend: `WITH_DEPS=0` to skip, `WITH_DEPS=1` to include
 
@@ -42,7 +42,7 @@ Override backend: `WITH_DEPS=0` to skip, `WITH_DEPS=1` to include
 
 ```bash
 # Full stack (backend + frontend)
-VERCEL_TOKEN=... SHUTTLE_API_KEY=... make up ENV=prod
+VERCEL_TOKEN=... FLY_API_TOKEN=... make up ENV=prod
 
 # Frontend only (backend must already be deployed)
 VERCEL_TOKEN=... make up ENV=prod WITH_DEPS=0

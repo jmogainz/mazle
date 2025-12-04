@@ -51,8 +51,8 @@ ifndef INCLUDED_COMPOSE_PROJECT_CONFIGURATION
   include $(DEVOPS_TOOLKIT_PATH)/backend/make/compose/compose-project-configurations/compose_project_configuration.mk
 endif
 
-# Passthrough SHUTTLE_API_KEY to backend (it uses Shuttle for deployment)
-DEPS_PASSTHROUGH_VARS += SHUTTLE_API_KEY
+# Passthrough FLY_API_TOKEN to backend (it uses Fly.io for deployment)
+DEPS_PASSTHROUGH_VARS += FLY_API_TOKEN
 
 export APP_NAME
 override APP_PORT := 3000
@@ -211,8 +211,8 @@ _up-app:
 		echo "[ERROR] [Up App] VERCEL_TOKEN is required but not set."; \
 		exit 1; \
 	fi; \
-	echo "[INFO] [Up App] Resolving backend URL..."; \
-	CURRENT_BACKEND_DOMAIN="$$( ENV=$(ENV) SHUTTLE_API_KEY=$(SHUTTLE_API_KEY) UNIQUE_RUNNER_ID=$(UNIQUE_RUNNER_ID) $(MAKE) -C $(BACKEND_GATEWAY_PATH) --no-print-directory PRINT_INFO=0 print-public-app-domain 2>/dev/null | tail -1 )"; \
+	echo "[INFO] [Up App] Resolving backend URL (with health check)..."; \
+	CURRENT_BACKEND_DOMAIN="$$( ENV=$(ENV) FLY_API_TOKEN=$(FLY_API_TOKEN) UNIQUE_RUNNER_ID=$(UNIQUE_RUNNER_ID) $(MAKE) -C $(BACKEND_GATEWAY_PATH) --no-print-directory PRINT_INFO=0 print-public-app-domain | tail -1 )"; \
 	export NEXT_PUBLIC_GENERATOR_URL="https://$$CURRENT_BACKEND_DOMAIN"; \
 	echo "[INFO] [Up App] NEXT_PUBLIC_GENERATOR_URL=$$NEXT_PUBLIC_GENERATOR_URL"; \
 	echo "[INFO] [Up App] Deploying $(APP_NAME) to Vercel..."; \

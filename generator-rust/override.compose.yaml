@@ -3,6 +3,8 @@
 
 services:
   rust-app:
+    build:
+      target: runner
     profiles:
       - app
 

@@ -240,17 +240,17 @@ EXPOSE 3001
 CMD ["mazle-generator"]
 ```
 
-### 3. Shuttle.rs (Rust-native PaaS)
+### 3. Fly.io (Production Deployment)
+The generator uses Fly.io for production/staging deployments via the devops-toolkit:
 ```bash
-cargo install shuttle-cli
-shuttle init
-shuttle deploy
-```
+# Deploy to production
+make up ENV=prod
 
-### 4. Fly.io
-```bash
-flyctl launch
-flyctl deploy
+# Deploy to staging
+make up ENV=staging
+
+# Or manually with flyctl
+flyctl deploy -c deploy/fly.toml
 ```
 
 ## Algorithm Notes

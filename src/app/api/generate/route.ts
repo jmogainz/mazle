@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ seed, mapType, config }),
-        signal: AbortSignal.timeout(120000), // 2 min to test Shuttle performance
+        signal: AbortSignal.timeout(120000), // 2 min timeout for server generation
       });
 
       if (rustResponse.ok) {

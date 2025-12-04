@@ -48,10 +48,18 @@ export APP_HOST_PORT
 # Rust-specific configuration
 RUST_BINARY_NAME := mazle-generator
 
-# Deploy target selection (prod/staging use Shuttle for this Rust app)
-PROD_DEPLOY_TARGET := shuttle
-STAGING_DEPLOY_TARGET := shuttle
-SHUTTLE_PROJECT_NAME := mazle-generator
+# Deploy target selection (prod/staging use Fly.io for this Rust app)
+PROD_DEPLOY_TARGET := fly
+STAGING_DEPLOY_TARGET := fly
+STAGING_FLY_TOML_PATH := deploy/staging.fly.toml
+PROD_FLY_TOML_PATH := deploy/fly.toml
+
+# Fly.io organization names (override devops-toolkit defaults)
+FLY_STAGING_ORG_NAME := mazle-staging
+FLY_PROD_ORG_NAME := mazle
+
+# Skip WireGuard - this is a standalone stateless service without internal networking needs
+SKIP_FLY_WIREGUARD := 1
 
 ifndef INCLUDED_COMPOSE_RUST_APP_CONFIGURATION
   include $(DEVOPS_TOOLKIT_PATH)/backend/make/compose/compose-project-configurations/compose-file-configurations/rust-app/compose_rust_app_configuration.mk

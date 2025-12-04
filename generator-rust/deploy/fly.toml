@@ -1,0 +1,33 @@
+# ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+# ┃     FLY APP CONFIG – mazle-generator (production)          ┃
+# ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+# app            = "APP_NAME"       # set dynamically by fly deploy -a
+primary_region = "iad"
+
+# ─── Deploy behaviour ──────────────────────────────────────
+[deploy]
+  strategy                 = "bluegreen"
+  wait_timeout             = "1m"
+
+# ─── Non-secret environment variables ─────────────────────
+[env]
+  PORT = "8080"
+  RUST_LOG = "info"
+
+# ─── HTTP service configuration ───────────────────────────
+[http_service]
+  internal_port        = 8080
+  force_https          = true
+
+  [[http_service.checks]]
+    grace_period   = "10s"
+    interval       = "10s"
+    timeout        = "3s"
+    method         = "get"
+    path           = "/health"
+    protocol       = "http"
+
+# ─── Compute sizing ───────────────────────────────────────
+[[vm]]
+  size      = "shared-cpu-8x"
+  memory    = "2048mb"

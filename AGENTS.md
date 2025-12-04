@@ -14,7 +14,7 @@ export UNIQUE_RUNNER_ID=$(whoami)
 make up                       # Quick start (WASM fallback)
 make up ENV=dev               # Full stack (frontend + Rust backend)
 make up ENV=dev WITH_DEPS=0   # Dev mode, frontend only
-make up ENV=prod              # Deploy both frontend (Vercel) + backend (Shuttle)
+make up ENV=prod              # Deploy both frontend (Vercel) + backend (Fly.io)
 make down                     # Stop containers
 make clean                    # Full cleanup
 make wasm                     # Rebuild WASM from Rust
@@ -27,8 +27,8 @@ make help                     # List all targets
 |-----|-----------|-------|
 | `dev-test` (default) | 0 | WASM fallback, fast iteration |
 | `dev` | 1 (override with =0) | Full local stack |
-| `staging` | 1 | Pre-prod (Shuttle) |
-| `prod` | 1 (override with =0) | Deploy backend to Shuttle, frontend to Vercel |
+| `staging` | 1 | Pre-prod (Fly.io) |
+| `prod` | 1 (override with =0) | Deploy backend to Fly.io, frontend to Vercel |
 
 ## Architecture
 
@@ -49,7 +49,7 @@ mazle/
 
 - `Makefile` - Root build targets, WASM build, backend wiring
 - `mazle.compose.yaml` - Docker Compose for frontend
-- `generator-rust/Makefile` - Backend build/deploy (Shuttle)
+- `generator-rust/Makefile` - Backend build/deploy (Fly.io)
 - `src/game/GameScene.ts` - Main Phaser game logic
 - `src/game/puzzleGenerator.ts` - WASM/HTTP generator interface
 
@@ -63,7 +63,7 @@ Frontend auto-detects: uses HTTP if `NEXT_PUBLIC_GENERATOR_URL` set, else WASM f
 
 ## Deployment
 
-- **Full stack**: `make up ENV=prod` (requires `VERCEL_TOKEN` and `SHUTTLE_API_KEY`)
+- **Full stack**: `make up ENV=prod` (requires `VERCEL_TOKEN` and `FLY_API_TOKEN`)
 - **Frontend only**: `make up ENV=prod WITH_DEPS=0` (backend must already be deployed)
 - **Backend only**: `cd generator-rust && make up ENV=prod`
 

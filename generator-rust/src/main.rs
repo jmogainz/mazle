@@ -178,20 +178,6 @@ fn build_router() -> Router {
         .with_state(state)
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Shuttle.rs entry point (when deployed to Shuttle)
-// ─────────────────────────────────────────────────────────────────────────────
-#[cfg(feature = "shuttle")]
-#[shuttle_runtime::main]
-async fn shuttle_main() -> shuttle_axum::ShuttleAxum {
-    println!("🧊 Mazle Generator Server starting on Shuttle...");
-    Ok(build_router().into())
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Standalone entry point (for local development)
-// ─────────────────────────────────────────────────────────────────────────────
-#[cfg(not(feature = "shuttle"))]
 #[tokio::main]
 async fn main() {
     println!("🧊 Mazle Generator Server starting...");

@@ -302,6 +302,14 @@ async function testRustBackend(): Promise<boolean> {
   return rustBackendWorking;
 }
 
+// Custom error class for backend connection issues
+export class BackendConnectionError extends Error {
+  constructor(message: string, public readonly isTimeout: boolean = false) {
+    super(message);
+    this.name = 'BackendConnectionError';
+  }
+}
+
 async function generateFromRustBackend(
   seed: string,
   mapType?: MapType,
@@ -317,8 +325,7 @@ async function generateFromRustBackend(
   console.log(`[Rust] Fetching puzzle from ${url}`);
   
   // Simulate progress based on expected generation time
-  // Shuttle free tier with 400 attempts can take 30-60+ seconds
-  const EXPECTED_DURATION_MS = 45000;
+  const EXPECTED_DURATION_MS = 3000;
   const startTime = performance.now();
   let progressInterval: ReturnType<typeof setInterval> | null = null;
   
@@ -348,10 +355,15 @@ async function generateFromRustBackend(
     const response = await fetch(url, {
       method: 'GET',
       headers: { 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(120000), // 2 min to test Shuttle performance
+      signal: AbortSignal.timeout(120000), // 2 min timeout for server generation
     });
 
     if (!response.ok) {
+      if (response.status >= 500) {
+        throw new BackendConnectionError(
+          `Server error (${response.status}). The puzzle generator is experiencing issues. Please try again.`
+        );
+      }
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
@@ -370,7 +382,42 @@ async function generateFromRustBackend(
       });
     }
     
+    // Mark backend as working for future requests
+    rustBackendWorking = true;
+    
     return data.puzzle as PuzzleData;
+  } catch (error) {
+    if (progressInterval) clearInterval(progressInterval);
+    
+    // Handle specific error types with user-friendly messages
+    if (error instanceof BackendConnectionError) {
+      throw error;
+    }
+    
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      // Network error - backend is down or unreachable
+      rustBackendWorking = false;
+      throw new BackendConnectionError(
+        'Unable to connect to puzzle server. The server may be temporarily unavailable.'
+      );
+    }
+    
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new BackendConnectionError(
+        'Request timed out. The puzzle server is taking too long to respond.',
+        true
+      );
+    }
+    
+    if (error instanceof DOMException && error.name === 'TimeoutError') {
+      throw new BackendConnectionError(
+        'Connection timed out. The puzzle server may be overloaded or unavailable.',
+        true
+      );
+    }
+    
+    // Re-throw unknown errors
+    throw error;
   } finally {
     if (progressInterval) clearInterval(progressInterval);
   }

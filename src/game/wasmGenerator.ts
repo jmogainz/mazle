@@ -317,8 +317,8 @@ async function generateFromRustBackend(
   console.log(`[Rust] Fetching puzzle from ${url}`);
   
   // Simulate progress based on expected generation time
-  // Rust backend typically takes 1-5 seconds, expect ~3 seconds
-  const EXPECTED_DURATION_MS = 3000;
+  // Shuttle free tier with 400 attempts can take 30-60+ seconds
+  const EXPECTED_DURATION_MS = 45000;
   const startTime = performance.now();
   let progressInterval: ReturnType<typeof setInterval> | null = null;
   
@@ -348,7 +348,7 @@ async function generateFromRustBackend(
     const response = await fetch(url, {
       method: 'GET',
       headers: { 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(120000), // 2 min to test Shuttle performance
     });
 
     if (!response.ok) {

@@ -47,3 +47,5 @@ generator-rust/target/
 src/wasm/generator/.build-marker
 
 public/wasm/
+
+**/.shuttle_deploy_url

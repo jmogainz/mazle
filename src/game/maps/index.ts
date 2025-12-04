@@ -3,7 +3,6 @@ export { MAP_REGISTRY, registerMapType } from './registry';
 export type {
   MapTypeDefinition,
   PsychologyMetrics,
-  PartialGenerationResult,
   TilesetDefinition,
 } from './registry';
 

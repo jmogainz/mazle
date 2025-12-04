@@ -51,6 +51,9 @@ ifndef INCLUDED_COMPOSE_PROJECT_CONFIGURATION
   include $(DEVOPS_TOOLKIT_PATH)/backend/make/compose/compose-project-configurations/compose_project_configuration.mk
 endif
 
+# Passthrough SHUTTLE_API_KEY to backend (it uses Shuttle for deployment)
+DEPS_PASSTHROUGH_VARS += SHUTTLE_API_KEY
+
 export APP_NAME
 override APP_PORT := 3000
 export APP_HOST_PORT := 3000
@@ -195,7 +198,7 @@ _up-app: wasm
 	fi
 endif
 
-# For Vercel deploys, get backend URL and pass to vercel deploy
+# For Vercel deploys, resolve backend URL before deploying (mazle-specific)
 ifeq ($(DEPLOY_TARGET_FOR_ENV),vercel)
 _up-app:
 	@set -euo pipefail; \
@@ -209,14 +212,14 @@ _up-app:
 		exit 1; \
 	fi; \
 	echo "[INFO] [Up App] Resolving backend URL..."; \
-	CURRENT_BACKEND_DOMAIN="$$( env -i PATH="$$PATH" HOME="$$HOME" UNIQUE_RUNNER_ID="$$UNIQUE_RUNNER_ID" make -C $(BACKEND_GATEWAY_PATH) --no-print-directory PRINT_INFO=0 print-public-app-domain 2>/dev/null | tail -1 )"; \
-	export NEXT_PUBLIC_GENERATOR_URL="$$CURRENT_BACKEND_DOMAIN"; \
+	CURRENT_BACKEND_DOMAIN="$$( ENV=$(ENV) SHUTTLE_API_KEY=$(SHUTTLE_API_KEY) UNIQUE_RUNNER_ID=$(UNIQUE_RUNNER_ID) $(MAKE) -C $(BACKEND_GATEWAY_PATH) --no-print-directory PRINT_INFO=0 print-public-app-domain 2>/dev/null | tail -1 )"; \
+	export NEXT_PUBLIC_GENERATOR_URL="https://$$CURRENT_BACKEND_DOMAIN"; \
 	echo "[INFO] [Up App] NEXT_PUBLIC_GENERATOR_URL=$$NEXT_PUBLIC_GENERATOR_URL"; \
 	echo "[INFO] [Up App] Deploying $(APP_NAME) to Vercel..."; \
-	DEPLOY_URL=$$(NEXT_PUBLIC_GENERATOR_URL=$$NEXT_PUBLIC_GENERATOR_URL \
-		VERCEL_ORG_ID=$(VERCEL_ORG_ID) VERCEL_PROJECT_ID=$(VERCEL_PROJECT_ID) VERCEL_PROJECT_NAME=$(VERCEL_PROJECT_NAME) \
+	DEPLOY_URL=$$(VERCEL_ORG_ID=$(VERCEL_ORG_ID) VERCEL_PROJECT_ID=$(VERCEL_PROJECT_ID) VERCEL_PROJECT_NAME=$(VERCEL_PROJECT_NAME) \
 		vercel deploy --prod --token $(VERCEL_TOKEN) --yes --force --cwd $(CURDIR) \
-		| grep -Eo 'https://[^ ]+' | tail -n1); \
+		--build-env NEXT_PUBLIC_GENERATOR_URL="$$NEXT_PUBLIC_GENERATOR_URL" \
+		| /usr/bin/grep -Eo 'https://[^ ]+' | tail -n1); \
 	if [ -z "$$DEPLOY_URL" ]; then \
 		echo "[ERROR] [Up App] Failed to capture Vercel deploy URL."; \
 		exit 1; \

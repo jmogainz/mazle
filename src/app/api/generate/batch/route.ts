@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const RUST_GENERATOR_URL = process.env.RUST_GENERATOR_URL || process.env.NEXT_PUBLIC_GENERATOR_URL || 'http://localhost:3001';
+// Rust generator server URL (set via NEXT_PUBLIC_GENERATOR_URL, falls back to localhost for dev)
+const GENERATOR_URL = process.env.NEXT_PUBLIC_GENERATOR_URL || 'http://localhost:3001';
 
 interface BatchRequest {
   seeds: string[];
@@ -49,7 +50,7 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      const rustResponse = await fetch(`${RUST_GENERATOR_URL}/api/generate/batch`, {
+      const rustResponse = await fetch(`${GENERATOR_URL}/api/generate/batch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ seeds, mapType, config }),

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Rust generator server URL (configurable via environment)
-const RUST_GENERATOR_URL = process.env.RUST_GENERATOR_URL || process.env.NEXT_PUBLIC_GENERATOR_URL || 'http://localhost:3001';
+// Rust generator server URL (set via NEXT_PUBLIC_GENERATOR_URL, falls back to localhost for dev)
+const GENERATOR_URL = process.env.NEXT_PUBLIC_GENERATOR_URL || 'http://localhost:3001';
 
 interface GenerateRequest {
   seed: string;
@@ -64,11 +64,11 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      const rustResponse = await fetch(`${RUST_GENERATOR_URL}/api/generate`, {
+      const rustResponse = await fetch(`${GENERATOR_URL}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ seed, mapType, config }),
-        signal: AbortSignal.timeout(30000),
+        signal: AbortSignal.timeout(120000), // 2 min to test Shuttle performance
       });
 
       if (rustResponse.ok) {

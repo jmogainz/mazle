@@ -6,7 +6,8 @@
   "build": {
     "env": {
       "NEXT_PUBLIC_DEVTOOLS_ENABLED": "0",
-      "NEXT_PUBLIC_ENV": "prod"
+      "NEXT_PUBLIC_ENV": "prod",
+      "NEXT_PUBLIC_GENERATOR_URL": "https://mazle-generator-finf.shuttle.app"
     }
   },
   "headers": [

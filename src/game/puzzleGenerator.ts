@@ -16,8 +16,8 @@ import './maps/ground';
 const SERVER_SALT = 'mazle-daily-v8-2024-genius';
 
 // Launch date for puzzle numbering (in New York timezone)
-// Puzzle #1 starts on December 4, 2024
-const LAUNCH_DATE = '2024-12-04';
+// Puzzle #1 starts on December 4, 2025
+const LAUNCH_DATE = '2025-12-04';
 
 /**
  * Get the current date string in New York timezone (YYYY-MM-DD format).

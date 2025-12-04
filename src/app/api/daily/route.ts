@@ -1,16 +1,19 @@
 import { NextResponse } from 'next/server';
 import { Redis } from '@upstash/redis';
+
+// This route uses Redis and external API calls - must be dynamic
+export const dynamic = 'force-dynamic';
 import { getNewYorkDateString, getDailySeed, getPuzzleNumber } from '@/game/puzzleGenerator';
 import type { PuzzleData } from '@/game/types';
 
 // Initialize Redis client (optional - gracefully disabled if not configured)
-const redis = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
-  ? Redis.fromEnv()
-  : null;
+// Vercel's Upstash integration uses KV_REST_API_* variable names
+const redisUrl = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
+const redisToken = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
 
-if (!redis) {
-  console.warn('[/api/daily] Redis not configured (UPSTASH_REDIS_REST_URL/TOKEN missing) - KV caching disabled');
-}
+const redis = redisUrl && redisToken
+  ? new Redis({ url: redisUrl, token: redisToken })
+  : null;
 
 // Rust generator server URL
 const GENERATOR_URL = process.env.NEXT_PUBLIC_GENERATOR_URL || null;
@@ -43,12 +46,17 @@ export async function GET() {
   const seed = getDailySeed(today);
   const kvKey = `puzzle:${dateStr}`;
   
+  if (!redis) {
+    console.warn('[/api/daily] Redis not configured (KV_REST_API_URL/TOKEN missing) - skipping cache');
+  }
+  
   if (redis) {
     try {
       // Try to get pre-generated puzzle from KV
       const cachedPuzzle = await redis.get<PuzzleData>(kvKey);
       
       if (cachedPuzzle) {
+        console.log(`[/api/daily] Cache hit for ${dateStr}`);
         return NextResponse.json({
           puzzle: cachedPuzzle,
           puzzleNumber,

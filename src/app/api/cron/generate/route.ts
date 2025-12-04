@@ -1,15 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Redis } from '@upstash/redis';
+
+// This route uses request.headers, Redis, and external API calls - must be dynamic
+export const dynamic = 'force-dynamic';
 import { getNewYorkDateString, getDailySeed, getPuzzleNumber } from '@/game/puzzleGenerator';
 
 // Initialize Redis client (required for cron - should error if not configured in prod)
-const redis = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
-  ? Redis.fromEnv()
-  : null;
+// Vercel's Upstash integration uses KV_REST_API_* variable names
+const redisUrl = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
+const redisToken = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
 
-if (!redis) {
-  console.warn('[cron/generate] Redis not configured - cron job will not be able to cache puzzles!');
-}
+const redis = redisUrl && redisToken
+  ? new Redis({ url: redisUrl, token: redisToken })
+  : null;
 import type { PuzzleData } from '@/game/types';
 
 // Rust generator server URL
@@ -53,7 +56,7 @@ export async function GET(request: NextRequest) {
     console.log(`[cron/generate] Generating puzzle for ${tomorrowDateStr} (puzzle #${tomorrowPuzzleNumber})`);
     
     if (!redis) {
-      console.warn('[cron/generate] Redis not configured - will generate but cannot cache');
+      console.warn('[cron/generate] Redis not configured (KV_REST_API_URL/TOKEN missing) - will generate but cannot cache');
     }
     
     // Also generate today's puzzle if it doesn't exist (safety net)

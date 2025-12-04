@@ -1,15 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Redis } from '@upstash/redis';
+
+// This route uses Redis - must be dynamic
+export const dynamic = 'force-dynamic';
 import { getNewYorkDateString, getDailySeed } from '@/game/puzzleGenerator';
 
 // Initialize Redis client (optional - gracefully disabled if not configured)
-const redis = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
-  ? Redis.fromEnv()
-  : null;
+// Vercel's Upstash integration uses KV_REST_API_* variable names
+const redisUrl = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
+const redisToken = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
 
-if (!redis) {
-  console.warn('[/api/daily/cache] Redis not configured - cache backfill disabled');
-}
+const redis = redisUrl && redisToken
+  ? new Redis({ url: redisUrl, token: redisToken })
+  : null;
 import type { PuzzleData } from '@/game/types';
 import { TileType } from '@/game/types';
 
@@ -64,6 +67,7 @@ export async function POST(request: NextRequest) {
     const kvKey = `puzzle:${dateStr}`;
     
     if (!redis) {
+      console.warn('[/api/daily/cache] Redis not configured (KV_REST_API_URL/TOKEN missing) - skipping cache');
       return NextResponse.json({ 
         success: true, 
         cached: false,

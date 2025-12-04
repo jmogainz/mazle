@@ -71,25 +71,14 @@ ifneq (,$(filter $(ENV),$(DEV_TEST_ENV)))
 endif
 export NEXT_PUBLIC_DEVTOOLS_ENABLED
 
-ifndef INCLUDED_APP_CONFIGURATION
+ifndef INCLUDED_COMPOSE_APP_CONFIGURATION
   include $(DEVOPS_TOOLKIT_PATH)/backend/make/compose/compose-project-configurations/compose-file-configurations/app/compose_app_configuration.mk
 endif
 
 # --------------------------------
-# Next.js App Configuration (for backend URL resolution)
+# WASM Generator Configuration & Targets
 # --------------------------------
-
-ifndef INCLUDED_NEXTJS_APP_CONFIGURATION
-  include $(DEVOPS_TOOLKIT_PATH)/frontend/make/utils/nextjs_app_configuration.mk
-endif
-
-ifndef INCLUDED_NEXTJS_APP_TARGETS
-  include $(DEVOPS_TOOLKIT_PATH)/frontend/make/utils/nextjs_app_targets.mk
-endif
-
-# --------------------------------
-# WASM Generator Configuration
-# --------------------------------
+# MUST be defined BEFORE nextjs_app_targets.mk so up:: wasm runs first
 
 # Path to the WASM output directory
 WASM_OUTPUT_DIR := $(CURDIR)/src/wasm/generator
@@ -98,26 +87,26 @@ WASM_BUILD_MARKER := $(WASM_OUTPUT_DIR)/.build-marker
 # Rust source files to watch for changes
 RUST_GENERATOR_SRC := $(shell find $(CURDIR)/generator-rust/src -name '*.rs' 2>/dev/null)
 
-# --------------------------------
-# Targets
-# --------------------------------
-
-ifndef INCLUDED_COMPOSE_APP_TARGETS
-  include $(DEVOPS_TOOLKIT_PATH)/backend/make/compose/compose-project-configurations/compose-file-configurations/app/compose_app_targets.mk
-endif
-
-# --------------------------------
-# WASM Build Targets
-# --------------------------------
-
-.PHONY: wasm wasm-clean wasm-check
+.PHONY: wasm wasm-clean wasm-check _wasm-build
 
 ## Build WASM generator from Rust (if sources changed)
 ## Built with threads support (atomics) for parallel generation via rayon
 ## Requires: rustup +nightly component add rust-src
-wasm: $(WASM_BUILD_MARKER)
+wasm:
+	@if [ ! -f "$(WASM_BUILD_MARKER)" ]; then \
+		echo "[INFO] [WASM] No build marker found. Building..."; \
+		$(MAKE) _wasm-build --no-print-directory; \
+	elif [ -n "$$(find $(CURDIR)/generator-rust/src -name '*.rs' -newer $(WASM_BUILD_MARKER) 2>/dev/null)" ]; then \
+		echo "[INFO] [WASM] Rust sources changed. Rebuilding..."; \
+		$(MAKE) _wasm-build --no-print-directory; \
+	elif [ "$(CURDIR)/generator-rust/Cargo.toml" -nt "$(WASM_BUILD_MARKER)" ]; then \
+		echo "[INFO] [WASM] Cargo.toml changed. Rebuilding..."; \
+		$(MAKE) _wasm-build --no-print-directory; \
+	else \
+		echo "[INFO] [WASM] WASM is up to date."; \
+	fi
 
-$(WASM_BUILD_MARKER): $(RUST_GENERATOR_SRC) $(CURDIR)/generator-rust/Cargo.toml $(CURDIR)/generator-rust/.cargo/config.toml $(CURDIR)/generator-rust/rust-toolchain.toml
+_wasm-build:
 	@echo "[INFO] [WASM] Building generator from Rust sources (with threads)..."
 	@if ! command -v wasm-pack >/dev/null 2>&1; then \
 		echo "[INFO] [WASM] Installing wasm-pack..."; \
@@ -153,77 +142,29 @@ wasm-check:
 		echo "[INFO] [WASM] WASM is up to date."; \
 	fi
 
+# WASM as prerequisite for all up:: calls - defined FIRST so it runs before other up:: rules
+up:: wasm
+
 # --------------------------------
-# Override _up-app to set NEXT_PUBLIC_GENERATOR_URL from backend
+# Next.js App Configuration (for backend URL resolution)
 # --------------------------------
 
-# For dev-test: client-only mode, no backend needed (uses WASM)
-ifeq ($(ENV),$(DEV_TEST_ENV))
-_up-app: wasm
-	@if [ -z "$(COMPOSE_PROFILE_APP_SERVICES)" ]; then \
-		echo "[ERROR] [Up-App] No services found matching the '$(COMPOSE_PROFILE_APP)' profile!"; \
-	else \
-		echo "[INFO] [Up-App] Running in dev-test mode (client-only, WASM fallback)"; \
-		export NEXT_PUBLIC_GENERATOR_URL=""; \
-		echo "[INFO] [Up-App] Starting app services found matching the '$(COMPOSE_PROFILE_APP)' profile..."; \
-		echo "[INFO] [Up-App] Found services: $(COMPOSE_PROFILE_APP_SERVICES)"; \
-		echo "[INFO] [Up-App] Spinning up app..."; \
-		$(COMPOSE_CMD) --profile $(COMPOSE_PROFILE_APP) up -d --no-build; \
-		echo "[INFO] [Up-App] Done. $(APP_NAME) is running on $(APP_URL_FROM_ANYWHERE)"; \
-	fi
+# Tell the toolkit which env var to set with the backend URL
+# This will be passed to Vercel via --build-env during deployment
+NEXTJS_BACKEND_ENV_VAR := NEXT_PUBLIC_GENERATOR_URL
+
+ifndef INCLUDED_NEXTJS_APP_CONFIGURATION
+  include $(DEVOPS_TOOLKIT_PATH)/frontend/make/utils/nextjs_app_configuration.mk
 endif
 
-# For dev: get backend URL dynamically before starting frontend
-ifeq ($(ENV),$(DEV_ENV))
-_up-app: wasm
-	@if [ -z "$(COMPOSE_PROFILE_APP_SERVICES)" ]; then \
-		echo "[ERROR] [Up-App] No services found matching the '$(COMPOSE_PROFILE_APP)' profile!"; \
-	else \
-		echo "[INFO] [Up-App] Resolving backend URL (with health check)..."; \
-		backend_export="$$( env -i PATH="$$PATH" HOME="$$HOME" UNIQUE_RUNNER_ID="$$UNIQUE_RUNNER_ID" $(MAKE) _export_current_backend_domain --no-print-directory )"; \
-		rc=$$?; \
-		if [ $$rc -eq 0 ]; then \
-			eval "$$backend_export"; \
-			export NEXT_PUBLIC_GENERATOR_URL="$$CURRENT_BACKEND_DOMAIN"; \
-			echo "[INFO] [Up-App] NEXT_PUBLIC_GENERATOR_URL=$$NEXT_PUBLIC_GENERATOR_URL"; \
-		else \
-			echo "[WARN] [Up-App] Backend not available (rc=$$rc), WASM fallback will be used"; \
-			export NEXT_PUBLIC_GENERATOR_URL=""; \
-		fi; \
-		echo "[INFO] [Up-App] Starting app services found matching the '$(COMPOSE_PROFILE_APP)' profile..."; \
-		echo "[INFO] [Up-App] Found services: $(COMPOSE_PROFILE_APP_SERVICES)"; \
-		echo "[INFO] [Up-App] Spinning up app..."; \
-		$(COMPOSE_CMD) --profile $(COMPOSE_PROFILE_APP) up -d --no-build; \
-		echo "[INFO] [Up-App] Done. $$APP_NAME is running on $$APP_URL_FROM_ANYWHERE"; \
-	fi
+ifndef INCLUDED_NEXTJS_APP_TARGETS
+  include $(DEVOPS_TOOLKIT_PATH)/frontend/make/utils/nextjs_app_targets.mk
 endif
 
-# For Vercel deploys, resolve backend URL before deploying (mazle-specific)
-ifeq ($(DEPLOY_TARGET_FOR_ENV),vercel)
-_up-app:
-	@set -euo pipefail; \
-	export LOG_LEVEL=; \
-	if ! command -v vercel >/dev/null 2>&1; then \
-		echo "[ERROR] [Up App] vercel CLI not found. Install with 'npm i -g vercel'."; \
-		exit 1; \
-	fi; \
-	if [ -z "$(strip $(VERCEL_TOKEN))" ]; then \
-		echo "[ERROR] [Up App] VERCEL_TOKEN is required but not set."; \
-		exit 1; \
-	fi; \
-	echo "[INFO] [Up App] Resolving backend URL (with health check)..."; \
-	CURRENT_BACKEND_DOMAIN="$$( ENV=$(ENV) FLY_API_TOKEN=$(FLY_API_TOKEN) UNIQUE_RUNNER_ID=$(UNIQUE_RUNNER_ID) $(MAKE) -C $(BACKEND_GATEWAY_PATH) --no-print-directory PRINT_INFO=0 print-public-app-domain | tail -1 )"; \
-	export NEXT_PUBLIC_GENERATOR_URL="https://$$CURRENT_BACKEND_DOMAIN"; \
-	echo "[INFO] [Up App] NEXT_PUBLIC_GENERATOR_URL=$$NEXT_PUBLIC_GENERATOR_URL"; \
-	echo "[INFO] [Up App] Deploying $(APP_NAME) to Vercel..."; \
-	DEPLOY_URL=$$(VERCEL_ORG_ID=$(VERCEL_ORG_ID) VERCEL_PROJECT_ID=$(VERCEL_PROJECT_ID) VERCEL_PROJECT_NAME=$(VERCEL_PROJECT_NAME) \
-		vercel deploy --prod --token $(VERCEL_TOKEN) --yes --force --cwd $(CURDIR) \
-		--build-env NEXT_PUBLIC_GENERATOR_URL="$$NEXT_PUBLIC_GENERATOR_URL" \
-		| /usr/bin/grep -Eo 'https://[^ ]+' | tail -n1); \
-	if [ -z "$$DEPLOY_URL" ]; then \
-		echo "[ERROR] [Up App] Failed to capture Vercel deploy URL."; \
-		exit 1; \
-	fi; \
-	echo "$$DEPLOY_URL" > .last_vercel_deploy_url; \
-	echo "[INFO] [Up App] Done. App $(APP_NAME) available at $$DEPLOY_URL."
+# --------------------------------
+# Targets (toolkit includes)
+# --------------------------------
+
+ifndef INCLUDED_COMPOSE_APP_TARGETS
+  include $(DEVOPS_TOOLKIT_PATH)/backend/make/compose/compose-project-configurations/compose-file-configurations/app/compose_app_targets.mk
 endif

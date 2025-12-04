@@ -1,24 +1,9 @@
-# Build artifacts
-target/
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# Git
-.git/
-.gitignore
-
-# Documentation
-*.md
-!README.md
-
-# Test files
-test_comparison.ts
-verify.sh
-
-# Misc
-.env*
+target
+target_local
+**/*.rs.bk
+*.pdb
+node_modules
+dist
+tmp
 *.log
+.DS_Store

@@ -1,9 +1,0 @@
-target
-target_local
-**/*.rs.bk
-*.pdb
-node_modules
-dist
-tmp
-*.log
-.DS_Store

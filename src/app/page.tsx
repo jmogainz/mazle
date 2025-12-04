@@ -12,6 +12,9 @@ import {
   generatePuzzleParallel,
   getDailySeed,
   GenerationProgress,
+  GeneratorBackend,
+  isRustBackendConfigured,
+  preloadWasm,
   TILE_SIZE,
 } from '@/game';
 import { getPlayerStats, saveTodaysResult, getTodaysResult, getCachedPuzzle, cachePuzzle } from '@/utils/storage';
@@ -73,6 +76,8 @@ export default function Home() {
   const [showStats, setShowStats] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showDevTools, setShowDevTools] = useState(false);
+  const [selectedBackend, setSelectedBackend] = useState<GeneratorBackend>('auto');
+  const [lastUsedBackend, setLastUsedBackend] = useState<'rust-backend' | 'wasm' | null>(null);
   const [gameResult, setGameResult] = useState<{ moveCount: number; timeMs: number } | null>(null);
   const [previousResult, setPreviousResult] = useState<DailyStats | null>(null);
   const [isGameReady, setIsGameReady] = useState(false);
@@ -159,12 +164,15 @@ export default function Home() {
       return;
     }
 
-    // Generate puzzle in parallel (non-blocking)
+    // Generate puzzle (non-blocking)
     setIsGenerating(true);
     setGenerationProgress(null);
     
     try {
-      const todayPuzzle = await generatePuzzleParallel(todaySeed, setGenerationProgress);
+      const todayPuzzle = await generatePuzzleParallel(todaySeed, (progress) => {
+        setGenerationProgress(progress);
+        setLastUsedBackend(progress.phase);
+      });
       setPuzzle(todayPuzzle);
       setRenderKey((prev) => prev + 1);
       // Cache for future visits
@@ -175,8 +183,18 @@ export default function Home() {
     }
   }, []);
 
+  // Track if we've already initiated loading (prevent React Strict Mode double-call)
+  const loadInitiatedRef = useRef(false);
+  
   // Initialize puzzle and stats - use requestAnimationFrame to ensure first paint
   useEffect(() => {
+    // Prevent duplicate calls from React Strict Mode
+    if (loadInitiatedRef.current) return;
+    loadInitiatedRef.current = true;
+    
+    // Preload WASM early for faster fallback if needed
+    preloadWasm();
+    
     // Ensure the loading UI renders before starting heavy computation
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -236,6 +254,11 @@ export default function Home() {
       const isDateSeed = /^\d{4}-\d{2}-\d{2}$/.test(trimmed);
       const forceMapType = selectedMapType === 'random' ? undefined : selectedMapType;
 
+      const progressHandler = (progress: GenerationProgress) => {
+        setGenerationProgress(progress);
+        setLastUsedBackend(progress.phase);
+      };
+
       if (isDateSeed) {
         setIsGenerating(true);
         setGenerationProgress(null);
@@ -244,7 +267,7 @@ export default function Home() {
         const dailySeed = getDailySeed(targetDate);
         
         try {
-          const datedPuzzle = await generatePuzzleParallel(dailySeed, setGenerationProgress, forceMapType);
+          const datedPuzzle = await generatePuzzleParallel(dailySeed, progressHandler, forceMapType, selectedBackend);
           debugModeRef.current = true;
           setPuzzle(datedPuzzle);
           setPuzzleNumber(getPuzzleNumber(targetDate));
@@ -272,7 +295,7 @@ export default function Home() {
       setGenerationProgress(null);
       
       try {
-        const newPuzzle = await generatePuzzleParallel(newSeed, setGenerationProgress, forceMapType);
+        const newPuzzle = await generatePuzzleParallel(newSeed, progressHandler, forceMapType, selectedBackend);
         debugModeRef.current = true;
         setPuzzle(newPuzzle);
         setPuzzleLabel(`DEV ${newSeed}`);
@@ -288,7 +311,7 @@ export default function Home() {
         setGenerationProgress(null);
       }
     },
-    [selectedMapType],
+    [selectedMapType, selectedBackend],
   );
 
   const handleLoadDaily = useCallback(() => {
@@ -307,18 +330,29 @@ export default function Home() {
     }
   }, []);
 
+  // Calculate progress percentage (works for both loading screen and dev tools)
+  const progressPercent = generationProgress 
+    ? Math.round((generationProgress.workersComplete / generationProgress.totalWorkers) * 100)
+    : 0;
+
   if (!puzzle) {
     return (
       <main className={`${styles.main} bg-pattern`} style={{ justifyContent: 'center' }}>
         <div className={styles.loading} style={{ minHeight: 'auto' }}>
           <div className={styles.loadingSpinner} />
           <p>
-            {generationProgress 
-              ? generationProgress.phase === 'rust-backend'
-                ? 'Generating puzzle via Rust backend...'
-                : `Generating puzzle... ${generationProgress.workersComplete}/${generationProgress.totalWorkers} workers complete`
+            {isGenerating 
+              ? 'Generating daily puzzle...'
               : 'Loading Mazle...'}
           </p>
+          {isGenerating && (
+            <div className={styles.progressBar}>
+              <div 
+                className={styles.progressFill} 
+                style={{ width: `${progressPercent}%` }} 
+              />
+            </div>
+          )}
         </div>
       </main>
     );
@@ -342,7 +376,7 @@ export default function Home() {
         {showDevTools && (
           <div className={styles.devPanel}>
             <div className={styles.devPanelHeader}>
-              <span className={styles.devPanelTitle}>🔧 Dev Tools</span>
+              <span className={styles.devPanelTitle}>Dev Tools</span>
               <button 
                 className={styles.devCloseButton}
                 onClick={() => setShowDevTools(false)}
@@ -405,6 +439,59 @@ export default function Home() {
               </div>
             </div>
 
+            {/* Maze Engine Selector */}
+            <div className={styles.devBackendSection}>
+              <div className={styles.devBackendHeader}>
+                Maze Engine
+                {lastUsedBackend && (
+                  <span className={styles.devBackendStatus}>
+                    {lastUsedBackend === 'rust-backend' ? '🦀 Rust' : 'WASM'}
+                  </span>
+                )}
+              </div>
+              <div className={styles.devBackendOptions}>
+                <label className={styles.devBackendOption}>
+                  <input
+                    type="radio"
+                    name="engine"
+                    value="auto"
+                    checked={selectedBackend === 'auto'}
+                    onChange={() => setSelectedBackend('auto')}
+                    disabled={isGenerating}
+                  />
+                  <span>Auto</span>
+                </label>
+                <label 
+                  className={`${styles.devBackendOption} ${!isRustBackendConfigured() ? styles.devBackendDisabled : ''}`}
+                  title={isRustBackendConfigured() ? 'Rust server (fastest, parallel)' : 'Not configured (set NEXT_PUBLIC_GENERATOR_URL)'}
+                >
+                  <input
+                    type="radio"
+                    name="engine"
+                    value="rust"
+                    checked={selectedBackend === 'rust'}
+                    onChange={() => setSelectedBackend('rust')}
+                    disabled={isGenerating || !isRustBackendConfigured()}
+                  />
+                  <span>🦀 Rust</span>
+                </label>
+                <label 
+                  className={styles.devBackendOption}
+                  title="Browser WASM (parallel via Web Workers)"
+                >
+                  <input
+                    type="radio"
+                    name="engine"
+                    value="wasm"
+                    checked={selectedBackend === 'wasm'}
+                    onChange={() => setSelectedBackend('wasm')}
+                    disabled={isGenerating}
+                  />
+                  <span>WASM</span>
+                </label>
+              </div>
+            </div>
+
             {/* Controls */}
             <div className={styles.devControls}>
               <input
@@ -439,14 +526,7 @@ export default function Home() {
                 disabled={isGenerating}
               >
                 {isGenerating ? (
-                  <>
-                    <span className={styles.buttonSpinner} />
-                    {generationProgress 
-                      ? generationProgress.phase === 'rust-backend'
-                        ? '🦀'
-                        : `${generationProgress.workersComplete}/${generationProgress.totalWorkers}`
-                      : '...'}
-                  </>
+                  <span className={styles.buttonSpinner} />
                 ) : (
                   'Random'
                 )}
@@ -460,6 +540,24 @@ export default function Home() {
                 ↩ Daily
               </button>
             </div>
+            
+            {/* Generation Progress */}
+            {isGenerating && generationProgress && (
+              <div className={styles.devProgress}>
+                <div className={styles.devProgressHeader}>
+                  {generationProgress.phase === 'rust-backend' 
+                    ? `🦀 Rust ${progressPercent}%` 
+                    : `WASM ${progressPercent}%`}
+                </div>
+                <div className={styles.progressBar}>
+                  <div 
+                    className={styles.progressFill} 
+                    style={{ width: `${progressPercent}%` }} 
+                  />
+                </div>
+              </div>
+            )}
+            
             <p className={styles.devHint}>Dev runs are not saved to stats</p>
           </div>
         )}

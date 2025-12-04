@@ -2,33 +2,32 @@
  * Ice map psychology metrics and scoring.
  * 
  * These metrics measure what actually makes puzzles hard for HUMANS, not algorithms.
- * The ice generator uses these to score puzzle quality based on psychological difficulty.
+ * 
+ * Note: Psychology scores are now calculated by the WASM/Rust generator and embedded
+ * in the puzzle data. This module provides a scorer function that extracts these
+ * pre-computed metrics.
  */
 
 import { PuzzleData } from '../../types';
-import { PsychologyMetrics as GeneratorPsychologyMetrics, calculatePsychologyScore } from './generator';
+import { PsychologyMetrics } from '../registry';
 
-// Re-export types for external use
-export type PsychologyMetrics = GeneratorPsychologyMetrics;
+export type { PsychologyMetrics };
 
 /**
- * Calculate psychology-based difficulty metrics for an ice puzzle.
- * This is the scorer function used by the map registry.
+ * Extract psychology-based difficulty metrics from an ice puzzle.
+ * The metrics are pre-computed by the WASM/Rust generator.
  * 
- * @param puzzle - The puzzle to score
- * @returns Psychology metrics including counter-intuitive moves, decoys, gates, and paths
+ * @param puzzle - The puzzle with embedded metrics
+ * @returns Psychology metrics from the puzzle data
  */
 export function scoreIcePuzzle(puzzle: PuzzleData): PsychologyMetrics {
-  return calculatePsychologyScore(
-    puzzle.tiles,
-    puzzle.start,
-    puzzle.goal,
-    puzzle.width,
-    puzzle.height
-  );
+  return {
+    counterIntuitiveMoves: puzzle.counterIntuitiveMoves ?? 0,
+    attractiveDecoys: puzzle.attractiveDecoys ?? 0,
+    commitmentGates: puzzle.commitmentGates ?? 0,
+    falseProgressPaths: puzzle.falseProgressPaths ?? 0,
+    optimalMoves: puzzle.optimalMoves,
+    psychologyScore: puzzle.difficultyScore,
+    difficultyScore: puzzle.difficultyScore,
+  };
 }
-
-// Re-export the raw calculator for advanced use cases
-export { calculatePsychologyScore } from './generator';
-
-

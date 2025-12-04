@@ -15,14 +15,6 @@ export interface PsychologyMetrics {
 }
 
 /**
- * Result from a partial generation attempt (for worker parallelization)
- */
-export interface PartialGenerationResult {
-  puzzle: PuzzleData | null;
-  score: number;
-}
-
-/**
  * Tileset definition for rendering a map type
  */
 export interface TilesetDefinition {
@@ -38,7 +30,10 @@ export interface TilesetDefinition {
 
 /**
  * Definition of a map type in the registry.
- * Each map type has its own generator, movement config, and rendering.
+ * Each map type has its own movement config, tileset, and scoring.
+ * 
+ * Note: Puzzle generation is handled by WASM/Rust backend.
+ * This definition provides runtime config for movement and rendering.
  */
 export interface MapTypeDefinition {
   /** The map type identifier */
@@ -46,18 +41,6 @@ export interface MapTypeDefinition {
   
   /** Display name for UI */
   displayName: string;
-  
-  /** Generate a puzzle for this map type */
-  generate: (seed: string) => PuzzleData;
-  
-  /** Generate a partial puzzle (for worker parallelization) */
-  generatePartial?: (
-    seed: string,
-    constraintStart: number,
-    constraintEnd: number,
-    traditionalStart: number,
-    traditionalEnd: number
-  ) => PartialGenerationResult;
   
   /** Movement configuration for this map type */
   movementConfig: MovementConfig;
@@ -151,4 +134,3 @@ export const MAP_REGISTRY = new MapRegistry();
 export function registerMapType(definition: MapTypeDefinition): void {
   MAP_REGISTRY.register(definition);
 }
-

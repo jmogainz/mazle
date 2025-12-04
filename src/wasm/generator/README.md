@@ -2,6 +2,14 @@
 
 High-performance puzzle generator for Mazle, ported from TypeScript to Rust for 10-50x faster generation.
 
+## Build Targets
+
+This crate can be compiled to:
+1. **Native Server** - Axum HTTP server with parallel generation (primary)
+2. **WebAssembly** - Browser-side fallback when server is unavailable
+
+Both targets produce **identical puzzles** for the same seed - the WASM build is the exact same algorithm, just running client-side.
+
 ## Overview
 
 This is a complete port of both the **ice map** and **ground map** generators from TypeScript to Rust. It includes:
@@ -51,7 +59,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source ~/.cargo/env
 ```
 
-### Building
+### Building (Native Server)
 
 ```bash
 cd generator-rust
@@ -62,6 +70,30 @@ cargo build
 # Optimized release build (10x faster)
 cargo build --release
 ```
+
+### Building (WebAssembly)
+
+The WASM build produces identical puzzles to the server, running client-side as a fallback.
+
+```bash
+# From repo root (recommended - uses Makefile automation)
+make wasm
+
+# Or manually with wasm-pack
+cd generator-rust
+wasm-pack build --target web --out-dir ../src/wasm/generator
+```
+
+The WASM output goes to `src/wasm/generator/` and is automatically used by the frontend when:
+1. The Rust backend is unavailable
+2. No backend URL is configured (dev-test mode)
+
+**Performance comparison:**
+| Target | Single Puzzle | Notes |
+|--------|--------------|-------|
+| Rust Server (parallel) | ~50-200ms | Uses all CPU cores |
+| WASM (browser) | ~100-400ms | Single-threaded, still 2-4x faster than TS |
+| TypeScript (workers) | ~500-2000ms | Legacy fallback |
 
 ### Running
 
@@ -167,19 +199,26 @@ cd .. && npx ts-node generator-rust/test_comparison.ts
 
 ```
 generator-rust/
-├── Cargo.toml              # Rust dependencies
+├── Cargo.toml              # Rust dependencies (lib + bin)
 ├── README.md               # This file
 ├── verify.sh               # Build verification script
 ├── test_comparison.ts      # TypeScript/Rust comparison test
 └── src/
-    ├── main.rs             # HTTP server (Axum)
+    ├── lib.rs              # Library entry point + WASM bindings
+    ├── main.rs             # HTTP server (Axum, native only)
     ├── types.rs            # TileType, Position, Grid, etc.
     ├── simulation.rs       # Ice sliding, ledge movement
     ├── pathfinding.rs      # BFS, reachability, stuck detection
     ├── scoring.rs          # Psychology-based scoring
-    ├── generator.rs        # Ice map generation
-    └── ground_generator.rs # Ground map generation
+    └── generators/
+        ├── mod.rs          # Generator module
+        ├── ice.rs          # Ice map generation
+        └── ground.rs       # Ground map generation
 ```
+
+The crate is structured as both a library and binary:
+- **Library** (`lib.rs`) - Core generation algorithms, exported for WASM
+- **Binary** (`main.rs`) - HTTP server wrapping the library (native only)
 
 ## Deployment Options
 

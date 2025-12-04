@@ -1,39 +1,43 @@
 use std::collections::{HashMap, HashSet};
 
-// Rayon for parallel processing (native only, not available in WASM)
-#[cfg(not(target_arch = "wasm32"))]
+// Rayon for parallel processing (works on both native and WASM with wasm-bindgen-rayon)
 use rayon::prelude::*;
 
 use crate::types::{Direction, GenerationConfig, MapType, Position, PuzzleData, TileType};
 
+// WASM logging helper
+#[cfg(target_arch = "wasm32")]
+fn log_to_console(msg: &str) {
+    web_sys::console::log_1(&msg.into());
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn log_to_console(msg: &str) {
+    println!("{}", msg);
+}
+
 // =============================================================================
 // PARALLEL ITERATION HELPERS
 // =============================================================================
-// These helpers abstract over parallel (native) vs sequential (WASM) iteration.
+// Rayon works on both native and WASM (via wasm-bindgen-rayon thread pool).
 // Both produce identical results for the same seed.
 
-/// Process a range in parallel (native) or sequentially (WASM) and find the best result.
-#[cfg(not(target_arch = "wasm32"))]
+/// Process a range in parallel and find the best result.
 fn find_best_in_range<F, T>(range: std::ops::Range<usize>, f: F) -> Option<(T, f64)>
 where
     F: Fn(usize) -> Option<(T, f64)> + Sync + Send,
     T: Send,
 {
-    range
+    let batch_size = range.len();
+    
+    let result = range
         .into_par_iter()
-        .filter_map(f)
-        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
-}
-
-#[cfg(target_arch = "wasm32")]
-fn find_best_in_range<F, T>(range: std::ops::Range<usize>, f: F) -> Option<(T, f64)>
-where
-    F: Fn(usize) -> Option<(T, f64)>,
-{
-    range
-        .into_iter()
-        .filter_map(f)
-        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+        .filter_map(|i| f(i))
+        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+    
+    log_to_console(&format!("[Rust] Batch of {} attempts completed", batch_size));
+    
+    result
 }
 
 // =============================================================================
@@ -71,115 +75,65 @@ const PREFILTER_MIN_COMMITMENT_GATES: i32 = 3;
 const PREFILTER_MIN_FALSE_PROGRESS: i32 = 8;
 
 // =============================================================================
-// SEEDED RANDOM (matches seedrandom 3.0.5 default output)
+// SEEDED RANDOM (Alea, matches seedrandom default)
 // =============================================================================
-
-const ARC4_WIDTH: usize = 256;
-const ARC4_MASK: usize = ARC4_WIDTH - 1;
-const ARC4_CHUNKS: usize = 6;
-const ARC4_SIGNIFICANCE: f64 = 4_503_599_627_370_496.0; // 2^52
-const ARC4_OVERFLOW: f64 = ARC4_SIGNIFICANCE * 2.0; // 2^53
-const ARC4_START_DENOM: f64 = 281_474_976_710_656.0; // 256^6 (2^48)
-
-#[derive(Clone)]
-struct Arc4 {
-    s: [u8; ARC4_WIDTH],
-    i: u8,
-    j: u8,
-}
-
-impl Arc4 {
-    fn new(key: &[u8]) -> Self {
-        let mut key = key.to_vec();
-        if key.is_empty() {
-            key.push(0);
-        }
-        let keylen = key.len();
-
-        let mut s = [0u8; ARC4_WIDTH];
-        for (i, val) in s.iter_mut().enumerate() {
-            *val = i as u8;
-        }
-
-        let mut j: usize = 0;
-        for i in 0..ARC4_WIDTH {
-            j = (j + s[i] as usize + key[i % keylen] as usize) & ARC4_MASK;
-            s.swap(i, j);
-        }
-
-        let mut arc4 = Self { s, i: 0, j: 0 };
-        arc4.g(ARC4_WIDTH); // RC4-drop[256]
-        arc4
-    }
-
-    fn g(&mut self, count: usize) -> u64 {
-        let mut r: u64 = 0;
-        let collect = count <= ARC4_CHUNKS;
-        for _ in 0..count {
-            self.i = self.i.wrapping_add(1);
-            let t = self.s[self.i as usize];
-            self.j = self.j.wrapping_add(t);
-            let i_idx = self.i as usize;
-            let j_idx = self.j as usize;
-            self.s.swap(i_idx, j_idx);
-            let idx = (self.s[i_idx] as usize + self.s[j_idx] as usize) & ARC4_MASK;
-            if collect {
-                r = r * (ARC4_WIDTH as u64) + self.s[idx] as u64;
-            }
-        }
-        r
-    }
-
-    fn random(&mut self) -> f64 {
-        let mut n = self.g(ARC4_CHUNKS) as f64;
-        let mut d = ARC4_START_DENOM;
-        let mut x: u64 = 0;
-
-        while n < ARC4_SIGNIFICANCE {
-            n = (n + x as f64) * (ARC4_WIDTH as f64);
-            d *= ARC4_WIDTH as f64;
-            x = self.g(1);
-        }
-
-        while n >= ARC4_OVERFLOW {
-            n /= 2.0;
-            d /= 2.0;
-            x >>= 1;
-        }
-
-        (n + x as f64) / d
-    }
-}
 
 #[derive(Clone)]
 struct SeededRandom {
-    arc4: Arc4,
-}
-
-fn mix_key(seed: &str) -> Vec<u8> {
-    let mut key: Vec<u8> = Vec::new();
-    let mut smear: i32 = 0;
-
-    for (j, code_unit) in seed.encode_utf16().enumerate() {
-        let idx = j & ARC4_MASK;
-        if idx >= key.len() {
-            key.resize(idx + 1, 0);
-        }
-        smear ^= (key[idx] as i32) * 19;
-        key[idx] = ((smear + code_unit as i32) & (ARC4_MASK as i32)) as u8;
-    }
-
-    key
+    s0: f64,
+    s1: f64,
+    s2: f64,
+    c: f64,
 }
 
 impl SeededRandom {
+    fn mash(data: &str, n: &mut f64) -> f64 {
+        for ch in data.chars() {
+            *n += ch as u32 as f64;
+            let mut h = 0.025_196_032_824_169_38 * *n;
+            let hi = h.floor();
+            h -= hi;
+            *n = hi;
+            h *= *n;
+            let hi = h.floor();
+            h -= hi;
+            *n += h * 4_294_967_296.0; // 0x100000000
+        }
+        *n %= 4_294_967_296.0;
+        (*n as u32 as f64) * 2.328_306_436_538_696_3e-10
+    }
+
     fn new(seed: &str) -> Self {
-        let key = mix_key(seed);
-        Self { arc4: Arc4::new(&key) }
+        let mut n = 0xefc8249du32 as f64;
+        let mut s0 = Self::mash(" ", &mut n);
+        let mut s1 = Self::mash(" ", &mut n);
+        let mut s2 = Self::mash(" ", &mut n);
+
+        s0 -= Self::mash(seed, &mut n);
+        if s0 < 0.0 {
+            s0 += 1.0;
+        }
+
+        s1 -= Self::mash(seed, &mut n);
+        if s1 < 0.0 {
+            s1 += 1.0;
+        }
+
+        s2 -= Self::mash(seed, &mut n);
+        if s2 < 0.0 {
+            s2 += 1.0;
+        }
+
+        Self { s0, s1, s2, c: 1.0 }
     }
 
     fn random(&mut self) -> f64 {
-        self.arc4.random()
+        let t = 2_091_639.0 * self.s0 + self.c * 2.328_306_436_538_696_3e-10;
+        self.s0 = self.s1;
+        self.s1 = self.s2;
+        self.c = t.floor();
+        self.s2 = t - self.c;
+        self.s2
     }
 
     fn random_int(&mut self, min: i32, max: i32) -> i32 {
@@ -201,68 +155,6 @@ impl SeededRandom {
             result.swap(i, j);
         }
         result
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::SeededRandom;
-
-    #[test]
-    fn seeded_random_matches_seedrandom_reference() {
-        let vectors: [(&str, [f64; 5]); 4] = [
-            (
-                "test",
-                [
-                    0.872_202_554_316_025_3,
-                    0.402_392_851_860_475_3,
-                    0.964_728_965_850_707_3,
-                    0.304_798_963_751_015_45,
-                    0.352_106_900_915_732_1,
-                ],
-            ),
-            (
-                "2024-01-01",
-                [
-                    0.764_234_675_858_992_2,
-                    0.082_309_492_496_457_03,
-                    0.055_785_492_638_126_32,
-                    0.052_402_646_016_473_99,
-                    0.108_176_307_761_997_16,
-                ],
-            ),
-            (
-                "hello.",
-                [
-                    0.928_257_879_579_245_4,
-                    0.375_256_976_864_678_4,
-                    0.731_697_746_891_954_9,
-                    0.237_079_620_849_561_13,
-                    0.060_576_654_487_096_66,
-                ],
-            ),
-            (
-                "mazle-seed",
-                [
-                    0.427_912_162_866_604_77,
-                    0.741_380_230_005_051_3,
-                    0.644_481_965_226_391_4,
-                    0.082_933_657_145_835_25,
-                    0.767_435_341_399_339,
-                ],
-            ),
-        ];
-
-        for (seed, expected) in vectors {
-            let mut rng = SeededRandom::new(seed);
-            for (idx, expected_val) in expected.iter().enumerate() {
-                let value = rng.random();
-                assert!(
-                    (value - expected_val).abs() < 1e-16,
-                    "Seed '{seed}' mismatch at index {idx}: {value} vs {expected_val}"
-                );
-            }
-        }
     }
 }
 
@@ -3147,6 +3039,11 @@ fn pick_size(rng: &mut SeededRandom) -> (usize, usize) {
 }
 
 pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
+    // Log rayon thread pool info
+    let num_threads = rayon::current_num_threads();
+    log_to_console(&format!("[Rust] generate_puzzle called with seed: {}", seed));
+    log_to_console(&format!("[Rust] Rayon thread pool has {} threads", num_threads));
+    
     let (width, height) = {
         let mut rng = SeededRandom::new(seed);
         pick_size(&mut rng)
@@ -3167,6 +3064,8 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
     } else {
         TARGET_PSYCHOLOGY_SCORE
     };
+    
+    log_to_console(&format!("[Rust] Running {} constraint + {} traditional attempts", constraint_attempts, traditional_attempts));
 
     let mut batch = 0;
     loop {

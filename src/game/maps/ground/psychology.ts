@@ -3,50 +3,42 @@
  * 
  * Ground maps measure difficulty through:
  * - Counter-intuitive moves (moves away from goal)
- * - Ice patch count (sliding zones that add complexity)
- * - Ledge count (one-way passages creating commitment)
- * - Boulder count (Sokoban-style pushable obstacles)
  * - Attractive decoys (wrong moves that look good)
+ * - Commitment gates (ledges and boulders that create irreversible decisions)
  * - False progress paths (paths that waste moves)
+ * 
+ * Note: Psychology scores are now calculated by the WASM/Rust generator and embedded
+ * in the puzzle data. This module provides a scorer function that extracts these
+ * pre-computed metrics.
  */
 
 import { PuzzleData } from '../../types';
 import { PsychologyMetrics } from '../registry';
-import {
-  calculateGroundPsychologyScore,
-  GroundPsychologyMetrics,
-} from './generator';
-
-// Re-export types for external use
-export type { GroundPsychologyMetrics };
 
 /**
- * Calculate psychology-based difficulty metrics for a ground puzzle.
- * This is the scorer function used by the map registry.
+ * Ground-specific psychology metrics (extended from base metrics)
+ */
+export interface GroundPsychologyMetrics extends PsychologyMetrics {
+  icePatchCount?: number;
+  ledgeCount?: number;
+  boulderCount?: number;
+}
+
+/**
+ * Extract psychology-based difficulty metrics from a ground puzzle.
+ * The metrics are pre-computed by the WASM/Rust generator.
  * 
- * @param puzzle - The puzzle to score
+ * @param puzzle - The puzzle with embedded metrics
  * @returns Psychology metrics compatible with the registry interface
  */
 export function scoreGroundPuzzle(puzzle: PuzzleData): PsychologyMetrics {
-  const groundMetrics = calculateGroundPsychologyScore(
-    puzzle.tiles,
-    puzzle.start,
-    puzzle.goal,
-    puzzle.width,
-    puzzle.height
-  );
-  
   return {
-    counterIntuitiveMoves: groundMetrics.counterIntuitiveMoves,
-    attractiveDecoys: groundMetrics.attractiveDecoys,
-    // Combine ledges and boulders as commitment gates (both create irreversible decisions)
-    commitmentGates: groundMetrics.ledgeCount + groundMetrics.boulderCount,
-    falseProgressPaths: groundMetrics.falseProgressPaths,
-    optimalMoves: groundMetrics.optimalMoves,
-    psychologyScore: groundMetrics.psychologyScore,
+    counterIntuitiveMoves: puzzle.counterIntuitiveMoves ?? 0,
+    attractiveDecoys: puzzle.attractiveDecoys ?? 0,
+    commitmentGates: puzzle.commitmentGates ?? 0,
+    falseProgressPaths: puzzle.falseProgressPaths ?? 0,
+    optimalMoves: puzzle.optimalMoves,
+    psychologyScore: puzzle.difficultyScore,
+    difficultyScore: puzzle.difficultyScore,
   };
 }
-
-// Re-export the raw calculator for advanced use cases
-export { calculateGroundPsychologyScore } from './generator';
-

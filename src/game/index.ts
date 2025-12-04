@@ -1,20 +1,24 @@
 // Events
 export { onGameEvent, emitGameEvent } from './events';
 
-// Puzzle generation
+// Puzzle seed utilities
 export {
-  getTodaysPuzzle,
   getPuzzleNumber,
-  getPuzzleForDate,
   getDailySeed,
-  generatePuzzle,
   MAP_REGISTRY,
 } from './puzzleGenerator';
-export type { MapTypeDefinition, PsychologyMetrics, PartialGenerationResult } from './puzzleGenerator';
+export type { MapTypeDefinition, PsychologyMetrics } from './puzzleGenerator';
 
-// Worker pool
-export { generatePuzzleParallel, getWorkerPool } from './puzzleWorkerPool';
-export type { GenerationProgress } from './puzzleWorkerPool';
+// Puzzle generation (WASM/Rust)
+export {
+  generatePuzzleParallel,
+  getWorkerPool,
+  isRustBackendConfigured,
+  getRustBackendUrl,
+  getGeneratorStatus,
+  preloadWasm,
+} from './wasmGenerator';
+export type { GenerationProgress, GeneratorBackend, GeneratorStatus } from './wasmGenerator';
 
 // Movement system
 export {

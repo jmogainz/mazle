@@ -3,7 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node server.js",
+    "dev:https": "node server.js --https",
+    "dev:lan": "node server.js -H 0.0.0.0 --https",
+    "dev:ngrok": "ngrok http 3000",
+    "dev:next": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"

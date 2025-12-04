@@ -18,9 +18,9 @@
   width: 100%;
   max-width: 420px;
   padding: 0.75rem;
-  border: 1px solid rgba(99, 102, 241, 0.3);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(139, 92, 246, 0.04) 100%);
+  background: var(--color-surface);
   backdrop-filter: blur(8px);
   color: var(--color-secondary);
   animation: devPanelSlideIn 0.3s ease-out;
@@ -169,6 +169,72 @@
   line-height: 1.2;
 }
 
+/* Maze Engine Selector */
+.devBackendSection {
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 6px;
+}
+
+.devBackendHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  color: var(--color-secondary);
+  letter-spacing: 0.1em;
+  margin-bottom: 0.5rem;
+}
+
+.devBackendStatus {
+  font-size: 0.6rem;
+  color: var(--color-success);
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+}
+
+.devBackendOptions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.devBackendOption {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.75rem;
+  color: var(--color-primary);
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.devBackendOption:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.devBackendOption input[type="radio"] {
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
+.devBackendDisabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.devBackendDisabled input[type="radio"] {
+  cursor: not-allowed;
+}
+
+.devBackendDisabled span {
+  text-decoration: line-through;
+}
+
 .devControls {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
@@ -249,6 +315,25 @@
 .devButtonGhost:hover {
   opacity: 0.85;
   transform: translateY(-1px);
+}
+
+.devProgress {
+  margin-top: 0.75rem;
+  padding: 0.5rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+}
+
+.devProgressHeader {
+  font-size: 0.7rem;
+  color: var(--color-secondary);
+  margin-bottom: 0.375rem;
+  text-align: center;
+}
+
+.devProgress .progressBar {
+  width: 100%;
+  height: 4px;
 }
 
 .devHint {
@@ -384,6 +469,35 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+.progressBar {
+  width: 200px;
+  height: 6px;
+  background: var(--color-surface);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 0.5rem;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--color-primary);
+  border-radius: 3px;
+  transition: width 0.15s ease-out;
+}
+
+.progressFillIndeterminate {
+  height: 100%;
+  width: 40%;
+  background: var(--color-primary);
+  border-radius: 3px;
+  animation: indeterminate 1.2s ease-in-out infinite;
+}
+
+@keyframes indeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
 }
 
 .previousResult {

@@ -103,19 +103,3 @@ impl Default for GenerationConfig {
         }
     }
 }
-
-impl GenerationConfig {
-    /// Default configuration optimized for WASM (single-threaded, fewer attempts)
-    /// Still produces good puzzles but faster in browser context
-    pub fn default_for_wasm() -> Self {
-        Self {
-            // Fewer attempts for faster browser generation
-            constraint_attempts: 80,
-            traditional_attempts: 200,
-            target_psychology_score: default_target_score(),
-            max_attempts: 280,
-            // WASM is always single-threaded
-            parallel: false,
-        }
-    }
-}

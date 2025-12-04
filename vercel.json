@@ -8,6 +8,20 @@
       "NEXT_PUBLIC_DEVTOOLS_ENABLED": "0",
       "NEXT_PUBLIC_ENV": "prod"
     }
-  }
+  },
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Cross-Origin-Opener-Policy",
+          "value": "same-origin"
+        },
+        {
+          "key": "Cross-Origin-Embedder-Policy",
+          "value": "credentialless"
+        }
+      ]
+    }
+  ]
 }
-

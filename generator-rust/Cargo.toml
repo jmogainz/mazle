@@ -22,6 +22,10 @@ serde_json = "1"
 rand = "0.8"
 rand_chacha = "0.3"
 
+# Parallelism - works on both native and WASM (with threads feature)
+# Version 1.8+ required for wasm-bindgen-rayon compatibility
+rayon = "1.8"
+
 # Utilities
 thiserror = "1"
 
@@ -38,18 +42,19 @@ tower-http = { version = "0.5", features = ["cors"] }
 shuttle-axum = { version = "0.49", optional = true }
 shuttle-runtime = { version = "0.49", optional = true }
 
-# Parallelism (not available in WASM)
-rayon = "1.10"
-
 # ─────────────────────────────────────────────────────────────────────────────
-# WASM-only dependencies (browser fallback)
+# WASM-only dependencies (browser)
 # ─────────────────────────────────────────────────────────────────────────────
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-wasm-bindgen = "0.2"
+wasm-bindgen = "0.2.99"
+wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
+web-sys = { version = "0.3", features = ["console"] }
 serde-wasm-bindgen = "0.6"
 getrandom = { version = "0.2", features = ["js"] }
 console_error_panic_hook = "0.1"
+# Rayon thread pool for WASM (enables parallel generation in browser)
+wasm-bindgen-rayon = "1.3"
 
 [features]
 default = []
@@ -67,6 +72,5 @@ opt-level = 1  # Faster dev builds but still reasonably fast
 # WASM-specific release profile
 [profile.wasm-release]
 inherits = "release"
-# Optimize for size in WASM
 opt-level = "s"
 lto = true

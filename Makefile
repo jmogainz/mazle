@@ -121,17 +121,22 @@ endif
 .PHONY: wasm wasm-clean wasm-check
 
 ## Build WASM generator from Rust (if sources changed)
+## Built with threads support (atomics) for parallel generation via rayon
+## Requires: rustup +nightly component add rust-src
 wasm: $(WASM_BUILD_MARKER)
 
-$(WASM_BUILD_MARKER): $(RUST_GENERATOR_SRC) $(CURDIR)/generator-rust/Cargo.toml
-	@echo "[INFO] [WASM] Building generator from Rust sources..."
+$(WASM_BUILD_MARKER): $(RUST_GENERATOR_SRC) $(CURDIR)/generator-rust/Cargo.toml $(CURDIR)/generator-rust/.cargo/config.toml $(CURDIR)/generator-rust/rust-toolchain.toml
+	@echo "[INFO] [WASM] Building generator from Rust sources (with threads)..."
 	@if ! command -v wasm-pack >/dev/null 2>&1; then \
 		echo "[INFO] [WASM] Installing wasm-pack..."; \
 		cargo install wasm-pack; \
 	fi
-	@cd $(CURDIR)/generator-rust && wasm-pack build --target web --out-dir $(WASM_OUTPUT_DIR)
+	@echo "[INFO] [WASM] Building with wasm-pack (atomics + shared memory)..."
+	@cd $(CURDIR)/generator-rust && \
+		wasm-pack build --target web --out-dir $(WASM_OUTPUT_DIR) --out-name mazle_generator
 	@touch $(WASM_BUILD_MARKER)
 	@echo "[INFO] [WASM] Build complete. Output at $(WASM_OUTPUT_DIR)"
+	@echo "[INFO] [WASM] Note: Requires COOP/COEP headers for SharedArrayBuffer"
 
 ## Force rebuild of WASM generator
 wasm-rebuild:
@@ -160,19 +165,37 @@ wasm-check:
 # Override _up-app to set NEXT_PUBLIC_GENERATOR_URL from backend
 # --------------------------------
 
-# For local dev environments, get backend URL dynamically before starting frontend
-ifneq (,$(filter $(ENV),$(DEV_TEST_ENV) $(DEV_ENV)))
+# For dev-test: client-only mode, no backend needed (uses WASM)
+ifeq ($(ENV),$(DEV_TEST_ENV))
 _up-app: wasm
 	@if [ -z "$(COMPOSE_PROFILE_APP_SERVICES)" ]; then \
 		echo "[ERROR] [Up-App] No services found matching the '$(COMPOSE_PROFILE_APP)' profile!"; \
 	else \
-		if [ "$(AUTO_LAUNCH_BACKEND)" = "1" ]; then \
-			echo "[INFO] [Up-App] AUTO_LAUNCH_BACKEND=1, resolving backend URL..."; \
-			CURRENT_BACKEND_DOMAIN="$$( env -i PATH="$$PATH" HOME="$$HOME" UNIQUE_RUNNER_ID="$$UNIQUE_RUNNER_ID" make -C $(BACKEND_GATEWAY_PATH) --no-print-directory PRINT_INFO=0 print-public-app-domain 2>/dev/null | tail -1 )"; \
+		echo "[INFO] [Up-App] Running in dev-test mode (client-only, WASM fallback)"; \
+		export NEXT_PUBLIC_GENERATOR_URL=""; \
+		echo "[INFO] [Up-App] Starting app services found matching the '$(COMPOSE_PROFILE_APP)' profile..."; \
+		echo "[INFO] [Up-App] Found services: $(COMPOSE_PROFILE_APP_SERVICES)"; \
+		echo "[INFO] [Up-App] Spinning up app..."; \
+		$(COMPOSE_CMD) --profile $(COMPOSE_PROFILE_APP) up -d --no-build; \
+		echo "[INFO] [Up-App] Done. $(APP_NAME) is running on $(APP_URL_FROM_ANYWHERE)"; \
+	fi
+endif
+
+# For dev: get backend URL dynamically before starting frontend
+ifeq ($(ENV),$(DEV_ENV))
+_up-app: wasm
+	@if [ -z "$(COMPOSE_PROFILE_APP_SERVICES)" ]; then \
+		echo "[ERROR] [Up-App] No services found matching the '$(COMPOSE_PROFILE_APP)' profile!"; \
+	else \
+		echo "[INFO] [Up-App] Resolving backend URL (with health check)..."; \
+		backend_export="$$( env -i PATH="$$PATH" HOME="$$HOME" UNIQUE_RUNNER_ID="$$UNIQUE_RUNNER_ID" $(MAKE) _export_current_backend_domain --no-print-directory )"; \
+		rc=$$?; \
+		if [ $$rc -eq 0 ]; then \
+			eval "$$backend_export"; \
 			export NEXT_PUBLIC_GENERATOR_URL="$$CURRENT_BACKEND_DOMAIN"; \
 			echo "[INFO] [Up-App] NEXT_PUBLIC_GENERATOR_URL=$$NEXT_PUBLIC_GENERATOR_URL"; \
 		else \
-			echo "[INFO] [Up-App] AUTO_LAUNCH_BACKEND=0, using WASM fallback (no backend needed)"; \
+			echo "[WARN] [Up-App] Backend not available (rc=$$rc), WASM fallback will be used"; \
 			export NEXT_PUBLIC_GENERATOR_URL=""; \
 		fi; \
 		echo "[INFO] [Up-App] Starting app services found matching the '$(COMPOSE_PROFILE_APP)' profile..."; \

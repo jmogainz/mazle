@@ -45,3 +45,5 @@ generator-rust/target/
 
 # WASM build marker (tracks rebuild state, not needed in repo)
 src/wasm/generator/.build-marker
+
+public/wasm/

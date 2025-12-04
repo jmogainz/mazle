@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 // Rust generator server URL (configurable via environment)
-const RUST_GENERATOR_URL = process.env.RUST_GENERATOR_URL || 'http://localhost:3001';
+const RUST_GENERATOR_URL = process.env.RUST_GENERATOR_URL || process.env.NEXT_PUBLIC_GENERATOR_URL || 'http://localhost:3001';
 
 interface GenerateRequest {
   seed: string;
+  mapType?: string;
   config?: {
     constraintAttempts?: number;
     traditionalAttempts?: number;
@@ -34,22 +35,26 @@ interface RustGenerateResponse {
 /**
  * POST /api/generate
  * 
- * Generate a puzzle using the Rust server (fast) with fallback to JS generator.
+ * Generate a puzzle using the Rust server.
  * 
  * Request body:
  * {
  *   "seed": "2024-12-03",
+ *   "mapType": "ice",
  *   "config": {
  *     "traditionalAttempts": 400,
  *     "targetPsychologyScore": 2000,
  *     "parallel": true
  *   }
  * }
+ * 
+ * Note: Client-side generation uses WASM as fallback.
+ * This endpoint requires the Rust backend to be available.
  */
 export async function POST(request: NextRequest) {
   try {
     const body: GenerateRequest = await request.json();
-    const { seed, config } = body;
+    const { seed, mapType = 'ice', config } = body;
 
     if (!seed) {
       return NextResponse.json(
@@ -58,13 +63,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Try Rust generator first
     try {
       const rustResponse = await fetch(`${RUST_GENERATOR_URL}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ seed, config }),
-        // Short timeout - if Rust server is down, fail fast
+        body: JSON.stringify({ seed, mapType, config }),
         signal: AbortSignal.timeout(30000),
       });
 
@@ -75,24 +78,21 @@ export async function POST(request: NextRequest) {
           generator: 'rust',
         });
       }
+      
+      return NextResponse.json(
+        { error: `Rust backend error: ${rustResponse.status} ${rustResponse.statusText}` },
+        { status: 502 }
+      );
     } catch (rustError) {
-      // Rust server unavailable - will fall back to JS
-      console.log('Rust generator unavailable, falling back to JS');
+      console.error('Rust generator unavailable:', rustError);
+      return NextResponse.json(
+        { 
+          error: 'Rust backend unavailable. Use client-side WASM generation instead.',
+          hint: 'The frontend automatically falls back to WASM when the backend is unavailable.'
+        },
+        { status: 503 }
+      );
     }
-
-    // Fallback to JS generator (dynamic import to avoid loading if not needed)
-    const { generatePuzzle } = await import('@/game/maps/ice/generator');
-    
-    const startTime = Date.now();
-    const puzzle = generatePuzzle(seed);
-    const generationTimeMs = Date.now() - startTime;
-
-    return NextResponse.json({
-      puzzle,
-      generationTimeMs,
-      generator: 'javascript',
-    });
-
   } catch (error) {
     console.error('Generation error:', error);
     return NextResponse.json(
@@ -103,13 +103,14 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * GET /api/generate?seed=2024-12-03
+ * GET /api/generate?seed=2024-12-03&map_type=ice
  * 
  * Simple GET endpoint for easy testing
  */
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const seed = searchParams.get('seed') || new Date().toISOString().split('T')[0];
+  const mapType = searchParams.get('map_type') || 'ice';
   const attempts = parseInt(searchParams.get('attempts') || '400', 10);
 
   // Create a synthetic POST request
@@ -118,6 +119,7 @@ export async function GET(request: NextRequest) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       seed,
+      mapType,
       config: { traditionalAttempts: attempts },
     }),
   });

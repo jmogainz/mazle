@@ -1,222 +1,73 @@
 # Mazle - AI Agent Guide
 
-## Project Overview
+## What is Mazle?
 
-**Mazle** is a Wordle-style daily maze puzzle game inspired by classic Pokémon ice gym puzzles. Players navigate compact puzzle rooms using step-based movement, sliding on ice tiles, and navigating one-way ledges. Each day brings a new global puzzle that players can solve and share their results.
+A daily Wordle-style puzzle game inspired by Pokémon ice gym puzzles. Players navigate compact rooms using step movement, ice sliding, and one-way ledges. Browser-first (Next.js + Phaser 3).
 
-**Key Characteristics:**
-- Daily puzzle game with Wordle-style viral sharing
-- Pokémon-inspired pixel art aesthetic
-- Quick gameplay (~20 moves, under 3 minutes)
-- Competitive metrics: move count (primary) and completion time (secondary)
-- Browser-first (desktop + mobile) built with Next.js, TypeScript, and Phaser 3
+## Development Workflow
 
----
+```bash
+# Required env var (add to shell profile)
+export UNIQUE_RUNNER_ID=$(whoami)
 
-# Full Project Specification
+# Common workflows
+make up                              # Quick start (WASM fallback)
+make up ENV=dev                      # Full stack (frontend + Rust backend)
+make up ENV=dev AUTO_LAUNCH_BACKEND=0  # Dev mode, frontend only
+make down                            # Stop containers
+make clean                           # Full cleanup
+make wasm                            # Rebuild WASM from Rust
+make help                            # List all targets
+```
 
-# Mazle
+## Environment Behavior
 
-## 1. Overview
-A daily, Pokémon-inspired puzzle where players navigate a compact, gym-style maze using step movement, sliding on ice, and one-way ledges.  
-The puzzle is designed to be quick, satisfying, solvable, and optimized for **move count** (primary metric) and **completion time** (secondary metric).  
-A new puzzle is available globally each day with shareable results and leaderboards.
+| ENV | AUTO_LAUNCH_BACKEND | Notes |
+|-----|---------------------|-------|
+| `dev-test` (default) | 0 | WASM fallback, fast iteration |
+| `dev` | 1 (override with =0) | Full local stack |
+| `staging` | 1 | Pre-prod |
+| `prod` | 0 | Backend already deployed |
 
----
+## Architecture
 
-## 2. Core Vision
-- Inspired by classic **Pokémon ice gyms**, one-way ledges, and small logic rooms.  
-- **Pixel-art aesthetic** with crisp rendering and simple animations.  
-- Puzzle solves in **~20 effective moves**, and typical players complete in **under 3 minutes**.  
-- Small, readable puzzle rooms instead of large wandering mazes.  
-- Viral and social: share card, daily streak, competitive metrics.
+```
+mazle/
+├── src/                    # Next.js 14 + Phaser 3 game
+│   ├── app/               # App router, API routes
+│   ├── components/        # React UI (GameUI, ShareCard, etc.)
+│   ├── game/              # Phaser: GameScene, movement, maps
+│   └── wasm/generator/    # Compiled WASM (from generator-rust)
+├── generator-rust/         # Rust puzzle generator
+│   └── src/               # Rust sources → WASM + HTTP server
+├── devops-toolkit/         # Build system (git submodule)
+└── Makefile               # Root orchestration
+```
 
----
+## Key Files
 
-## 3. Platforms & Tech Stack  
-*(Subject to change based on feasibility)*
+- `Makefile` - Root build targets, WASM build, backend wiring
+- `mazle.compose.yaml` - Docker Compose for frontend
+- `generator-rust/Makefile` - Backend build/deploy (Shuttle)
+- `src/game/GameScene.ts` - Main Phaser game logic
+- `src/game/puzzleGenerator.ts` - WASM/HTTP generator interface
 
-### v1 Target Platforms
-- **Browser (desktop + mobile)**  
-  - Focus on instant-play, Wordle-style friction profile.
+## Puzzle Generation
 
-### Future Platforms
-- Mobile app wrapper (Capacitor / Tauri / Expo WebView).
+Two modes:
+1. **WASM** (client-side): `src/wasm/generator/` - runs in web workers
+2. **HTTP** (server-side): `generator-rust/` on port 3001 - Rust Axum server
 
-### Likely Tech Choices (Flexible)
-- **TypeScript**  
-- **Phaser 3** for game rendering + tilemap handling  
-- **Optional React** for UI components (leaderboard, stats, share card)  
-- Backend: lightweight serverless routes for daily seed + leaderboard submissions.
+Frontend auto-detects: uses HTTP if `NEXT_PUBLIC_GENERATOR_URL` set, else WASM fallback.
 
----
+## Deployment
 
-## 4. Controls
+- **Frontend**: Vercel (`ENV=prod make up` with `VERCEL_TOKEN`)
+- **Backend**: Shuttle (`cd generator-rust && ENV=prod make up`)
 
-### Desktop
-- Arrow keys  
-- WASD  
+## Game Spec Summary
 
-### Mobile
-- Swipe input  
-- Optional on-screen movement buttons (accessibility)
-
-### Movement Behavior
-- **Step-based** on normal floor tiles  
-- **Automatic sliding** on ice tiles (Pokémon style)
-
----
-
-## 5. Puzzle Structure
-- Puzzle room resembles a **Pokémon gym puzzle**, not a full maze.  
-- **No fixed grid size required**; daily puzzles can vary in shape and dimensions.  
-- Rooms should be small, clear, visually parseable in seconds.  
-- Layout examples:
-  - 10×10 square  
-  - 12×14 rectangular block  
-  - L-shaped room  
-  - Two connected chambers  
-- Avoid giant mazes or long paths that feel like navigation instead of puzzle-solving.
-
----
-
-## 6. Tile Types & Mechanics
-
-### Core v1 Tile Types
-- **Floor** – normal movement  
-- **Wall** – blocks movement  
-- **Start** – player spawn  
-- **Goal** – endpoint  
-- **Ice tile** – slides until hitting a wall (Pokémon style)  
-- **Lledge (one-way)** – can drop down; cannot climb back up (direction-locked transition)
-
-### Optional v2+ Mechanics
-- Teleport pads  
-- One-way arrow tiles (forced direction tiles)  
-- Pushable blocks  
-- Switches / toggles  
-- Seasonal themed tiles (snow piles, pumpkins, etc.)
-
-### Mechanic Philosophy
-- Only **a small subset** of mechanics appear on any given day.  
-- Start v1 with **a minimal, predictable set** (ice + ledges + walls).  
-- Introduce new obstacles gradually, ensuring readability and fairness.
-
----
-
-## 7. Generation Constraints
-
-### Solvability
-- Every puzzle must be guaranteed solvable based on movement rules:  
-  - step movement  
-  - sliding on ice  
-  - one-way ledges  
-
-### Difficulty Target
-- **Solution depth:** ~20 effective moves  
-- Puzzle should be completable in **1–3 minutes** by most players.  
-- Avoid:
-  - Overly linear trivial puzzles  
-  - Excessively branching dead-ends early  
-  - Trap states without signaling  
-
-### Layout Constraints
-- Puzzle must be visually understandable within 1–1.5 seconds.  
-- Avoid overly complex geometries or tight corridors unless theme requires it.  
-- Ice sections should be placed **sparingly** and not dominate daily puzzles.
-
-### Mechanics Frequency
-- Ice does **not** need to appear daily  
-- Ledges appear only when puzzle logic supports them  
-- Seasonal obstacles optional  
-- Mechanic variety should increase slowly over the game's lifespan
-
-### Deterministic Daily Seed
-- Puzzle generated via:  
-  `seed = YYYY-MM-DD + serverSalt`  
-- All players see the **same puzzle globally**.
-
----
-
-## 8. Metrics & Scoring
-
-### Primary Metrics
-- **Move count** (primary ranking metric)  
-- **Completion time** (tie-breaker after move count)
-
-### Metric Philosophy
-- Moves reward efficient planning  
-- Time rewards precision and mastery  
-- Both support a high skill ceiling without punishing casual players
-
----
-
-## 9. Daily System
-
-- One **global puzzle per day**  
-- Resets at **midnight (UTC or PST, TBD)**  
-- **Daily streak** system  
-- Optional: weekly recap or trends (v2)  
-- Optional: non-competitive archive of past puzzles
-
----
-
-## 10. Social Features
-
-### v1
-- **Share card (Wordle-style)**  
-  - Daily puzzle number  
-  - Move count  
-  - Completion time  
-  - Simple emoji/minimap representation
-
-- **Leaderboards**
-  - Global  
-  - Regional (country/locale)  
-  - Friends-only  
-
-- **Friends List**
-  - Share code or friend link  
-  - Compare stats for the day
-
-### v2
-- Ghost runs (friend or global top player)  
-- "Beat my time / moves" challenge link  
-- Weekly leaderboards
-
----
-
-## 11. Art Direction
-
-### Style
-- **Pokémon-inspired pixel art**  
-- Nearest-neighbor (crisp) scaling  
-- Simple, readable tiles  
-- Clean UI with minimal clutter
-
-### Animations
-- Sliding animation on ice  
-- Small bump animation when hitting a wall  
-- Goal sparkle or flare when completed  
-- Seasonal micro-effects (optional)
-
----
-
-## 12. Non-Goals (v1)
-- No combat or NPCs  
-- No multi-floor dungeons  
-- No heavy cutscenes or lore  
-- No overly complex mechanics  
-- No ads or monetization  
-- Avoid anything requiring in-depth tutorials  
-
----
-
-## 13. Roadmap (Optional v2+)
-- New tile mechanics  
-- Seasonal puzzle variants  
-- Full mobile app  
-- Player skins or cosmetic themes  
-- Achievements/badges  
-- Ghost races  
-- Weekly challenge mode  
+- **Tiles**: Floor (step), Wall (block), Ice (slide), Ledge (one-way), Start, Goal
+- **Target**: ~20 moves, <3 min solve time
+- **Scoring**: Move count (primary), time (tiebreaker)
+- **Daily**: Same puzzle globally, midnight UTC reset

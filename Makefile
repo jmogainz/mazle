@@ -31,32 +31,21 @@ ifndef INCLUDED_ENV_CONFIGURATION
 endif
 
 # --------------------------------
-# AUTO_LAUNCH_BACKEND configuration
+# Backend dependency configuration
 # --------------------------------
-# Default behavior per environment:
-#   dev-test: AUTO_LAUNCH_BACKEND=0 (web workers fallback, no backend needed)
-#   dev:      AUTO_LAUNCH_BACKEND=1 (backend auto-starts)
-#   staging:  AUTO_LAUNCH_BACKEND=1 (backend auto-starts)
-#   prod:     AUTO_LAUNCH_BACKEND=0 (backend already deployed)
+# WITH_DEPS controls whether backend is launched/deployed:
+#   dev-test: WITH_DEPS=0 (WASM fallback, no backend needed)
+#   others:   WITH_DEPS=1 (backend auto-starts/deploys)
 #
-# Override with: make up AUTO_LAUNCH_BACKEND=0
+# Override with: make up WITH_DEPS=0
 # --------------------------------
 ifeq ($(ENV),$(DEV_TEST_ENV))
-  AUTO_LAUNCH_BACKEND ?= 0
-else ifeq ($(ENV),$(PROD_ENV))
-  AUTO_LAUNCH_BACKEND ?= 0
+  WITH_DEPS ?= 0
 else
-  AUTO_LAUNCH_BACKEND ?= 1
+  WITH_DEPS ?= 1
 endif
 
-# Backend dependency - only wire up if AUTO_LAUNCH_BACKEND=1
-ifeq ($(AUTO_LAUNCH_BACKEND),1)
-  WITH_DEPS := 1
-  DEPS := DEP_GENERATOR_RUST:$(BACKEND_GATEWAY_PATH):3001
-else
-  WITH_DEPS := 0
-  DEPS :=
-endif
+DEPS := DEP_GENERATOR_RUST:$(BACKEND_GATEWAY_PATH):3001
 
 ifndef INCLUDED_COMPOSE_PROJECT_CONFIGURATION
   include $(DEVOPS_TOOLKIT_PATH)/backend/make/compose/compose-project-configurations/compose_project_configuration.mk

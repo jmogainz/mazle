@@ -11,23 +11,24 @@ A daily Wordle-style puzzle game inspired by Pokémon ice gym puzzles. Players n
 export UNIQUE_RUNNER_ID=$(whoami)
 
 # Common workflows
-make up                              # Quick start (WASM fallback)
-make up ENV=dev                      # Full stack (frontend + Rust backend)
-make up ENV=dev AUTO_LAUNCH_BACKEND=0  # Dev mode, frontend only
-make down                            # Stop containers
-make clean                           # Full cleanup
-make wasm                            # Rebuild WASM from Rust
-make help                            # List all targets
+make up                       # Quick start (WASM fallback)
+make up ENV=dev               # Full stack (frontend + Rust backend)
+make up ENV=dev WITH_DEPS=0   # Dev mode, frontend only
+make up ENV=prod              # Deploy both frontend (Vercel) + backend (Shuttle)
+make down                     # Stop containers
+make clean                    # Full cleanup
+make wasm                     # Rebuild WASM from Rust
+make help                     # List all targets
 ```
 
 ## Environment Behavior
 
-| ENV | AUTO_LAUNCH_BACKEND | Notes |
-|-----|---------------------|-------|
+| ENV | WITH_DEPS | Notes |
+|-----|-----------|-------|
 | `dev-test` (default) | 0 | WASM fallback, fast iteration |
 | `dev` | 1 (override with =0) | Full local stack |
-| `staging` | 1 | Pre-prod |
-| `prod` | 0 | Backend already deployed |
+| `staging` | 1 | Pre-prod (Shuttle) |
+| `prod` | 1 (override with =0) | Deploy backend to Shuttle, frontend to Vercel |
 
 ## Architecture
 
@@ -62,8 +63,9 @@ Frontend auto-detects: uses HTTP if `NEXT_PUBLIC_GENERATOR_URL` set, else WASM f
 
 ## Deployment
 
-- **Frontend**: Vercel (`ENV=prod make up` with `VERCEL_TOKEN`)
-- **Backend**: Shuttle (`cd generator-rust && ENV=prod make up`)
+- **Full stack**: `make up ENV=prod` (requires `VERCEL_TOKEN` and `SHUTTLE_API_KEY`)
+- **Frontend only**: `make up ENV=prod WITH_DEPS=0` (backend must already be deployed)
+- **Backend only**: `cd generator-rust && make up ENV=prod`
 
 ## Game Spec Summary
 

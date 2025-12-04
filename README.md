@@ -20,7 +20,8 @@ make up
 |---------|-------------|
 | `make up` | Start frontend (ENV=dev-test default, WASM fallback) |
 | `make up ENV=dev` | Start with Rust backend auto-launching |
-| `make up ENV=dev AUTO_LAUNCH_BACKEND=0` | Dev mode, frontend only |
+| `make up ENV=dev WITH_DEPS=0` | Dev mode, frontend only |
+| `make up ENV=prod` | Deploy backend (Shuttle) + frontend (Vercel) |
 | `make down` | Stop containers |
 | `make clean` | Full cleanup (containers, images, volumes) |
 | `make wasm` | Rebuild WASM from Rust sources |
@@ -28,23 +29,26 @@ make up
 
 ## Environments
 
-| ENV | Backend | Use Case |
-|-----|---------|----------|
-| `dev-test` | WASM fallback | Default, quick iteration |
-| `dev` | Auto-starts (port 3001) | Full stack local dev |
-| `staging` | Remote | Pre-prod testing |
-| `prod` | Remote (Shuttle) | Production |
+| ENV | WITH_DEPS | Backend | Use Case |
+|-----|-----------|---------|----------|
+| `dev-test` | 0 | WASM fallback | Default, quick iteration |
+| `dev` | 1 | Auto-starts (port 3001) | Full stack local dev |
+| `staging` | 1 | Shuttle | Pre-prod testing |
+| `prod` | 1 | Shuttle | Production |
 
-Override backend behavior: `AUTO_LAUNCH_BACKEND=0` or `AUTO_LAUNCH_BACKEND=1`
+Override backend: `WITH_DEPS=0` to skip, `WITH_DEPS=1` to include
 
 ## Deployment
 
 ```bash
-# Frontend → Vercel
-VERCEL_TOKEN=... ENV=prod make up
+# Full stack (backend + frontend)
+VERCEL_TOKEN=... SHUTTLE_API_KEY=... make up ENV=prod
 
-# Backend → Shuttle (from generator-rust/)
-cd generator-rust && ENV=prod make up
+# Frontend only (backend must already be deployed)
+VERCEL_TOKEN=... make up ENV=prod WITH_DEPS=0
+
+# Backend only
+cd generator-rust && make up ENV=prod
 ```
 
 ## Project Structure

@@ -1,0 +1,34 @@
+# Build artifacts (critical for cache efficiency)
+target/
+target_local/
+
+# Rust backup files
+**/*.rs.bk
+*.pdb
+
+# Dependencies/build dirs from other tools
+node_modules/
+dist/
+tmp/
+
+# Logs and OS files
+*.log
+.DS_Store
+
+# Git
+.git/
+.gitignore
+
+# Documentation (not needed in container)
+README.md
+*.md
+
+# Build/deploy configs (not needed for compilation)
+Makefile
+*.compose.yaml
+deploy/
+*.sh
+
+# IDE
+.vscode/
+.idea/

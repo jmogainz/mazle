@@ -168,3 +168,35 @@ endif
 ifndef INCLUDED_COMPOSE_APP_TARGETS
   include $(DEVOPS_TOOLKIT_PATH)/backend/make/compose/compose-project-configurations/compose-file-configurations/app/compose_app_targets.mk
 endif
+
+# --------------------------------
+# Dev environment override for _up-app
+# --------------------------------
+# The toolkit's default _up-app falls back to localhost:3001 for dev,
+# but we need to resolve the actual backend domain from the running container.
+# This override properly calls _export_current_backend_domain to get the Docker URL.
+# Note: Prod/staging use the toolkit's version which correctly handles Vercel + Fly.io
+
+ifeq ($(ENV),$(DEV_ENV))
+_up-app: wasm
+	@if [ -z "$(COMPOSE_PROFILE_APP_SERVICES)" ]; then \
+		echo "[ERROR] [Up-App] No services found matching the '$(COMPOSE_PROFILE_APP)' profile!"; \
+	else \
+		echo "[INFO] [Up-App] Resolving backend URL (with health check)..."; \
+		backend_export="$$( env -i PATH="$$PATH" HOME="$$HOME" UNIQUE_RUNNER_ID="$$UNIQUE_RUNNER_ID" $(MAKE) _export_current_backend_domain --no-print-directory )"; \
+		rc=$$?; \
+		if [ $$rc -eq 0 ]; then \
+			eval "$$backend_export"; \
+			export NEXT_PUBLIC_GENERATOR_URL="$$CURRENT_BACKEND_DOMAIN"; \
+			echo "[INFO] [Up-App] NEXT_PUBLIC_GENERATOR_URL=$$NEXT_PUBLIC_GENERATOR_URL"; \
+		else \
+			echo "[WARN] [Up-App] Backend not available (rc=$$rc), WASM fallback will be used"; \
+			export NEXT_PUBLIC_GENERATOR_URL=""; \
+		fi; \
+		echo "[INFO] [Up-App] Starting app services found matching the '$(COMPOSE_PROFILE_APP)' profile..."; \
+		echo "[INFO] [Up-App] Found services: $(COMPOSE_PROFILE_APP_SERVICES)"; \
+		echo "[INFO] [Up-App] Spinning up app..."; \
+		$(COMPOSE_CMD) --profile $(COMPOSE_PROFILE_APP) up -d --no-build; \
+		echo "[INFO] [Up-App] Done. $(APP_NAME) is running on $(APP_URL_FROM_ANYWHERE)"; \
+	fi
+endif

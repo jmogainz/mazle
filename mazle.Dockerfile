@@ -25,7 +25,15 @@ ENV NEXT_PUBLIC_GENERATOR_URL=${NEXT_PUBLIC_GENERATOR_URL}
 ENV NODE_ENV=production
 
 COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+# Copy only what the build needs (keep context lean)
+COPY package*.json ./
+COPY next.config.mjs ./
+COPY tsconfig.json ./
+COPY next-env.d.ts ./
+COPY middleware.ts ./
+COPY vercel.json ./
+COPY public ./public
+COPY src ./src
 
 # Cache Next.js build artifacts between builds when using BuildKit.
 RUN --mount=type=cache,target=/app/.next/cache \

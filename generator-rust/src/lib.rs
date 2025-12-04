@@ -6,6 +6,7 @@
 //! - WebAssembly (browser with parallel generation via wasm-bindgen-rayon)
 //!
 //! Both targets produce **identical puzzles** for the same seed and config.
+//! ////
 
 pub mod generators;
 pub mod types;

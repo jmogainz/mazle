@@ -6,7 +6,8 @@ WORKDIR /app
 
 RUN apk add --no-cache libc6-compat curl
 COPY package*.json ./
-RUN npm ci
+# Cache npm downloads across builds to avoid re-fetching packages.
+RUN --mount=type=cache,target=/root/.npm npm ci --progress=false
 
 # ────────────────────────────────  Builder  ────────────────────────────────
 FROM node:20-alpine AS builder
@@ -26,7 +27,10 @@ ENV NODE_ENV=production
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-RUN npm run build
+# Cache Next.js build artifacts between builds when using BuildKit.
+RUN --mount=type=cache,target=/app/.next/cache \
+    --mount=type=cache,target=/root/.npm \
+    npm run build
 
 # ────────────────────────────────  Runtime  ───────────────────────────────
 FROM node:20-alpine AS runner

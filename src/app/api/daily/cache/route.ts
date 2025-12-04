@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { kv } from '@vercel/kv';
+import { Redis } from '@upstash/redis';
 import { getNewYorkDateString, getDailySeed } from '@/game/puzzleGenerator';
+
+// Initialize Redis client (optional - gracefully disabled if not configured)
+const redis = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
+  ? Redis.fromEnv()
+  : null;
+
+if (!redis) {
+  console.warn('[/api/daily/cache] Redis not configured - cache backfill disabled');
+}
 import type { PuzzleData } from '@/game/types';
 import { TileType } from '@/game/types';
 
@@ -54,7 +63,15 @@ export async function POST(request: NextRequest) {
     const dateStr = getNewYorkDateString(today);
     const kvKey = `puzzle:${dateStr}`;
     
-    const wasSet = await kv.set(kvKey, puzzle, {
+    if (!redis) {
+      return NextResponse.json({ 
+        success: true, 
+        cached: false,
+        message: 'Redis not configured - caching skipped' 
+      });
+    }
+    
+    const wasSet = await redis.set(kvKey, puzzle, {
       ex: 7 * 24 * 60 * 60,  // 7 day TTL
       nx: true,              // Only set if key doesn't exist
     });

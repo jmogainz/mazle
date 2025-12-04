@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { kv } from '@vercel/kv';
+import { Redis } from '@upstash/redis';
 import { getNewYorkDateString, getDailySeed, getPuzzleNumber } from '@/game/puzzleGenerator';
+
+// Initialize Redis client (required for cron - should error if not configured in prod)
+const redis = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
+  ? Redis.fromEnv()
+  : null;
+
+if (!redis) {
+  console.warn('[cron/generate] Redis not configured - cron job will not be able to cache puzzles!');
+}
 import type { PuzzleData } from '@/game/types';
 
 // Rust generator server URL
@@ -43,27 +52,36 @@ export async function GET(request: NextRequest) {
     
     console.log(`[cron/generate] Generating puzzle for ${tomorrowDateStr} (puzzle #${tomorrowPuzzleNumber})`);
     
+    if (!redis) {
+      console.warn('[cron/generate] Redis not configured - will generate but cannot cache');
+    }
+    
     // Also generate today's puzzle if it doesn't exist (safety net)
     const todayDateStr = getNewYorkDateString(now);
     const todaySeed = getDailySeed(now);
     const todayKey = `puzzle:${todayDateStr}`;
-    const existingToday = await kv.get(todayKey);
+    const existingToday = redis ? await redis.get(todayKey) : null;
     
-    const results: { date: string; status: string; puzzleNumber?: number }[] = [];
+    const results: { date: string; status: string; puzzleNumber?: number; cached?: boolean }[] = [];
     
-    // Generate today's if missing
+    // Generate today's if missing (or if we can't check cache)
     if (!existingToday) {
       console.log(`[cron/generate] Today's puzzle missing, generating for ${todayDateStr}`);
       const todayPuzzle = await generateFromRust(todaySeed);
       if (todayPuzzle) {
-        await kv.set(todayKey, todayPuzzle, { ex: 7 * 24 * 60 * 60 }); // 7 day TTL
+        let cached = false;
+        if (redis) {
+          await redis.set(todayKey, todayPuzzle, { ex: 7 * 24 * 60 * 60 }); // 7 day TTL
+          cached = true;
+        }
         results.push({ 
           date: todayDateStr, 
           status: 'generated', 
-          puzzleNumber: getPuzzleNumber(now) 
+          puzzleNumber: getPuzzleNumber(now),
+          cached,
         });
       } else {
-        results.push({ date: todayDateStr, status: 'failed' });
+        results.push({ date: todayDateStr, status: 'generation_failed' });
       }
     } else {
       results.push({ date: todayDateStr, status: 'exists' });
@@ -71,20 +89,25 @@ export async function GET(request: NextRequest) {
     
     // Generate tomorrow's puzzle
     const tomorrowKey = `puzzle:${tomorrowDateStr}`;
-    const existingTomorrow = await kv.get(tomorrowKey);
+    const existingTomorrow = redis ? await redis.get(tomorrowKey) : null;
     
     if (!existingTomorrow) {
       const tomorrowPuzzle = await generateFromRust(tomorrowSeed);
       if (tomorrowPuzzle) {
-        await kv.set(tomorrowKey, tomorrowPuzzle, { ex: 7 * 24 * 60 * 60 }); // 7 day TTL
+        let cached = false;
+        if (redis) {
+          await redis.set(tomorrowKey, tomorrowPuzzle, { ex: 7 * 24 * 60 * 60 }); // 7 day TTL
+          cached = true;
+        }
         results.push({ 
           date: tomorrowDateStr, 
           status: 'generated', 
-          puzzleNumber: tomorrowPuzzleNumber 
+          puzzleNumber: tomorrowPuzzleNumber,
+          cached,
         });
-        console.log(`[cron/generate] Successfully generated puzzle #${tomorrowPuzzleNumber}`);
+        console.log(`[cron/generate] Successfully generated puzzle #${tomorrowPuzzleNumber}${cached ? ' (cached)' : ' (not cached - Redis unavailable)'}`);
       } else {
-        results.push({ date: tomorrowDateStr, status: 'failed' });
+        results.push({ date: tomorrowDateStr, status: 'generation_failed' });
         console.error(`[cron/generate] Failed to generate puzzle for ${tomorrowDateStr}`);
       }
     } else {

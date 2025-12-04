@@ -260,7 +260,7 @@ export default function Home() {
 
       const progressHandler = (progress: GenerationProgress) => {
         setGenerationProgress(progress);
-        setLastUsedBackend(progress.phase);
+        setLastUsedBackend(progress.phase === 'kv' ? null : progress.phase);
       };
 
       if (isDateSeed) {

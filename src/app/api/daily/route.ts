@@ -1,7 +1,16 @@
 import { NextResponse } from 'next/server';
-import { kv } from '@vercel/kv';
+import { Redis } from '@upstash/redis';
 import { getNewYorkDateString, getDailySeed, getPuzzleNumber } from '@/game/puzzleGenerator';
 import type { PuzzleData } from '@/game/types';
+
+// Initialize Redis client (optional - gracefully disabled if not configured)
+const redis = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
+  ? Redis.fromEnv()
+  : null;
+
+if (!redis) {
+  console.warn('[/api/daily] Redis not configured (UPSTASH_REDIS_REST_URL/TOKEN missing) - KV caching disabled');
+}
 
 // Rust generator server URL
 const GENERATOR_URL = process.env.NEXT_PUBLIC_GENERATOR_URL || null;
@@ -34,31 +43,33 @@ export async function GET() {
   const seed = getDailySeed(today);
   const kvKey = `puzzle:${dateStr}`;
   
-  try {
-    // Try to get pre-generated puzzle from KV
-    const cachedPuzzle = await kv.get<PuzzleData>(kvKey);
-    
-    if (cachedPuzzle) {
-      return NextResponse.json({
-        puzzle: cachedPuzzle,
-        puzzleNumber,
-        date: dateStr,
-        seed,
-        source: 'kv',
-      }, {
-        headers: {
-          // Cache for 5 minutes on CDN, stale-while-revalidate for 1 hour
-          // This reduces KV reads while still allowing timely updates
-          'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=3600',
-        },
-      });
+  if (redis) {
+    try {
+      // Try to get pre-generated puzzle from KV
+      const cachedPuzzle = await redis.get<PuzzleData>(kvKey);
+      
+      if (cachedPuzzle) {
+        return NextResponse.json({
+          puzzle: cachedPuzzle,
+          puzzleNumber,
+          date: dateStr,
+          seed,
+          source: 'kv',
+        }, {
+          headers: {
+            // Cache for 5 minutes on CDN, stale-while-revalidate for 1 hour
+            // This reduces KV reads while still allowing timely updates
+            'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=3600',
+          },
+        });
+      }
+      
+      console.log(`[/api/daily] Cache miss for ${dateStr}, generating on-demand...`);
+      
+    } catch (error) {
+      console.error('[/api/daily] KV read error:', error);
+      // Continue to generation fallback
     }
-    
-    console.log(`[/api/daily] Cache miss for ${dateStr}, generating on-demand...`);
-    
-  } catch (error) {
-    console.error('[/api/daily] KV read error:', error);
-    // Continue to generation fallback
   }
   
   // ─────────────────────────────────────────────────────────────────────────
@@ -98,21 +109,23 @@ export async function GET() {
     
     // Store in KV with NX (only if not exists) to prevent overwrites
     // This handles race conditions where multiple requests try to generate simultaneously
-    try {
-      const wasSet = await kv.set(kvKey, puzzle, { 
-        ex: 7 * 24 * 60 * 60,  // 7 day TTL
-        nx: true,              // Only set if key doesn't exist
-      });
-      
-      if (wasSet) {
-        console.log(`[/api/daily] Generated and cached puzzle for ${dateStr}`);
-      } else {
-        // Another request already stored it - that's fine, puzzles are deterministic
-        console.log(`[/api/daily] Puzzle for ${dateStr} was already cached by another request`);
+    if (redis) {
+      try {
+        const wasSet = await redis.set(kvKey, puzzle, { 
+          ex: 7 * 24 * 60 * 60,  // 7 day TTL
+          nx: true,              // Only set if key doesn't exist
+        });
+        
+        if (wasSet) {
+          console.log(`[/api/daily] Generated and cached puzzle for ${dateStr}`);
+        } else {
+          // Another request already stored it - that's fine, puzzles are deterministic
+          console.log(`[/api/daily] Puzzle for ${dateStr} was already cached by another request`);
+        }
+      } catch (kvError) {
+        // KV write failed - still return the puzzle, just log the error
+        console.error('[/api/daily] Failed to cache puzzle:', kvError);
       }
-    } catch (kvError) {
-      // KV write failed - still return the puzzle, just log the error
-      console.error('[/api/daily] Failed to cache puzzle:', kvError);
     }
     
     return NextResponse.json({

@@ -8,3 +8,7 @@ npm-debug.log*
 *.swp
 .DS_Store
 tmp
+
+# Rust build artifacts
+generator-rust/target
+generator-rust/target_local

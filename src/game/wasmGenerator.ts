@@ -23,7 +23,7 @@ import type { PuzzleData, MapType } from './types';
 export type GeneratorBackend = 'auto' | 'rust' | 'wasm';
 
 export interface GenerationProgress {
-  phase: 'rust-backend' | 'wasm';
+  phase: 'kv' | 'rust-backend' | 'wasm';
   workersComplete: number;
   totalWorkers: number;
   bestScore: number;
@@ -566,6 +566,147 @@ export async function generatePuzzleParallel(
   const puzzle = await generateFromWasm(seed, forceMapType, onProgress);
   
   return puzzle;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Daily Puzzle Fetcher (with KV cache)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface DailyPuzzleResponse {
+  puzzle: PuzzleData;
+  source: 'kv' | 'wasm';  // 'kv' = from /api/daily (cached or generated), 'wasm' = client fallback
+}
+
+/**
+ * Fetch the daily puzzle with fallback chain: API (KV + Rust) → WASM
+ * 
+ * This is optimized for daily puzzles where we expect pre-generated puzzles
+ * to be available in Vercel KV (generated at 11 PM ET via cron).
+ * 
+ * Fallback chain:
+ * 1. /api/daily - Handles KV lookup + on-demand Rust generation + caching
+ * 2. WASM (~45s) - Generate client-side as last resort
+ * 
+ * @param seed - Daily seed (from getDailySeed())
+ * @param onProgress - Progress callback for WASM fallback
+ */
+export async function fetchDailyPuzzle(
+  seed: string,
+  onProgress?: (progress: GenerationProgress) => void
+): Promise<DailyPuzzleResponse> {
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // 1. Try /api/daily (handles KV cache + Rust generation + storage)
+  // ─────────────────────────────────────────────────────────────────────────
+  try {
+    console.log('[Daily] Fetching from /api/daily...');
+    
+    if (onProgress) {
+      onProgress({
+        phase: 'kv',
+        workersComplete: 50,
+        totalWorkers: 100,
+        bestScore: 0,
+      });
+    }
+    
+    const response = await fetch('/api/daily', {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(130000), // 130s timeout (Rust gen can take up to 2min)
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      
+      if (data.puzzle) {
+        const wasPreGenerated = data.source === 'kv';
+        console.log(`[Daily] Loaded from ${wasPreGenerated ? 'KV cache (instant!)' : 'on-demand generation via API'}`);
+        
+        if (onProgress) {
+          onProgress({
+            phase: 'kv',
+            workersComplete: 100,
+            totalWorkers: 100,
+            bestScore: data.puzzle.difficultyScore || 0,
+          });
+        }
+        
+        return {
+          puzzle: data.puzzle as PuzzleData,
+          source: 'kv',
+        };
+      }
+    }
+    
+    console.log('[Daily] API request failed, falling back to WASM...');
+  } catch (error) {
+    console.warn('[Daily] API fetch failed:', error);
+    // Continue to WASM fallback
+  }
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // 2. WASM fallback (slow but reliable)
+  // ─────────────────────────────────────────────────────────────────────────
+  console.log('[Daily] Falling back to WASM generation...');
+  
+  // Pre-initialize WASM
+  await initWasmThreadPool();
+  
+  if (!wasmThreadsAvailable) {
+    throw new Error(
+      'Unable to load daily puzzle.\n\n' +
+      'The puzzle server is temporarily unavailable and WASM fallback is not supported in this browser.\n\n' +
+      'Please try:\n' +
+      '1. Refreshing the page\n' +
+      '2. Accessing via a different browser\n' +
+      '3. Trying again in a few minutes'
+    );
+  }
+  
+  const puzzle = await generateFromWasm(seed, undefined, onProgress);
+  
+  // Backfill KV cache so other users don't have to wait for WASM
+  // Fire-and-forget: don't block the user, don't fail if this errors
+  backfillKvCache(seed, puzzle).catch((error) => {
+    console.warn('[Daily] Failed to backfill KV cache:', error);
+  });
+  
+  return {
+    puzzle,
+    source: 'wasm',
+  };
+}
+
+/**
+ * Backfill KV cache after successful WASM generation.
+ * Uses NX so first submission wins (thread-safe).
+ */
+async function backfillKvCache(seed: string, puzzle: PuzzleData): Promise<void> {
+  try {
+    console.log('[Daily] Backfilling KV cache from WASM generation...');
+    
+    const response = await fetch('/api/daily/cache', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seed, puzzle }),
+      signal: AbortSignal.timeout(10000), // 10s timeout
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      if (data.cached) {
+        console.log('[Daily] Successfully backfilled KV cache');
+      } else {
+        console.log('[Daily] KV cache already populated');
+      }
+    } else {
+      console.warn('[Daily] Backfill request failed:', response.status);
+    }
+  } catch (error) {
+    // Don't throw - this is best-effort
+    console.warn('[Daily] Backfill error:', error);
+  }
 }
 
 // Legacy export for compatibility

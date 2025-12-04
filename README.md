@@ -61,6 +61,42 @@ mazle/
 └── Makefile               # Root build orchestration
 ```
 
+## Daily Puzzle Flow
+
+Daily puzzles are pre-generated at 11 PM ET via Vercel Cron and cached in Vercel KV for instant loading. If the cache misses, the system self-heals with on-demand generation and community backfill.
+
+```
+┌─────────────────┐
+│ localStorage?   │─── hit ──→ Done! ✅
+└────────┬────────┘
+         │ miss
+         ▼
+┌─────────────────────────────────────────────┐
+│              GET /api/daily                 │
+│  KV hit? ──→ Return ✅                      │
+│  KV miss ──→ Rust gen ──→ Store ──→ Return ✅│
+└─────────────────────────┬───────────────────┘
+                          │ fail (Rust down)
+                          ▼
+               ┌─────────────────┐
+               │ WASM (browser)  │──→ Return ✅
+               └────────┬────────┘
+                        │
+                        ▼ (async, fire-and-forget)
+               ┌─────────────────┐
+               │ POST /api/daily │
+               │ /cache          │──→ Backfill KV (NX)
+               └─────────────────┘
+                        │
+                        ▼
+               Next user gets instant load! 🎉
+```
+
+**Key guarantees:**
+- Puzzles never change mid-day (KV writes use NX = only if not exists)
+- Thread-safe backfill from concurrent WASM generations
+- Self-healing on fresh deploy or cron failure
+
 ## How to Play
 
 - **Arrow keys / WASD / Swipe** to move

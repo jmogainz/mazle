@@ -5,6 +5,7 @@ export { onGameEvent, emitGameEvent } from './events';
 export {
   getPuzzleNumber,
   getDailySeed,
+  getNewYorkDateString,
   MAP_REGISTRY,
 } from './puzzleGenerator';
 export type { MapTypeDefinition, PsychologyMetrics } from './puzzleGenerator';
@@ -12,13 +13,14 @@ export type { MapTypeDefinition, PsychologyMetrics } from './puzzleGenerator';
 // Puzzle generation (WASM/Rust)
 export {
   generatePuzzleParallel,
+  fetchDailyPuzzle,
   getWorkerPool,
   isRustBackendConfigured,
   getRustBackendUrl,
   getGeneratorStatus,
   preloadWasm,
 } from './wasmGenerator';
-export type { GenerationProgress, GeneratorBackend, GeneratorStatus } from './wasmGenerator';
+export type { GenerationProgress, GeneratorBackend, GeneratorStatus, DailyPuzzleResponse } from './wasmGenerator';
 
 // Movement system
 export {

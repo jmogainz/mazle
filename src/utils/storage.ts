@@ -43,9 +43,10 @@ export function savePlayerStats(stats: PlayerStats): void {
   }
 }
 
-// Get today's date string
+// Get today's date string in New York timezone
+// This ensures daily puzzle tracking matches the puzzle rollover time
 function getTodayString(): string {
-  return new Date().toISOString().split('T')[0];
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 }
 
 // Check if player has played today

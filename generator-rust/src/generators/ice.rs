@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 // Rayon for parallel processing (works on both native and WASM with wasm-bindgen-rayon)
 use rayon::prelude::*;
@@ -23,20 +24,48 @@ fn log_to_console(msg: &str) {
 // Both produce identical results for the same seed.
 
 /// Process a range in parallel and find the best result.
-fn find_best_in_range<F, T>(range: std::ops::Range<usize>, f: F) -> Option<(T, f64)>
+/// Uses attempt index as a deterministic tiebreaker when scores are equal,
+/// ensuring identical results regardless of CPU count or thread scheduling.
+fn find_best_in_range<F, T>(
+    label: &str,
+    range: std::ops::Range<usize>,
+    f: F,
+) -> Option<(T, f64)>
 where
     F: Fn(usize) -> Option<(T, f64)> + Sync + Send,
     T: Send,
 {
     let batch_size = range.len();
-    
+
+    // Track progress across rayon workers to emit periodic logs (visible in WASM and native).
+    let progress = AtomicUsize::new(0);
+
+    // Include attempt index in tuple for deterministic tie-breaking
     let result = range
         .into_par_iter()
-        .filter_map(|i| f(i))
-        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-    
-    log_to_console(&format!("[Rust] Batch of {} attempts completed", batch_size));
-    
+        .filter_map(|i| {
+            let done = progress.fetch_add(1, Ordering::Relaxed) + 1;
+            if done % 50 == 0 || done == batch_size {
+                log_to_console(&format!(
+                    "[Rust][{}] Progress: {}/{}",
+                    label, done, batch_size
+                ));
+            }
+            f(i).map(|(puzzle, score)| (puzzle, score, i))
+        })
+        .max_by(|a, b| {
+            match a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal) {
+                std::cmp::Ordering::Equal => a.2.cmp(&b.2), // Tiebreaker: lower attempt index wins
+                other => other,
+            }
+        })
+        .map(|(puzzle, score, _)| (puzzle, score)); // Strip the index
+
+    log_to_console(&format!(
+        "[Rust][{}] Batch of {} attempts completed",
+        label, batch_size
+    ));
+
     result
 }
 
@@ -3075,7 +3104,7 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
         let trad_end = trad_start + traditional_attempts;
 
         // Constraint attempts (parallel on native, sequential on WASM)
-        let cb_best = find_best_in_range(cb_start..cb_end, |cb_attempt| {
+        let cb_best = find_best_in_range("constraint", cb_start..cb_end, |cb_attempt| {
             let mut cb_rng = SeededRandom::new(&format!("{}-cb-{}", seed, cb_attempt));
             let chain_length = cb_rng.random_int(16, 26);
             let (tiles, start, goal) =
@@ -3123,12 +3152,16 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                 && puzzle.attractive_decoys.map_or(false, |v| v >= 10)
                 && puzzle.commitment_gates.map_or(false, |v| v >= 3)
             {
+                log_to_console(&format!(
+                    "[Rust] Selected puzzle from constraint attempts (batch {}, score {:.2})",
+                    batch, score
+                ));
                 return puzzle;
             }
         }
 
         // Traditional attempts (parallel on native, sequential on WASM)
-        let trad_best = find_best_in_range(trad_start..trad_end, |attempt| {
+        let trad_best = find_best_in_range("traditional", trad_start..trad_end, |attempt| {
             let mut attempt_rng = SeededRandom::new(&format!("{}-trad-{}", seed, attempt));
             let mut tiles = create_base_maze(width, height, &mut attempt_rng);
 
@@ -3444,21 +3477,39 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                 && puzzle.attractive_decoys.map_or(false, |v| v >= 10)
                 && puzzle.commitment_gates.map_or(false, |v| v >= 3)
             {
+                log_to_console(&format!(
+                    "[Rust] Selected puzzle from traditional attempts (batch {}, score {:.2})",
+                    batch, score
+                ));
                 return puzzle;
             }
         }
 
         // Pick best across both phases
-        let mut best: Option<(PuzzleData, f64)> = None;
-        for candidate in [cb_best, trad_best].into_iter().flatten() {
-            if best.as_ref().map_or(true, |b| candidate.1 > b.1) {
-                best = Some(candidate);
+        let mut best: Option<(PuzzleData, f64, &'static str)> = None;
+        for (puzzle, score, label) in [
+            cb_best.clone().map(|(p, s)| (p, s, "constraint")),
+            trad_best.clone().map(|(p, s)| (p, s, "traditional")),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if best.as_ref().map_or(true, |b| score > b.1) {
+                best = Some((puzzle, score, label));
             }
         }
 
-        if let Some((puzzle, _)) = best {
+        if let Some((puzzle, score, label)) = best {
+            log_to_console(&format!(
+                "[Rust] Selected puzzle from {} attempts (batch {}, score {:.2})",
+                label, batch, score
+            ));
             return puzzle;
         }
+        log_to_console(&format!(
+            "[Rust] No puzzle met target in batch {}. Continuing...",
+            batch
+        ));
         batch += 1;
     }
 }

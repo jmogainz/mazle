@@ -10,6 +10,7 @@ import {
   PuzzleData,
   MapType,
   generatePuzzleParallel,
+  fetchDailyPuzzle,
   getDailySeed,
   GenerationProgress,
   GeneratorBackend,
@@ -156,7 +157,7 @@ export default function Home() {
       setGameResult(null);
     }
 
-    // Check cache first for instant loading
+    // Check localStorage cache first for instant loading (same-day revisit)
     const cachedPuzzle = getCachedPuzzle(todaySeed);
     if (cachedPuzzle) {
       setPuzzle(cachedPuzzle);
@@ -164,18 +165,21 @@ export default function Home() {
       return;
     }
 
-    // Generate puzzle (non-blocking)
+    // Fetch daily puzzle: KV (pre-generated) → Rust → WASM fallback
     setIsGenerating(true);
     setGenerationProgress(null);
     
     try {
-      const todayPuzzle = await generatePuzzleParallel(todaySeed, (progress) => {
+      const { puzzle: todayPuzzle, source } = await fetchDailyPuzzle(todaySeed, (progress) => {
         setGenerationProgress(progress);
-        setLastUsedBackend(progress.phase);
+        setLastUsedBackend(progress.phase === 'kv' ? null : progress.phase);
       });
+      
+      console.log(`[Daily] Loaded puzzle from ${source}`);
       setPuzzle(todayPuzzle);
       setRenderKey((prev) => prev + 1);
-      // Cache for future visits
+      
+      // Cache in localStorage for same-day revisits
       cachePuzzle(todaySeed, todayPuzzle);
     } finally {
       setIsGenerating(false);

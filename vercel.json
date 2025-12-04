@@ -10,6 +10,12 @@
       "NEXT_PUBLIC_GENERATOR_URL": ""
     }
   },
+  "crons": [
+    {
+      "path": "/api/cron/generate",
+      "schedule": "0 3 * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",

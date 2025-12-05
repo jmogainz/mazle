@@ -78,16 +78,16 @@ const CONSTRAINT_ATTEMPTS: usize = 160;
 const TRADITIONAL_ATTEMPTS: usize = 400;
 
 const SIZE_OPTIONS: [(usize, usize); 10] = [
-    (35, 27),
-    (37, 27),
-    (35, 29),
-    (37, 29),
-    (39, 29),
-    (37, 31),
-    (39, 31),
-    (41, 31),
-    (41, 33),
-    (43, 33),
+    (27, 21),
+    (29, 21),
+    (27, 23),
+    (29, 23),
+    (31, 21),
+    (29, 25),
+    (31, 23),
+    (31, 25),
+    (33, 23),
+    (33, 25),
 ];
 
 // Weighting knobs for psychology scoring (emphasize traps over length)

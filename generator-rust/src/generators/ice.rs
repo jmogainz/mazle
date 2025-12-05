@@ -77,17 +77,16 @@ const TARGET_PSYCHOLOGY_SCORE: f64 = 2000.0;
 const CONSTRAINT_ATTEMPTS: usize = 160;
 const TRADITIONAL_ATTEMPTS: usize = 400;
 
-const SIZE_OPTIONS: [(usize, usize); 10] = [
-    (27, 21),
-    (29, 21),
-    (27, 23),
-    (29, 23),
-    (31, 21),
-    (29, 25),
-    (31, 23),
-    (31, 25),
-    (33, 23),
-    (33, 25),
+const SIZE_OPTIONS: [(usize, usize); 9] = [
+    (21, 21),
+    (22, 22),
+    (23, 23),
+    (24, 24),
+    (25, 25),
+    (26, 26),
+    (27, 27),
+    (28, 28),
+    (29, 29),
 ];
 
 // Weighting knobs for psychology scoring (emphasize traps over length)

@@ -24,7 +24,7 @@ make up
 | `make up ENV=prod` | Deploy backend (Fly.io) + frontend (Vercel) |
 | `make down` | Stop containers |
 | `make clean` | Full cleanup (containers, images, volumes) |
-| `make wasm` | Rebuild WASM from Rust sources (Dockerized, no host Rust needed) |
+| `make build` | Rebuild WASM from Rust sources (Dockerized, no host Rust needed) |
 | `make help` | List all targets |
 
 ## Environments

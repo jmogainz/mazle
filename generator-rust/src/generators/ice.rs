@@ -74,10 +74,9 @@ where
 // =============================================================================
 
 const TARGET_PSYCHOLOGY_SCORE: f64 = 2000.0;
-const CONSTRAINT_ATTEMPTS: usize = 160;
 const TRADITIONAL_ATTEMPTS: usize = 400;
 
-const SIZE_OPTIONS: [(usize, usize); 9] = [
+const SIZE_OPTIONS: [(usize, usize); 13] = [
     (21, 21),
     (22, 22),
     (23, 23),
@@ -87,6 +86,10 @@ const SIZE_OPTIONS: [(usize, usize); 9] = [
     (27, 27),
     (28, 28),
     (29, 29),
+    (30, 30),
+    (31, 31),
+    (32, 32),
+    (33, 33),
 ];
 
 // Weighting knobs for psychology scoring (emphasize traps over length)
@@ -96,11 +99,13 @@ const WEIGHT_COMMITMENT_GATES: f64 = 70.0;
 const WEIGHT_FALSE_PROGRESS: f64 = 100.0;
 const WEIGHT_MOVE_BONUS: f64 = 0.5;
 
-// Prefilter thresholds to avoid wasting attempts on obviously easy maps
-const PREFILTER_MIN_COUNTER_INTUITIVE: i32 = 6;
-const PREFILTER_MIN_ATTRACTIVE_DECOYS: i32 = 8;
-const PREFILTER_MIN_COMMITMENT_GATES: i32 = 3;
-const PREFILTER_MIN_FALSE_PROGRESS: i32 = 8;
+// Prefilter thresholds - these are BASE values for reference size (35x35)
+// Actual thresholds are computed by compute_prefilter_thresholds() based on map size
+// These values are calibrated for full-puzzle difficulty (tricky parts extending to goal)
+const BASE_PREFILTER_MIN_COUNTER_INTUITIVE: i32 = 10;
+const BASE_PREFILTER_MIN_ATTRACTIVE_DECOYS: i32 = 14;
+const BASE_PREFILTER_MIN_COMMITMENT_GATES: i32 = 5;
+const BASE_PREFILTER_MIN_FALSE_PROGRESS: i32 = 14;
 
 // =============================================================================
 // SEEDED RANDOM (Alea, matches seedrandom default)
@@ -1592,11 +1597,33 @@ fn calculate_psychology_score(
     }
 }
 
-fn passes_prefilters(metrics: &PsychMetrics) -> bool {
-    metrics.counter_intuitive_moves >= PREFILTER_MIN_COUNTER_INTUITIVE
-        && metrics.attractive_decoys >= PREFILTER_MIN_ATTRACTIVE_DECOYS
-        && metrics.commitment_gates >= PREFILTER_MIN_COMMITMENT_GATES
-        && metrics.false_progress_paths >= PREFILTER_MIN_FALSE_PROGRESS
+/// Prefilter thresholds scaled to map size
+#[derive(Clone, Copy)]
+struct PrefilterThresholds {
+    min_counter_intuitive: i32,
+    min_attractive_decoys: i32,
+    min_commitment_gates: i32,
+    min_false_progress: i32,
+}
+
+fn compute_prefilter_thresholds(width: usize, height: usize) -> PrefilterThresholds {
+    let min_dim = width.min(height) as f64;
+    let scale = min_dim / 35.0;  // Reference: old smallest width
+    
+    PrefilterThresholds {
+        // Scale thresholds, but keep reasonable minimums
+        min_counter_intuitive: ((BASE_PREFILTER_MIN_COUNTER_INTUITIVE as f64 * scale).round() as i32).max(3),
+        min_attractive_decoys: ((BASE_PREFILTER_MIN_ATTRACTIVE_DECOYS as f64 * scale).round() as i32).max(4),
+        min_commitment_gates: ((BASE_PREFILTER_MIN_COMMITMENT_GATES as f64 * scale).round() as i32).max(2),
+        min_false_progress: ((BASE_PREFILTER_MIN_FALSE_PROGRESS as f64 * scale).round() as i32).max(4),
+    }
+}
+
+fn passes_prefilters(metrics: &PsychMetrics, thresholds: &PrefilterThresholds) -> bool {
+    metrics.counter_intuitive_moves >= thresholds.min_counter_intuitive
+        && metrics.attractive_decoys >= thresholds.min_attractive_decoys
+        && metrics.commitment_gates >= thresholds.min_commitment_gates
+        && metrics.false_progress_paths >= thresholds.min_false_progress
 }
 
 // =============================================================================
@@ -2558,338 +2585,12 @@ fn add_dead_end_magnets(
     }
 }
 
-// =============================================================================
-// CONSTRAINT-BASED PUZZLE GENERATION
-// =============================================================================
-
-#[derive(Clone)]
-struct WaypointConstraint {
-    pos: Position,
-    required_approach_dir: Direction,
-}
-
-fn get_opposite_corner_direction(
-    _pos: &Position,
-    goal: &Position,
-    width: usize,
-    height: usize,
-) -> Direction {
-    let center_x = width as f64 / 2.0;
-    let center_y = height as f64 / 2.0;
-
-    if (goal.x as f64) > center_x && (goal.y as f64) > center_y {
-        Direction::Up
-    } else if (goal.x as f64) < center_x && (goal.y as f64) > center_y {
-        Direction::Right
-    } else if (goal.x as f64) > center_x && (goal.y as f64) < center_y {
-        Direction::Left
-    } else {
-        Direction::Down
-    }
-}
-
-fn add_decoy_branches(
-    tiles: &mut Vec<Vec<TileType>>,
-    waypoints: &[WaypointConstraint],
-    goal: &Position,
-    width: usize,
-    height: usize,
-    rng: &mut SeededRandom,
-) {
-    for wp in waypoints {
-        let intuitive_dirs = get_intuitive_direction(&wp.pos, goal);
-        for decoy_dir in intuitive_dirs {
-            if decoy_dir == wp.required_approach_dir {
-                continue;
-            }
-            let decoy_length = rng.random_int(4, 10);
-            let (dx, dy) = get_delta(decoy_dir);
-            let mut x = wp.pos.x + dx;
-            let mut y = wp.pos.y + dy;
-
-            for _ in 0..decoy_length {
-                if !is_inner(x, y, width, height) {
-                    break;
-                }
-                if tiles[y as usize][x as usize] == TileType::Wall {
-                    tiles[y as usize][x as usize] = TileType::Ice;
-                }
-                x += dx;
-                y += dy;
-            }
-
-            if is_valid(x, y, width, height) {
-                tiles[y as usize][x as usize] = TileType::Wall;
-            }
-
-            if rng.random() < 0.6 && decoy_length > 3 {
-                let perp_dirs = if decoy_dir == Direction::Up || decoy_dir == Direction::Down {
-                    vec![Direction::Left, Direction::Right]
-                } else {
-                    vec![Direction::Up, Direction::Down]
-                };
-                let perp_dir = rng.random_choice(&perp_dirs);
-                let (pdx, pdy) = get_delta(perp_dir);
-                let branch_x = wp.pos.x + dx * (decoy_length / 2);
-                let branch_y = wp.pos.y + dy * (decoy_length / 2);
-
-                for i in 1..=rng.random_int(3, 6) {
-                    let bx = branch_x + pdx * i;
-                    let by = branch_y + pdy * i;
-                    if !is_inner(bx, by, width, height) {
-                        break;
-                    }
-                    if tiles[by as usize][bx as usize] == TileType::Wall {
-                        tiles[by as usize][bx as usize] = TileType::Ice;
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn fill_with_decoy_ice(
-    tiles: &mut Vec<Vec<TileType>>,
-    _solution_path: &HashSet<String>,
-    start: &Position,
-    goal: &Position,
-    width: usize,
-    height: usize,
-    rng: &mut SeededRandom,
-) {
-    let fill_attempts = (width * height) as f64 * 0.15;
-    for _ in 0..(fill_attempts as i32) {
-        let x = rng.random_int(2, width as i32 - 2);
-        let y = rng.random_int(2, height as i32 - 2);
-        if tiles[y as usize][x as usize] != TileType::Wall {
-            continue;
-        }
-        if pos_eq(&Position { x, y }, start) || pos_eq(&Position { x, y }, goal) {
-            continue;
-        }
-        let mut has_adjacent_ice = false;
-        for dir in get_all_dirs() {
-            let (dx, dy) = get_delta(dir);
-            let nx = x + dx;
-            let ny = y + dy;
-            if is_valid(nx, ny, width, height)
-                && (tiles[ny as usize][nx as usize] == TileType::Ice
-                    || tiles[ny as usize][nx as usize] == TileType::Ground)
-            {
-                has_adjacent_ice = true;
-                break;
-            }
-        }
-        if has_adjacent_ice && rng.random() < 0.4 {
-            tiles[y as usize][x as usize] = TileType::Ice;
-        }
-    }
-}
-
-fn add_shortcut_blockers(
-    tiles: &mut Vec<Vec<TileType>>,
-    waypoints: &[WaypointConstraint],
-    start: &Position,
-    goal: &Position,
-    width: usize,
-    height: usize,
-    rng: &mut SeededRandom,
-) {
-    for i in 0..waypoints.len().saturating_sub(2) {
-        let wp1 = &waypoints[i];
-        let wp2 = &waypoints[i + 2];
-        let mid_x = (wp1.pos.x + wp2.pos.x) / 2;
-        let mid_y = (wp1.pos.y + wp2.pos.y) / 2;
-
-        for dx in -2..=2 {
-            for dy in -2..=2 {
-                let wx = mid_x + dx;
-                let wy = mid_y + dy;
-                if !is_inner(wx, wy, width, height) {
-                    continue;
-                }
-                if tiles[wy as usize][wx as usize] != TileType::Ice {
-                    continue;
-                }
-                let pos = Position { x: wx, y: wy };
-                if pos_eq(&pos, start) || pos_eq(&pos, goal) {
-                    continue;
-                }
-
-                tiles[wy as usize][wx as usize] = TileType::Wall;
-                if !is_solvable(tiles, start, goal, width, height) {
-                    tiles[wy as usize][wx as usize] = TileType::Ice;
-                } else if rng.random() < 0.5 {
-                    break;
-                } else {
-                    tiles[wy as usize][wx as usize] = TileType::Ice;
-                }
-            }
-        }
-    }
-
-    let goal_approach_dirs = get_intuitive_direction(start, goal);
-    for dir in goal_approach_dirs {
-        let (dx, dy) = get_delta(dir);
-        let mut x = start.x + dx * 3;
-        let mut y = start.y + dy * 3;
-        for _ in 0..15 {
-            if !is_inner(x, y, width, height) {
-                break;
-            }
-            if tiles[y as usize][x as usize] == TileType::Ice && rng.random() < 0.25 {
-                tiles[y as usize][x as usize] = TileType::Wall;
-                if !is_solvable(tiles, start, goal, width, height) {
-                    tiles[y as usize][x as usize] = TileType::Ice;
-                }
-            }
-            x += dx;
-            y += dy;
-        }
-    }
-}
-
-fn generate_constraint_based_puzzle(
-    width: usize,
-    height: usize,
-    rng: &mut SeededRandom,
-    chain_length: i32,
-) -> Option<(Vec<Vec<TileType>>, Position, Position)> {
-    let mut tiles = vec![vec![TileType::Wall; width]; height];
-    let corners = [
-        Position {
-            x: width as i32 - 4,
-            y: height as i32 - 4,
-        },
-        Position {
-            x: 4,
-            y: height as i32 - 4,
-        },
-        Position {
-            x: width as i32 - 4,
-            y: 4,
-        },
-        Position { x: 4, y: 4 },
-    ];
-    let goal = rng.random_choice(&corners);
-
-    let mut waypoints: Vec<WaypointConstraint> = Vec::new();
-    let mut current_pos = goal;
-    let mut solution_path = HashSet::new();
-    solution_path.insert(pos_key(&goal));
-
-    for _ in 0..chain_length {
-        let intuitive_dir = get_opposite_corner_direction(&current_pos, &goal, width, height);
-        let possible_dirs: Vec<Direction> = get_all_dirs()
-            .iter()
-            .copied()
-            .filter(|d| {
-                if *d == intuitive_dir {
-                    return false;
-                }
-                if *d == get_opposite_dir(intuitive_dir) && rng.random() < 0.7 {
-                    return false;
-                }
-                true
-            })
-            .collect();
-        if possible_dirs.is_empty() {
-            break;
-        }
-        let approach_dir = rng.random_choice(&possible_dirs);
-        let opp_dir = get_opposite_dir(approach_dir);
-        let (dx, dy) = get_delta(opp_dir);
-
-        let slide_distance = rng.random_int(3, 8);
-        let mut source_pos = Position {
-            x: current_pos.x + dx * slide_distance,
-            y: current_pos.y + dy * slide_distance,
-        };
-
-        if !is_inner(source_pos.x, source_pos.y, width, height) {
-            let mut found = false;
-            for dist in (2..slide_distance).rev() {
-                let try_pos = Position {
-                    x: current_pos.x + dx * dist,
-                    y: current_pos.y + dy * dist,
-                };
-                if is_inner(try_pos.x, try_pos.y, width, height) {
-                    source_pos = try_pos;
-                    found = true;
-                    break;
-                }
-            }
-            if !found {
-                continue;
-            }
-        }
-
-        let (path_dx, path_dy) = get_delta(approach_dir);
-        let mut carve_x = source_pos.x;
-        let mut carve_y = source_pos.y;
-        while !pos_eq(
-            &Position {
-                x: carve_x,
-                y: carve_y,
-            },
-            &current_pos,
-        ) {
-            if !is_inner(carve_x, carve_y, width, height) {
-                break;
-            }
-            tiles[carve_y as usize][carve_x as usize] = TileType::Ice;
-            solution_path.insert(pos_key(&Position {
-                x: carve_x,
-                y: carve_y,
-            }));
-            carve_x += path_dx;
-            carve_y += path_dy;
-        }
-        tiles[current_pos.y as usize][current_pos.x as usize] = TileType::Ice;
-
-        let stopper_x = current_pos.x + path_dx;
-        let stopper_y = current_pos.y + path_dy;
-        if is_valid(stopper_x, stopper_y, width, height) {
-            tiles[stopper_y as usize][stopper_x as usize] = TileType::Wall;
-        }
-
-        waypoints.push(WaypointConstraint {
-            pos: current_pos,
-            required_approach_dir: approach_dir,
-        });
-        current_pos = source_pos;
-    }
-
-    if waypoints.len() < 5 {
-        return None;
-    }
-
-    let start = current_pos;
-    tiles[start.y as usize][start.x as usize] = TileType::Ice;
-
-    add_decoy_branches(&mut tiles, &waypoints, &goal, width, height, rng);
-    fill_with_decoy_ice(
-        &mut tiles,
-        &solution_path,
-        &start,
-        &goal,
-        width,
-        height,
-        rng,
-    );
-    add_shortcut_blockers(&mut tiles, &waypoints, &start, &goal, width, height, rng);
-
-    tiles[start.y as usize][start.x as usize] = TileType::Start;
-    tiles[goal.y as usize][goal.x as usize] = TileType::Goal;
-
-    if !is_solvable(&tiles, &start, &goal, width, height) {
-        return None;
-    }
-    if !has_no_stuck_states(&tiles, &start, &goal, width, height) {
-        return None;
-    }
-
-    Some((tiles.clone(), start, goal))
+/// Compute minimum moves threshold based on map size.
+/// Reference size is 35 (the old smallest width).
+fn compute_min_moves(width: usize, height: usize) -> i32 {
+    let min_dim = width.min(height) as f64;
+    let scale = min_dim / 35.0;
+    ((20.0 * scale).round() as i32).max(10)
 }
 
 // =============================================================================
@@ -3077,11 +2778,6 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
         pick_size(&mut rng)
     };
 
-    let constraint_attempts = if config.constraint_attempts > 0 {
-        config.constraint_attempts
-    } else {
-        CONSTRAINT_ATTEMPTS
-    };
     let traditional_attempts = if config.traditional_attempts > 0 {
         config.traditional_attempts
     } else {
@@ -3093,71 +2789,27 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
         TARGET_PSYCHOLOGY_SCORE
     };
     
-    log_to_console(&format!("[Rust] Running {} constraint + {} traditional attempts", constraint_attempts, traditional_attempts));
+    // Compute scaled parameters for this map size
+    let min_moves = compute_min_moves(width, height);
+    let prefilter_thresholds = compute_prefilter_thresholds(width, height);
+    
+    log_to_console(&format!(
+        "[Rust] Map {}x{}: min_moves={}",
+        width, height, min_moves
+    ));
+    log_to_console(&format!(
+        "[Rust] Prefilters: counter_intuitive>={}, decoys>={}, gates>={}, false_progress>={}",
+        prefilter_thresholds.min_counter_intuitive,
+        prefilter_thresholds.min_attractive_decoys,
+        prefilter_thresholds.min_commitment_gates,
+        prefilter_thresholds.min_false_progress
+    ));
+    log_to_console(&format!("[Rust] Running {} traditional attempts per batch", traditional_attempts));
 
     let mut batch = 0;
     loop {
-        let cb_start = batch * constraint_attempts;
-        let cb_end = cb_start + constraint_attempts;
         let trad_start = batch * traditional_attempts;
         let trad_end = trad_start + traditional_attempts;
-
-        // Constraint attempts (parallel on native, sequential on WASM)
-        let cb_best = find_best_in_range("constraint", cb_start..cb_end, |cb_attempt| {
-            let mut cb_rng = SeededRandom::new(&format!("{}-cb-{}", seed, cb_attempt));
-            let chain_length = cb_rng.random_int(16, 26);
-            let (tiles, start, goal) =
-                generate_constraint_based_puzzle(width, height, &mut cb_rng, chain_length)?;
-
-            let optimal_moves = find_path(&tiles, &start, &goal, width, height)?;
-            if optimal_moves < 20 {
-                return None;
-            }
-            let psych_metrics =
-                calculate_psychology_score(&tiles, &start, &goal, width, height);
-            if !passes_prefilters(&psych_metrics) {
-                return None;
-            }
-            let score = psych_metrics.psychology_score;
-
-            let mut tiles = tiles;
-            tiles[start.y as usize][start.x as usize] = TileType::Start;
-            tiles[goal.y as usize][goal.x as usize] = TileType::Goal;
-
-            let puzzle = PuzzleData {
-                width,
-                height,
-                tiles: tiles
-                    .iter()
-                    .map(|row| row.iter().map(|t| *t as u8).collect())
-                    .collect(),
-                start,
-                goal,
-                optimal_moves,
-                map_type: MapType::Ice,
-                difficulty_score: Some(score.round() as i32),
-                counter_intuitive_moves: Some(psych_metrics.counter_intuitive_moves),
-                attractive_decoys: Some(psych_metrics.attractive_decoys),
-                commitment_gates: Some(psych_metrics.commitment_gates),
-                false_progress_paths: Some(psych_metrics.false_progress_paths),
-            };
-
-            Some((puzzle, score))
-        });
-
-        if let Some((puzzle, score)) = cb_best.clone() {
-            if score >= target_score
-                && puzzle.counter_intuitive_moves.map_or(false, |v| v >= 8)
-                && puzzle.attractive_decoys.map_or(false, |v| v >= 10)
-                && puzzle.commitment_gates.map_or(false, |v| v >= 3)
-            {
-                log_to_console(&format!(
-                    "[Rust] Selected puzzle from constraint attempts (batch {}, score {:.2})",
-                    batch, score
-                ));
-                return puzzle;
-            }
-        }
 
         // Traditional attempts (parallel on native, sequential on WASM)
         let trad_best = find_best_in_range("traditional", trad_start..trad_end, |attempt| {
@@ -3438,13 +3090,13 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
             if !has_no_stuck_states(&tiles, &start, &goal, width, height) {
                 return None;
             }
-            if optimal_moves < 20 {
+            if optimal_moves < min_moves {
                 return None;
             }
 
             let psych_metrics =
                 calculate_psychology_score(&tiles, &start, &goal, width, height);
-            if !passes_prefilters(&psych_metrics) {
+            if !passes_prefilters(&psych_metrics, &prefilter_thresholds) {
                 return None;
             }
             let score = psych_metrics.psychology_score;
@@ -3470,6 +3122,7 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
             Some((puzzle, score))
         });
 
+        // Check if we found a puzzle meeting the target thresholds
         if let Some((puzzle, score)) = trad_best.clone() {
             if score >= target_score
                 && puzzle.counter_intuitive_moves.map_or(false, |v| v >= 8)
@@ -3477,34 +3130,22 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                 && puzzle.commitment_gates.map_or(false, |v| v >= 3)
             {
                 log_to_console(&format!(
-                    "[Rust] Selected puzzle from traditional attempts (batch {}, score {:.2})",
+                    "[Rust] Selected puzzle (batch {}, score {:.2})",
                     batch, score
                 ));
                 return puzzle;
             }
         }
 
-        // Pick best across both phases
-        let mut best: Option<(PuzzleData, f64, &'static str)> = None;
-        for (puzzle, score, label) in [
-            cb_best.clone().map(|(p, s)| (p, s, "constraint")),
-            trad_best.clone().map(|(p, s)| (p, s, "traditional")),
-        ]
-        .into_iter()
-        .flatten()
-        {
-            if best.as_ref().map_or(true, |b| score > b.1) {
-                best = Some((puzzle, score, label));
-            }
-        }
-
-        if let Some((puzzle, score, label)) = best {
+        // If we found any valid puzzle, return it
+        if let Some((puzzle, score)) = trad_best {
             log_to_console(&format!(
-                "[Rust] Selected puzzle from {} attempts (batch {}, score {:.2})",
-                label, batch, score
+                "[Rust] Selected best puzzle from batch {} (score {:.2})",
+                batch, score
             ));
             return puzzle;
         }
+
         log_to_console(&format!(
             "[Rust] No puzzle met target in batch {}. Continuing...",
             batch
@@ -3517,15 +3158,16 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
 #[allow(dead_code)]
 pub fn generate_puzzle_partial(
     seed: &str,
-    constraint_start: usize,
-    constraint_end: usize,
     traditional_start: usize,
     traditional_end: usize,
 ) -> (Option<PuzzleData>, f64) {
     let mut size_rng = SeededRandom::new(seed);
     let (width, height) = pick_size(&mut size_rng);
 
-    let constraint_range = constraint_end - constraint_start;
+    // Compute scaled parameters for this map size
+    let min_moves = compute_min_moves(width, height);
+    let prefilter_thresholds = compute_prefilter_thresholds(width, height);
+
     let traditional_range = traditional_end - traditional_start;
     let mut batch = 0;
 
@@ -3533,60 +3175,8 @@ pub fn generate_puzzle_partial(
     let mut best_score = 0.0;
 
     loop {
-        let cb_base = constraint_start + batch * constraint_range;
-        let cb_limit = cb_base + constraint_range;
         let trad_base = traditional_start + batch * traditional_range;
         let trad_limit = trad_base + traditional_range;
-
-        for cb_attempt in cb_base..cb_limit {
-            let mut cb_rng = SeededRandom::new(&format!("{}-cb-{}", seed, cb_attempt));
-            let chain_length = cb_rng.random_int(16, 26);
-            if let Some((mut tiles, start, goal)) =
-                generate_constraint_based_puzzle(width, height, &mut cb_rng, chain_length)
-            {
-                let optimal_moves = find_path(&tiles, &start, &goal, width, height);
-                if optimal_moves.is_none() || optimal_moves.unwrap() < 20 {
-                    continue;
-                }
-                let optimal_moves = optimal_moves.unwrap();
-                let psych_metrics =
-                    calculate_psychology_score(&tiles, &start, &goal, width, height);
-                if !passes_prefilters(&psych_metrics) {
-                    continue;
-                }
-                let score = psych_metrics.psychology_score;
-                if score > best_score {
-                    best_score = score;
-                    tiles[start.y as usize][start.x as usize] = TileType::Start;
-                    tiles[goal.y as usize][goal.x as usize] = TileType::Goal;
-                    best_puzzle = Some(PuzzleData {
-                        width,
-                        height,
-                        tiles: tiles
-                            .iter()
-                            .map(|row| row.iter().map(|t| *t as u8).collect())
-                            .collect(),
-                        start,
-                        goal,
-                        optimal_moves,
-                        map_type: MapType::Ice,
-                        difficulty_score: Some(score.round() as i32),
-                        counter_intuitive_moves: Some(psych_metrics.counter_intuitive_moves),
-                        attractive_decoys: Some(psych_metrics.attractive_decoys),
-                        commitment_gates: Some(psych_metrics.commitment_gates),
-                        false_progress_paths: Some(psych_metrics.false_progress_paths),
-                    });
-                }
-
-                if score >= TARGET_PSYCHOLOGY_SCORE
-                    && psych_metrics.counter_intuitive_moves >= 8
-                    && psych_metrics.attractive_decoys >= 10
-                    && psych_metrics.commitment_gates >= 3
-                {
-                    return (best_puzzle, best_score);
-                }
-            }
-        }
 
         for attempt in trad_base..trad_limit {
             let mut attempt_rng = SeededRandom::new(&format!("{}-trad-{}", seed, attempt));
@@ -3870,11 +3460,11 @@ pub fn generate_puzzle_partial(
             if !has_no_stuck_states(&tiles, &start, &goal, width, height) {
                 continue;
             }
-            if optimal_moves < 20 {
+            if optimal_moves < min_moves {
                 continue;
             }
             let psych_metrics = calculate_psychology_score(&tiles, &start, &goal, width, height);
-            if !passes_prefilters(&psych_metrics) {
+            if !passes_prefilters(&psych_metrics, &prefilter_thresholds) {
                 continue;
             }
             let score = psych_metrics.psychology_score;
@@ -3899,10 +3489,11 @@ pub fn generate_puzzle_partial(
                 });
             }
 
+            // Early exit thresholds also scale
             if score >= TARGET_PSYCHOLOGY_SCORE
-                && psych_metrics.counter_intuitive_moves >= 8
-                && psych_metrics.attractive_decoys >= 10
-                && psych_metrics.commitment_gates >= 3
+                && psych_metrics.counter_intuitive_moves >= prefilter_thresholds.min_counter_intuitive + 2
+                && psych_metrics.attractive_decoys >= prefilter_thresholds.min_attractive_decoys + 2
+                && psych_metrics.commitment_gates >= prefilter_thresholds.min_commitment_gates
             {
                 return (best_puzzle, best_score);
             }

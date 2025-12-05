@@ -44,11 +44,18 @@ echo "[INFO] [WASM] Calculating source hash..."
 
 # Construct the hash input stream
 hash_input() {
-    find "$RUST_PROJECT_DIR" -type f -name '*.rs' -print0 | sort -z | xargs -0 -r sha256sum
-    sha256sum "$RUST_PROJECT_DIR/Cargo.toml"
-    if [ -f "$RUST_PROJECT_DIR/rust-toolchain.toml" ]; then
-        sha256sum "$RUST_PROJECT_DIR/rust-toolchain.toml"
-    fi
+    # Skip build artifacts (target/pkg) so cached builds stay valid like other devops-toolkit flows
+    find "$RUST_PROJECT_DIR" \
+        -path "$RUST_PROJECT_DIR/target" -prune -o \
+        -path "$RUST_PROJECT_DIR/pkg" -prune -o \
+        -path "$RUST_PROJECT_DIR/.git" -prune -o \
+        -type f -name '*.rs' -print0 | sort -z | xargs -0 -r sha256sum
+
+    for file in Cargo.toml Cargo.lock rust-toolchain.toml; do
+        if [ -f "$RUST_PROJECT_DIR/$file" ]; then
+            sha256sum "$RUST_PROJECT_DIR/$file"
+        fi
+    done
     # Add versions to the hash
     echo "${WASM_PACK_VERSION:-} ${RUST_TOOLCHAIN:-} ${RUST_VERSION:-}"
 }

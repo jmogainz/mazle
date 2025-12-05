@@ -67,8 +67,6 @@ pub struct PuzzleData {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GenerationConfig {
-    #[serde(default = "default_constraint_attempts")]
-    pub constraint_attempts: usize,
     #[serde(default = "default_traditional_attempts")]
     pub traditional_attempts: usize,
     #[serde(default = "default_target_score")]
@@ -79,9 +77,6 @@ pub struct GenerationConfig {
     pub parallel: bool,
 }
 
-fn default_constraint_attempts() -> usize {
-    160
-}
 fn default_traditional_attempts() -> usize {
     400
 }
@@ -89,13 +84,12 @@ fn default_target_score() -> i32 {
     2000
 }
 fn default_max_attempts() -> usize {
-    560
+    400
 }
 
 impl Default for GenerationConfig {
     fn default() -> Self {
         Self {
-            constraint_attempts: default_constraint_attempts(),
             traditional_attempts: default_traditional_attempts(),
             target_psychology_score: default_target_score(),
             max_attempts: default_max_attempts(),

@@ -15,34 +15,39 @@ const redis = redisUrl && redisToken
   : null;
 import type { PuzzleData } from '@/game/types';
 
-// Rust generator server URL
-const GENERATOR_URL = process.env.NEXT_PUBLIC_GENERATOR_URL || 'http://localhost:3001';
-
-// Secret to verify cron requests (set in Vercel environment variables)
-const CRON_SECRET = process.env.CRON_SECRET;
+// Rust generator server URL (use server-side env var, not NEXT_PUBLIC_)
+const GENERATOR_URL = process.env.GENERATOR_URL || process.env.NEXT_PUBLIC_GENERATOR_URL || 'http://localhost:8080';
 
 /**
  * GET /api/cron/generate
  * 
  * Cron endpoint that pre-generates tomorrow's daily puzzle.
- * Called at 11 PM ET daily via Vercel Cron.
+ * Called at 3 AM UTC daily via Vercel Cron (11 PM ET).
  * 
- * Security: Requires CRON_SECRET header (Vercel adds this automatically for cron jobs)
+ * Security: If CRON_SECRET env var is set, Vercel automatically sends
+ * "Authorization: Bearer <CRON_SECRET>" for cron invocations.
+ * We enforce auth only when CRON_SECRET is configured (allows local dev without it).
  * 
  * Flow:
- * 1. Calculate tomorrow's date (since we run at 11 PM, generate for next day)
+ * 1. Calculate tomorrow's date (since we run at 11 PM ET, generate for next day)
  * 2. Call Rust backend to generate puzzle
  * 3. Store in Vercel KV with 7-day TTL
  */
 export async function GET(request: NextRequest) {
   try {
-    // Verify the request is from Vercel Cron (or has valid secret for manual trigger)
+    // Security: Only enforce auth if CRON_SECRET is configured
+    // - On Vercel with CRON_SECRET set: cron requests get the header and pass; random callers get 401
+    // - Locally or without CRON_SECRET: no auth enforced, can hit from browser/curl
     const authHeader = request.headers.get('authorization');
-    const isVercelCron = request.headers.get('x-vercel-cron') === '1';
+    const cronSecret = process.env.CRON_SECRET;
     
-    if (!isVercelCron && authHeader !== `Bearer ${CRON_SECRET}`) {
-      console.warn('[cron/generate] Unauthorized request');
+    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+      console.warn('[cron/generate] Unauthorized request - invalid or missing Authorization header');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    
+    if (!cronSecret) {
+      console.warn('[cron/generate] CRON_SECRET not set - auth not enforced (ok for local dev)');
     }
     
     // Calculate tomorrow's date in New York timezone

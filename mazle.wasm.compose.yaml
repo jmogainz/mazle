@@ -1,0 +1,39 @@
+services:
+  wasm-build:
+    build:
+      context: .
+      dockerfile: wasm-builder.Dockerfile
+      args:
+        RUST_VERSION: ${WASM_RUST_VERSION:-1.83}
+        WASM_PACK_VERSION: ${WASM_PACK_VERSION:-0.13.1}
+        RUST_TOOLCHAIN: ${WASM_RUST_TOOLCHAIN:-nightly}
+    environment:
+      # Paths inside the container
+      - RUST_PROJECT_DIR=/workspace/generator-rust
+      - WASM_OUTPUT_DIR=/workspace/src/wasm/generator
+      
+      # Build control flags
+      - WASM_FORCE_REBUILD=${WASM_FORCE_REBUILD:-0}
+      - WASM_CHECK_ONLY=${WASM_CHECK_ONLY:-0}
+      
+      # Versions (for hash calculation)
+      - WASM_PACK_VERSION=${WASM_PACK_VERSION:-0.13.1}
+      - RUST_TOOLCHAIN=${WASM_RUST_TOOLCHAIN:-nightly}
+      - RUST_VERSION=${WASM_RUST_VERSION:-1.83}
+      
+      # Permission fixing
+      - HOST_UID=${HOST_UID:-}
+      - HOST_GID=${HOST_GID:-}
+    volumes:
+      # Mount the whole workspace to allow accessing both Rust source and WASM output
+      - .:/workspace
+      # Cache cargo registry and target dir to speed up builds
+      - wasm_cargo_registry:/usr/local/cargo/registry
+      - wasm_target:/workspace/generator-rust/target
+    profiles:
+      - build_pre_sync
+    restart: "no"
+
+volumes:
+  wasm_cargo_registry:
+  wasm_target:

@@ -11,7 +11,7 @@ export UNIQUE_RUNNER_ID=$(whoami)
 # Start dev server (WASM fallback, no backend)
 make up
 
-# Open http://localhost:3000
+# Open http://localhost:8080 (port may vary - check console output)
 ```
 
 ## Commands
@@ -24,7 +24,7 @@ make up
 | `make up ENV=prod` | Deploy backend (Fly.io) + frontend (Vercel) |
 | `make down` | Stop containers |
 | `make clean` | Full cleanup (containers, images, volumes) |
-| `make wasm` | Rebuild WASM from Rust sources |
+| `make wasm` | Rebuild WASM from Rust sources (Dockerized, no host Rust needed) |
 | `make help` | List all targets |
 
 ## Environments
@@ -32,7 +32,7 @@ make up
 | ENV | WITH_DEPS | Backend | Use Case |
 |-----|-----------|---------|----------|
 | `dev-test` | 0 | WASM fallback | Default, quick iteration |
-| `dev` | 1 | Auto-starts (port 3001) | Full stack local dev |
+| `dev` | 1 | Auto-starts (port 8080) | Full stack local dev |
 | `staging` | 1 | Fly.io | Pre-prod testing |
 | `prod` | 1 | Fly.io | Production |
 

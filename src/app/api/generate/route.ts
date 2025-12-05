@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 
 // Rust generator server URL (set via NEXT_PUBLIC_GENERATOR_URL, falls back to localhost for dev)
-const GENERATOR_URL = process.env.NEXT_PUBLIC_GENERATOR_URL || 'http://localhost:3001';
+const GENERATOR_URL = process.env.NEXT_PUBLIC_GENERATOR_URL || 'http://localhost:8080';
 
 interface GenerateRequest {
   seed: string;

@@ -2,8 +2,8 @@
  * Custom Next.js dev server with COOP/COEP headers for SharedArrayBuffer.
  * 
  * USAGE:
- *   node server.js                    # HTTP on localhost:3000
- *   node server.js --https            # HTTPS on localhost:3000 (requires certs)
+ *   node server.js                    # HTTP on localhost:8080
+ *   node server.js --https            # HTTPS on localhost:8080 (requires certs)
  *   node server.js -H 0.0.0.0 --https # HTTPS on all interfaces (for LAN)
  * 
  * HTTPS SETUP (for LAN access with WASM):
@@ -17,7 +17,7 @@
  *   - http://localhost (hostname must be exactly "localhost")
  *   - HTTPS origins (any hostname)
  *   
- *   So for LAN access (e.g., http://192.168.1.x:3000), you MUST use HTTPS.
+ *   So for LAN access (e.g., http://192.168.1.x:8080), you MUST use HTTPS.
  */
 const { createServer: createHttpServer } = require('http');
 const { createServer: createHttpsServer } = require('https');
@@ -29,7 +29,7 @@ const next = require('next');
 // Parse command line arguments
 const args = process.argv.slice(2);
 let hostname = process.env.HOSTNAME || '127.0.0.1';
-let port = parseInt(process.env.PORT, 10) || 3000;
+let port = parseInt(process.env.PORT, 10) || 8080;
 let useHttps = false;
 let certFile = process.env.SSL_CERT || 'cert.pem';
 let keyFile = process.env.SSL_KEY || 'key.pem';
@@ -119,7 +119,7 @@ app.prepare().then(() => {
       console.log('  │   ✓  HTTPS enabled - WASM works on any hostname       │');
       console.log('  │   ✓  LAN access supported                             │');
     } else {
-      console.log('  │   ✓  Access via http://localhost:3000                 │');
+      console.log('  │   ✓  Access via http://localhost:8080                 │');
       console.log('  │   ⚠️   IP addresses over HTTP won\'t work for WASM      │');
       console.log('  │                                                        │');
       console.log('  │   For LAN access, use: node server.js --https         │');

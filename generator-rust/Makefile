@@ -41,10 +41,7 @@ endif
 # rust-app.compose.yaml configurations
 # Note: Use override to prevent inheritance from parent make calls
 export APP_NAME := $(COMPOSE_PROJECT_NAME)
-override APP_PORT := 3001
-export APP_PORT
-override APP_HOST_PORT := 3001
-export APP_HOST_PORT
+override APP_PORT := 8080
 
 # Rust-specific configuration
 RUST_BINARY_NAME := mazle-generator

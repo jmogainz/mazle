@@ -57,7 +57,7 @@ mazle/
 
 Two modes:
 1. **WASM** (client-side): `src/wasm/generator/` - runs in web workers
-2. **HTTP** (server-side): `generator-rust/` on port 3001 - Rust Axum server
+2. **HTTP** (server-side): `generator-rust/` on port 8080 - Rust Axum server
 
 Frontend auto-detects: uses HTTP if `NEXT_PUBLIC_GENERATOR_URL` set, else WASM fallback.
 

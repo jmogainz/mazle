@@ -3,7 +3,7 @@
  * 
  * Manages puzzle generation via two backends (both produce identical puzzles):
  * 
- * 1. 🦀 Rust HTTP Server - Runs on server with rayon parallelism (port 3001)
+ * 1. 🦀 Rust HTTP Server - Runs on server with rayon parallelism (port 8080)
  * 2. 🔷 WASM - Runs in a dedicated web worker with rayon via wasm-bindgen-rayon
  * 
  * The WASM backend runs in a single dedicated worker (generationWorker.ts) to:
@@ -504,7 +504,7 @@ export async function generatePuzzleParallel(
       throw new Error(
         'WASM engine unavailable: SharedArrayBuffer requires cross-origin isolation.\n\n' +
         'To fix in development:\n' +
-        '1. Access via http://localhost:3000 (NOT an IP address like 10.x.x.x or 127.0.0.1)\n' +
+        '1. Access via http://localhost:8080 (NOT an IP address like 10.x.x.x or 127.0.0.1)\n' +
         '2. Browsers only allow SharedArrayBuffer on localhost or HTTPS origins\n' +
         '3. Ensure server.js is running (npm run dev)\n\n' +
         'For LAN access, you need HTTPS (use mkcert to generate local certs).\n' +
@@ -539,7 +539,7 @@ export async function generatePuzzleParallel(
           'Rust backend failed and WASM fallback unavailable.\n\n' +
           'Options:\n' +
           '1. Start the Rust backend (make up-backend)\n' +
-          '2. Enable WASM: access via http://localhost:3000 (NOT an IP address)\n' +
+          '2. Enable WASM: access via http://localhost:8080 (NOT an IP address)\n' +
           '   Browsers only allow SharedArrayBuffer on localhost or HTTPS'
         );
       }
@@ -554,7 +554,7 @@ export async function generatePuzzleParallel(
       'No puzzle engine available.\n\n' +
       'Options:\n' +
       '1. Configure Rust backend (NEXT_PUBLIC_GENERATOR_URL)\n' +
-      '2. Enable WASM: access via http://localhost:3000 (NOT an IP address)\n' +
+      '2. Enable WASM: access via http://localhost:8080 (NOT an IP address)\n' +
       '   Browsers only allow SharedArrayBuffer on localhost or HTTPS'
     );
   }
@@ -574,21 +574,24 @@ export async function generatePuzzleParallel(
 
 export interface DailyPuzzleResponse {
   puzzle: PuzzleData;
-  source: 'kv' | 'wasm';  // 'kv' = from /api/daily (cached or generated), 'wasm' = client fallback
+  source: 'kv' | 'rust' | 'wasm';  // 'kv' = from cache, 'rust' = client→backend, 'wasm' = client fallback
 }
 
 /**
- * Fetch the daily puzzle with fallback chain: API (KV + Rust) → WASM
+ * Fetch the daily puzzle with fallback chain: KV Cache → Rust Backend → WASM
  * 
  * This is optimized for daily puzzles where we expect pre-generated puzzles
  * to be available in Vercel KV (generated at 11 PM ET via cron).
  * 
  * Fallback chain:
- * 1. /api/daily - Handles KV lookup + on-demand Rust generation + caching
- * 2. WASM (~45s) - Generate client-side as last resort
+ * 1. /api/daily - Check KV cache only (fast, no serverless timeout risk)
+ * 2. Rust backend - Direct client call (if configured)
+ * 3. WASM (~45s) - Generate client-side as last resort
+ * 
+ * Both Rust and WASM fallbacks backfill the KV cache via POST /api/daily/cache.
  * 
  * @param seed - Daily seed (from getDailySeed())
- * @param onProgress - Progress callback for WASM fallback
+ * @param onProgress - Progress callback for generation fallbacks
  */
 export async function fetchDailyPuzzle(
   seed: string,
@@ -596,10 +599,10 @@ export async function fetchDailyPuzzle(
 ): Promise<DailyPuzzleResponse> {
   
   // ─────────────────────────────────────────────────────────────────────────
-  // 1. Try /api/daily (handles KV cache + Rust generation + storage)
+  // 1. Check KV cache via /api/daily (cache-only, fast)
   // ─────────────────────────────────────────────────────────────────────────
   try {
-    console.log('[Daily] Fetching from /api/daily...');
+    console.log('[Daily] Checking KV cache via /api/daily...');
     
     if (onProgress) {
       onProgress({
@@ -613,15 +616,14 @@ export async function fetchDailyPuzzle(
     const response = await fetch('/api/daily', {
       method: 'GET',
       headers: { 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(130000), // 130s timeout (Rust gen can take up to 2min)
+      signal: AbortSignal.timeout(10000), // 10s timeout (cache check should be fast)
     });
     
     if (response.ok) {
       const data = await response.json();
       
       if (data.puzzle) {
-        const wasPreGenerated = data.source === 'kv';
-        console.log(`[Daily] Loaded from ${wasPreGenerated ? 'KV cache (instant!)' : 'on-demand generation via API'}`);
+        console.log('[Daily] Loaded from KV cache (instant!)');
         
         if (onProgress) {
           onProgress({
@@ -639,14 +641,41 @@ export async function fetchDailyPuzzle(
       }
     }
     
-    console.log('[Daily] API request failed, falling back to WASM...');
+    // 404 = cache miss, continue to client-side generation
+    console.log('[Daily] Cache miss, falling back to client-side generation...');
   } catch (error) {
-    console.warn('[Daily] API fetch failed:', error);
-    // Continue to WASM fallback
+    console.warn('[Daily] Cache check failed:', error);
+    // Continue to client-side fallbacks
   }
   
   // ─────────────────────────────────────────────────────────────────────────
-  // 2. WASM fallback (slow but reliable)
+  // 2. Try Rust backend directly from client (if configured)
+  // ─────────────────────────────────────────────────────────────────────────
+  if (RUST_BACKEND_URL) {
+    try {
+      console.log('[Daily] Trying Rust backend directly from client...');
+      
+      const puzzle = await generateFromRustBackend(seed, undefined, onProgress);
+      
+      console.log('[Daily] Generated via Rust backend');
+      
+      // Backfill KV cache so other users get instant load
+      backfillKvCache(seed, puzzle, 'rust').catch((error) => {
+        console.warn('[Daily] Failed to backfill KV cache:', error);
+      });
+      
+      return {
+        puzzle,
+        source: 'rust',
+      };
+    } catch (error) {
+      console.warn('[Daily] Rust backend failed:', error);
+      // Continue to WASM fallback
+    }
+  }
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // 3. WASM fallback (slow but reliable)
   // ─────────────────────────────────────────────────────────────────────────
   console.log('[Daily] Falling back to WASM generation...');
   
@@ -668,7 +697,7 @@ export async function fetchDailyPuzzle(
   
   // Backfill KV cache so other users don't have to wait for WASM
   // Fire-and-forget: don't block the user, don't fail if this errors
-  backfillKvCache(seed, puzzle).catch((error) => {
+  backfillKvCache(seed, puzzle, 'wasm').catch((error) => {
     console.warn('[Daily] Failed to backfill KV cache:', error);
   });
   
@@ -679,12 +708,12 @@ export async function fetchDailyPuzzle(
 }
 
 /**
- * Backfill KV cache after successful WASM generation.
+ * Backfill KV cache after successful client-side generation.
  * Uses NX so first submission wins (thread-safe).
  */
-async function backfillKvCache(seed: string, puzzle: PuzzleData): Promise<void> {
+async function backfillKvCache(seed: string, puzzle: PuzzleData, source: 'rust' | 'wasm'): Promise<void> {
   try {
-    console.log('[Daily] Backfilling KV cache from WASM generation...');
+    console.log(`[Daily] Backfilling KV cache from ${source.toUpperCase()} generation...`);
     
     const response = await fetch('/api/daily/cache', {
       method: 'POST',

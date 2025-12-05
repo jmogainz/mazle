@@ -108,7 +108,7 @@ cargo run --release
 ./target/release/mazle-generator
 ```
 
-The server starts on port 3001 by default. Set `PORT` environment variable to change.
+The server starts on port 8080 by default. Set `PORT` environment variable to change.
 
 ## API Endpoints
 
@@ -180,7 +180,7 @@ The Next.js API routes (`/api/generate/route.ts`) automatically fall back to Typ
 Set the environment variable to point to your Rust server:
 
 ```bash
-RUST_GENERATOR_URL=http://localhost:3001
+RUST_GENERATOR_URL=http://localhost:8080
 ```
 
 ## Testing
@@ -236,7 +236,7 @@ RUN cargo build --release
 
 FROM alpine:latest
 COPY --from=builder /app/target/release/mazle-generator /usr/local/bin/
-EXPOSE 3001
+EXPOSE 8080
 CMD ["mazle-generator"]
 ```
 

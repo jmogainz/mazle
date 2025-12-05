@@ -19,7 +19,7 @@ ENV ?= dev-test
 COMPOSE_PROJECT_NAME := mazle
 COMPOSE_NETWORK_NAME ?= mazle_network
 
-COMPOSE_FILE := mazle.compose.yaml
+COMPOSE_FILE := mazle.compose.yaml:mazle.wasm.compose.yaml
 
 # Backend configuration (like worker-app pattern)
 BACKEND_GATEWAY_PATH := generator-rust
@@ -45,7 +45,7 @@ else
   WITH_DEPS ?= 1
 endif
 
-DEPS := DEP_GENERATOR_RUST:$(BACKEND_GATEWAY_PATH):3001
+DEPS := DEP_GENERATOR_RUST:$(BACKEND_GATEWAY_PATH):8080
 
 ifndef INCLUDED_COMPOSE_PROJECT_CONFIGURATION
   include $(DEVOPS_TOOLKIT_PATH)/backend/make/compose/compose-project-configurations/compose_project_configuration.mk
@@ -55,8 +55,7 @@ endif
 DEPS_PASSTHROUGH_VARS += FLY_API_TOKEN
 
 export APP_NAME
-override APP_PORT := 3000
-export APP_HOST_PORT := 3000
+override APP_PORT := 8080
 
 # Deploy target selection (prod/staging use Vercel for this app)
 PROD_DEPLOY_TARGET := vercel
@@ -76,74 +75,22 @@ ifndef INCLUDED_COMPOSE_APP_CONFIGURATION
 endif
 
 # --------------------------------
-# WASM Generator Configuration & Targets
+# WASM Generator Configuration
 # --------------------------------
-# MUST be defined BEFORE nextjs_app_targets.mk so up:: wasm runs first
+# Environment variables used by wasm-build service in mazle.wasm.compose.yaml
+# The build_pre_sync profile handles running this before the main build
 
-# Path to the WASM output directory
-WASM_OUTPUT_DIR := $(CURDIR)/src/wasm/generator
-# Marker file for tracking WASM build state
-WASM_BUILD_MARKER := $(WASM_OUTPUT_DIR)/.build-marker
-# Rust source files to watch for changes
-RUST_GENERATOR_SRC := $(shell find $(CURDIR)/generator-rust/src -name '*.rs' 2>/dev/null)
-
-.PHONY: wasm wasm-clean wasm-check _wasm-build
-
-## Build WASM generator from Rust (if sources changed)
-## Built with threads support (atomics) for parallel generation via rayon
-## Requires: rustup +nightly component add rust-src
-wasm:
-	@if [ ! -f "$(WASM_BUILD_MARKER)" ]; then \
-		echo "[INFO] [WASM] No build marker found. Building..."; \
-		$(MAKE) _wasm-build --no-print-directory; \
-	elif [ -n "$$(find $(CURDIR)/generator-rust/src -name '*.rs' -newer $(WASM_BUILD_MARKER) 2>/dev/null)" ]; then \
-		echo "[INFO] [WASM] Rust sources changed. Rebuilding..."; \
-		$(MAKE) _wasm-build --no-print-directory; \
-	elif [ "$(CURDIR)/generator-rust/Cargo.toml" -nt "$(WASM_BUILD_MARKER)" ]; then \
-		echo "[INFO] [WASM] Cargo.toml changed. Rebuilding..."; \
-		$(MAKE) _wasm-build --no-print-directory; \
-	else \
-		echo "[INFO] [WASM] WASM is up to date."; \
-	fi
-
-_wasm-build:
-	@echo "[INFO] [WASM] Building generator from Rust sources (with threads)..."
-	@if ! command -v wasm-pack >/dev/null 2>&1; then \
-		echo "[INFO] [WASM] Installing wasm-pack..."; \
-		cargo install wasm-pack; \
-	fi
-	@echo "[INFO] [WASM] Building with wasm-pack (atomics + shared memory)..."
-	@cd $(CURDIR)/generator-rust && \
-		wasm-pack build --target web --out-dir $(WASM_OUTPUT_DIR) --out-name mazle_generator
-	@touch $(WASM_BUILD_MARKER)
-	@echo "[INFO] [WASM] Build complete. Output at $(WASM_OUTPUT_DIR)"
-	@echo "[INFO] [WASM] Note: Requires COOP/COEP headers for SharedArrayBuffer"
-
-## Force rebuild of WASM generator
-wasm-rebuild:
-	@rm -f $(WASM_BUILD_MARKER)
-	@$(MAKE) wasm
-
-## Clean WASM build artifacts
-wasm-clean:
-	@echo "[INFO] [WASM] Cleaning build artifacts..."
-	@rm -rf $(WASM_OUTPUT_DIR)
-	@echo "[INFO] [WASM] Clean complete."
-
-## Check if WASM needs rebuilding
-wasm-check:
-	@if [ ! -f "$(WASM_BUILD_MARKER)" ]; then \
-		echo "[INFO] [WASM] No build marker found. WASM needs building."; \
-		exit 1; \
-	elif [ -n "$$(find $(CURDIR)/generator-rust/src -name '*.rs' -newer $(WASM_BUILD_MARKER) 2>/dev/null)" ]; then \
-		echo "[INFO] [WASM] Rust sources changed. WASM needs rebuilding."; \
-		exit 1; \
-	else \
-		echo "[INFO] [WASM] WASM is up to date."; \
-	fi
-
-# WASM as prerequisite for all up:: calls - defined FIRST so it runs before other up:: rules
-up:: wasm
+WASM_PACK_VERSION ?= 0.13.1
+WASM_RUST_VERSION ?= 1.83
+WASM_RUST_TOOLCHAIN := $(shell sed -n 's/^channel[[:space:]]*=[[:space:]]*\"\\(.*\\)\"/\\1/p' $(CURDIR)/generator-rust/rust-toolchain.toml)
+WASM_RUST_TOOLCHAIN := $(if $(strip $(WASM_RUST_TOOLCHAIN)),$(strip $(WASM_RUST_TOOLCHAIN)),nightly)
+HOST_UID := $(shell id -u)
+HOST_GID := $(shell id -g)
+export WASM_PACK_VERSION
+export WASM_RUST_VERSION
+export WASM_RUST_TOOLCHAIN
+export HOST_UID
+export HOST_GID
 
 # --------------------------------
 # Next.js App Configuration (for backend URL resolution)

@@ -6,7 +6,7 @@
     "dev": "node server.js",
     "dev:https": "node server.js --https",
     "dev:lan": "node server.js -H 0.0.0.0 --https",
-    "dev:ngrok": "ngrok http 3000",
+    "dev:ngrok": "ngrok http 8080",
     "dev:next": "next dev",
     "build": "next build",
     "start": "next start",

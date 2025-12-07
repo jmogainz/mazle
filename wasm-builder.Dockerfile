@@ -3,17 +3,20 @@
 # ----------------------------------------------------------------------
 # WASM Builder Dockerfile
 # ----------------------------------------------------------------------
-# Minimal tool image for building the WASM generator.
-# Follows the 'migrate' pattern from devops-toolkit.
+# Multi-stage build that compiles Rust→WASM at BUILD time using Docker
+# build cache mounts (persist across `make clean`). Runtime stage simply
+# copies pre-built artifacts to the mounted workspace.
 # ----------------------------------------------------------------------
 
 ARG RUST_VERSION=1.83
 ARG WASM_PACK_VERSION=0.13.1
-ARG RUST_TOOLCHAIN=nightly
+ARG RUST_TOOLCHAIN=nightly-2025-11-15
 
-FROM rust:${RUST_VERSION}-slim-bookworm AS wasm-tools
+#######################################
+# Stage 1: Base with wasm-pack & toolchain
+#######################################
+FROM rust:${RUST_VERSION}-slim-bookworm AS base
 
-# Re-declare ARGs used in this stage
 ARG WASM_PACK_VERSION
 ARG RUST_TOOLCHAIN
 
@@ -28,18 +31,54 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install wasm-pack (locked version for repeatability)
 RUN cargo install wasm-pack --version ${WASM_PACK_VERSION} --locked
 
-# Preinstall the toolchain used by generator-rust (nightly with rust-src + wasm target)
-RUN rustup toolchain install ${RUST_TOOLCHAIN} --profile minimal --component rust-src --target wasm32-unknown-unknown
+# Preinstall the exact toolchain from rust-toolchain.toml
+# rust-src is required for build-std (rebuilding std with atomics)
+RUN rustup toolchain install ${RUST_TOOLCHAIN} --profile minimal --component rust-src --target wasm32-unknown-unknown && \
+    rustup default ${RUST_TOOLCHAIN}
 
-# ----------------------------------------------------------------------
-# Copy Builder Script
-# ----------------------------------------------------------------------
 WORKDIR /app
+
+#######################################
+# Stage 2: Builder (compile WASM)
+#######################################
+FROM base AS builder
+
+# Copy cargo config (contains RUSTFLAGS for atomics/bulk-memory)
+COPY generator-rust/.cargo .cargo/
+
+# Copy manifests and toolchain config
+COPY generator-rust/Cargo.toml generator-rust/Cargo.lock generator-rust/rust-toolchain.toml ./
+
+# Copy source code
+COPY generator-rust/src/ src/
+
+# Build the WASM module
+# Cache mounts persist across builds:
+#   - registry: downloaded crates (reused when Cargo.lock unchanged)
+#   - git: git dependencies
+#   - target: compiled artifacts (smart incremental rebuilds)
+RUN --mount=type=cache,id=wasm-cargo-registry,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=wasm-cargo-git,target=/usr/local/cargo/git \
+    --mount=type=cache,id=wasm-target,target=/app/target \
+    wasm-pack build --target web --out-dir /wasm-output --out-name mazle_generator
+
+#######################################
+# Stage 3: Runtime (copy artifacts)
+#######################################
+FROM debian:bookworm-slim AS runtime
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy pre-built WASM artifacts from builder stage
+COPY --from=builder /wasm-output /wasm-output
+
+# Copy the runtime script
 COPY scripts/wasm_builder_cmd.sh /usr/local/bin/wasm_builder_cmd.sh
 RUN chmod +x /usr/local/bin/wasm_builder_cmd.sh
 
-# Default envs
-ENV PATH="/usr/local/cargo/bin:${PATH}"
-
-# Run the builder script by default
+# Runtime copies artifacts to mounted workspace
 CMD ["/usr/local/bin/wasm_builder_cmd.sh"]

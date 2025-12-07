@@ -8,40 +8,16 @@ services:
         WASM_PACK_VERSION: ${WASM_PACK_VERSION:-0.13.1}
         RUST_TOOLCHAIN: ${WASM_RUST_TOOLCHAIN:-nightly}
     environment:
-      # Paths inside the container
-      - RUST_PROJECT_DIR=/workspace/generator-rust
+      # Output path inside the container (mounted workspace)
       - WASM_OUTPUT_DIR=/workspace/src/wasm/generator
-      
-      # Build control flags
-      - WASM_FORCE_REBUILD=${WASM_FORCE_REBUILD:-0}
-      - WASM_CHECK_ONLY=${WASM_CHECK_ONLY:-0}
-      
-      # Versions (for hash calculation)
-      - WASM_PACK_VERSION=${WASM_PACK_VERSION:-0.13.1}
-      - RUST_TOOLCHAIN=${WASM_RUST_TOOLCHAIN:-nightly}
-      - RUST_VERSION=${WASM_RUST_VERSION:-1.83}
-      - CARGO_TARGET_DIR=/workspace/generator-rust/target
-      - CARGO_HOME=/usr/local/cargo
-      - WASM_PACK_CACHE_DIR=/root/.cache/.wasm-pack
       
       # Permission fixing
       - HOST_UID=${HOST_UID:-}
       - HOST_GID=${HOST_GID:-}
     volumes:
-      # Mount the whole workspace to allow accessing both Rust source and WASM output
-      - .:/workspace
-      # Cache cargo registry and target dir to speed up builds
-      - wasm_cargo_registry:/usr/local/cargo/registry
-      - wasm_cargo_git:/usr/local/cargo/git
-      - wasm_target:/workspace/generator-rust/target
-      # Cache wasm-pack specific artifacts (mirrors devops-toolkit cache mounts)
-      - wasm_wasm_pack_cache:/root/.cache/.wasm-pack
+      # Mount only the WASM output directory (no need for full workspace or cargo caches)
+      # The build happens at Docker build time with cache mounts; runtime just copies artifacts
+      - ./src/wasm/generator:/workspace/src/wasm/generator
     profiles:
       - build_pre_sync
     restart: "no"
-
-volumes:
-  wasm_cargo_registry:
-  wasm_cargo_git:
-  wasm_target:
-  wasm_wasm_pack_cache:

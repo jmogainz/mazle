@@ -44,7 +44,8 @@ export interface GeneratorStatus {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Get the Rust backend URL from environment (set at build time)
-const RUST_BACKEND_URL = process.env.NEXT_PUBLIC_GENERATOR_URL || null;
+// Prefer DEV URL (Ngrok) if available, otherwise use standard URL
+const RUST_BACKEND_URL = process.env.NEXT_PUBLIC_DEV_GENERATOR_URL || process.env.NEXT_PUBLIC_GENERATOR_URL || null;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WASM Generator with Dedicated Worker

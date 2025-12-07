@@ -6,7 +6,9 @@ x-networks: &networks
     - app_network
 
 services:
-  mazle:
+  # The actual frontend application (Next.js)
+  # Renamed to 'frontend' so 'mazle' (Nginx) can take the main APP_NAME slot
+  frontend:
     build:
       context: .
       dockerfile: mazle.Dockerfile
@@ -14,35 +16,61 @@ services:
       <<: *build-network
       labels:
         com.docker.compose.project: ${COMPOSE_PROJECT_NAME:?Docker Compose Config Error! COMPOSE_PROJECT_NAME is not set!}
-        com.docker.compose.service: mazle
+        com.docker.compose.service: frontend
       args:
         ENV: ${ENV:?Docker Compose Config Error! ENV is not set!}
         NEXT_PUBLIC_ENV: ${NEXT_PUBLIC_ENV:?Docker Compose Config Error! NEXT_PUBLIC_ENV is not set!}
         NEXT_PUBLIC_DEVTOOLS_ENABLED: ${NEXT_PUBLIC_DEVTOOLS_ENABLED:-0}
-        NEXT_PUBLIC_GENERATOR_URL: ${NEXT_PUBLIC_GENERATOR_URL:-http://localhost:8080}
+        NEXT_PUBLIC_GENERATOR_URL: ${NEXT_PUBLIC_GENERATOR_URL:-}
+        APP_URL_FROM_ANYWHERE: ${APP_URL_FROM_ANYWHERE:-}
 
       # Have to do this until there is a better option to control this from the compose cli
       platforms:
         - ${TARGET_PLATFORM:?Docker Compose Config Error! TARGET_PLATFORM is not set!}
-    image: ${APP_NAME:?Docker Compose Config Error! APP_NAME is not set!}
-    container_name: ${APP_NAME:?Docker Compose Config Error! APP_NAME is not set!}_instance
+    image: ${APP_NAME:?Docker Compose Config Error! APP_NAME is not set!}-frontend
+    container_name: ${APP_NAME:?Docker Compose Config Error! APP_NAME is not set!}-frontend_instance
     environment:
       - ENV=${ENV}
       - NODE_ENV=development
       - NEXT_PUBLIC_ENV=${NEXT_PUBLIC_ENV}
       - NEXT_PUBLIC_DEVTOOLS_ENABLED=${NEXT_PUBLIC_DEVTOOLS_ENABLED:-0}
-      - NEXT_PUBLIC_GENERATOR_URL=${NEXT_PUBLIC_GENERATOR_URL:-http://localhost:8080}
+      - NEXT_PUBLIC_GENERATOR_URL=${NEXT_PUBLIC_GENERATOR_URL:-}
+      - NEXT_PUBLIC_DEV_GENERATOR_URL=${APP_URL_FROM_ANYWHERE:-}
       - PORT=${APP_PORT:-8080}
       - HOSTNAME=0.0.0.0
       - CHOKIDAR_USEPOLLING=1
       - WATCHPACK_POLLING=1
-    ports:
-      - "127.0.0.1:${APP_HOST_PORT:-8080}:${APP_PORT:-8080}"
+    # Internal port only, accessed via Nginx
+    # ports:
+    #   - "127.0.0.1:${APP_HOST_PORT:-8080}:${APP_PORT:-8080}"
     command: ["npm", "run", "dev"]
     volumes:
       - .:/app
       - /app/node_modules
       - /app/.next
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${APP_PORT:-8080}/api/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    <<: *networks
+    profiles:
+      - app
+
+  # Nginx Proxy - Acts as the main entry point for the application
+  # Named 'mazle' to match APP_NAME so toolkit networking works automatically
+  mazle:
+    image: nginx:alpine
+    container_name: ${APP_NAME:?Docker Compose Config Error! APP_NAME is not set!}_instance
+    volumes:
+      - ./nginx/nginx.conf.template:/etc/nginx/nginx.conf.template:ro
+    environment:
+      - APP_PORT=${APP_PORT:-8080}
+    command: /bin/sh -c "envsubst '$$APP_PORT' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf && nginx -g 'daemon off;'"
+    ports:
+      - "127.0.0.1:${APP_HOST_PORT:-8080}:${APP_PORT:-8080}"
+    depends_on:
+      - frontend
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${APP_PORT:-8080}/api/health"]
       interval: 5s

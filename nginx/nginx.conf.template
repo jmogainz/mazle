@@ -1,0 +1,67 @@
+worker_processes 1;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include       mime.types;
+    default_type  application/octet-stream;
+    sendfile        on;
+    keepalive_timeout  65;
+
+    # Upstream for Next.js Frontend
+    upstream frontend {
+        server frontend:${APP_PORT};
+    }
+
+    # Upstream for Rust Backend
+    upstream backend {
+        server mazle-generator:8080;
+    }
+
+    server {
+        listen ${APP_PORT};
+        server_name localhost;
+
+        # ----------------------------------------------------------------------
+        # Backend Routes (Rust)
+        # ----------------------------------------------------------------------
+        
+        # Puzzle generation endpoints
+        location /api/generate {
+            proxy_pass http://backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # Health check (proxied to backend to ensure it's actually up)
+        # Nginx will only return 200 if backend is reachable
+        location /health {
+            proxy_pass http://backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # ----------------------------------------------------------------------
+        # Frontend Routes (Next.js) - Default Fallback
+        # ----------------------------------------------------------------------
+        
+        location / {
+            proxy_pass http://frontend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            
+            # WebSocket support for HMR (Hot Module Replacement)
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+        }
+    }
+}

@@ -43,6 +43,10 @@ const _DEVTOOLS_BUILD_FLAG =
 // The actual code is never stored as plain text in the bundle
 const CHEAT_TIMEOUT_MS = 2000;
 const CHEAT_CODE_LENGTH = 5;
+
+// Mobile tap-to-open dev tools config
+const TAP_COUNT_THRESHOLD = 10;
+const TAP_WINDOW_MS = 3000;
 // Hash of the cheat code (pre-computed, code itself not in source)
 const CHEAT_HASH = 0x5f69e7c;
 
@@ -89,6 +93,8 @@ export default function Home() {
   const debugModeRef = useRef(false);
   const cheatBufferRef = useRef('');
   const cheatTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const gameFrameRef = useRef<HTMLDivElement | null>(null);
+  const tapTimestampsRef = useRef<number[]>([]);
 
   // Secret cheat code listener (hash-based, code not in plain text)
   useEffect(() => {
@@ -131,6 +137,30 @@ export default function Home() {
         clearTimeout(cheatTimeoutRef.current);
       }
     };
+  }, []);
+
+  // Mobile tap-to-open dev tools (10 taps in 3 seconds outside maze viewport)
+  const handleDevToolsTap = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    // Ignore if tap is inside the game frame (maze viewport)
+    if (gameFrameRef.current && gameFrameRef.current.contains(e.target as Node)) {
+      return;
+    }
+
+    const now = Date.now();
+    
+    // Filter out taps older than the window
+    tapTimestampsRef.current = tapTimestampsRef.current.filter(
+      (ts) => now - ts < TAP_WINDOW_MS
+    );
+    
+    // Add current tap
+    tapTimestampsRef.current.push(now);
+    
+    // Check if threshold reached
+    if (tapTimestampsRef.current.length >= TAP_COUNT_THRESHOLD) {
+      tapTimestampsRef.current = []; // Reset
+      setShowDevTools((prev) => !prev);
+    }
   }, []);
 
   const loadDailyPuzzle = useCallback(async () => {
@@ -369,7 +399,7 @@ export default function Home() {
 
   return (
     <ErrorBoundary>
-    <main className={`${styles.main} bg-pattern`}>
+    <main className={`${styles.main} bg-pattern`} onClick={handleDevToolsTap}>
       <Header
         streak={stats?.currentStreak || 0}
         onHelpClick={() => setShowHelp(true)}
@@ -572,6 +602,7 @@ export default function Home() {
         />
         
         <div
+          ref={gameFrameRef}
           className={styles.gameFrame}
           style={{
             maxWidth: `${baseWidth}px`,

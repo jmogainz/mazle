@@ -47,6 +47,10 @@ endif
 
 DEPS := DEP_GENERATOR_RUST:$(BACKEND_GATEWAY_PATH):8080
 
+# Ngrok Configuration (Managed by DevOps Toolkit)
+# Set to 1 to enable Ngrok tunnel
+ENABLE_NGROK_FOR_DEV ?= 1
+
 ifndef INCLUDED_COMPOSE_PROJECT_CONFIGURATION
   include $(DEVOPS_TOOLKIT_PATH)/backend/make/compose/compose-project-configurations/compose_project_configuration.mk
 endif

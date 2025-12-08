@@ -356,7 +356,7 @@ async function generateFromRustBackend(
     const response = await fetch(url, {
       method: 'GET',
       headers: { 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(120000), // 2 min timeout for server generation
+      signal: AbortSignal.timeout(600000), // 10 min timeout for server generation
     });
 
     if (!response.ok) {

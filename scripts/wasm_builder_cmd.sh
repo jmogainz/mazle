@@ -22,6 +22,11 @@ echo "[INFO] [WASM] Starting WASM artifact copy..."
 # Source directory containing pre-built WASM artifacts (from Docker build)
 WASM_SOURCE_DIR="/wasm-output"
 
+if [ -f "$WASM_SOURCE_DIR/.skip" ]; then
+    echo "[INFO] [WASM] Build was skipped for this ENV; no artifacts to copy."
+    exit 0
+fi
+
 if [ ! -d "$WASM_SOURCE_DIR" ]; then
     echo "[ERROR] [WASM] Pre-built WASM artifacts not found at $WASM_SOURCE_DIR"
     echo "[ERROR] [WASM] This indicates the Docker build failed. Rebuild the image."

@@ -29,5 +29,5 @@ primary_region = "iad"
 
 # ─── Compute sizing ───────────────────────────────────────
 [[vm]]
-  size      = "shared-cpu-8x"
-  memory    = "2048mb"
+  size      = "performance-2x"
+  memory    = "4096mb"

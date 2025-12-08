@@ -7,6 +7,7 @@ services:
         RUST_VERSION: ${WASM_RUST_VERSION:-1.83}
         WASM_PACK_VERSION: ${WASM_PACK_VERSION:-0.13.1}
         RUST_TOOLCHAIN: ${WASM_RUST_TOOLCHAIN:-nightly}
+        BUILD_ENV: ${ENV:-dev-test}
     environment:
       # Output path inside the container (mounted workspace)
       - WASM_OUTPUT_DIR=/workspace/src/wasm/generator

@@ -10,9 +10,7 @@ use std::time::Instant;
 use tower_http::cors::{Any, CorsLayer};
 
 // Import from library
-use mazle_generator::{
-    generate_ground_puzzle, generate_ice_puzzle, GenerationConfig, PuzzleData,
-};
+use mazle_generator::{generate_ground_puzzle, generate_ice_puzzle, GenerationConfig, PuzzleData};
 
 /// Application state
 struct AppState {
@@ -94,13 +92,11 @@ async fn generate_by_seed(
     };
 
     let map_type = query.map_type.clone();
-    
+
     // Spawn CPU-intensive work on blocking thread pool to avoid starving async runtime
-    let puzzle = tokio::task::spawn_blocking(move || {
-        generate_by_type(&seed, &config, &map_type)
-    })
-    .await
-    .expect("Blocking task panicked");
+    let puzzle = tokio::task::spawn_blocking(move || generate_by_type(&seed, &config, &map_type))
+        .await
+        .expect("Blocking task panicked");
 
     Json(GenerateResponse {
         puzzle,
@@ -117,11 +113,9 @@ async fn generate_post(Json(request): Json<GenerateRequest>) -> Json<GenerateRes
     let map_type = request.map_type.clone();
 
     // Spawn CPU-intensive work on blocking thread pool
-    let puzzle = tokio::task::spawn_blocking(move || {
-        generate_by_type(&seed, &config, &map_type)
-    })
-    .await
-    .expect("Blocking task panicked");
+    let puzzle = tokio::task::spawn_blocking(move || generate_by_type(&seed, &config, &map_type))
+        .await
+        .expect("Blocking task panicked");
 
     Json(GenerateResponse {
         puzzle,

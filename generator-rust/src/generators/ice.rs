@@ -1,9 +1,9 @@
-use std::collections::{HashMap, HashSet};
+// Fast, deterministic hashing for tight puzzle loops
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 // Rayon for parallel processing (works on both native and WASM with wasm-bindgen-rayon)
-use rayon::prelude::*;
-
 use crate::types::{Direction, GenerationConfig, MapType, Position, PuzzleData, TileType};
+use rayon::prelude::*;
 
 // WASM logging helper
 #[cfg(target_arch = "wasm32")]
@@ -25,23 +25,15 @@ fn log_to_console(msg: &str) {
 /// Process a range in parallel and find the best result.
 /// Uses attempt index as a deterministic tiebreaker when scores are equal,
 /// ensuring identical results regardless of CPU count or thread scheduling.
-fn find_best_in_range<F, T>(
-    _label: &str,
-    range: std::ops::Range<usize>,
-    f: F,
-) -> Option<(T, f64)>
+fn find_best_in_range<F, T>(_label: &str, range: std::ops::Range<usize>, f: F) -> Option<(T, f64)>
 where
     F: Fn(usize) -> Option<(T, f64)> + Sync + Send,
     T: Send,
 {
-    let batch_size = range.len();
-
     // Include attempt index in tuple for deterministic tie-breaking
     let result = range
         .into_par_iter()
-        .filter_map(|i| {
-            f(i).map(|(puzzle, score)| (puzzle, score, i))
-        })
+        .filter_map(|i| f(i).map(|(puzzle, score)| (puzzle, score, i)))
         .max_by(|a, b| {
             match a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal) {
                 std::cmp::Ordering::Equal => a.2.cmp(&b.2), // Tiebreaker: lower attempt index wins
@@ -60,9 +52,7 @@ where
 const TARGET_PSYCHOLOGY_SCORE: f64 = 800.0;
 const TRADITIONAL_ATTEMPTS: usize = 1000;
 
-const SIZE_OPTIONS: [(usize, usize); 1] = [
-    (15, 15),
-];
+const SIZE_OPTIONS: [(usize, usize); 1] = [(15, 15)];
 
 // Weighting knobs for psychology scoring (emphasize traps over length)
 const WEIGHT_COUNTER_INTUITIVE: f64 = 70.0;
@@ -84,7 +74,13 @@ const REFERENCE_SIZE: f64 = 35.0;
 
 /// Helper to scale a range based on map size relative to reference (35x35)
 /// Returns (scaled_min, scaled_max) ensuring min >= absolute_min and max > min
-fn scale_range_for_map(min: i32, max: i32, width: usize, height: usize, absolute_min: i32) -> (i32, i32) {
+fn scale_range_for_map(
+    min: i32,
+    max: i32,
+    width: usize,
+    height: usize,
+    absolute_min: i32,
+) -> (i32, i32) {
     let scale = (width.min(height) as f64) / REFERENCE_SIZE;
     let scaled_min = ((min as f64 * scale).round() as i32).max(absolute_min);
     let scaled_max = ((max as f64 * scale).round() as i32).max(scaled_min + 1);
@@ -211,8 +207,16 @@ fn get_all_dirs() -> [Direction; 4] {
     ]
 }
 
-fn pos_key(p: &Position) -> String {
-    format!("{},{}", p.x, p.y)
+fn new_pos_set(capacity: usize) -> HashSet<Position> {
+    let mut set = HashSet::with_hasher(Default::default());
+    set.reserve(capacity);
+    set
+}
+
+fn new_pos_map<V>(capacity: usize) -> HashMap<Position, V> {
+    let mut map = HashMap::with_hasher(Default::default());
+    map.reserve(capacity);
+    map
 }
 
 fn pos_eq(a: &Position, b: &Position) -> bool {
@@ -327,12 +331,12 @@ fn find_path(
     height: usize,
 ) -> Option<i32> {
     let mut queue: Vec<(Position, i32)> = vec![(*start, 0)];
-    let mut visited = HashSet::new();
-    visited.insert(pos_key(start));
+    let mut visited = new_pos_set(width * height);
+    visited.insert(*start);
     let mut head = 0;
 
     while head < queue.len() {
-        let (pos, moves) = queue[head].clone();
+        let (pos, moves) = queue[head];
         head += 1;
 
         if pos_eq(&pos, goal) {
@@ -341,12 +345,8 @@ fn find_path(
 
         for dir in get_all_dirs() {
             let result = simulate_move(tiles, &pos, dir, width, height);
-            if result.valid {
-                let key = pos_key(&result.pos);
-                if !visited.contains(&key) {
-                    visited.insert(key);
-                    queue.push((result.pos, moves + 1));
-                }
+            if result.valid && visited.insert(result.pos) {
+                queue.push((result.pos, moves + 1));
             }
         }
     }
@@ -359,10 +359,10 @@ fn get_reachable(
     start: &Position,
     width: usize,
     height: usize,
-) -> HashSet<String> {
-    let mut reachable = HashSet::new();
+) -> HashSet<Position> {
+    let mut reachable = new_pos_set(width * height);
     let mut queue: Vec<Position> = vec![*start];
-    reachable.insert(pos_key(start));
+    reachable.insert(*start);
     let mut head = 0;
 
     while head < queue.len() {
@@ -371,12 +371,8 @@ fn get_reachable(
 
         for dir in get_all_dirs() {
             let result = simulate_move(tiles, &current, dir, width, height);
-            if result.valid {
-                let key = pos_key(&result.pos);
-                if !reachable.contains(&key) {
-                    reachable.insert(key.clone());
-                    queue.push(result.pos);
-                }
+            if result.valid && reachable.insert(result.pos) {
+                queue.push(result.pos);
             }
         }
     }
@@ -398,8 +394,8 @@ fn build_reverse_graph(
     tiles: &Vec<Vec<TileType>>,
     width: usize,
     height: usize,
-) -> HashMap<String, Vec<Position>> {
-    let mut reverse_graph: HashMap<String, Vec<Position>> = HashMap::new();
+) -> HashMap<Position, Vec<Position>> {
+    let mut reverse_graph: HashMap<Position, Vec<Position>> = new_pos_map(width * height);
 
     for y in 0..height {
         for x in 0..width {
@@ -413,9 +409,8 @@ fn build_reverse_graph(
             for dir in get_all_dirs() {
                 let result = simulate_move(tiles, &pos, dir, width, height);
                 if result.valid && !pos_eq(&result.pos, &pos) {
-                    let dest_key = pos_key(&result.pos);
                     reverse_graph
-                        .entry(dest_key)
+                        .entry(result.pos)
                         .or_insert_with(Vec::new)
                         .push(pos);
                 }
@@ -431,23 +426,21 @@ fn get_can_reach_goal(
     goal: &Position,
     width: usize,
     height: usize,
-) -> HashSet<String> {
+) -> HashSet<Position> {
     let reverse_graph = build_reverse_graph(tiles, width, height);
 
-    let mut can_reach_goal = HashSet::new();
+    let mut can_reach_goal = new_pos_set(width * height);
     let mut queue: Vec<Position> = vec![*goal];
-    can_reach_goal.insert(pos_key(goal));
+    can_reach_goal.insert(*goal);
     let mut head = 0;
 
     while head < queue.len() {
         let current = queue[head];
         head += 1;
 
-        if let Some(sources) = reverse_graph.get(&pos_key(&current)) {
+        if let Some(sources) = reverse_graph.get(&current) {
             for source in sources {
-                let key = pos_key(source);
-                if !can_reach_goal.contains(&key) {
-                    can_reach_goal.insert(key.clone());
+                if can_reach_goal.insert(*source) {
                     queue.push(*source);
                 }
             }
@@ -515,8 +508,8 @@ fn get_direct_path_zone(
     width: usize,
     height: usize,
     thickness: i32,
-) -> HashSet<String> {
-    let mut zone = HashSet::new();
+) -> HashSet<Position> {
+    let mut zone = new_pos_set(width * height);
     let dx = goal.x - start.x;
     let dy = goal.y - start.y;
     let steps = dx.abs().max(dy.abs());
@@ -535,7 +528,7 @@ fn get_direct_path_zone(
                 let x = cx + ox;
                 let y = cy + oy;
                 if is_valid(x, y, width, height) {
-                    zone.insert(pos_key(&Position { x, y }));
+                    zone.insert(Position { x, y });
                 }
             }
         }
@@ -552,11 +545,10 @@ fn find_optimal_path(
     height: usize,
 ) -> Option<Vec<Position>> {
     let mut queue: Vec<Position> = vec![*start];
-    let mut visited = HashSet::new();
-    let mut parent: HashMap<String, Option<Position>> = HashMap::new();
-    let start_key = pos_key(start);
-    visited.insert(start_key.clone());
-    parent.insert(start_key, None);
+    let mut visited = new_pos_set(width * height);
+    let mut parent: HashMap<Position, Option<Position>> = new_pos_map(width * height);
+    visited.insert(*start);
+    parent.insert(*start, None);
     let mut head = 0;
 
     while head < queue.len() {
@@ -568,7 +560,7 @@ fn find_optimal_path(
             let mut pos = Some(current);
             while let Some(p) = pos {
                 path.push(p);
-                pos = parent.get(&pos_key(&p)).and_then(|o| *o);
+                pos = parent.get(&p).and_then(|o| *o);
             }
             path.reverse();
             return Some(path);
@@ -576,13 +568,9 @@ fn find_optimal_path(
 
         for dir in get_all_dirs() {
             let result = simulate_move(tiles, &current, dir, width, height);
-            if result.valid {
-                let key = pos_key(&result.pos);
-                if !visited.contains(&key) {
-                    visited.insert(key.clone());
-                    parent.insert(key, Some(current));
-                    queue.push(result.pos);
-                }
+            if result.valid && visited.insert(result.pos) {
+                parent.insert(result.pos, Some(current));
+                queue.push(result.pos);
             }
         }
     }
@@ -643,7 +631,7 @@ fn create_almost_there_traps(
 ) {
     let (runway_min, runway_max) = scale_range_for_map(4, 8, width, height, 1);
     let (end_min, end_max) = scale_range_for_map(3, 6, width, height, 1);
-    
+
     for _ in 0..count {
         let approach_dir = rng.random_choice(&get_all_dirs());
         let (dx, dy) = get_delta(approach_dir);
@@ -791,7 +779,7 @@ fn create_hidden_choke_points(
     let zone_thickness = scale_value_for_map(5, width, height, 2);
     let margin = scale_value_for_map(4, width, height, 2);
     let (barrier_min, barrier_max) = scale_range_for_map(8, 14, width, height, 3);
-    
+
     for _ in 0..count {
         let direct_zone = get_direct_path_zone(start, goal, width, height, zone_thickness);
 
@@ -805,7 +793,8 @@ fn create_hidden_choke_points(
             cx = rng.random_int(min_coord, max_coord_x);
             cy = rng.random_int(min_coord, max_coord_y);
             attempts += 1;
-            if !direct_zone.contains(&pos_key(&Position { x: cx, y: cy })) || attempts >= 50 {
+            let candidate = Position { x: cx, y: cy };
+            if !direct_zone.contains(&candidate) || attempts >= 50 {
                 break;
             }
         }
@@ -877,7 +866,10 @@ fn create_momentum_traps(
     let max_path_idx = scale_value_for_map(10, width, height, 3);
 
     for _ in 0..count {
-        let path_idx = rng.random_int(1, (optimal_path.len() - 1).min(max_path_idx as usize) as i32);
+        let path_idx = rng.random_int(
+            1,
+            (optimal_path.len() - 1).min(max_path_idx as usize) as i32,
+        );
         let key_pos = optimal_path[path_idx as usize];
 
         let runway_dir = rng.random_choice(&get_all_dirs());
@@ -1112,7 +1104,7 @@ fn create_goal_proximity_dead_ends(
 ) {
     let (dist_min, dist_max) = scale_range_for_map(2, 5, width, height, 1);
     let pocket_size = scale_value_for_map(2, width, height, 1);
-    
+
     for _ in 0..count {
         let dist = rng.random_int(dist_min, dist_max);
         let angle = rng.random() * std::f64::consts::PI * 2.0;
@@ -1428,23 +1420,22 @@ fn compute_distance_to_goal(
     goal: &Position,
     width: usize,
     height: usize,
-) -> HashMap<String, i32> {
-    let mut distances = HashMap::new();
+) -> HashMap<Position, i32> {
+    let mut distances: HashMap<Position, i32> = new_pos_map(width * height);
     let reverse_graph = build_reverse_graph(tiles, width, height);
 
     let mut queue: Vec<(Position, i32)> = vec![(*goal, 0)];
-    distances.insert(pos_key(goal), 0);
+    distances.insert(*goal, 0);
     let mut head = 0;
 
     while head < queue.len() {
-        let (current, dist) = queue[head].clone();
+        let (current, dist) = queue[head];
         head += 1;
 
-        if let Some(sources) = reverse_graph.get(&pos_key(&current)) {
+        if let Some(sources) = reverse_graph.get(&current) {
             for source in sources {
-                let key = pos_key(source);
-                if !distances.contains_key(&key) {
-                    distances.insert(key.clone(), dist + 1);
+                if !distances.contains_key(source) {
+                    distances.insert(*source, dist + 1);
                     queue.push((*source, dist + 1));
                 }
             }
@@ -1460,7 +1451,7 @@ fn count_commitment_gates(
     width: usize,
     height: usize,
     optimal_path: &[Position],
-    distance_to_goal: &HashMap<String, i32>,
+    distance_to_goal: &HashMap<Position, i32>,
 ) -> i32 {
     if optimal_path.len() < 2 {
         return 0;
@@ -1486,7 +1477,7 @@ fn count_commitment_gates(
             if !result.valid || pos_eq(&result.pos, current) {
                 continue;
             }
-            if let Some(wrong_path_length) = distance_to_goal.get(&pos_key(&result.pos)) {
+            if let Some(wrong_path_length) = distance_to_goal.get(&result.pos) {
                 let remaining_optimal = optimal_moves - i as i32;
                 let wrong_move_cost = (wrong_path_length + 1) - remaining_optimal;
                 max_wrong_move_cost = max_wrong_move_cost.max(wrong_move_cost);
@@ -1508,18 +1499,18 @@ fn count_false_progress_paths(
     width: usize,
     height: usize,
     optimal_moves: i32,
-    distance_to_goal: &HashMap<String, i32>,
+    distance_to_goal: &HashMap<Position, i32>,
 ) -> i32 {
     let mut false_path_count = 0;
-    let mut checked = HashSet::new();
+    let mut checked = new_pos_set(width * height);
 
     let start_dist = manhattan_dist(start, goal);
     let mut queue: Vec<(Position, i32, i32)> = vec![(*start, 0, start_dist)];
-    checked.insert(pos_key(start));
+    checked.insert(*start);
     let mut head = 0;
 
     while head < queue.len() {
-        let (pos, dist_from_start, min_dist_seen) = queue[head].clone();
+        let (pos, dist_from_start, min_dist_seen) = queue[head];
         head += 1;
         if dist_from_start > optimal_moves + 10 {
             continue;
@@ -1530,18 +1521,16 @@ fn count_false_progress_paths(
             if !result.valid || pos_eq(&result.pos, &pos) {
                 continue;
             }
-            let key = pos_key(&result.pos);
-            if checked.contains(&key) {
+            if !checked.insert(result.pos) {
                 continue;
             }
-            checked.insert(key.clone());
 
             let new_dist_to_goal = manhattan_dist(&result.pos, goal);
             let new_dist_from_start = dist_from_start + 1;
             let is_progress = new_dist_to_goal < min_dist_seen;
 
             if is_progress {
-                if let Some(path_from_here) = distance_to_goal.get(&key) {
+                if let Some(path_from_here) = distance_to_goal.get(&result.pos) {
                     let total_path = new_dist_from_start + path_from_here;
                     if total_path > optimal_moves + 3 {
                         false_path_count += 1;
@@ -1622,16 +1611,16 @@ struct PrefilterThresholds {
 
 fn compute_prefilter_thresholds(width: usize, height: usize) -> PrefilterThresholds {
     let min_dim = width.min(height) as f64;
-    let scale = min_dim / 35.0;  // Reference: 35x35 base map size
-    
+    let scale = min_dim / 35.0; // Reference: 35x35 base map size
+
     // For small maps (<= 18), cap thresholds to achievable values
     let is_small_map = min_dim <= 18.0;
-    
+
     let ci = ((BASE_PREFILTER_MIN_COUNTER_INTUITIVE as f64 * scale).round() as i32).max(2);
     let decoys = ((BASE_PREFILTER_MIN_ATTRACTIVE_DECOYS as f64 * scale).round() as i32).max(3);
     let gates = ((BASE_PREFILTER_MIN_COMMITMENT_GATES as f64 * scale).round() as i32).max(1);
     let fp = ((BASE_PREFILTER_MIN_FALSE_PROGRESS as f64 * scale).round() as i32).max(3);
-    
+
     // Tuned thresholds based on empirical testing:
     // 15x15 with step-1 maze achieves: ci=4-5, decoys=6-8, gates=2-4, fp=7-14
     PrefilterThresholds {
@@ -1655,11 +1644,11 @@ fn passes_prefilters(metrics: &PsychMetrics, thresholds: &PrefilterThresholds) -
 
 fn create_base_maze(width: usize, height: usize, rng: &mut SeededRandom) -> Vec<Vec<TileType>> {
     let mut tiles = vec![vec![TileType::Wall; width]; height];
-    let mut visited = HashSet::new();
+    let mut visited = new_pos_set(width * height);
 
     fn carve(
         tiles: &mut Vec<Vec<TileType>>,
-        visited: &mut HashSet<String>,
+        visited: &mut HashSet<Position>,
         x: i32,
         y: i32,
         width: usize,
@@ -1667,7 +1656,7 @@ fn create_base_maze(width: usize, height: usize, rng: &mut SeededRandom) -> Vec<
         rng: &mut SeededRandom,
     ) {
         let pos = Position { x, y };
-        visited.insert(pos_key(&pos));
+        visited.insert(pos);
         tiles[y as usize][x as usize] = TileType::Ice;
 
         // Step-1 carving for single-wall borders and more open mazes
@@ -1678,7 +1667,7 @@ fn create_base_maze(width: usize, height: usize, rng: &mut SeededRandom) -> Vec<
             let nx = x + dx;
             let ny = y + dy;
             let npos = Position { x: nx, y: ny };
-            if is_inner(nx, ny, width, height) && !visited.contains(&pos_key(&npos)) {
+            if is_inner(nx, ny, width, height) && !visited.contains(&npos) {
                 carve(tiles, visited, nx, ny, width, height, rng);
             }
         }
@@ -1914,7 +1903,7 @@ fn add_island_obstacles(
     let min_coord = margin;
     let max_coord_x = (width as i32 - margin).max(min_coord + 1);
     let max_coord_y = (height as i32 - margin).max(min_coord + 1);
-    
+
     for _ in 0..count {
         let cx = rng.random_int(min_coord, max_coord_x);
         let cy = rng.random_int(min_coord, max_coord_y);
@@ -1965,7 +1954,7 @@ fn add_winding_corridors(
     let (len_min_h, len_max_h) = scale_range_for_map(8, 18, width, height, 2);
     let (len_min_v, len_max_v) = scale_range_for_map(8, 16, width, height, 2);
     let (gap_size_min, gap_size_max) = scale_range_for_map(1, 3, width, height, 1);
-    
+
     let num_segments = rng.random_int(seg_min, seg_max);
     for _ in 0..num_segments {
         let is_horizontal = rng.random() < 0.5;
@@ -2044,15 +2033,15 @@ fn calculate_branching_factor(
     width: usize,
     height: usize,
 ) -> f64 {
-    let mut visited = HashSet::new();
+    let mut visited = new_pos_set(width * height);
     let mut queue: Vec<(Position, i32)> = vec![(*start, 0)];
-    visited.insert(pos_key(start));
+    visited.insert(*start);
     let mut head = 0;
     let mut total_branches = 0;
     let mut decision_points = 0;
 
     while head < queue.len() {
-        let (current, depth) = queue[head].clone();
+        let (current, depth) = queue[head];
         head += 1;
 
         let mut valid_moves = 0;
@@ -2060,9 +2049,7 @@ fn calculate_branching_factor(
             let result = simulate_move(tiles, &current, dir, width, height);
             if result.valid && !pos_eq(&result.pos, &current) {
                 valid_moves += 1;
-                let key = pos_key(&result.pos);
-                if !visited.contains(&key) {
-                    visited.insert(key.clone());
+                if visited.insert(result.pos) {
                     queue.push((result.pos, depth + 1));
                 }
             }
@@ -2092,14 +2079,7 @@ fn count_trap_potential(
     let reachable = get_reachable(tiles, start, width, height);
     let mut trap_score = 0;
 
-    for key in reachable {
-        let parts: Vec<_> = key.split(',').collect();
-        if parts.len() != 2 {
-            continue;
-        }
-        let x = parts[0].parse::<i32>().unwrap_or(0);
-        let y = parts[1].parse::<i32>().unwrap_or(0);
-        let pos = Position { x, y };
+    for pos in reachable {
         if pos_eq(&pos, goal) {
             continue;
         }
@@ -2131,7 +2111,7 @@ fn add_funnel_patterns(
     let min_coord = margin;
     let max_coord_x = (width as i32 - margin).max(min_coord + 1);
     let max_coord_y = (height as i32 - margin).max(min_coord + 1);
-    
+
     for _ in 0..count {
         let cx = rng.random_int(min_coord, max_coord_x);
         let cy = rng.random_int(min_coord, max_coord_y);
@@ -2296,7 +2276,7 @@ fn add_trap_alcoves(
     let max_coord_y = (height as i32 - margin).max(min_coord + 1);
     let back_dist = scale_value_for_map(2, width, height, 1);
     let side_range = scale_value_for_map(2, width, height, 1);
-    
+
     for _ in 0..count {
         let cx = rng.random_int(min_coord, max_coord_x);
         let cy = rng.random_int(min_coord, max_coord_y);
@@ -2415,7 +2395,7 @@ fn add_precision_gates(
     let margin_small = scale_value_for_map(4, width, height, 2);
     let margin_large = scale_value_for_map(6, width, height, 2);
     let (gate_min, gate_max) = scale_range_for_map(4, 8, width, height, 2);
-    
+
     for _ in 0..count {
         let is_horizontal = rng.random() < 0.5;
         let mut backup: Vec<(Position, TileType)> = Vec::new();
@@ -2543,7 +2523,7 @@ fn add_dead_end_magnets(
         x: if goal.x > start.x { 1 } else { -1 },
         y: if goal.y > start.y { 1 } else { -1 },
     };
-    
+
     let offset_range = scale_value_for_map(8, width, height, 2);
     let margin = scale_value_for_map(6, width, height, 2);
     let magnet_size = scale_value_for_map(3, width, height, 1);
@@ -2847,9 +2827,15 @@ fn pick_size(rng: &mut SeededRandom) -> (usize, usize) {
 pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
     // Log rayon thread pool info
     let num_threads = rayon::current_num_threads();
-    log_to_console(&format!("[Rust] generate_puzzle called with seed: {}", seed));
-    log_to_console(&format!("[Rust] Rayon thread pool has {} threads", num_threads));
-    
+    log_to_console(&format!(
+        "[Rust] generate_puzzle called with seed: {}",
+        seed
+    ));
+    log_to_console(&format!(
+        "[Rust] Rayon thread pool has {} threads",
+        num_threads
+    ));
+
     let (width, height) = {
         let mut rng = SeededRandom::new(seed);
         pick_size(&mut rng)
@@ -2865,11 +2851,11 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
     } else {
         TARGET_PSYCHOLOGY_SCORE
     };
-    
+
     // Compute scaled parameters for this map size
     let prefilter_thresholds = compute_prefilter_thresholds(width, height);
     let required_optimal_moves = compute_required_moves(width, height);
-    
+
     log_to_console(&format!(
         "[Rust] Map {}x{}: required_optimal_moves={}",
         width, height, required_optimal_moves
@@ -2881,7 +2867,10 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
         prefilter_thresholds.min_commitment_gates,
         prefilter_thresholds.min_false_progress
     ));
-    log_to_console(&format!("[Rust] Running {} traditional attempts per batch", traditional_attempts));
+    log_to_console(&format!(
+        "[Rust] Running {} traditional attempts per batch",
+        traditional_attempts
+    ));
 
     let mut batch = 0;
     loop {
@@ -2912,9 +2901,10 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                     }
                 }
             }
-            
+
             // Scale minimum ice tiles requirement for small maps
-            let min_ice_tiles = ((20.0 * (width.min(height) as f64 / 35.0).powi(2)) as usize).max(8);
+            let min_ice_tiles =
+                ((20.0 * (width.min(height) as f64 / 35.0).powi(2)) as usize).max(8);
             if ice_tiles.len() < min_ice_tiles {
                 return None;
             }
@@ -2926,7 +2916,7 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
             let right_threshold = (2 * width as i32 / 3).min(inner_max_x);
             let top_threshold = (height as i32 / 3).max(2);
             let bottom_threshold = (2 * height as i32 / 3).min(inner_max_y);
-            
+
             let left_tiles: Vec<_> = ice_tiles
                 .iter()
                 .filter(|p| p.x < left_threshold)
@@ -3098,7 +3088,8 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                 commitment,
             );
 
-            let (prc_min, prc_max) = scale_range(8, 16); let precision = attempt_rng.random_int(prc_min, prc_max);
+            let (prc_min, prc_max) = scale_range(8, 16);
+            let precision = attempt_rng.random_int(prc_min, prc_max);
             add_precision_gates(
                 &mut tiles,
                 &start,
@@ -3108,7 +3099,8 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                 &mut attempt_rng,
                 precision,
             );
-            let (fnl_min, fnl_max) = scale_range(6, 12); let funnel = attempt_rng.random_int(fnl_min, fnl_max);
+            let (fnl_min, fnl_max) = scale_range(6, 12);
+            let funnel = attempt_rng.random_int(fnl_min, fnl_max);
             add_funnel_patterns(
                 &mut tiles,
                 &start,
@@ -3118,7 +3110,8 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                 &mut attempt_rng,
                 funnel,
             );
-            let (alc_min, alc_max) = scale_range(10, 18); let alcoves = attempt_rng.random_int(alc_min, alc_max);
+            let (alc_min, alc_max) = scale_range(10, 18);
+            let alcoves = attempt_rng.random_int(alc_min, alc_max);
             add_trap_alcoves(
                 &mut tiles,
                 &start,
@@ -3128,7 +3121,8 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                 &mut attempt_rng,
                 alcoves,
             );
-            let (dcp_min, dcp_max) = scale_range(25, 45); let deceptive = attempt_rng.random_int(dcp_min, dcp_max);
+            let (dcp_min, dcp_max) = scale_range(25, 45);
+            let deceptive = attempt_rng.random_int(dcp_min, dcp_max);
             add_deceptive_paths(
                 &mut tiles,
                 &start,
@@ -3138,7 +3132,8 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                 &mut attempt_rng,
                 deceptive,
             );
-            let (dmg_min, dmg_max) = scale_range(6, 12); let dead_magnets = attempt_rng.random_int(dmg_min, dmg_max);
+            let (dmg_min, dmg_max) = scale_range(6, 12);
+            let dead_magnets = attempt_rng.random_int(dmg_min, dmg_max);
             add_dead_end_magnets(
                 &mut tiles,
                 &start,
@@ -3148,7 +3143,8 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                 &mut attempt_rng,
                 dead_magnets,
             );
-            let (stb_min, stb_max) = scale_range(35, 60); let stop_blocks = attempt_rng.random_int(stb_min, stb_max);
+            let (stb_min, stb_max) = scale_range(35, 60);
+            let stop_blocks = attempt_rng.random_int(stb_min, stb_max);
             add_stop_blocks(
                 &mut tiles,
                 &start,
@@ -3158,7 +3154,8 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                 &mut attempt_rng,
                 stop_blocks,
             );
-            let (fls_min, fls_max) = scale_range(2, 4); let floor_stops = attempt_rng.random_int(fls_min, fls_max);
+            let (fls_min, fls_max) = scale_range(2, 4);
+            let floor_stops = attempt_rng.random_int(fls_min, fls_max);
             add_floor_stops(
                 &mut tiles,
                 &start,
@@ -3177,7 +3174,8 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                 &mut attempt_rng,
                 0.82,
             );
-            let (ldg_min, ldg_max) = scale_range(20, 35); let ledge_count = attempt_rng.random_int(ldg_min, ldg_max);
+            let (ldg_min, ldg_max) = scale_range(20, 35);
+            let ledge_count = attempt_rng.random_int(ldg_min, ldg_max);
             add_ledges(
                 &mut tiles,
                 &start,
@@ -3200,8 +3198,7 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                 return None;
             }
 
-            let psych_metrics =
-                calculate_psychology_score(&tiles, &start, &goal, width, height);
+            let psych_metrics = calculate_psychology_score(&tiles, &start, &goal, width, height);
             if !passes_prefilters(&psych_metrics, &prefilter_thresholds) {
                 return None;
             }
@@ -3232,9 +3229,15 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
         // Check if we found a puzzle meeting the scaled target thresholds
         if let Some((puzzle, score)) = trad_best.clone() {
             if score >= target_score
-                && puzzle.counter_intuitive_moves.map_or(false, |v| v >= prefilter_thresholds.min_counter_intuitive)
-                && puzzle.attractive_decoys.map_or(false, |v| v >= prefilter_thresholds.min_attractive_decoys)
-                && puzzle.commitment_gates.map_or(false, |v| v >= prefilter_thresholds.min_commitment_gates)
+                && puzzle
+                    .counter_intuitive_moves
+                    .map_or(false, |v| v >= prefilter_thresholds.min_counter_intuitive)
+                && puzzle
+                    .attractive_decoys
+                    .map_or(false, |v| v >= prefilter_thresholds.min_attractive_decoys)
+                && puzzle
+                    .commitment_gates
+                    .map_or(false, |v| v >= prefilter_thresholds.min_commitment_gates)
             {
                 log_to_console(&format!(
                     "[Rust] Selected puzzle (batch {}, score {:.2})",
@@ -3274,7 +3277,7 @@ pub fn generate_puzzle_partial(
     // Compute scaled parameters for this map size
     let prefilter_thresholds = compute_prefilter_thresholds(width, height);
     let required_optimal_moves = compute_required_moves(width, height);
-    
+
     // Scale factor for generation parameters based on map size (reference: 35x35)
     let gen_scale = (width.min(height) as f64) / 35.0;
     let scale_range = |min: i32, max: i32| -> (i32, i32) {
@@ -3308,9 +3311,10 @@ pub fn generate_puzzle_partial(
                     }
                 }
             }
-            
+
             // Scale minimum ice tiles requirement for small maps
-            let min_ice_tiles = ((20.0 * (width.min(height) as f64 / 35.0).powi(2)) as usize).max(8);
+            let min_ice_tiles =
+                ((20.0 * (width.min(height) as f64 / 35.0).powi(2)) as usize).max(8);
             if ice_tiles.len() < min_ice_tiles {
                 continue;
             }
@@ -3322,7 +3326,7 @@ pub fn generate_puzzle_partial(
             let right_threshold = (2 * width as i32 / 3).min(inner_max_x);
             let top_threshold = (height as i32 / 3).max(2);
             let bottom_threshold = (2 * height as i32 / 3).min(inner_max_y);
-            
+
             let left_tiles: Vec<_> = ice_tiles
                 .iter()
                 .filter(|p| p.x < left_threshold)
@@ -3362,7 +3366,8 @@ pub fn generate_puzzle_partial(
             };
 
             widen_passages(&mut tiles, width, height, &mut attempt_rng, 0.20);
-            let (ec_min, ec_max) = scale_range(35, 60); let extra_connections = attempt_rng.random_int(ec_min, ec_max);
+            let (ec_min, ec_max) = scale_range(35, 60);
+            let extra_connections = attempt_rng.random_int(ec_min, ec_max);
             add_extra_connections(
                 &mut tiles,
                 &start,
@@ -3375,7 +3380,8 @@ pub fn generate_puzzle_partial(
             add_winding_corridors(&mut tiles, &start, &goal, width, height, &mut attempt_rng);
             add_winding_corridors(&mut tiles, &start, &goal, width, height, &mut attempt_rng);
             add_winding_corridors(&mut tiles, &start, &goal, width, height, &mut attempt_rng);
-            let (isl_min, isl_max) = scale_range(10, 18); let island_count = attempt_rng.random_int(isl_min, isl_max);
+            let (isl_min, isl_max) = scale_range(10, 18);
+            let island_count = attempt_rng.random_int(isl_min, isl_max);
             add_island_obstacles(
                 &mut tiles,
                 &start,
@@ -3394,7 +3400,8 @@ pub fn generate_puzzle_partial(
                 height,
                 &mut attempt_rng,
             );
-            let (alm_min, alm_max) = scale_range(5, 10); let almost_count = attempt_rng.random_int(alm_min, alm_max);
+            let (alm_min, alm_max) = scale_range(5, 10);
+            let almost_count = attempt_rng.random_int(alm_min, alm_max);
             create_almost_there_traps(
                 &mut tiles,
                 &start,
@@ -3404,7 +3411,8 @@ pub fn generate_puzzle_partial(
                 &mut attempt_rng,
                 almost_count,
             );
-            let (dec_min, dec_max) = scale_range(6, 12); let decoy_open = attempt_rng.random_int(dec_min, dec_max);
+            let (dec_min, dec_max) = scale_range(6, 12);
+            let decoy_open = attempt_rng.random_int(dec_min, dec_max);
             create_decoy_open_areas(
                 &mut tiles,
                 &start,
@@ -3414,7 +3422,8 @@ pub fn generate_puzzle_partial(
                 &mut attempt_rng,
                 decoy_open,
             );
-            let (chk_min, chk_max) = scale_range(5, 10); let choke_count = attempt_rng.random_int(chk_min, chk_max);
+            let (chk_min, chk_max) = scale_range(5, 10);
+            let choke_count = attempt_rng.random_int(chk_min, chk_max);
             create_hidden_choke_points(
                 &mut tiles,
                 &start,
@@ -3424,7 +3433,8 @@ pub fn generate_puzzle_partial(
                 &mut attempt_rng,
                 choke_count,
             );
-            let (mom_min, mom_max) = scale_range(8, 16); let momentum_count = attempt_rng.random_int(mom_min, mom_max);
+            let (mom_min, mom_max) = scale_range(8, 16);
+            let momentum_count = attempt_rng.random_int(mom_min, mom_max);
             create_momentum_traps(
                 &mut tiles,
                 &start,
@@ -3434,7 +3444,8 @@ pub fn generate_puzzle_partial(
                 &mut attempt_rng,
                 momentum_count,
             );
-            let (ant_min, ant_max) = scale_range(5, 10); let anti_count = attempt_rng.random_int(ant_min, ant_max);
+            let (ant_min, ant_max) = scale_range(5, 10);
+            let anti_count = attempt_rng.random_int(ant_min, ant_max);
             create_anti_gradient_zones(
                 &mut tiles,
                 &start,
@@ -3444,7 +3455,8 @@ pub fn generate_puzzle_partial(
                 &mut attempt_rng,
                 anti_count,
             );
-            let (par_min, par_max) = scale_range(6, 12); let parallel_count = attempt_rng.random_int(par_min, par_max);
+            let (par_min, par_max) = scale_range(6, 12);
+            let parallel_count = attempt_rng.random_int(par_min, par_max);
             create_parallel_path_illusion(
                 &mut tiles,
                 &start,
@@ -3454,7 +3466,8 @@ pub fn generate_puzzle_partial(
                 &mut attempt_rng,
                 parallel_count,
             );
-            let (ldm_min, ldm_max) = scale_range(10, 18); let ledge_mis = attempt_rng.random_int(ldm_min, ldm_max);
+            let (ldm_min, ldm_max) = scale_range(10, 18);
+            let ledge_mis = attempt_rng.random_int(ldm_min, ldm_max);
             create_ledge_misdirection(
                 &mut tiles,
                 &start,
@@ -3464,7 +3477,8 @@ pub fn generate_puzzle_partial(
                 &mut attempt_rng,
                 ledge_mis,
             );
-            let (prx_min, prx_max) = scale_range(6, 12); let proximity_dead = attempt_rng.random_int(prx_min, prx_max);
+            let (prx_min, prx_max) = scale_range(6, 12);
+            let proximity_dead = attempt_rng.random_int(prx_min, prx_max);
             create_goal_proximity_dead_ends(
                 &mut tiles,
                 &start,
@@ -3474,7 +3488,8 @@ pub fn generate_puzzle_partial(
                 &mut attempt_rng,
                 proximity_dead,
             );
-            let (cmt_min, cmt_max) = scale_range(6, 12); let commitment = attempt_rng.random_int(cmt_min, cmt_max);
+            let (cmt_min, cmt_max) = scale_range(6, 12);
+            let commitment = attempt_rng.random_int(cmt_min, cmt_max);
             create_commitment_traps(
                 &mut tiles,
                 &start,
@@ -3485,7 +3500,8 @@ pub fn generate_puzzle_partial(
                 commitment,
             );
 
-            let (prc_min, prc_max) = scale_range(8, 16); let precision = attempt_rng.random_int(prc_min, prc_max);
+            let (prc_min, prc_max) = scale_range(8, 16);
+            let precision = attempt_rng.random_int(prc_min, prc_max);
             add_precision_gates(
                 &mut tiles,
                 &start,
@@ -3495,7 +3511,8 @@ pub fn generate_puzzle_partial(
                 &mut attempt_rng,
                 precision,
             );
-            let (fnl_min, fnl_max) = scale_range(6, 12); let funnel = attempt_rng.random_int(fnl_min, fnl_max);
+            let (fnl_min, fnl_max) = scale_range(6, 12);
+            let funnel = attempt_rng.random_int(fnl_min, fnl_max);
             add_funnel_patterns(
                 &mut tiles,
                 &start,
@@ -3505,7 +3522,8 @@ pub fn generate_puzzle_partial(
                 &mut attempt_rng,
                 funnel,
             );
-            let (alc_min, alc_max) = scale_range(10, 18); let alcoves = attempt_rng.random_int(alc_min, alc_max);
+            let (alc_min, alc_max) = scale_range(10, 18);
+            let alcoves = attempt_rng.random_int(alc_min, alc_max);
             add_trap_alcoves(
                 &mut tiles,
                 &start,
@@ -3515,7 +3533,8 @@ pub fn generate_puzzle_partial(
                 &mut attempt_rng,
                 alcoves,
             );
-            let (dcp_min, dcp_max) = scale_range(25, 45); let deceptive = attempt_rng.random_int(dcp_min, dcp_max);
+            let (dcp_min, dcp_max) = scale_range(25, 45);
+            let deceptive = attempt_rng.random_int(dcp_min, dcp_max);
             add_deceptive_paths(
                 &mut tiles,
                 &start,
@@ -3525,7 +3544,8 @@ pub fn generate_puzzle_partial(
                 &mut attempt_rng,
                 deceptive,
             );
-            let (dmg_min, dmg_max) = scale_range(6, 12); let dead_magnets = attempt_rng.random_int(dmg_min, dmg_max);
+            let (dmg_min, dmg_max) = scale_range(6, 12);
+            let dead_magnets = attempt_rng.random_int(dmg_min, dmg_max);
             add_dead_end_magnets(
                 &mut tiles,
                 &start,
@@ -3535,7 +3555,8 @@ pub fn generate_puzzle_partial(
                 &mut attempt_rng,
                 dead_magnets,
             );
-            let (stb_min, stb_max) = scale_range(35, 60); let stop_blocks = attempt_rng.random_int(stb_min, stb_max);
+            let (stb_min, stb_max) = scale_range(35, 60);
+            let stop_blocks = attempt_rng.random_int(stb_min, stb_max);
             add_stop_blocks(
                 &mut tiles,
                 &start,
@@ -3545,7 +3566,8 @@ pub fn generate_puzzle_partial(
                 &mut attempt_rng,
                 stop_blocks,
             );
-            let (fls_min, fls_max) = scale_range(2, 4); let floor_stops = attempt_rng.random_int(fls_min, fls_max);
+            let (fls_min, fls_max) = scale_range(2, 4);
+            let floor_stops = attempt_rng.random_int(fls_min, fls_max);
             add_floor_stops(
                 &mut tiles,
                 &start,
@@ -3564,7 +3586,8 @@ pub fn generate_puzzle_partial(
                 &mut attempt_rng,
                 0.82,
             );
-            let (ldg_min, ldg_max) = scale_range(20, 35); let ledge_count = attempt_rng.random_int(ldg_min, ldg_max);
+            let (ldg_min, ldg_max) = scale_range(20, 35);
+            let ledge_count = attempt_rng.random_int(ldg_min, ldg_max);
             add_ledges(
                 &mut tiles,
                 &start,
@@ -3621,7 +3644,8 @@ pub fn generate_puzzle_partial(
 
             // Early exit thresholds also scale
             if score >= TARGET_PSYCHOLOGY_SCORE
-                && psych_metrics.counter_intuitive_moves >= prefilter_thresholds.min_counter_intuitive + 2
+                && psych_metrics.counter_intuitive_moves
+                    >= prefilter_thresholds.min_counter_intuitive + 2
                 && psych_metrics.attractive_decoys >= prefilter_thresholds.min_attractive_decoys + 2
                 && psych_metrics.commitment_gates >= prefilter_thresholds.min_commitment_gates
             {

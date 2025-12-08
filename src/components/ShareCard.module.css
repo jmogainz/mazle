@@ -34,6 +34,30 @@
   box-shadow: 0 0 30px rgba(255, 209, 102, 0.3);
 }
 
+.cardFailed {
+    border-color: #ef476f;
+    box-shadow: 0 0 30px rgba(239, 71, 111, 0.3);
+}
+
+.cardSuccess {
+    border-color: #06d6a0;
+    box-shadow: 0 0 30px rgba(6, 214, 160, 0.3);
+}
+
+.cardInline {
+    box-shadow: none;
+    border: 1px solid var(--color-border);
+    width: 100%;
+    max-width: 420px;
+}
+
+.inlineContainer {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    padding: 0 1rem;
+}
+
 @keyframes slideUp {
   from {
     transform: translateY(20px);
@@ -75,6 +99,14 @@
   font-family: var(--font-pixel);
 }
 
+.cardFailed .title {
+    color: #ef476f;
+}
+
+.cardSuccess .title {
+    color: #06d6a0;
+}
+
 .puzzleNumber {
   color: var(--color-secondary);
   font-size: 0.875rem;
@@ -110,6 +142,41 @@
   font-weight: bold;
   color: var(--color-primary);
   font-variant-numeric: tabular-nums;
+}
+
+.mainStat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.mainStatValue {
+    font-size: 2.5rem;
+    font-weight: bold;
+    font-family: var(--font-pixel);
+    color: var(--color-text);
+}
+
+.cardFailed .mainStatValue {
+    color: #ef476f;
+}
+
+.cardSuccess .mainStatValue {
+    color: #06d6a0;
+}
+
+.mainStatLabel {
+    font-size: 0.8rem;
+    color: var(--color-secondary);
+    letter-spacing: 0.1em;
+}
+
+.subStat {
+    text-align: center;
+    margin-bottom: 1rem;
+    color: var(--color-secondary);
+    font-size: 0.9rem;
 }
 
 .statsRow {
@@ -154,6 +221,7 @@
 }
 
 .shareButton,
+.copyButton,
 .playAgainButton {
   flex: 1;
   padding: 0.75rem 1rem;
@@ -189,6 +257,29 @@
   color: white;
 }
 
+.copyButton {
+  background: transparent;
+  border-color: var(--color-secondary);
+  color: var(--color-text);
+}
+
+.copyButton:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.copyButton.copied {
+  background: #22c55e;
+  border-color: #22c55e;
+  color: white;
+}
+
+.copyButton.failed {
+  background: #ef4444;
+  border-color: #ef4444;
+  color: white;
+}
+
 .playAgainButton {
   background: transparent;
   border-color: var(--color-secondary);
@@ -206,4 +297,3 @@
   font-size: 0.75rem;
   margin: 0;
 }
-

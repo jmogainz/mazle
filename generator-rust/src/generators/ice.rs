@@ -76,20 +76,10 @@ where
 const TARGET_PSYCHOLOGY_SCORE: f64 = 2000.0;
 const TRADITIONAL_ATTEMPTS: usize = 400;
 
-const SIZE_OPTIONS: [(usize, usize); 13] = [
+const SIZE_OPTIONS: [(usize, usize); 3] = [
+    (19, 19),
+    (20, 20),
     (21, 21),
-    (22, 22),
-    (23, 23),
-    (24, 24),
-    (25, 25),
-    (26, 26),
-    (27, 27),
-    (28, 28),
-    (29, 29),
-    (30, 30),
-    (31, 31),
-    (32, 32),
-    (33, 33),
 ];
 
 // Weighting knobs for psychology scoring (emphasize traps over length)
@@ -2737,7 +2727,8 @@ fn create_guaranteed_hard_puzzle(
         }
     }
 
-    let optimal_moves = find_path(&tiles, &start, &goal, width, height).unwrap_or(60);
+    let optimal_path = find_optimal_path(&tiles, &start, &goal, width, height);
+    let optimal_moves = optimal_path.as_ref().map_or(60, |p| (p.len() - 1) as i32);
     let psych = calculate_psychology_score(&tiles, &start, &goal, width, height);
 
     PuzzleData {
@@ -2750,6 +2741,7 @@ fn create_guaranteed_hard_puzzle(
         start,
         goal,
         optimal_moves,
+        solution_path: optimal_path,
         map_type: MapType::Ice,
         difficulty_score: Some(psych.psychology_score.round() as i32),
         counter_intuitive_moves: Some(psych.counter_intuitive_moves),
@@ -3086,10 +3078,11 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
             tiles[start.y as usize][start.x as usize] = TileType::Start;
             tiles[goal.y as usize][goal.x as usize] = TileType::Goal;
 
-            let optimal_moves = find_path(&tiles, &start, &goal, width, height)?;
+            let optimal_path = find_optimal_path(&tiles, &start, &goal, width, height)?;
             if !has_no_stuck_states(&tiles, &start, &goal, width, height) {
                 return None;
             }
+            let optimal_moves = (optimal_path.len() - 1) as i32;
             if optimal_moves < min_moves {
                 return None;
             }
@@ -3111,6 +3104,7 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                 start,
                 goal,
                 optimal_moves,
+                solution_path: Some(optimal_path),
                 map_type: MapType::Ice,
                 difficulty_score: Some(score.round() as i32),
                 counter_intuitive_moves: Some(psych_metrics.counter_intuitive_moves),
@@ -3452,11 +3446,13 @@ pub fn generate_puzzle_partial(
             tiles[start.y as usize][start.x as usize] = TileType::Start;
             tiles[goal.y as usize][goal.x as usize] = TileType::Goal;
 
-            let optimal_moves = find_path(&tiles, &start, &goal, width, height);
-            if optimal_moves.is_none() {
+            let optimal_path = find_optimal_path(&tiles, &start, &goal, width, height);
+            if optimal_path.is_none() {
                 continue;
             }
-            let optimal_moves = optimal_moves.unwrap();
+            let optimal_path = optimal_path.unwrap();
+            let optimal_moves = (optimal_path.len() - 1) as i32;
+
             if !has_no_stuck_states(&tiles, &start, &goal, width, height) {
                 continue;
             }
@@ -3480,6 +3476,7 @@ pub fn generate_puzzle_partial(
                     start,
                     goal,
                     optimal_moves,
+                    solution_path: Some(optimal_path),
                     map_type: MapType::Ice,
                     difficulty_score: Some(score.round() as i32),
                     counter_intuitive_moves: Some(psych_metrics.counter_intuitive_moves),

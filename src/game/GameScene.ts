@@ -54,6 +54,10 @@ export class GameScene extends Phaser.Scene {
     this.gameState = {
       playerPos: { ...this.puzzle.start },
       moveCount: 0,
+      currentAttemptMoves: 0,
+      lives: 3,
+      penaltyTimeMs: 0,
+      attempts: [],
       startTime: 0,
       endTime: null,
       isComplete: false,
@@ -370,6 +374,243 @@ export class GameScene extends Phaser.Scene {
     }
   }
   
+  private handleLifeLost(finalPos: Position) {
+    this.gameState.lives--;
+    this.gameState.penaltyTimeMs += 20000; // 20s penalty
+    
+    // Calculate deviation index
+    const deviationIndex = this.findDeviationIndex(this.gameState.moveHistory, this.puzzle.solutionPath || []);
+
+    // Record attempt
+    this.gameState.attempts.push({
+      moveCount: this.gameState.currentAttemptMoves,
+      path: [...this.gameState.moveHistory], // Snapshot of history for this attempt
+      failedAt: finalPos,
+      deviationIndex,
+    });
+
+    // Reset for next life
+    this.gameState.currentAttemptMoves = 0;
+    this.gameState.moveHistory = [{ ...this.puzzle.start }];
+    this.gameState.playerPos = { ...this.puzzle.start };
+
+    // Emit event for UI (penalty visual)
+    emitGameEvent('stateUpdate', { ...this.gameState });
+    emitGameEvent('lifeLost', { 
+        lives: this.gameState.lives, 
+        penaltyMs: 20000 
+    });
+
+    if (this.gameState.lives <= 0) {
+      this.handleGameOver();
+    } else {
+      // Block input during respawn sequence
+      this.isAnimating = true;
+      
+      // Flash red and shake the player
+      this.tweens.add({
+        targets: this.player,
+        scaleX: { from: 1.3, to: 1 },
+        scaleY: { from: 1.3, to: 1 },
+        duration: 200,
+        ease: 'Quad.easeOut',
+      });
+      
+      // Brief pause, then fade out and teleport
+      this.time.delayedCall(400, () => {
+        // Fade out at current position
+        this.tweens.add({
+          targets: this.player,
+          alpha: 0,
+          duration: 200,
+          ease: 'Quad.easeIn',
+          onComplete: () => {
+            // Teleport to start
+            const px = this.offsetX + this.puzzle.start.x * TILE_SIZE + TILE_SIZE / 2;
+            const py = this.offsetY + this.puzzle.start.y * TILE_SIZE + TILE_SIZE / 2;
+            this.player.setPosition(px, py);
+            
+            // Fade back in
+            this.tweens.add({
+              targets: this.player,
+              alpha: 1,
+              duration: 300,
+              ease: 'Quad.easeOut',
+              onComplete: () => {
+                this.isAnimating = false; // Allow input again
+              }
+            });
+          }
+        });
+      });
+    }
+  }
+
+  private handleGameOver() {
+    this.gameState.isComplete = true;
+    this.gameState.endTime = Date.now(); // Timer continues until end
+    
+    // Hide player
+    this.player.setVisible(false);
+
+    // Show analysis
+    this.drawEndGameAnalysis();
+    
+    emitGameEvent('gameComplete', {
+      moveCount: this.gameState.moveCount,
+      timeMs: (this.gameState.endTime - this.gameState.startTime) + this.gameState.penaltyTimeMs,
+      optimalMoves: this.puzzle.optimalMoves,
+      failed: true,
+      attempts: this.gameState.attempts,
+      solutionPath: this.puzzle.solutionPath,
+    });
+  }
+
+  private drawEndGameAnalysis() {
+    if (!this.puzzle.solutionPath) return;
+    
+    const g = this.add.graphics();
+    
+    // Draw path as connected line with gradient and numbered waypoints
+    const path = this.puzzle.solutionPath;
+    if (path.length > 1) {
+        // Draw thick green gradient line
+        g.lineStyle(6, 0x06d6a0, 0.7);
+        g.beginPath();
+        
+        const startPx = this.offsetX + path[0].x * TILE_SIZE + TILE_SIZE / 2;
+        const startPy = this.offsetY + path[0].y * TILE_SIZE + TILE_SIZE / 2;
+        g.moveTo(startPx, startPy);
+        
+        for (let i = 1; i < path.length; i++) {
+            const px = this.offsetX + path[i].x * TILE_SIZE + TILE_SIZE / 2;
+            const py = this.offsetY + path[i].y * TILE_SIZE + TILE_SIZE / 2;
+            g.lineTo(px, py);
+        }
+        g.strokePath();
+        
+        // Draw numbered circles at each waypoint
+        for (let i = 0; i < path.length; i++) {
+            const px = this.offsetX + path[i].x * TILE_SIZE + TILE_SIZE / 2;
+            const py = this.offsetY + path[i].y * TILE_SIZE + TILE_SIZE / 2;
+            
+            // Green circle background
+            g.fillStyle(0x06d6a0, 0.9);
+            g.fillCircle(px, py, 12);
+            
+            // Move number
+            this.add.text(
+                px, 
+                py, 
+                (i + 1).toString(), 
+                { 
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    color: '#ffffff',
+                    stroke: '#000000',
+                    strokeThickness: 3,
+                }
+            ).setOrigin(0.5);
+        }
+    }
+    
+    // Highlight deviation points in red with life numbers
+    const deviationMap = new Map<string, { lifeNumber: number }>();
+    
+    this.gameState.attempts.forEach((attempt, attemptIndex) => {
+        let pos = attempt.failedAt;
+        
+        // If we have a deviation index, use that position
+        if (attempt.deviationIndex !== undefined && attempt.deviationIndex !== -1 && attempt.path[attempt.deviationIndex]) {
+             pos = attempt.path[attempt.deviationIndex];
+        }
+
+        if (pos) {
+            const key = `${pos.x},${pos.y}`;
+            // Always update with latest attempt number
+            deviationMap.set(key, { lifeNumber: attemptIndex + 1 });
+        }
+    });
+    
+    // Draw red cells with numbers
+    deviationMap.forEach(({ lifeNumber }, key) => {
+        const [x, y] = key.split(',').map(Number);
+        const px = this.offsetX + x * TILE_SIZE + TILE_SIZE / 2;
+        const py = this.offsetY + y * TILE_SIZE + TILE_SIZE / 2;
+        
+        // Red circle background
+        g.fillStyle(0xef476f, 0.9);
+        g.fillCircle(px, py, 14);
+        
+        // Life number
+        this.add.text(
+            px, 
+            py, 
+            lifeNumber.toString(), 
+            { 
+                fontSize: '18px',
+                fontWeight: 'bold',
+                color: '#ffffff',
+                stroke: '#000000',
+                strokeThickness: 4,
+            }
+        ).setOrigin(0.5);
+    });
+  }
+
+  private findDeviationIndex(path: Position[], solution: Position[]): number {
+    if (!solution) return -1;
+    
+    const len = Math.min(path.length, solution.length);
+    for (let i = 0; i < len; i++) {
+        if (path[i].x !== solution[i].x || path[i].y !== solution[i].y) {
+            return i;
+        }
+    }
+    
+    if (path.length > solution.length) return solution.length;
+    
+    return -1;
+  }
+
+  private updateGameStateAndCheckLives(newPos: Position, path: Position[], onComplete: () => void) {
+    this.isAnimating = true;
+    this.gameState.moveCount++; // Total stats
+    this.gameState.currentAttemptMoves++; // Life stats
+    this.gameState.playerPos = newPos;
+    this.gameState.moveHistory.push({ ...newPos });
+
+    // Check if reached goal
+    const atGoal = newPos.x === this.puzzle.goal.x && newPos.y === this.puzzle.goal.y;
+
+    if (atGoal) {
+       // Win!
+       emitGameEvent('stateUpdate', { ...this.gameState });
+       this.animatePath(path, () => {
+         this.isAnimating = false;
+         this.handleWin();
+       });
+       return;
+    }
+
+    // Check if life lost
+    if (this.gameState.currentAttemptMoves >= this.puzzle.optimalMoves) {
+      // Life lost!
+      // Animate the move first, then trigger life lost logic
+      this.animatePath(path, () => {
+        this.isAnimating = false;
+        this.handleLifeLost(newPos);
+      });
+    } else {
+      // Normal continue
+      emitGameEvent('stateUpdate', { ...this.gameState });
+      this.animatePath(path, () => {
+        this.isAnimating = false;
+        onComplete();
+      });
+    }
+  }
+  
   private handleStandardMove(dir: Direction) {
     const currentPos = { ...this.gameState.playerPos };
     
@@ -392,24 +633,7 @@ export class GameScene extends Phaser.Scene {
     const newPos = result.pos;
     const path = result.path ?? [newPos];
 
-    // Animate movement
-    this.isAnimating = true;
-    this.gameState.moveCount++;
-    this.gameState.playerPos = newPos;
-    this.gameState.moveHistory.push({ ...newPos });
-
-    // Emit state update
-    emitGameEvent('stateUpdate', { ...this.gameState });
-
-    // Animate through path
-    this.animatePath(path, () => {
-      this.isAnimating = false;
-      
-      // Check win condition
-      if (newPos.x === this.puzzle.goal.x && newPos.y === this.puzzle.goal.y) {
-        this.handleWin();
-      }
-    });
+    this.updateGameStateAndCheckLives(newPos, path, () => {});
   }
   
   private handleGroundMove(dir: Direction) {
@@ -435,15 +659,6 @@ export class GameScene extends Phaser.Scene {
     const newPos = result.playerPos;
     const path = result.path ?? [newPos];
 
-    // Animate movement
-    this.isAnimating = true;
-    this.gameState.moveCount++;
-    this.gameState.playerPos = newPos;
-    this.gameState.moveHistory.push({ ...newPos });
-
-    // Emit state update
-    emitGameEvent('stateUpdate', { ...this.gameState });
-    
     // Handle boulder push animation
     if (result.boulderPushed && result.boulderFrom && result.boulderTo && result.newBoulderPositions) {
       const oldKey = positionKey(result.boulderFrom);
@@ -480,15 +695,7 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // Animate player through path
-    this.animatePath(path, () => {
-      this.isAnimating = false;
-      
-      // Check win condition
-      if (newPos.x === this.puzzle.goal.x && newPos.y === this.puzzle.goal.y) {
-        this.handleWin();
-      }
-    });
+    this.updateGameStateAndCheckLives(newPos, path, () => {});
   }
 
   private animatePath(path: Position[], onComplete: () => void) {
@@ -535,16 +742,11 @@ export class GameScene extends Phaser.Scene {
     this.gameState.isComplete = true;
     this.gameState.endTime = Date.now();
     
-    // Victory animation
-    this.tweens.add({
-      targets: this.player,
-      scaleX: 1.3,
-      scaleY: 1.3,
-      duration: 200,
-      yoyo: true,
-      repeat: 2,
-      ease: 'Bounce.easeOut',
-    });
+    // Hide player
+    this.player.setVisible(false);
+
+    // Show analysis
+    this.drawEndGameAnalysis();
 
     // Goal burst effect
     const particles = this.add.particles(this.goalSprite.x, this.goalSprite.y, undefined, {
@@ -565,9 +767,20 @@ export class GameScene extends Phaser.Scene {
     // Emit win event
     emitGameEvent('gameComplete', {
       moveCount: this.gameState.moveCount,
-      timeMs: this.gameState.endTime - this.gameState.startTime,
+      timeMs: (this.gameState.endTime - this.gameState.startTime) + this.gameState.penaltyTimeMs,
       optimalMoves: this.puzzle.optimalMoves,
+      failed: false,
+      attempts: this.gameState.attempts,
+      solutionPath: this.puzzle.solutionPath,
     });
+  }
+
+  // Public method to show analysis (for revisit)
+  public showAnalysis(attempts: GameState['attempts']) {
+    this.gameState.attempts = attempts || [];
+    this.gameState.isComplete = true;
+    this.player.setVisible(false);
+    this.drawEndGameAnalysis();
   }
 
   // Public method to trigger a move from external (React) calls
@@ -589,6 +802,10 @@ export class GameScene extends Phaser.Scene {
     this.gameState = {
       playerPos: { ...this.puzzle.start },
       moveCount: 0,
+      currentAttemptMoves: 0,
+      lives: 3,
+      penaltyTimeMs: 0,
+      attempts: [],
       startTime: 0,
       endTime: null,
       isComplete: false,

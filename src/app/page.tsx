@@ -83,12 +83,13 @@ export default function Home() {
   const [showDevTools, setShowDevTools] = useState(false);
   const [selectedBackend, setSelectedBackend] = useState<GeneratorBackend>('auto');
   const [lastUsedBackend, setLastUsedBackend] = useState<'rust-backend' | 'wasm' | null>(null);
-  const [gameResult, setGameResult] = useState<{ moveCount: number; timeMs: number } | null>(null);
+  const [gameResult, setGameResult] = useState<{ moveCount: number; timeMs: number; failed?: boolean; attempts?: any[] } | null>(null);
   const [previousResult, setPreviousResult] = useState<DailyStats | null>(null);
   const [isGameReady, setIsGameReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState<GenerationProgress | null>(null);
+  const [showInlineResult, setShowInlineResult] = useState(false);
   const gameControlsRef = useRef<GameControls | null>(null);
   const debugModeRef = useRef(false);
   const cheatBufferRef = useRef('');
@@ -178,11 +179,17 @@ export default function Home() {
     setSeedInput('');
     setStats(playerStats);
     setPreviousResult(existingResult);
+    console.log('[LOAD] Loaded previousResult:', existingResult);
     setShowShareCard(false);
     setIsPlaying(false);
 
     if (existingResult?.completed) {
-      setGameResult({ moveCount: existingResult.moveCount, timeMs: existingResult.timeMs });
+      setGameResult({ 
+        moveCount: existingResult.moveCount, 
+        timeMs: existingResult.timeMs,
+        attempts: existingResult.attempts,
+        failed: existingResult.failed,
+      });
     } else {
       setGameResult(null);
     }
@@ -240,9 +247,10 @@ export default function Home() {
   // Listen for game completion
   useEffect(() => {
     const unsubscribe = onGameEvent('gameComplete', (data) => {
-      const result = data as { moveCount: number; timeMs: number; optimalMoves: number };
+      const result = data as { moveCount: number; timeMs: number; optimalMoves: number; failed?: boolean; attempts?: any[] };
       setGameResult(result);
       setShowShareCard(true);
+      setIsPlaying(false); // Ensure game is marked as not playing to show blocked state
 
       if (debugModeRef.current) {
         return;
@@ -250,16 +258,22 @@ export default function Home() {
 
       // Save result if not already saved today
       if (!previousResult) {
+        console.log('[SAVE] Saving daily result:', result);
         const dailyResult: DailyStats = {
-          date: new Date().toISOString().split('T')[0],
+          date: new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' }),
           completed: true,
           moveCount: result.moveCount,
           timeMs: result.timeMs,
           puzzleNumber,
+          attempts: result.attempts,
+          failed: result.failed,
         };
         saveTodaysResult(dailyResult);
         setStats(getPlayerStats());
         setPreviousResult(dailyResult);
+        console.log('[SAVE] Result saved, previousResult updated');
+      } else {
+        console.log('[SAVE] Skipped - previousResult already exists:', previousResult);
       }
     });
 
@@ -363,6 +377,24 @@ export default function Home() {
       localStorage.setItem('mazle_seen_help', 'true');
     }
   }, []);
+
+  const handleViewResult = useCallback(() => {
+    setShowInlineResult(true);
+    setIsPlaying(false);
+    // Ensure analysis is shown
+    if (gameResult?.attempts && gameControlsRef.current) {
+        gameControlsRef.current.showAnalysis(gameResult.attempts);
+    }
+  }, [gameResult]);
+
+  const handleCloseShareCard = useCallback(() => {
+    setShowShareCard(false);
+    setShowInlineResult(true);
+    // Show analysis when closing share card
+    if (gameResult?.attempts && gameControlsRef.current) {
+        gameControlsRef.current.showAnalysis(gameResult.attempts);
+    }
+  }, [gameResult]);
 
   // Calculate progress percentage (works for both loading screen and dev tools)
   const progressPercent = generationProgress 
@@ -599,6 +631,7 @@ export default function Home() {
         <GameUI
           puzzleNumber={puzzleNumber}
           puzzleLabel={puzzleLabel ?? undefined}
+          optimalMoves={puzzle.optimalMoves}
         />
         
         <div
@@ -610,7 +643,7 @@ export default function Home() {
           }}
         >
           <div className={styles.gameContainer}>
-            <div className={`${styles.gameContent} ${(!isPlaying && isGameReady) ? styles.blurred : ''}`}>
+            <div className={`${styles.gameContent} ${(!isPlaying && isGameReady && !showInlineResult) ? styles.blurred : ''}`}>
               <PhaserGame
                 key={renderKey}
                 puzzle={puzzle}
@@ -620,11 +653,20 @@ export default function Home() {
               />
             </div>
           </div>
-          {!isPlaying && isGameReady && (
+          {!isPlaying && isGameReady && !showInlineResult && (
             <div className={styles.startOverlay}>
-              <button className={styles.startButton} onClick={handleBegin}>
-                Begin
-              </button>
+              {previousResult ? (
+                <div className={styles.previousResult}>
+                  <p>You already completed today&apos;s puzzle!</p>
+                  <button onClick={handleViewResult} className={styles.viewResultButton}>
+                    View Result
+                  </button>
+                </div>
+              ) : (
+                <button className={styles.startButton} onClick={handleBegin}>
+                  Begin
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -633,16 +675,24 @@ export default function Home() {
           onMove={handleMobileMove}
           disabled={!isGameReady || !isPlaying}
         />
-
-        {previousResult && !showShareCard && !isPlaying && (
-          <div className={styles.previousResult}>
-            <p>You already completed today&apos;s puzzle!</p>
-            <button onClick={() => setShowShareCard(true)} className={styles.viewResultButton}>
-              View Result
-            </button>
-          </div>
-        )}
       </div>
+
+      {/* Inline Share Card (below map) */}
+      {showInlineResult && gameResult && !showShareCard && (
+        <div className={styles.inlineResultContainer}>
+             <ShareCard
+               puzzleNumber={puzzleNumber}
+               puzzleLabel={puzzleLabel ?? undefined}
+               moveCount={gameResult.moveCount}
+               timeMs={gameResult.timeMs}
+               optimalMoves={puzzle.optimalMoves}
+               failed={gameResult.failed}
+               attempts={gameResult.attempts}
+               onClose={() => {}} // No close button for inline
+               inline={true}
+             />
+        </div>
+      )}
 
       <footer className={styles.footer}>
         <p>Use arrow keys or swipe to move</p>
@@ -656,8 +706,9 @@ export default function Home() {
           moveCount={gameResult.moveCount}
           timeMs={gameResult.timeMs}
           optimalMoves={puzzle.optimalMoves}
-          onClose={() => setShowShareCard(false)}
-          onPlayAgain={handleRestart}
+          failed={gameResult.failed}
+          attempts={gameResult.attempts}
+          onClose={handleCloseShareCard}
         />
       )}
 

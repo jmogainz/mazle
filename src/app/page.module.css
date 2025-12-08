@@ -395,6 +395,7 @@
 
 .blurred {
   filter: blur(20px) brightness(0.6) grayscale(0.2);
+  transition: filter 0.5s ease;
 }
 
 .startOverlay {
@@ -502,11 +503,14 @@
 
 .previousResult {
   text-align: center;
-  padding: 1rem;
-  background: var(--color-surface);
-  border-radius: 8px;
+  padding: 1.5rem;
+  background: rgba(26, 26, 46, 0.95);
+  border-radius: 12px;
   border: 1px solid var(--color-border);
-  animation: slideIn 0.3s ease-out;
+  backdrop-filter: blur(4px);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  width: 80%;
+  max-width: 300px;
 }
 
 .previousResult p {
@@ -529,6 +533,28 @@
 
 .viewResultButton:hover {
   opacity: 0.9;
+}
+
+.inlineResultContainer {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  padding: 1rem 0;
+  animation: slideDownSnap 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes slideDownSnap {
+  0% {
+    opacity: 0;
+    transform: translateY(-100px) scale(0.95);
+  }
+  70% {
+    transform: translateY(10px) scale(1.02);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .footer {

@@ -25,6 +25,35 @@
   letter-spacing: 0.05em;
 }
 
+.livesContainer {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.lifeNode {
+    width: 14px;
+    height: 14px;
+    border-radius: 2px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border: 2px solid;
+}
+
+.lifeActive {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    box-shadow: 0 0 8px rgba(255, 209, 102, 0.4);
+    transform: scale(1);
+}
+
+.lifeLost {
+    background: transparent;
+    border-color: var(--color-border);
+    transform: scale(0.8);
+    opacity: 0.3;
+}
+
 .stats {
   display: flex;
   justify-content: center;
@@ -49,6 +78,17 @@
   font-weight: bold;
   color: var(--color-text);
   font-variant-numeric: tabular-nums;
+  transition: color 0.3s ease;
+}
+
+.statValue.danger {
+    color: #ef476f;
+    animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
 }
 
 .statLabel {
@@ -63,3 +103,26 @@
   background: var(--color-border);
 }
 
+.penaltyPopup {
+    position: absolute;
+    top: -25px;
+    right: -30px;
+    background: #ef476f;
+    color: white;
+    font-weight: bold;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    animation: floatUp 2s ease-out forwards;
+    pointer-events: none;
+    white-space: nowrap;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    border: 1px solid rgba(255,255,255,0.2);
+    z-index: 10;
+}
+
+@keyframes floatUp {
+    0% { transform: translateY(0); opacity: 1; }
+    20% { opacity: 1; }
+    100% { transform: translateY(-30px); opacity: 0; }
+}

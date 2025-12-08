@@ -224,6 +224,7 @@ fn make_placeholder(seed: &str, width: usize, height: usize) -> PuzzleData {
         start,
         goal,
         optimal_moves,
+        solution_path: None,
         map_type: MapType::Ground,
         difficulty_score: Some(optimal_moves),
         counter_intuitive_moves: None,

@@ -57,15 +57,18 @@ default = []
 
 [profile.release]
 opt-level = 3
-lto = true
-codegen-units = 1
+lto = false
+codegen-units = 16
 panic = "abort"
+incremental = true
 
 [profile.dev]
 opt-level = 1  # Faster dev builds but still reasonably fast
+incremental = true  # Incremental only works without LTO
 
 # WASM-specific release profile
 [profile.wasm-release]
 inherits = "release"
-opt-level = "s"
-lto = true
+opt-level = "s"  # Optimize for size
+lto = false
+incremental = true

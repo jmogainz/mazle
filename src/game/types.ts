@@ -37,6 +37,7 @@ export interface PuzzleData {
   start: Position;
   goal: Position;
   optimalMoves: number;
+  solutionPath?: Position[];
   mapType: MapType;  // Type of map/puzzle variant
   // Psychology-based difficulty metrics (for dev mode display)
   difficultyScore?: number;           // Overall psychology score
@@ -49,6 +50,15 @@ export interface PuzzleData {
 export interface GameState {
   playerPos: Position;
   moveCount: number;
+  currentAttemptMoves: number;
+  lives: number;
+  penaltyTimeMs: number;
+  attempts: {
+    moveCount: number;
+    path: Position[];
+    failedAt?: Position;
+    deviationIndex?: number;
+  }[];
   startTime: number;
   endTime: number | null;
   isComplete: boolean;
@@ -63,6 +73,13 @@ export interface DailyStats {
   timeMs: number;
   puzzleNumber: number;
   mapType?: MapType;  // Optional for legacy compatibility
+  failed?: boolean;  // Track if player ran out of lives
+  attempts?: {
+    moveCount: number;
+    path: Position[];
+    failedAt?: Position;
+    deviationIndex?: number;
+  }[];
 }
 
 export interface PlayerStats {

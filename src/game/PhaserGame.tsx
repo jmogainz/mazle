@@ -9,6 +9,7 @@ export interface GameControls {
   restart: () => void;
   movePlayer: (dir: Direction) => void;
   start: () => void;
+  showAnalysis: (attempts: any[]) => void;
 }
 
 interface PhaserGameProps {
@@ -44,6 +45,10 @@ export default function PhaserGame({ puzzle, viewportWidth, viewportHeight, onRe
     start: () => {
       const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;
       scene?.startGame();
+    },
+    showAnalysis: (attempts: any[]) => {
+      const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;
+      scene?.showAnalysis(attempts);
     },
   }), []);
 

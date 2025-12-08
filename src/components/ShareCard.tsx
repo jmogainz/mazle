@@ -11,9 +11,11 @@ interface ShareCardProps {
   moveCount: number;
   timeMs: number;
   optimalMoves: number;
+  failed?: boolean;
+  attempts?: any[]; // Keep flexible for now
   mapType?: MapType;
   onClose: () => void;
-  onPlayAgain: () => void;
+  inline?: boolean;
 }
 
 // Get emoji for map type
@@ -26,19 +28,6 @@ function getMapEmoji(mapType: MapType): string {
     default:
       return '🧩';
   }
-}
-
-// Generate a clean efficiency bar
-function generateEfficiencyBar(efficiency: number): string {
-  const totalBlocks = 10;
-  const filledBlocks = Math.round((Math.min(efficiency, 100) / 100) * totalBlocks);
-  const emptyBlocks = totalBlocks - filledBlocks;
-  
-  // Use colored squares for a clean look
-  const filled = '🟩';
-  const empty = '⬜';
-  
-  return filled.repeat(filledBlocks) + empty.repeat(emptyBlocks);
 }
 
 // Fallback copy method using execCommand for older browsers
@@ -73,25 +62,48 @@ export default function ShareCard({
   moveCount,
   timeMs,
   optimalMoves,
+  failed = false,
+  attempts = [],
   mapType = MapType.ICE,
   onClose,
-  onPlayAgain,
+  inline = false,
 }: ShareCardProps) {
+  const [shareState, setShareState] = useState<'idle' | 'copied' | 'failed'>('idle');
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
   const displayLabel = puzzleLabel ?? `#${puzzleNumber}`;
   const mapEmoji = getMapEmoji(mapType);
   
-  const efficiency = Math.round((optimalMoves / moveCount) * 100);
-  const rating = efficiency >= 100 ? '⭐⭐⭐' : efficiency >= 80 ? '⭐⭐' : efficiency >= 60 ? '⭐' : '';
-  
-  // Calculate move difference from optimal
-  const moveDiff = moveCount - optimalMoves;
+  // Calculate best attempt for failed runs
+  const bestAttempt = attempts && attempts.length > 0 
+    ? Math.max(...attempts.map(a => {
+        if (a.deviationIndex !== undefined && a.deviationIndex !== -1) {
+            return Math.max(0, a.deviationIndex - 1);
+        }
+        return a.moveCount;
+    })) 
+    : 0;
 
-  const shareText = `${mapEmoji} Mazle ${displayLabel}
+  // Generate progress blocks - each block = one move toward solution
+  const generateProgressBlocks = (): string => {
+    if (failed) {
+      // Show how far they got: red blocks for progress, skull for death, black for remaining
+      const filledBlocks = Math.min(bestAttempt, optimalMoves - 1);
+      const remainingBlocks = optimalMoves - filledBlocks - 1;
+      return '🟥'.repeat(filledBlocks) + '💀' + '⬛'.repeat(remainingBlocks);
+    } else {
+      // Success: all green blocks + trophy
+      return '🟩'.repeat(optimalMoves) + '🏆';
+    }
+  };
 
-${generateEfficiencyBar(efficiency)} ${efficiency}%
+  const shareText = failed
+    ? `${mapEmoji} Mazle ${displayLabel}
 
-🎯 ${moveCount} moves${moveDiff === 0 ? ' · PERFECT!' : ` · +${moveDiff}`}
+${generateProgressBlocks()}
+⏱️ ${formatTime(timeMs)}`
+    : `${mapEmoji} Mazle ${displayLabel}
+
+${generateProgressBlocks()}
 ⏱️ ${formatTime(timeMs)}`;
 
   const handleCopy = async (): Promise<boolean> => {
@@ -108,10 +120,12 @@ ${generateEfficiencyBar(efficiency)} ${efficiency}%
     // Fallback for older browsers or when clipboard API fails
     return fallbackCopyToClipboard(shareText);
   };
-
+  
   const handleShare = async () => {
-    // Try native share first (mobile)
-    if (navigator.share) {
+    // Only use native share on mobile - desktop share sheets are limited to Apple apps
+    const isMobileDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    
+    if (isMobileDevice && navigator.share) {
       try {
         await navigator.share({
           title: `Mazle ${displayLabel}`,
@@ -126,68 +140,77 @@ ${generateEfficiencyBar(efficiency)} ${efficiency}%
       }
     }
     
-    // Fall back to clipboard copy
+    // Fall back to clipboard copy (for desktop or if native share fails)
     const success = await handleCopy();
     if (success) {
-      setCopyState('copied');
-      setTimeout(() => setCopyState('idle'), 2500);
+      setShareState('copied');
+      setTimeout(() => setShareState('idle'), 2500);
     } else {
-      setCopyState('failed');
-      setTimeout(() => setCopyState('idle'), 2500);
-    }
-  };
-  
-  const getButtonText = () => {
-    switch (copyState) {
-      case 'copied': return '✓ Copied!';
-      case 'failed': return '✗ Copy failed';
-      default: return '📋 Share';
+      setShareState('failed');
+      setTimeout(() => setShareState('idle'), 2500);
     }
   };
 
+  const getShareButtonText = () => {
+    switch (shareState) {
+      case 'copied': return 'Copied!';
+      case 'failed': return 'Failed';
+      default: return 'Share';
+    }
+  };
+
+  // Single button - behavior changes based on device
+  const showSeparateCopyButton = false;
+
   return (
-    <div className={styles.overlay} onClick={onClose}>
-      <div className={styles.card} onClick={(e) => e.stopPropagation()}>
-        <button className={styles.closeButton} onClick={onClose}>
-          ✕
-        </button>
+    <div className={inline ? styles.inlineContainer : styles.overlay} onClick={!inline ? onClose : undefined}>
+      <div className={`${styles.card} ${failed ? styles.cardFailed : styles.cardSuccess} ${inline ? styles.cardInline : ''}`} onClick={(e) => e.stopPropagation()}>
+        {!inline && (
+            <button className={styles.closeButton} onClick={onClose}>
+            ✕
+            </button>
+        )}
         
         <div className={styles.header}>
-          <h2 className={styles.title}>Puzzle Complete!</h2>
+          <h2 className={styles.title}>{failed ? 'Out of Lives!' : 'Puzzle Solved!'}</h2>
           <span className={styles.puzzleNumber}>{mapEmoji} Mazle {displayLabel}</span>
         </div>
 
-        <div className={styles.rating}>{rating}</div>
-
-        <div className={styles.efficiencySection}>
-          <div className={styles.efficiencyBar}>
-            {generateEfficiencyBar(efficiency)}
-          </div>
-          <span className={styles.efficiencyValue}>{efficiency}%</span>
+        <div className={styles.mainStat}>
+            <span className={styles.mainStatValue}>{formatTime(timeMs)}</span>
+            <span className={styles.mainStatLabel}>TOTAL TIME</span>
         </div>
 
-        <div className={styles.statsRow}>
-          <div className={styles.statItem}>
-            <span className={styles.statValue}>{moveCount}</span>
-            <span className={styles.statLabel}>moves{moveDiff === 0 ? '' : ` (+${moveDiff})`}</span>
-          </div>
-          <div className={styles.statDivider} />
-          <div className={styles.statItem}>
-            <span className={styles.statValue}>{formatTime(timeMs)}</span>
-            <span className={styles.statLabel}>time</span>
-          </div>
-        </div>
+        {failed && (
+            <div className={styles.subStat}>
+                <span>Best Attempt: {bestAttempt}/{optimalMoves} moves</span>
+            </div>
+        )}
 
         <div className={styles.actions}>
           <button 
-            className={`${styles.shareButton} ${copyState === 'copied' ? styles.copied : ''} ${copyState === 'failed' ? styles.failed : ''}`} 
+            className={`${styles.shareButton} ${shareState === 'copied' ? styles.copied : ''} ${shareState === 'failed' ? styles.failed : ''}`} 
             onClick={handleShare}
           >
-            {getButtonText()}
+            {getShareButtonText()}
           </button>
-          <button className={styles.playAgainButton} onClick={onPlayAgain}>
-            🔄 Play Again
-          </button>
+          {showSeparateCopyButton && (
+            <button 
+              className={`${styles.copyButton} ${copyState === 'copied' ? styles.copied : ''} ${copyState === 'failed' ? styles.failed : ''}`} 
+              onClick={async () => {
+                const success = await handleCopy();
+                if (success) {
+                  setCopyState('copied');
+                  setTimeout(() => setCopyState('idle'), 2500);
+                } else {
+                  setCopyState('failed');
+                  setTimeout(() => setCopyState('idle'), 2500);
+                }
+              }}
+            >
+              {getCopyButtonText()}
+            </button>
+          )}
         </div>
 
         <p className={styles.comeback}>Come back tomorrow for a new puzzle!</p>

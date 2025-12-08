@@ -50,6 +50,8 @@ pub struct PuzzleData {
     pub start: Position,
     pub goal: Position,
     pub optimal_moves: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub solution_path: Option<Vec<Position>>,
     pub map_type: MapType,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub difficulty_score: Option<i32>,

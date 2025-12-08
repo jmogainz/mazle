@@ -61,7 +61,7 @@ const TARGET_PSYCHOLOGY_SCORE: f64 = 800.0;
 const TRADITIONAL_ATTEMPTS: usize = 1000;
 
 const SIZE_OPTIONS: [(usize, usize); 1] = [
-    (12, 12),
+    (15, 15),
 ];
 
 // Weighting knobs for psychology scoring (emphasize traps over length)
@@ -1624,19 +1624,22 @@ fn compute_prefilter_thresholds(width: usize, height: usize) -> PrefilterThresho
     let min_dim = width.min(height) as f64;
     let scale = min_dim / 35.0;  // Reference: 35x35 base map size
     
-    // For small maps (< 15), use empirically tuned thresholds.
-    // Testing showed these are the maximum achievable while maintaining <30s generation:
-    // - ci >= 3 (typical: 3-5)
-    // - decoys >= 5 (typical: 5-8)  
-    // - gates >= 2 (typical: 2-5)
-    // - fp >= 5 (typical: 5-7)
-    let is_small_map = min_dim < 15.0;
+    // For small maps (<= 18), cap thresholds to achievable values
+    let is_small_map = min_dim <= 18.0;
     
+    let ci = ((BASE_PREFILTER_MIN_COUNTER_INTUITIVE as f64 * scale).round() as i32).max(2);
+    let decoys = ((BASE_PREFILTER_MIN_ATTRACTIVE_DECOYS as f64 * scale).round() as i32).max(3);
+    let gates = ((BASE_PREFILTER_MIN_COMMITMENT_GATES as f64 * scale).round() as i32).max(1);
+    let fp = ((BASE_PREFILTER_MIN_FALSE_PROGRESS as f64 * scale).round() as i32).max(3);
+    
+    // Tuned thresholds based on empirical testing:
+    // 12x12 achieved: ci>=3, decoys>=5, gates>=2, fp>=5
+    // 15x15 should achieve similar or slightly higher
     PrefilterThresholds {
-        min_counter_intuitive: ((BASE_PREFILTER_MIN_COUNTER_INTUITIVE as f64 * scale).round() as i32).max(if is_small_map { 3 } else { 3 }),
-        min_attractive_decoys: ((BASE_PREFILTER_MIN_ATTRACTIVE_DECOYS as f64 * scale).round() as i32).max(if is_small_map { 5 } else { 4 }),
-        min_commitment_gates: ((BASE_PREFILTER_MIN_COMMITMENT_GATES as f64 * scale).round() as i32).max(if is_small_map { 2 } else { 2 }),
-        min_false_progress: ((BASE_PREFILTER_MIN_FALSE_PROGRESS as f64 * scale).round() as i32).max(if is_small_map { 5 } else { 4 }),
+        min_counter_intuitive: if is_small_map { ci.min(3) } else { ci },
+        min_attractive_decoys: if is_small_map { decoys.min(5) } else { decoys },
+        min_commitment_gates: if is_small_map { gates.min(2) } else { gates },
+        min_false_progress: if is_small_map { fp.min(5) } else { fp },
     }
 }
 
@@ -1668,6 +1671,7 @@ fn create_base_maze(width: usize, height: usize, rng: &mut SeededRandom) -> Vec<
         visited.insert(pos_key(&pos));
         tiles[y as usize][x as usize] = TileType::Ice;
 
+        // Step-2 carving for classic maze corridors
         let dirs = [(0, -2), (0, 2), (-2, 0), (2, 0)];
         let shuffled = rng.shuffle(&dirs);
 
@@ -1682,6 +1686,7 @@ fn create_base_maze(width: usize, height: usize, rng: &mut SeededRandom) -> Vec<
         }
     }
 
+    // Start from even positions for step-2 algorithm
     let start_x = 2 + rng.random_int(0, ((width - 4) / 2) as i32) * 2;
     let start_y = 2 + rng.random_int(0, ((height - 4) / 2) as i32) * 2;
     carve(
@@ -2657,8 +2662,13 @@ fn add_dead_end_magnets(
     }
 }
 
-/// Required exact optimal moves for all puzzles.
-const REQUIRED_OPTIMAL_MOVES: i32 = 10;
+/// Compute required optimal moves based on map size.
+/// Reference: 10 moves for a 15x15 map, scales linearly with smaller dimension.
+fn compute_required_moves(width: usize, height: usize) -> i32 {
+    let min_dim = width.min(height) as f64;
+    // 10 moves for 15x15, scaling linearly. Floor of 6 moves minimum.
+    ((10.0 * min_dim / 15.0).round() as i32).max(6)
+}
 
 // =============================================================================
 // FALLBACK PUZZLE
@@ -2860,10 +2870,11 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
     
     // Compute scaled parameters for this map size
     let prefilter_thresholds = compute_prefilter_thresholds(width, height);
+    let required_optimal_moves = compute_required_moves(width, height);
     
     log_to_console(&format!(
         "[Rust] Map {}x{}: required_optimal_moves={}",
-        width, height, REQUIRED_OPTIMAL_MOVES
+        width, height, required_optimal_moves
     ));
     log_to_console(&format!(
         "[Rust] Prefilters: counter_intuitive>={}, decoys>={}, gates>={}, false_progress>={}",
@@ -2910,7 +2921,7 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                 return None;
             }
 
-            // Scale position filters - use inner area bounds (2..width-2 means max valid x is width-3)
+            // Scale position filters for step-2 maze (inner area is 2..width-2)
             let inner_max_x = (width - 3) as i32;
             let inner_max_y = (height - 3) as i32;
             let left_threshold = (width as i32 / 3).max(4);
@@ -3187,7 +3198,7 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                 return None;
             }
             let optimal_moves = (optimal_path.len() - 1) as i32;
-            if optimal_moves != REQUIRED_OPTIMAL_MOVES {
+            if optimal_moves != required_optimal_moves {
                 return None;
             }
 
@@ -3264,6 +3275,7 @@ pub fn generate_puzzle_partial(
 
     // Compute scaled parameters for this map size
     let prefilter_thresholds = compute_prefilter_thresholds(width, height);
+    let required_optimal_moves = compute_required_moves(width, height);
     
     // Scale factor for generation parameters based on map size (reference: 35x35)
     let gen_scale = (width.min(height) as f64) / 35.0;
@@ -3302,7 +3314,7 @@ pub fn generate_puzzle_partial(
                 continue;
             }
 
-            // Scale position filters - use inner area bounds (2..width-2 means max valid x is width-3)
+            // Scale position filters for step-2 maze (inner area is 2..width-2)
             let inner_max_x = (width - 3) as i32;
             let inner_max_y = (height - 3) as i32;
             let left_threshold = (width as i32 / 3).max(4);
@@ -3575,7 +3587,7 @@ pub fn generate_puzzle_partial(
             if !has_no_stuck_states(&tiles, &start, &goal, width, height) {
                 continue;
             }
-            if optimal_moves != REQUIRED_OPTIMAL_MOVES {
+            if optimal_moves != required_optimal_moves {
                 continue;
             }
             let psych_metrics = calculate_psychology_score(&tiles, &start, &goal, width, height);
@@ -3583,6 +3595,7 @@ pub fn generate_puzzle_partial(
                 continue;
             }
             let score = psych_metrics.psychology_score;
+
             if score > best_score {
                 best_score = score;
                 best_puzzle = Some(PuzzleData {

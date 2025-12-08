@@ -161,83 +161,66 @@ export class GameScene extends Phaser.Scene {
   private drawTile(px: number, py: number, tile: TileType, gridX: number, gridY: number) {
     const g = this.tileGraphics;
     const size = TILE_SIZE;
-    const padding = 1;
+    const padding = 1.5; // Tighter fit
+    const radius = 8;    // Softer, rounder corners ("squircle")
+
+    // Draw base ground for transparency/layering
+    const isAlt = (gridX + gridY) % 2 === 0;
+    
+    // Helper for standard tile drawing
+    const drawStandardTile = (color: number) => {
+        g.fillStyle(color);
+        g.fillRoundedRect(px + padding, py + padding, size - padding * 2, size - padding * 2, radius);
+    };
 
     switch (tile) {
       case TileType.GROUND:
-      case TileType.START:
-        // Checkerboard pattern for depth
-        const isAlt = (gridX + gridY) % 2 === 0;
-        g.fillStyle(isAlt ? COLORS.GROUND : COLORS.GROUND_ALT);
-        g.fillRect(px + padding, py + padding, size - padding * 2, size - padding * 2);
+        drawStandardTile(isAlt ? COLORS.GROUND : COLORS.GROUND_ALT);
         break;
 
-      case TileType.WALL:
-        // 3D wall effect
-        g.fillStyle(COLORS.WALL);
-        g.fillRect(px, py, size, size);
-        g.fillStyle(COLORS.WALL_HIGHLIGHT);
-        g.fillRect(px + 2, py + 2, size - 6, 3);
-        g.fillRect(px + 2, py + 2, 3, size - 6);
+      case TileType.START:
+        drawStandardTile(COLORS.START);
         break;
 
       case TileType.GOAL:
-        // Goal has floor underneath
-        g.fillStyle(COLORS.GROUND);
-        g.fillRect(px + padding, py + padding, size - padding * 2, size - padding * 2);
+        drawStandardTile(COLORS.GOAL);
+        break;
+
+      case TileType.WALL:
+        // Walls are just black rounded blocks
+        drawStandardTile(COLORS.WALL);
         break;
 
       case TileType.ICE:
-        // Ice tile with shine effect
-        g.fillStyle(COLORS.ICE);
-        g.fillRect(px + padding, py + padding, size - padding * 2, size - padding * 2);
-        // Shine lines
-        g.fillStyle(COLORS.ICE_SHINE);
-        g.fillRect(px + 4, py + 4, 8, 2);
-        g.fillRect(px + 6, py + 8, 6, 2);
-        g.fillRect(px + size - 12, py + size - 10, 6, 2);
+        drawStandardTile(COLORS.ICE);
         break;
 
       case TileType.LEDGE_UP:
       case TileType.LEDGE_DOWN:
       case TileType.LEDGE_LEFT:
       case TileType.LEDGE_RIGHT:
-        // Ledge base
-        g.fillStyle(COLORS.LEDGE);
-        g.fillRect(px + padding, py + padding, size - padding * 2, size - padding * 2);
+        drawStandardTile(COLORS.LEDGE);
         
-        // Direction arrow
+        // Direction arrow - Simple black triangle
         g.fillStyle(COLORS.LEDGE_ARROW);
         const cx = px + size / 2;
         const cy = py + size / 2;
-        const arrowSize = 8;
+        const arrowSize = 6;
         
-        // Arrow points in the direction you TRAVEL when entering (away from you)
-        // LEDGE_UP = enter from above, moving DOWN → arrow points DOWN
-        // LEDGE_DOWN = enter from below, moving UP → arrow points UP
-        // LEDGE_LEFT = enter from right, moving LEFT → arrow points LEFT
-        // LEDGE_RIGHT = enter from left, moving RIGHT → arrow points RIGHT
         if (tile === TileType.LEDGE_UP) {
-          // Arrow pointing DOWN (you enter moving down)
           g.fillTriangle(cx, cy + arrowSize, cx - arrowSize, cy - arrowSize/2, cx + arrowSize, cy - arrowSize/2);
         } else if (tile === TileType.LEDGE_DOWN) {
-          // Arrow pointing UP (you enter moving up)
           g.fillTriangle(cx, cy - arrowSize, cx - arrowSize, cy + arrowSize/2, cx + arrowSize, cy + arrowSize/2);
         } else if (tile === TileType.LEDGE_RIGHT) {
-          // Arrow pointing RIGHT (you enter moving right)
           g.fillTriangle(cx + arrowSize, cy, cx - arrowSize/2, cy - arrowSize, cx - arrowSize/2, cy + arrowSize);
         } else {
-          // LEDGE_LEFT - Arrow pointing LEFT (you enter moving left)
           g.fillTriangle(cx - arrowSize, cy, cx + arrowSize/2, cy - arrowSize, cx + arrowSize/2, cy + arrowSize);
         }
         break;
 
       case TileType.BOULDER:
-        // Draw ground underneath boulder (the boulder sprite is drawn separately)
-        const isAltBoulder = (gridX + gridY) % 2 === 0;
-        g.fillStyle(isAltBoulder ? COLORS.GROUND : COLORS.GROUND_ALT);
-        g.fillRect(px + padding, py + padding, size - padding * 2, size - padding * 2);
-        // Boulder is rendered as a sprite for animation purposes
+        // Draw ground underneath
+        drawStandardTile(isAlt ? COLORS.GROUND : COLORS.GROUND_ALT);
         break;
     }
   }
@@ -248,28 +231,44 @@ export class GameScene extends Phaser.Scene {
     
     this.goalSprite = this.add.container(px, py);
     
-    // Outer glow
+    // Simple pulse ring (flat)
     const glow = this.add.graphics();
-    glow.fillStyle(COLORS.GOAL_GLOW, 0.3);
-    glow.fillCircle(0, 0, 14);
+    glow.lineStyle(2, COLORS.GOAL_GLOW);
+    glow.strokeCircle(0, 0, 10);
     this.goalSprite.add(glow);
     
-    // Main star/goal marker - simplified circle design
+    // Main goal marker - White Star on Green Tile (handled by drawTile)
+    // We just add a simple white star icon here
     const star = this.add.graphics();
-    star.fillStyle(COLORS.GOAL);
-    star.fillCircle(0, 0, 10);
-    star.fillStyle(COLORS.GOAL_GLOW);
-    star.fillCircle(0, 0, 5);
     star.fillStyle(0xffffff);
-    star.fillCircle(-3, -3, 2);
+    
+    // Draw a simple 5-point star
+    const points = 5;
+    const outerRadius = 8;
+    const innerRadius = 4;
+    const rot = Math.PI / 2 * 3;
+    const x = 0;
+    const y = 0;
+    const step = Math.PI / points;
+
+    star.beginPath();
+    star.moveTo(x, y - outerRadius);
+    for (let i = 0; i < points; i++) {
+        star.lineTo(x + Math.cos(rot + step * i * 2) * outerRadius, y + Math.sin(rot + step * i * 2) * outerRadius);
+        star.lineTo(x + Math.cos(rot + step * (i * 2 + 1)) * innerRadius, y + Math.sin(rot + step * (i * 2 + 1)) * innerRadius);
+    }
+    star.lineTo(x, y - outerRadius);
+    star.closePath();
+    star.fillPath();
+    
     this.goalSprite.add(star);
     
-    // Pulsing animation
+    // Subtle breathing animation
     this.tweens.add({
       targets: this.goalSprite,
-      scaleX: 1.1,
-      scaleY: 1.1,
-      duration: 800,
+      scaleX: 1.15,
+      scaleY: 1.15,
+      duration: 1200,
       yoyo: true,
       repeat: -1,
       ease: 'Sine.easeInOut',
@@ -282,28 +281,18 @@ export class GameScene extends Phaser.Scene {
     
     this.player = this.add.container(px, py);
     
-    // Player body (pixel art style character)
+    // Player body - Rounded Square (Jelly Tile)
     const body = this.add.graphics();
+    const size = TILE_SIZE * 0.65; // A tad bit smaller (was 0.75)
+    const radius = 6;
     
-    // Shadow
-    body.fillStyle(0x000000, 0.3);
-    body.fillEllipse(0, 8, 16, 6);
-    
-    // Body
+    // Centered rounded rect
     body.fillStyle(COLORS.PLAYER);
-    body.fillRoundedRect(-8, -10, 16, 18, 3);
+    body.fillRoundedRect(-size/2, -size/2, size, size, radius);
     
-    // Outline
+    // Black Outline
     body.lineStyle(2, COLORS.PLAYER_OUTLINE);
-    body.strokeRoundedRect(-8, -10, 16, 18, 3);
-    
-    // Eyes
-    body.fillStyle(0xffffff);
-    body.fillCircle(-3, -4, 3);
-    body.fillCircle(3, -4, 3);
-    body.fillStyle(0x000000);
-    body.fillCircle(-2, -4, 1.5);
-    body.fillCircle(4, -4, 1.5);
+    body.strokeRoundedRect(-size/2, -size/2, size, size, radius);
     
     this.player.add(body);
   }
@@ -700,42 +689,114 @@ export class GameScene extends Phaser.Scene {
   }
 
   private animatePath(path: Position[], onComplete: () => void) {
-    // For smooth ice sliding, animate directly to final position
-    // instead of chaining many tiny tweens (which can look choppy)
+    // "Jelly" Physics Animation
     const finalPos = path[path.length - 1];
     const px = this.offsetX + finalPos.x * TILE_SIZE + TILE_SIZE / 2;
     const py = this.offsetY + finalPos.y * TILE_SIZE + TILE_SIZE / 2;
     
     const isSliding = path.length > 1;
     
-    // Different timing for walking vs sliding:
-    // - Regular step: 110ms, snappy and responsive
-    // - Ice slide: 180ms + 90ms per tile, smooth leisurely glide
-    const duration = isSliding 
-      ? 180 + (path.length - 1) * 90 
-      : 110;
+    // Calculate movement vector
+    const dx = px - this.player.x;
+    const dy = py - this.player.y;
     
+    // Timing
+    const duration = isSliding 
+      ? 150 + (path.length - 1) * 60 
+      : 120; 
+      
+    // 1. Stretch during move (Speed)
+    // We maintain this stretch for the entire duration of the move
+    let moveScaleX = 1;
+    let moveScaleY = 1;
+    
+    // More subtle stretch (was 1.25/0.75)
+    if (Math.abs(dx) > Math.abs(dy)) {
+        // Moving Horizontal
+        moveScaleX = 1.15;
+        moveScaleY = 0.85;
+    } else {
+        // Moving Vertical
+        moveScaleX = 0.85;
+        moveScaleY = 1.15;
+    }
+
+    // Apply stretch
+    this.tweens.add({
+        targets: this.player,
+        scaleX: moveScaleX,
+        scaleY: moveScaleY,
+        duration: 100,
+        ease: 'Quad.easeOut'
+    });
+      
+    // 2. Position Tween
     this.tweens.add({
       targets: this.player,
       x: px,
       y: py,
       duration,
-      ease: isSliding ? 'Sine.easeOut' : 'Quad.easeOut',
-      onComplete: onComplete,
+      ease: isSliding ? 'Quad.out' : 'Back.out',
+      onComplete: () => {
+          // 3. Impact & Snap Back
+          // When we stop, we swap the scales to "Squash" against the wall
+          // (Conservation of momentum: Length turns into Width)
+          
+          // Swap scales for instant impact deformation
+          this.player.setScale(moveScaleY, moveScaleX); 
+          
+          // 4. Elastic Snap Recovery
+          this.tweens.add({
+              targets: this.player,
+              scaleX: 1,
+              scaleY: 1,
+              duration: 500,
+              ease: 'Elastic.out',
+              easeParams: [1.2, 0.6] // Tighter elastic snap
+          });
+          
+          onComplete();
+      },
     });
   }
 
   private playBumpAnimation(dir: Direction) {
-    const delta = getDelta(dir);
-    const bumpDist = 4;
+    // Jelly Splash Effect
+    // Squash against the wall we hit
     
+    let scaleX = 1;
+    let scaleY = 1;
+    
+    // Impact deformation
+    // Hitting a vertical wall (UP/DOWN) -> Squash Y, Stretch X
+    if (dir === Direction.UP || dir === Direction.DOWN) {
+        scaleY = 0.6;
+        scaleX = 1.4;
+    } 
+    // Hitting a horizontal wall (LEFT/RIGHT) -> Squash X, Stretch Y
+    else {
+        scaleX = 0.6;
+        scaleY = 1.4;
+    }
+
+    // Tween 1: Impact (Squash)
     this.tweens.add({
       targets: this.player,
-      x: this.player.x + delta.x * bumpDist,
-      y: this.player.y + delta.y * bumpDist,
-      duration: 50,
-      yoyo: true,
+      scaleX: scaleX,
+      scaleY: scaleY,
+      duration: 100,
+      yoyo: true, // Go back to normal
       ease: 'Quad.easeOut',
+      onComplete: () => {
+         // Tween 2: Wiggle/Settle (Elastic recovery)
+         this.tweens.add({
+             targets: this.player,
+             scaleX: 1,
+             scaleY: 1,
+             duration: 300,
+             ease: 'Bounce.easeOut'
+         });
+      }
     });
   }
 

@@ -93,27 +93,27 @@ export interface PlayerStats {
 
 // Colors for the pixel art theme
 export const COLORS = {
-  // Deep blue-green Pokemon gym aesthetic
-  GROUND: 0x2d5a4f,      // Renamed from FLOOR
-  GROUND_ALT: 0x3d6a5f,  // Renamed from FLOOR_ALT
-  WALL: 0x1a1a2e,
-  WALL_HIGHLIGHT: 0x2a2a4e,
-  ICE: 0x8ecae6,
-  ICE_SHINE: 0xb8e0f0,
-  LEDGE: 0x6b4423,
-  LEDGE_ARROW: 0xffd166,
-  START: 0x06d6a0,
-  GOAL: 0xffd166,
-  GOAL_GLOW: 0xffed4a,
-  PLAYER: 0xef476f,
-  PLAYER_OUTLINE: 0xc73e5c,
-  BACKGROUND: 0x0f0f1a,
-  UI_PRIMARY: 0xffffff,
-  UI_SECONDARY: 0x888888,
+  // Waffle/Wordle inspired light theme
+  GROUND: 0xf3f3f3,      
+  GROUND_ALT: 0xe5e5e5,  
+  WALL: 0x2c2c2c,        
+  WALL_HIGHLIGHT: 0x2c2c2c,
+  ICE: 0xe0f7fa,
+  ICE_SHINE: 0xb2ebf2,
+  LEDGE: 0xdcdcdc,
+  LEDGE_ARROW: 0x000000,
+  START: 0xc9b458,       // Waffle Yellow
+  GOAL: 0x6aaa64,        // Waffle Green
+  GOAL_GLOW: 0x86c080,
+  PLAYER: 0xff4d4d,      // Red Ball
+  PLAYER_OUTLINE: 0x000000,
+  BACKGROUND: 0xffffff,
+  UI_PRIMARY: 0x000000,
+  UI_SECONDARY: 0x787c7e,
   // Boulder colors
-  BOULDER: 0x7a6855,      // Rocky brown-gray
-  BOULDER_HIGHLIGHT: 0x9a8875, // Lighter highlight for 3D effect
-  BOULDER_SHADOW: 0x5a4835,    // Darker shadow
+  BOULDER: 0x787c7e,     
+  BOULDER_HIGHLIGHT: 0x787c7e, 
+  BOULDER_SHADOW: 0x787c7e,    
 };
 
 export const TILE_SIZE = 32;

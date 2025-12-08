@@ -90,6 +90,7 @@ export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState<GenerationProgress | null>(null);
   const [showInlineResult, setShowInlineResult] = useState(false);
+  const [lifeFlash, setLifeFlash] = useState(false);
   const gameControlsRef = useRef<GameControls | null>(null);
   const debugModeRef = useRef(false);
   const cheatBufferRef = useRef('');
@@ -181,6 +182,7 @@ export default function Home() {
     setPreviousResult(existingResult);
     console.log('[LOAD] Loaded previousResult:', existingResult);
     setShowShareCard(false);
+    setShowInlineResult(false);
     setIsPlaying(false);
 
     if (existingResult?.completed) {
@@ -246,7 +248,7 @@ export default function Home() {
 
   // Listen for game completion
   useEffect(() => {
-    const unsubscribe = onGameEvent('gameComplete', (data) => {
+    const unsubscribeComplete = onGameEvent('gameComplete', (data) => {
       const result = data as { moveCount: number; timeMs: number; optimalMoves: number; failed?: boolean; attempts?: any[] };
       setGameResult(result);
       setShowShareCard(true);
@@ -277,7 +279,15 @@ export default function Home() {
       }
     });
 
-    return unsubscribe;
+    const unsubscribeLifeLost = onGameEvent('lifeLost', () => {
+      setLifeFlash(true);
+      setTimeout(() => setLifeFlash(false), 500);
+    });
+
+    return () => {
+      unsubscribeComplete();
+      unsubscribeLifeLost();
+    };
   }, [puzzleNumber, previousResult]);
 
   // Handle mobile control input
@@ -324,6 +334,7 @@ export default function Home() {
           setSeedInput(trimmed);
           setGameResult(null);
           setShowShareCard(false);
+          setShowInlineResult(false);
           setPreviousResult(null);
           setIsPlaying(false);
         } finally {
@@ -352,6 +363,7 @@ export default function Home() {
         setRenderKey((prev) => prev + 1);
         setGameResult(null);
         setShowShareCard(false);
+        setShowInlineResult(false);
         setPreviousResult(null);
         setIsPlaying(false);
       } finally {
@@ -652,6 +664,7 @@ export default function Home() {
                 onReady={handleGameReady}
               />
             </div>
+            {lifeFlash && <div className={styles.lifeFlash} />}
           </div>
           {!isPlaying && isGameReady && !showInlineResult && (
             <div className={styles.startOverlay}>

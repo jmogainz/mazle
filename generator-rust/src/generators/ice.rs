@@ -1633,13 +1633,12 @@ fn compute_prefilter_thresholds(width: usize, height: usize) -> PrefilterThresho
     let fp = ((BASE_PREFILTER_MIN_FALSE_PROGRESS as f64 * scale).round() as i32).max(3);
     
     // Tuned thresholds based on empirical testing:
-    // 12x12 achieved: ci>=3, decoys>=5, gates>=2, fp>=5
-    // 15x15 should achieve similar or slightly higher
+    // 15x15 with step-1 maze achieves: ci=4-5, decoys=6-8, gates=2-4, fp=7-14
     PrefilterThresholds {
-        min_counter_intuitive: if is_small_map { ci.min(3) } else { ci },
-        min_attractive_decoys: if is_small_map { decoys.min(5) } else { decoys },
+        min_counter_intuitive: if is_small_map { ci.min(4) } else { ci },
+        min_attractive_decoys: if is_small_map { decoys.min(6) } else { decoys },
         min_commitment_gates: if is_small_map { gates.min(2) } else { gates },
-        min_false_progress: if is_small_map { fp.min(5) } else { fp },
+        min_false_progress: if is_small_map { fp.min(7) } else { fp },
     }
 }
 

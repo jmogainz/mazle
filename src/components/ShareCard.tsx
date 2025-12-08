@@ -83,16 +83,49 @@ export default function ShareCard({
     })) 
     : 0;
 
-  // Generate progress blocks - each block = one move toward solution
+  // Generate progress blocks - one row per attempt/life
   const generateProgressBlocks = (): string => {
     if (failed) {
-      // Show how far they got: red blocks for progress, skull for death, black for remaining
-      const filledBlocks = Math.min(bestAttempt, optimalMoves - 1);
-      const remainingBlocks = optimalMoves - filledBlocks - 1;
-      return '🟥'.repeat(filledBlocks) + '💀' + '⬛'.repeat(remainingBlocks);
+      // Show each attempt as a separate row
+      const rows: string[] = [];
+      
+      for (let i = 0; i < attempts.length; i++) {
+        const attempt = attempts[i];
+        const progress = attempt.deviationIndex !== undefined && attempt.deviationIndex !== -1
+          ? Math.max(0, attempt.deviationIndex - 1)
+          : attempt.moveCount;
+        
+        const filledBlocks = Math.min(progress, optimalMoves - 1);
+        const remainingBlocks = optimalMoves - filledBlocks - 1;
+        rows.push('🟥'.repeat(filledBlocks) + '💀' + '⬛'.repeat(remainingBlocks));
+      }
+      
+      // Always show 3 rows for failed attempts
+      while (rows.length < 3) {
+        rows.push('⬛'.repeat(optimalMoves));
+      }
+      
+      return rows.join('\n');
     } else {
-      // Success: all green blocks + trophy
-      return '🟩'.repeat(optimalMoves) + '🏆';
+      // Success: show each attempt as a row
+      const rows: string[] = [];
+      
+      // Add rows for failed attempts (only if there were any)
+      for (let i = 0; i < attempts.length; i++) {
+        const attempt = attempts[i];
+        const progress = attempt.deviationIndex !== undefined && attempt.deviationIndex !== -1
+          ? Math.max(0, attempt.deviationIndex - 1)
+          : attempt.moveCount;
+        
+        const filledBlocks = Math.min(progress, optimalMoves - 1);
+        const remainingBlocks = optimalMoves - filledBlocks - 1;
+        rows.push('🟥'.repeat(filledBlocks) + '💀' + '⬛'.repeat(remainingBlocks));
+      }
+      
+      // Final successful attempt (always present)
+      rows.push('🟩'.repeat(optimalMoves) + '🏆');
+      
+      return rows.join('\n');
     }
   };
 
@@ -148,6 +181,14 @@ ${generateProgressBlocks()}
     } else {
       setShareState('failed');
       setTimeout(() => setShareState('idle'), 2500);
+    }
+  };
+
+  const getCopyButtonText = () => {
+    switch (copyState) {
+      case 'copied': return 'Copied!';
+      case 'failed': return 'Failed';
+      default: return 'Copy';
     }
   };
 

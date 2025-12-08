@@ -456,6 +456,9 @@ export class GameScene extends Phaser.Scene {
     // Show analysis
     this.drawEndGameAnalysis();
     
+    // Emit state update so UI knows game is complete
+    emitGameEvent('stateUpdate', { ...this.gameState });
+    
     emitGameEvent('gameComplete', {
       moveCount: this.gameState.moveCount,
       timeMs: (this.gameState.endTime - this.gameState.startTime) + this.gameState.penaltyTimeMs,
@@ -498,11 +501,11 @@ export class GameScene extends Phaser.Scene {
             g.fillStyle(0x06d6a0, 0.9);
             g.fillCircle(px, py, 12);
             
-            // Move number
+            // Move number (0-based)
             this.add.text(
                 px, 
                 py, 
-                (i + 1).toString(), 
+                i.toString(), 
                 { 
                     fontSize: '14px',
                     fontWeight: 'bold',
@@ -763,6 +766,9 @@ export class GameScene extends Phaser.Scene {
     particleGraphics.fillCircle(4, 4, 4);
     particleGraphics.generateTexture('particle', 8, 8);
     particleGraphics.destroy();
+
+    // Emit state update so UI knows game is complete
+    emitGameEvent('stateUpdate', { ...this.gameState });
 
     // Emit win event
     emitGameEvent('gameComplete', {

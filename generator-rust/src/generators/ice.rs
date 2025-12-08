@@ -26,7 +26,7 @@ fn log_to_console(msg: &str) {
 /// Uses attempt index as a deterministic tiebreaker when scores are equal,
 /// ensuring identical results regardless of CPU count or thread scheduling.
 fn find_best_in_range<F, T>(
-    label: &str,
+    _label: &str,
     range: std::ops::Range<usize>,
     f: F,
 ) -> Option<(T, f64)>

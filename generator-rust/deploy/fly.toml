@@ -22,7 +22,7 @@ primary_region = "iad"
   [[http_service.checks]]
     grace_period   = "10s"
     interval       = "10s"
-    timeout        = "3s"
+    timeout        = "10s"
     method         = "get"
     path           = "/health"
     protocol       = "http"

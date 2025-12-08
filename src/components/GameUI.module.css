@@ -1,47 +1,88 @@
-.container {
+/* Shared Fonts */
+.headerContainer, .footerContainer {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  padding: 1rem;
-  font-family: var(--font-system);
+  align-items: center;
+  width: 100%;
+  font-family: var(--font-main);
+  padding: 0.2rem 0;
 }
 
-.header {
-  display: flex;
-  justify-content: center;
-  align-items: center;
+/* --- TOP HEADER VARIANT --- */
+.headerContainer {
+  gap: 0.5rem;
+  margin-bottom: 0rem;
 }
 
 .puzzleInfo {
   display: flex;
   align-items: baseline;
-  gap: 0.5rem;
+  justify-content: center;
 }
 
 .puzzleNumber {
-  font-size: 1.5rem;
+  font-size: 1.35rem;
   font-weight: 800;
   color: var(--color-text);
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 
+.statsRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.statGroup {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  position: relative;
+  min-width: 60px;
+}
+
+.statValue {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.statLabel {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-secondary);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.statDivider {
+  width: 1px;
+  height: 28px;
+  background: var(--color-border);
+}
+
+/* Lives Styling */
 .livesContainer {
     display: flex;
-    gap: 8px;
+    gap: 6px;
     align-items: center;
-    height: 1.5rem;
+    height: 1.4rem;
 }
 
 .lifeNode {
     width: 16px;
     height: 16px;
-    border-radius: 4px; /* Rounded squares like tiles */
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 3px;
+    transition: all 0.3s ease;
 }
 
 .lifeActive {
-    background: var(--color-warning); /* Start color (Yellow) */
+    background: var(--color-warning); 
     transform: scale(1);
 }
 
@@ -51,35 +92,43 @@
     opacity: 0.5;
 }
 
-.stats {
-  position: relative;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 2rem;
-  padding: 0.5rem 0;
-  /* Clean, no border or background for stats */
+/* --- FOOTER VARIANT (Moves Remaining) --- */
+.footerContainer {
+  margin-top: 0.5rem;
 }
 
-.stat {
+.movesRemainingContainer {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.1rem;
-  min-width: 60px;
 }
 
-.statValue {
-  font-size: 1.5rem;
+.movesValue {
+  font-size: 3.5rem; /* Huge Waffle Style */
   font-weight: 700;
   color: var(--color-text);
-  font-variant-numeric: tabular-nums;
-  transition: color 0.3s ease;
+  line-height: 1;
+  transition: color 0.2s ease;
 }
 
-.statValue.danger {
-    color: var(--color-error);
-    animation: pulse 1s infinite;
+.movesValue.danger {
+  color: var(--color-error);
+  animation: pulse 1s infinite;
+}
+
+.movesLabel {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-secondary);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-top: 0.25rem;
+}
+
+
+/* Animations & Tooltips */
+.statValue.penaltyFlash {
+    animation: penaltyFlash 0.5s ease-in-out 2;
 }
 
 @keyframes pulse {
@@ -87,51 +136,28 @@
     50% { opacity: 0.7; }
 }
 
-.statValue.penaltyFlash {
-    animation: penaltyFlash 0.5s ease-in-out 2;
-}
-
 @keyframes penaltyFlash {
     0%, 100% { color: var(--color-text); }
     50% { color: var(--color-error); }
 }
 
-.statLabel {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--color-secondary);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.statDivider {
-  width: 1px;
-  height: 40px;
-  background: var(--color-border);
-}
-
 .infoIcon {
   position: absolute;
-  top: -8px;
+  top: -6px;
   right: -8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
-  font-size: 0.7rem;
+  width: 14px;
+  height: 14px;
+  font-size: 0.6rem;
   font-weight: bold;
   color: var(--color-secondary);
   background: var(--color-surface);
   border-radius: 50%;
   cursor: pointer;
   opacity: 0.5;
-  transition: opacity 0.2s ease;
-  user-select: none;
-}
-
-.infoIcon:hover {
-  opacity: 1;
+  border: 1px solid var(--color-border);
 }
 
 .tooltip {

@@ -91,29 +91,55 @@ export interface PlayerStats {
   history: DailyStats[];
 }
 
-// Colors for the pixel art theme
+// Colors for the Waffle/Wordle aesthetic
 export const COLORS = {
-  // Waffle/Wordle inspired light theme
-  GROUND: 0xf3f3f3,      
-  GROUND_ALT: 0xe5e5e5,  
-  WALL: 0x2c2c2c,        
-  WALL_HIGHLIGHT: 0x2c2c2c,
-  ICE: 0xe0f7fa,
-  ICE_SHINE: 0xb2ebf2,
-  LEDGE: 0xdcdcdc,
-  LEDGE_ARROW: 0x000000,
-  START: 0xc9b458,       // Waffle Yellow
-  GOAL: 0x6aaa64,        // Waffle Green
-  GOAL_GLOW: 0x86c080,
-  PLAYER: 0xff4d4d,      // Red Ball
-  PLAYER_OUTLINE: 0x000000,
+  // Page Background
   BACKGROUND: 0xffffff,
+  TEXT: 0x1a1a1a,
+
+  // Tile Styles (Face + Edge for 3D effect)
+  // Ground (Empty Tile - Light Brown/Beige)
+  GROUND_FACE: 0xbfa46b,
+  GROUND_EDGE: 0x9f8451,
+  GROUND_ALT: 0xb59a61,
+
+  // Wall (Blocker)
+  WALL_FACE: 0x202124,
+  WALL_EDGE: 0x0a0a0a,
+  
+  // Start (Yellow - "Wrong Pos")
+  START_FACE: 0xd7b74a,
+  START_EDGE: 0xbd9e3c,
+
+  // Goal (Green - "Correct Pos")
+  GOAL_FACE: 0x6aaa64,
+  GOAL_EDGE: 0x538d4e,
+  GOAL_GLOW: 0x86c080,
+
+  // Ice (Pale Blue)
+  ICE_FACE: 0xa6d8ff,
+  ICE_EDGE: 0x7eb5ed,
+
+  // Ledge (Gray)
+  LEDGE_FACE: 0xe8e8e8,
+  LEDGE_EDGE: 0xc0c0c0,
+  LEDGE_ARROW: 0x3a3d41, // Lighter than wall to keep contrast while matching theme
+
+  // Player (Red "Active" Tile)
+  PLAYER_FACE: 0xff4d4d,
+  PLAYER_EDGE: 0xcc0000,
+  PLAYER_OUTLINE: 0x000000,
+
+  // UI
   UI_PRIMARY: 0x000000,
   UI_SECONDARY: 0x787c7e,
-  // Boulder colors
-  BOULDER: 0x787c7e,     
-  BOULDER_HIGHLIGHT: 0x787c7e, 
-  BOULDER_SHADOW: 0x787c7e,    
+  
+  // Boulders
+  BOULDER: 0x787c7e,
+  BOULDER_SHADOW: 0x5e6163,
+  BOULDER_HIGHLIGHT: 0x9aa0a3,
+  BOULDER_FACE: 0x787c7e,
+  BOULDER_EDGE: 0x5e6163,
 };
 
 export const TILE_SIZE = 32;

@@ -10,9 +10,10 @@ interface GameUIProps {
   puzzleNumber: number;
   puzzleLabel?: string;
   optimalMoves: number;
+  variant?: 'header' | 'footer';
 }
 
-export default function GameUI({ puzzleNumber, puzzleLabel, optimalMoves }: GameUIProps) {
+export default function GameUI({ puzzleNumber, puzzleLabel, optimalMoves, variant = 'header' }: GameUIProps) {
   const [currentAttemptMoves, setCurrentAttemptMoves] = useState(0);
   const [lives, setLives] = useState(3);
   const [elapsedTime, setElapsedTime] = useState(0);
@@ -32,7 +33,6 @@ export default function GameUI({ puzzleNumber, puzzleLabel, optimalMoves }: Game
       setPenaltyTimeMs(state.penaltyTimeMs);
       setIsComplete(state.isComplete);
       
-      // Reset timer when new puzzle starts (startTime goes from 0 to a value or resets to 0)
       if (state.startTime === 0) {
         setElapsedTime(0);
       }
@@ -67,18 +67,30 @@ export default function GameUI({ puzzleNumber, puzzleLabel, optimalMoves }: Game
 
   const movesRemaining = optimalMoves - currentAttemptMoves;
   const totalDisplayTime = elapsedTime + penaltyTimeMs;
-  const livesLost = 3 - lives;
 
-  return (
-    <div className={styles.container}>
-      <div className={styles.header}>
-        <div className={styles.puzzleInfo}>
-          <span className={styles.puzzleNumber}>{displayLabel}</span>
+  if (variant === 'footer') {
+    return (
+      <div className={styles.footerContainer}>
+        <div className={styles.movesRemainingContainer}>
+          <span className={`${styles.movesValue} ${movesRemaining <= 5 ? styles.danger : ''}`}>
+            {Math.max(0, movesRemaining)}
+          </span>
+          <span className={styles.movesLabel}>MOVES REMAINING</span>
         </div>
       </div>
+    );
+  }
+
+  // Header Variant (Lives, Time, Puzzle Info)
+  return (
+    <div className={styles.headerContainer}>
+      <div className={styles.puzzleInfo}>
+        <span className={styles.puzzleNumber}>{displayLabel}</span>
+      </div>
       
-      <div className={styles.stats}>
-        <div className={styles.stat}>
+      <div className={styles.statsRow}>
+        {/* Lives */}
+        <div className={styles.statGroup}>
             <div className={styles.livesContainer}>
                 {Array.from({ length: 3 }).map((_, i) => (
                     <div 
@@ -89,31 +101,39 @@ export default function GameUI({ puzzleNumber, puzzleLabel, optimalMoves }: Game
             </div>
             <span className={styles.statLabel}>LIVES</span>
         </div>
+
+        {/* Divider */}
         <div className={styles.statDivider} />
-        <div className={styles.stat}>
-          <span className={`${styles.statValue} ${movesRemaining <= 5 ? styles.danger : ''}`}>
-            {Math.max(0, movesRemaining)}
-          </span>
-          <span className={styles.statLabel}>REMAINING</span>
+
+        {/* Moves */}
+        <div className={styles.statGroup}>
+          <span className={`${styles.statValue} ${movesRemaining <= 5 ? styles.danger : ''}`}>{Math.max(0, movesRemaining)}</span>
+          <span className={styles.statLabel}>MOVES LEFT</span>
         </div>
+
+        {/* Divider */}
         <div className={styles.statDivider} />
-        <div className={styles.stat}>
+
+        {/* Time */}
+        <div className={styles.statGroup}>
           <span className={`${styles.statValue} ${penaltyFlash ? styles.penaltyFlash : ''}`}>{formatTime(totalDisplayTime)}</span>
           <span className={styles.statLabel}>TIME</span>
+          
+          {/* Penalty Tooltip */}
+          <span 
+            className={styles.infoIcon}
+            onMouseEnter={() => setShowTooltip(true)}
+            onMouseLeave={() => setShowTooltip(false)}
+            onClick={() => setShowTooltip(!showTooltip)}
+          >
+            ?
+            {showTooltip && (
+              <span className={styles.tooltip}>
+                +20s/life penalty
+              </span>
+            )}
+          </span>
         </div>
-        <span 
-          className={styles.infoIcon}
-          onMouseEnter={() => setShowTooltip(true)}
-          onMouseLeave={() => setShowTooltip(false)}
-          onClick={() => setShowTooltip(!showTooltip)}
-        >
-          ?
-          {showTooltip && (
-            <span className={styles.tooltip}>
-              +20s/life penalty
-            </span>
-          )}
-        </span>
       </div>
     </div>
   );

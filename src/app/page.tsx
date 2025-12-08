@@ -644,6 +644,7 @@ export default function Home() {
           puzzleNumber={puzzleNumber}
           puzzleLabel={puzzleLabel ?? undefined}
           optimalMoves={puzzle.optimalMoves}
+          variant="header"
         />
         
         <div

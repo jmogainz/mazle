@@ -72,6 +72,7 @@ export default function ShareCard({
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
   const displayLabel = puzzleLabel ?? `#${puzzleNumber}`;
   const mapEmoji = getMapEmoji(mapType);
+  const maxBlocks = Math.max(optimalMoves, 1);
   
   // Calculate best attempt for failed runs
   const bestAttempt = attempts && attempts.length > 0 
@@ -203,6 +204,34 @@ ${generateProgressBlocks()}
   // Single button - behavior changes based on device
   const showSeparateCopyButton = false;
 
+  const calcProgress = (attempt: any) => {
+    if (!attempt) return 0;
+    if (attempt.deviationIndex !== undefined && attempt.deviationIndex !== -1) {
+      return Math.max(0, attempt.deviationIndex - 1);
+    }
+    return attempt.moveCount ?? 0;
+  };
+
+  const attemptBars = () => {
+    const rows: { progress: number; status: 'fail' | 'success' | 'empty' }[] = [];
+
+    attempts.forEach((attempt: any) => {
+      rows.push({ progress: Math.min(calcProgress(attempt), maxBlocks), status: 'fail' });
+    });
+
+    if (!failed) {
+      rows.push({ progress: Math.min(moveCount, maxBlocks), status: 'success' });
+    }
+
+    while (rows.length < 3) {
+      rows.push({ progress: 0, status: 'empty' });
+    }
+
+    return rows.slice(0, 3);
+  };
+
+  const bars = attemptBars();
+
   return (
     <div className={inline ? styles.inlineContainer : styles.overlay} onClick={!inline ? onClose : undefined}>
       <div className={`${styles.card} ${failed ? styles.cardFailed : styles.cardSuccess} ${inline ? styles.cardInline : ''}`} onClick={(e) => e.stopPropagation()}>
@@ -227,6 +256,33 @@ ${generateProgressBlocks()}
                 <span>Best Attempt: {bestAttempt}/{optimalMoves} moves</span>
             </div>
         )}
+
+        <div className={styles.progressSection}>
+          <div className={styles.progressHeader}>Attempts</div>
+          <div className={styles.progressList}>
+            {bars.map((bar, idx) => (
+              <div className={styles.progressRow} key={idx}>
+                <span className={styles.progressLabel}>
+                  {bar.status === 'success' ? 'Win' : `${idx + 1}`}
+                </span>
+                <div className={styles.progressBar}>
+                  <div
+                    className={`
+                      ${styles.progressFill}
+                      ${bar.status === 'success' ? styles.progressFillSuccess : ''}
+                      ${bar.status === 'fail' ? styles.progressFillFail : ''}
+                      ${bar.status === 'empty' ? styles.progressFillEmpty : ''}
+                    `}
+                    style={{ width: `${Math.max(0, Math.min((bar.progress / maxBlocks) * 100, 100))}%` }}
+                  />
+                </div>
+                <span className={styles.progressValue}>
+                  {bar.progress}/{optimalMoves}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
 
         <div className={styles.actions}>
           <button 

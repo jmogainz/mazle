@@ -110,7 +110,7 @@ export default function GameUI({ puzzleNumber, puzzleLabel, optimalMoves }: Game
           ?
           {showTooltip && (
             <span className={styles.tooltip}>
-              +20s/life penalty
+              +5s/life penalty
             </span>
           )}
         </span>

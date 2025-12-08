@@ -1671,8 +1671,8 @@ fn create_base_maze(width: usize, height: usize, rng: &mut SeededRandom) -> Vec<
         visited.insert(pos_key(&pos));
         tiles[y as usize][x as usize] = TileType::Ice;
 
-        // Step-2 carving for classic maze corridors
-        let dirs = [(0, -2), (0, 2), (-2, 0), (2, 0)];
+        // Step-1 carving for single-wall borders and more open mazes
+        let dirs = [(0, -1), (0, 1), (-1, 0), (1, 0)];
         let shuffled = rng.shuffle(&dirs);
 
         for (dx, dy) in shuffled {
@@ -1680,15 +1680,14 @@ fn create_base_maze(width: usize, height: usize, rng: &mut SeededRandom) -> Vec<
             let ny = y + dy;
             let npos = Position { x: nx, y: ny };
             if is_inner(nx, ny, width, height) && !visited.contains(&pos_key(&npos)) {
-                tiles[(y + dy / 2) as usize][(x + dx / 2) as usize] = TileType::Ice;
                 carve(tiles, visited, nx, ny, width, height, rng);
             }
         }
     }
 
-    // Start from even positions for step-2 algorithm
-    let start_x = 2 + rng.random_int(0, ((width - 4) / 2) as i32) * 2;
-    let start_y = 2 + rng.random_int(0, ((height - 4) / 2) as i32) * 2;
+    // Start from inner position (1 cell from border)
+    let start_x = 1 + rng.random_int(0, (width - 2) as i32);
+    let start_y = 1 + rng.random_int(0, (height - 2) as i32);
     carve(
         &mut tiles,
         &mut visited,
@@ -1711,8 +1710,8 @@ fn widen_passages(
 ) {
     let widen_count = ((width * height) as f64 * intensity).floor() as i32;
     for _ in 0..widen_count {
-        let x = rng.random_int(2, width as i32 - 2);
-        let y = rng.random_int(2, height as i32 - 2);
+        let x = rng.random_int(1, width as i32 - 1);
+        let y = rng.random_int(1, height as i32 - 1);
         if tiles[y as usize][x as usize] != TileType::Wall {
             continue;
         }
@@ -1750,8 +1749,8 @@ fn add_stop_blocks(
 
     while placed < count && attempts < max_attempts {
         attempts += 1;
-        let x = rng.random_int(2, width as i32 - 2);
-        let y = rng.random_int(2, height as i32 - 2);
+        let x = rng.random_int(1, width as i32 - 1);
+        let y = rng.random_int(1, height as i32 - 1);
         if tiles[y as usize][x as usize] != TileType::Ice {
             continue;
         }
@@ -1782,8 +1781,8 @@ fn add_floor_stops(
 
     while placed < count && attempts < count * 3 {
         attempts += 1;
-        let x = rng.random_int(2, width as i32 - 2);
-        let y = rng.random_int(2, height as i32 - 2);
+        let x = rng.random_int(1, width as i32 - 1);
+        let y = rng.random_int(1, height as i32 - 1);
         if tiles[y as usize][x as usize] != TileType::Ice {
             continue;
         }
@@ -1871,8 +1870,8 @@ fn add_extra_connections(
 
     while added < count && attempts < count * 5 {
         attempts += 1;
-        let x = rng.random_int(2, width as i32 - 2);
-        let y = rng.random_int(2, height as i32 - 2);
+        let x = rng.random_int(1, width as i32 - 1);
+        let y = rng.random_int(1, height as i32 - 1);
         if tiles[y as usize][x as usize] != TileType::Wall {
             continue;
         }
@@ -2904,8 +2903,8 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
             let mut tiles = create_base_maze(width, height, &mut attempt_rng);
 
             let mut ice_tiles: Vec<Position> = Vec::new();
-            for y in 2..height - 2 {
-                for x in 2..width - 2 {
+            for y in 1..height - 1 {
+                for x in 1..width - 1 {
                     if tiles[y][x] == TileType::Ice {
                         ice_tiles.push(Position {
                             x: x as i32,
@@ -2921,12 +2920,12 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                 return None;
             }
 
-            // Scale position filters for step-2 maze (inner area is 2..width-2)
-            let inner_max_x = (width - 3) as i32;
-            let inner_max_y = (height - 3) as i32;
-            let left_threshold = (width as i32 / 3).max(4);
+            // Scale position filters for step-1 maze (inner area is 1..width-1)
+            let inner_max_x = (width - 2) as i32;
+            let inner_max_y = (height - 2) as i32;
+            let left_threshold = (width as i32 / 3).max(2);
             let right_threshold = (2 * width as i32 / 3).min(inner_max_x);
-            let top_threshold = (height as i32 / 3).max(4);
+            let top_threshold = (height as i32 / 3).max(2);
             let bottom_threshold = (2 * height as i32 / 3).min(inner_max_y);
             
             let left_tiles: Vec<_> = ice_tiles
@@ -3300,8 +3299,8 @@ pub fn generate_puzzle_partial(
             let mut tiles = create_base_maze(width, height, &mut attempt_rng);
 
             let mut ice_tiles: Vec<Position> = Vec::new();
-            for y in 2..height - 2 {
-                for x in 2..width - 2 {
+            for y in 1..height - 1 {
+                for x in 1..width - 1 {
                     if tiles[y][x] == TileType::Ice {
                         ice_tiles.push(Position {
                             x: x as i32,
@@ -3310,16 +3309,19 @@ pub fn generate_puzzle_partial(
                     }
                 }
             }
-            if ice_tiles.len() < 20 {
+            
+            // Scale minimum ice tiles requirement for small maps
+            let min_ice_tiles = ((20.0 * (width.min(height) as f64 / 35.0).powi(2)) as usize).max(8);
+            if ice_tiles.len() < min_ice_tiles {
                 continue;
             }
 
-            // Scale position filters for step-2 maze (inner area is 2..width-2)
-            let inner_max_x = (width - 3) as i32;
-            let inner_max_y = (height - 3) as i32;
-            let left_threshold = (width as i32 / 3).max(4);
+            // Scale position filters for step-1 maze (inner area is 1..width-1)
+            let inner_max_x = (width - 2) as i32;
+            let inner_max_y = (height - 2) as i32;
+            let left_threshold = (width as i32 / 3).max(2);
             let right_threshold = (2 * width as i32 / 3).min(inner_max_x);
-            let top_threshold = (height as i32 / 3).max(4);
+            let top_threshold = (height as i32 / 3).max(2);
             let bottom_threshold = (2 * height as i32 / 3).min(inner_max_y);
             
             let left_tiles: Vec<_> = ice_tiles

@@ -508,7 +508,6 @@ export class GameScene extends Phaser.Scene {
                 i.toString(), 
                 { 
                     fontSize: '14px',
-                    fontWeight: 'bold',
                     color: '#ffffff',
                     stroke: '#000000',
                     strokeThickness: 3,
@@ -552,7 +551,6 @@ export class GameScene extends Phaser.Scene {
             lifeNumber.toString(), 
             { 
                 fontSize: '18px',
-                fontWeight: 'bold',
                 color: '#ffffff',
                 stroke: '#000000',
                 strokeThickness: 4,

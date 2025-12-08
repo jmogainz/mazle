@@ -69,7 +69,7 @@ struct GenerateQuery {
 }
 
 fn default_attempts() -> usize {
-    400
+    1000
 }
 
 /// Health check endpoint

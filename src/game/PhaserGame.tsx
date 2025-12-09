@@ -120,7 +120,7 @@ export default function PhaserGame({ puzzle, viewportWidth, viewportHeight, onRe
         gameRef.current = null;
       }
     };
-  }, [puzzle, onReady, getControls]);
+  }, [puzzle, onReady, getControls, baseWidth, baseHeight]);
 
   return (
     <div

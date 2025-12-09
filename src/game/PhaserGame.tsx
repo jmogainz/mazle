@@ -77,10 +77,9 @@ export default function PhaserGame({ puzzle, viewportWidth, viewportHeight, onRe
     ) || window.innerWidth <= 768;
     
     const config: Phaser.Types.Core.GameConfig = {
-      type: isMobile ? Phaser.CANVAS : Phaser.WEBGL, // Canvas on mobile, WebGL on desktop
+      type: isMobile ? Phaser.CANVAS : Phaser.WEBGL, // Canvas on mobile for stability, WebGL on desktop for performance
       parent: gameContainerRef.current,
       backgroundColor: COLORS.BACKGROUND,
-      pixelArt: true,
       audio: {
         noAudio: true,
       },
@@ -95,9 +94,11 @@ export default function PhaserGame({ puzzle, viewportWidth, viewportHeight, onRe
       input: {
         touch: true,
       },
+      // High-Quality Rendering for Smooth Jelly Animations
       render: {
-        pixelArt: true,
-        antialias: false,
+        pixelArt: false,
+        antialias: true,
+        roundPixels: false, // Enable sub-pixel positioning for smooth ease functions
       },
     };
 

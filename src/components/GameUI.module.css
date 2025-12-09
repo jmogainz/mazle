@@ -1,90 +1,134 @@
-.container {
+/* Shared Fonts */
+.headerContainer, .footerContainer {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  padding: 1rem;
-  font-family: var(--font-pixel);
+  align-items: center;
+  width: 100%;
+  font-family: var(--font-main);
+  padding: 0.2rem 0;
 }
 
-.header {
-  display: flex;
-  justify-content: center;
-  align-items: center;
+/* --- TOP HEADER VARIANT --- */
+.headerContainer {
+  gap: 0.5rem;
+  margin-bottom: 0rem;
 }
 
 .puzzleInfo {
   display: flex;
   align-items: baseline;
-  gap: 0.5rem;
+  justify-content: center;
 }
 
 .puzzleNumber {
-  font-size: 1.25rem;
-  font-weight: bold;
-  color: var(--color-secondary);
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--color-text);
   letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
-.livesContainer {
-    display: flex;
-    gap: 6px;
-    align-items: center;
-    height: 1.25rem;
-}
-
-.lifeNode {
-    width: 14px;
-    height: 14px;
-    border-radius: 2px;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    border: 2px solid;
-}
-
-.lifeActive {
-    background: var(--color-primary);
-    border-color: var(--color-primary);
-    box-shadow: 0 0 8px rgba(255, 209, 102, 0.4);
-    transform: scale(1);
-}
-
-.lifeLost {
-    background: transparent;
-    border-color: var(--color-border);
-    transform: scale(0.8);
-    opacity: 0.3;
-}
-
-.stats {
-  position: relative;
+.statsRow {
   display: flex;
+  align-items: center;
   justify-content: center;
-  align-items: flex-end;
-  gap: 1.5rem;
-  padding: 0.75rem 1rem;
-  background: var(--color-surface);
-  border-radius: 8px;
-  border: 2px solid var(--color-border);
+  gap: 0.75rem;
 }
 
-.stat {
+.statGroup {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.2rem;
+  position: relative;
   min-width: 60px;
 }
 
 .statValue {
-  font-size: 1.25rem;
-  font-weight: bold;
+  font-size: 1.35rem;
+  font-weight: 700;
   color: var(--color-text);
   font-variant-numeric: tabular-nums;
-  transition: color 0.3s ease;
+  line-height: 1;
 }
 
-.statValue.danger {
-    color: #ef476f;
-    animation: pulse 1s infinite;
+.statLabel {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-secondary);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.statDivider {
+  width: 1px;
+  height: 28px;
+  background: var(--color-border);
+}
+
+/* Lives Styling */
+.livesContainer {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    height: 1.4rem;
+}
+
+.lifeNode {
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+    transition: all 0.3s ease;
+}
+
+.lifeActive {
+    background: var(--color-warning); 
+    transform: scale(1);
+}
+
+.lifeLost {
+    background: var(--color-border);
+    transform: scale(0.8);
+    opacity: 0.5;
+}
+
+/* --- FOOTER VARIANT (Moves Remaining) --- */
+.footerContainer {
+  margin-top: 0.5rem;
+}
+
+.movesRemainingContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.movesValue {
+  font-size: 3.5rem; /* Huge Waffle Style */
+  font-weight: 700;
+  color: var(--color-text);
+  line-height: 1;
+  transition: color 0.2s ease;
+}
+
+.movesValue.danger {
+  color: var(--color-error);
+  animation: pulse 1s infinite;
+}
+
+.movesLabel {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-secondary);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-top: 0.25rem;
+}
+
+
+/* Animations & Tooltips */
+.statValue.penaltyFlash {
+    animation: penaltyFlash 0.5s ease-in-out 2;
 }
 
 @keyframes pulse {
@@ -92,72 +136,50 @@
     50% { opacity: 0.7; }
 }
 
-.statValue.penaltyFlash {
-    animation: penaltyFlash 0.5s ease-in-out 2;
-}
-
 @keyframes penaltyFlash {
     0%, 100% { color: var(--color-text); }
-    50% { color: #ef476f; }
-}
-
-.statLabel {
-  font-size: 0.625rem;
-  color: var(--color-secondary);
-  letter-spacing: 0.1em;
-}
-
-.statDivider {
-  width: 1px;
-  height: 30px;
-  background: var(--color-border);
+    50% { color: var(--color-error); }
 }
 
 .infoIcon {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: -6px;
+  right: -8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 12px;
-  height: 12px;
-  font-size: 0.5rem;
+  width: 14px;
+  height: 14px;
+  font-size: 0.6rem;
   font-weight: bold;
   color: var(--color-secondary);
-  background: var(--color-border);
+  background: var(--color-surface);
   border-radius: 50%;
   cursor: pointer;
   opacity: 0.5;
-  transition: opacity 0.2s ease;
-  user-select: none;
-}
-
-.infoIcon:hover {
-  opacity: 1;
+  border: 1px solid var(--color-border);
 }
 
 .tooltip {
   position: absolute;
   top: 50%;
-  left: calc(100% + 6px);
+  left: calc(100% + 10px);
   transform: translateY(-50%);
-  padding: 6px 10px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  padding: 8px 12px;
+  background: var(--color-text);
+  color: var(--color-background);
   border-radius: 6px;
-  font-size: 0.65rem;
-  font-weight: normal;
-  color: var(--color-text);
+  font-size: 0.75rem;
+  font-weight: 600;
   white-space: nowrap;
   z-index: 100;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 @media (max-width: 480px) {
   .tooltip {
     top: auto;
-    bottom: calc(100% + 6px);
+    bottom: calc(100% + 10px);
     left: auto;
     right: 0;
     transform: none;

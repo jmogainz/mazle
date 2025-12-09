@@ -24,24 +24,25 @@
 
 .card {
   background: var(--color-background);
-  border: 3px solid var(--color-primary);
-  border-radius: 12px;
+  border: 2px solid var(--color-border);
+  border-radius: 14px;
   padding: 1.5rem;
-  max-width: 360px;
+  max-width: 380px;
   width: 100%;
   position: relative;
   animation: slideUp 0.3s ease-out;
-  box-shadow: 0 0 30px rgba(255, 209, 102, 0.3);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.08);
+  font-family: var(--font-main);
 }
 
 .cardFailed {
     border-color: #ef476f;
-    box-shadow: 0 0 30px rgba(239, 71, 111, 0.3);
+    box-shadow: 0 16px 40px rgba(239, 71, 111, 0.15);
 }
 
 .cardSuccess {
     border-color: #06d6a0;
-    box-shadow: 0 0 30px rgba(6, 214, 160, 0.3);
+    box-shadow: 0 16px 40px rgba(6, 214, 160, 0.15);
 }
 
 .cardInline {
@@ -93,23 +94,25 @@
 }
 
 .title {
-  font-size: 1.5rem;
-  color: var(--color-primary);
+  font-size: 1.6rem;
+  color: var(--color-text);
   margin: 0 0 0.25rem 0;
-  font-family: var(--font-pixel);
+  font-family: var(--font-main);
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
-.cardFailed .title {
-    color: #ef476f;
-}
-
+.cardFailed .title,
 .cardSuccess .title {
-    color: #06d6a0;
+    color: var(--color-text);
 }
 
 .puzzleNumber {
   color: var(--color-secondary);
   font-size: 0.875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .rating {
@@ -148,22 +151,19 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    margin-bottom: 1.5rem;
+    margin-bottom: 1rem;
 }
 
 .mainStatValue {
-    font-size: 2.5rem;
-    font-weight: bold;
-    font-family: var(--font-pixel);
+    font-size: 2.4rem;
+    font-weight: 800;
+    font-family: var(--font-main);
     color: var(--color-text);
 }
 
-.cardFailed .mainStatValue {
-    color: #ef476f;
-}
-
+.cardFailed .mainStatValue,
 .cardSuccess .mainStatValue {
-    color: #06d6a0;
+    color: var(--color-text);
 }
 
 .mainStatLabel {
@@ -174,9 +174,86 @@
 
 .subStat {
     text-align: center;
-    margin-bottom: 1rem;
+    margin-bottom: 0.75rem;
     color: var(--color-secondary);
     font-size: 0.9rem;
+}
+
+.progressSection {
+  width: 100%;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 0.75rem 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.progressHeader {
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-secondary);
+  margin-bottom: 0.5rem;
+  font-weight: 700;
+}
+
+.progressList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.progressRow {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.progressLabel {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--color-text);
+  text-transform: uppercase;
+}
+
+.progressBar {
+  position: relative;
+  width: 100%;
+  height: 10px;
+  background: var(--color-border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progressFill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--color-primary);
+  transition: width 0.25s ease;
+}
+
+.progressFillSuccess {
+  background: var(--color-primary);
+}
+
+.progressFillFail {
+  background: var(--color-warning);
+}
+
+.progressFillEmpty {
+  background: var(--color-border);
+}
+
+.progressValue {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
 }
 
 .statsRow {
@@ -195,8 +272,8 @@
 }
 
 .statValue {
-  font-size: 1.25rem;
-  font-weight: bold;
+  font-size: 1.2rem;
+  font-weight: 700;
   color: var(--color-text);
   font-variant-numeric: tabular-nums;
 }
@@ -226,12 +303,12 @@
   flex: 1;
   padding: 0.75rem 1rem;
   border: 2px solid;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  font-weight: bold;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  font-weight: 800;
   cursor: pointer;
   transition: all 0.2s;
-  font-family: var(--font-pixel);
+  font-family: var(--font-main);
 }
 
 .shareButton {

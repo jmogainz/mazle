@@ -26,12 +26,6 @@ export default function Header({ streak, onHelpClick, onStatsClick }: HeaderProp
       </div>
       
       <div className={styles.rightSection}>
-        {streak > 0 && (
-          <div className={styles.streak}>
-            <span className={styles.streakIcon}>🔥</span>
-            <span className={styles.streakCount}>{streak}</span>
-          </div>
-        )}
         <button className={styles.iconButton} onClick={onStatsClick} aria-label="Statistics">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="18" y1="20" x2="18" y2="10" />

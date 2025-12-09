@@ -91,29 +91,55 @@ export interface PlayerStats {
   history: DailyStats[];
 }
 
-// Colors for the pixel art theme
+// Colors for the Waffle/Wordle aesthetic
 export const COLORS = {
-  // Deep blue-green Pokemon gym aesthetic
-  GROUND: 0x2d5a4f,      // Renamed from FLOOR
-  GROUND_ALT: 0x3d6a5f,  // Renamed from FLOOR_ALT
-  WALL: 0x1a1a2e,
-  WALL_HIGHLIGHT: 0x2a2a4e,
-  ICE: 0x8ecae6,
-  ICE_SHINE: 0xb8e0f0,
-  LEDGE: 0x6b4423,
-  LEDGE_ARROW: 0xffd166,
-  START: 0x06d6a0,
-  GOAL: 0xffd166,
-  GOAL_GLOW: 0xffed4a,
-  PLAYER: 0xef476f,
-  PLAYER_OUTLINE: 0xc73e5c,
-  BACKGROUND: 0x0f0f1a,
-  UI_PRIMARY: 0xffffff,
-  UI_SECONDARY: 0x888888,
-  // Boulder colors
-  BOULDER: 0x7a6855,      // Rocky brown-gray
-  BOULDER_HIGHLIGHT: 0x9a8875, // Lighter highlight for 3D effect
-  BOULDER_SHADOW: 0x5a4835,    // Darker shadow
+  // Page Background
+  BACKGROUND: 0xffffff,
+  TEXT: 0x1a1a1a,
+
+  // Tile Styles (Face + Edge for 3D effect)
+  // Ground (Empty Tile - Light Brown/Beige)
+  GROUND_FACE: 0xbfa46b,
+  GROUND_EDGE: 0x9f8451,
+  GROUND_ALT: 0xb59a61,
+
+  // Wall (Blocker)
+  WALL_FACE: 0x202124,
+  WALL_EDGE: 0x0a0a0a,
+  
+  // Start (Yellow - "Wrong Pos")
+  START_FACE: 0xd7b74a,
+  START_EDGE: 0xbd9e3c,
+
+  // Goal (Green - "Correct Pos")
+  GOAL_FACE: 0x6aaa64,
+  GOAL_EDGE: 0x538d4e,
+  GOAL_GLOW: 0x86c080,
+
+  // Ice (Pale Blue)
+  ICE_FACE: 0xa6d8ff,
+  ICE_EDGE: 0x7eb5ed,
+
+  // Ledge (Gray)
+  LEDGE_FACE: 0xe8e8e8,
+  LEDGE_EDGE: 0xc0c0c0,
+  LEDGE_ARROW: 0x3a3d41, // Lighter than wall to keep contrast while matching theme
+
+  // Player (Red "Active" Tile)
+  PLAYER_FACE: 0xff4d4d,
+  PLAYER_EDGE: 0xcc0000,
+  PLAYER_OUTLINE: 0x000000,
+
+  // UI
+  UI_PRIMARY: 0x000000,
+  UI_SECONDARY: 0x787c7e,
+  
+  // Boulders
+  BOULDER: 0x787c7e,
+  BOULDER_SHADOW: 0x5e6163,
+  BOULDER_HIGHLIGHT: 0x9aa0a3,
+  BOULDER_FACE: 0x787c7e,
+  BOULDER_EDGE: 0x5e6163,
 };
 
 export const TILE_SIZE = 32;

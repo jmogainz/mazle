@@ -3,7 +3,7 @@
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
   padding: 0.75rem 1rem;
-  border-bottom: 2px solid var(--color-border);
+  /* Removed border-bottom for cleaner look */
   background: var(--color-background);
 }
 
@@ -20,12 +20,13 @@
 }
 
 .logoText {
-  font-family: var(--font-pixel);
-  font-size: 1.75rem;
-  font-weight: bold;
-  color: var(--color-primary);
-  letter-spacing: 0.15em;
-  text-shadow: 2px 2px 0 rgba(255, 209, 102, 0.3);
+  font-family: var(--font-nunito, 'Nunito', var(--font-system));
+  font-size: 2rem;
+  font-weight: 800; /* Bold */
+  color: var(--color-text); /* Black */
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  /* Removed text-shadow */
 }
 
 .rightSection {
@@ -35,25 +36,7 @@
   gap: 0.5rem;
 }
 
-.streak {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.25rem 0.5rem;
-  background: var(--color-surface);
-  border-radius: 6px;
-  margin-right: 0.5rem;
-}
-
-.streakIcon {
-  font-size: 1rem;
-}
-
-.streakCount {
-  font-size: 0.875rem;
-  font-weight: bold;
-  color: var(--color-primary);
-}
+/* Removed Streak Styling */
 
 .iconButton {
   background: none;
@@ -72,4 +55,3 @@
   background: var(--color-surface);
   color: var(--color-primary);
 }
-

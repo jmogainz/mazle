@@ -1,11 +1,18 @@
 import type { Metadata, Viewport } from 'next';
-import { Press_Start_2P } from 'next/font/google';
+import { Nunito, Press_Start_2P } from 'next/font/google';
 import './globals.css';
 
 const pixelFont = Press_Start_2P({
   weight: '400',
   subsets: ['latin'],
   variable: '--font-pixel',
+  display: 'swap',
+});
+
+const nunito = Nunito({
+  weight: ['400', '600', '700', '800'],
+  subsets: ['latin'],
+  variable: '--font-nunito',
   display: 'swap',
 });
 
@@ -41,7 +48,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={pixelFont.variable}>
+    <html lang="en" className={`${pixelFont.variable} ${nunito.variable}`}>
       <head>
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
         <link rel="manifest" href="/manifest.json" />
@@ -50,4 +57,3 @@ export default function RootLayout({
     </html>
   );
 }
-

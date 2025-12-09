@@ -24,16 +24,17 @@
 
 .card {
   background: var(--color-background);
-  border: 3px solid var(--color-primary);
-  border-radius: 12px;
+  border: 2px solid var(--color-border);
+  border-radius: 14px;
   padding: 1.5rem;
-  max-width: 400px;
+  max-width: 420px;
   width: 100%;
   max-height: 90vh;
   overflow-y: auto;
   position: relative;
   animation: slideUp 0.3s ease-out;
-  box-shadow: 0 0 30px rgba(255, 209, 102, 0.3);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.08);
+  font-family: var(--font-main);
 }
 
 @keyframes slideUp {
@@ -66,11 +67,14 @@
 }
 
 .title {
-  font-size: 1.5rem;
-  color: var(--color-primary);
-  margin: 0 0 1.5rem 0;
+  font-size: 1.6rem;
+  color: var(--color-text);
+  margin: 0 0 1.25rem 0;
   text-align: center;
-  font-family: var(--font-pixel);
+  font-family: var(--font-main);
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
 .section {
@@ -82,11 +86,12 @@
 }
 
 .sectionTitle {
-  font-size: 0.875rem;
-  color: var(--color-primary);
+  font-size: 0.9rem;
+  color: var(--color-text);
   margin: 0 0 0.5rem 0;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
+  font-weight: 800;
 }
 
 .text {
@@ -96,16 +101,36 @@
   margin: 0;
 }
 
-.start {
-  color: #06d6a0;
-  font-size: 1.25rem;
+.tileStart,
+.tileGoal {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
   vertical-align: middle;
+  margin: 0 4px;
+  position: relative;
+  top: -1px;
 }
 
-.goal {
-  color: #ffd166;
-  font-size: 1.25rem;
-  vertical-align: middle;
+.tileStart {
+  background: linear-gradient(135deg, #d7b74a 50%, #bd9e3c 50%);
+  border: 1px solid #b0892f;
+}
+
+.tileGoal {
+  background: linear-gradient(135deg, #6aaa64 50%, #538d4e 50%);
+  border: 1px solid #3f703c;
+}
+
+.tileGoal::after {
+  content: '★';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -52%);
+  font-size: 12px;
+  color: #ffd700;
 }
 
 .controls {
@@ -120,14 +145,17 @@
   gap: 1rem;
   padding: 0.5rem 0.75rem;
   background: var(--color-surface);
-  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
 }
 
 .keys {
-  font-family: monospace;
-  font-size: 0.875rem;
-  color: var(--color-primary);
+  font-family: var(--font-main);
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--color-text);
   min-width: 80px;
+  letter-spacing: 0.08em;
 }
 
 .swipe {
@@ -153,7 +181,8 @@
   gap: 0.75rem;
   padding: 0.5rem 0.75rem;
   background: var(--color-surface);
-  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
   font-size: 0.875rem;
   color: var(--color-text);
 }
@@ -169,24 +198,23 @@
 }
 
 .tileFloor {
-  background: linear-gradient(135deg, #2d5a4f 50%, #3d6a5f 50%);
+  background: linear-gradient(135deg, #bfa46b 50%, #9f8451 50%);
 }
 
 .tileWall {
-  background: #1a1a2e;
-  border: 2px solid #2a2a4e;
+  background: #202124;
+  border: 2px solid #0a0a0a;
 }
 
 .tileIce {
-  background: linear-gradient(135deg, #8ecae6, #b8e0f0);
+  background: linear-gradient(135deg, #cce6ff, #9fc8f5);
 }
 
 .tileLedge {
-  background: #6b4423;
-  color: #ffd166;
+  background: #e8e8e8;
+  color: #6aaa64;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 0.75rem;
 }
-

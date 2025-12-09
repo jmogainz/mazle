@@ -11,7 +11,7 @@
   flex-direction: column;
   align-items: center;
   padding: 1rem;
-  gap: 0.5rem;
+  gap: 0.1rem;
 }
 
 .devPanel {
@@ -380,8 +380,8 @@
   justify-content: center;
   border-radius: 12px;
   overflow: hidden;
-  border: 3px solid var(--color-border);
-  background: var(--color-surface);
+  /* Removed border for floating effect */
+  /* Removed background for floating effect (Phaser canvas handles its own background) */
   position: relative;
 }
 
@@ -432,34 +432,32 @@
 
 .startButton {
   padding: 1rem 3rem;
-  font-size: 1.5rem;
+  font-size: 1.4rem;
   font-weight: 800;
-  color: var(--color-background);
-  background: var(--color-primary);
-  border: 4px solid var(--color-background);
-  border-radius: 12px;
+  font-family: var(--font-main);
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 2px solid var(--color-border);
+  border-radius: 14px;
   cursor: pointer;
-  box-shadow: 0 4px 0 rgba(0,0,0,0.2);
+  box-shadow: 0 10px 24px rgba(0,0,0,0.12);
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  transition: transform 0.1s, box-shadow 0.1s;
-  animation: pulse 2s infinite;
+  letter-spacing: 0.08em;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  animation: none;
 }
 
 .startButton:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 0 rgba(0,0,0,0.2);
+  transform: translateY(-1px);
+  box-shadow: 0 12px 28px rgba(0,0,0,0.14);
+  background: var(--color-primary);
+  color: var(--color-background);
+  border-color: var(--color-primary);
 }
 
 .startButton:active {
-  transform: translateY(2px);
-  box-shadow: 0 2px 0 rgba(0,0,0,0.2);
-}
-
-@keyframes pulse {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.05); }
-  100% { transform: scale(1); }
+  transform: translateY(1px);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.12);
 }
 
 .loading {

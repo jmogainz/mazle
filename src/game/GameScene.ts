@@ -28,6 +28,7 @@ export class GameScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Container;
   private tileGraphics!: Phaser.GameObjects.Graphics;
   private goalSprite!: Phaser.GameObjects.Container;
+  private flashOverlay!: Phaser.GameObjects.Graphics;
   private isAnimating = false;
   private cursors: Phaser.Types.Input.Keyboard.CursorKeys | null = null;
   private wasd: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key } | null = null;
@@ -35,12 +36,14 @@ export class GameScene extends Phaser.Scene {
   private swipeStartY = 0;
   private offsetX = 0;
   private offsetY = 0;
+  private readonly tileFaceLift = 3; // lift sprites to sit on the top face of 3D tiles
 
   private isPlaying = false;
   
   // Boulder state tracking (for ground maps)
   private boulderPositions: Set<string> = new Set();
   private boulderSprites: Map<string, Phaser.GameObjects.Container> = new Map();
+  private analysisObjects: Phaser.GameObjects.GameObject[] = [];
 
   constructor() {
     super({ key: 'GameScene' });
@@ -95,6 +98,9 @@ export class GameScene extends Phaser.Scene {
     
     // Create player
     this.createPlayer();
+    
+    // Create flash overlay
+    this.createFlashOverlay();
     
     // Setup input
     this.setupInput();
@@ -161,83 +167,121 @@ export class GameScene extends Phaser.Scene {
   private drawTile(px: number, py: number, tile: TileType, gridX: number, gridY: number) {
     const g = this.tileGraphics;
     const size = TILE_SIZE;
-    const padding = 1;
+    const padding = 2; // Gap between tiles
+    const radius = 8;
+    const depth = 4;   // 3D lip height
+
+    // Helper: Draw a "Waffle Style" 3D Tile
+    const draw3DTile = (faceColor: number, edgeColor: number) => {
+        const x = px + padding;
+        const y = py + padding;
+        const w = size - padding * 2;
+        const h = size - padding * 2;
+
+        // 1. Draw Edge (Bottom Layer / Shadow)
+        g.fillStyle(edgeColor);
+        g.fillRoundedRect(x, y, w, h, radius);
+
+        // 2. Draw Face (Top Layer)
+        g.fillStyle(faceColor);
+        g.fillRoundedRect(x, y, w, h - depth, radius);
+    };
 
     switch (tile) {
       case TileType.GROUND:
-      case TileType.START:
-        // Checkerboard pattern for depth
-        const isAlt = (gridX + gridY) % 2 === 0;
-        g.fillStyle(isAlt ? COLORS.GROUND : COLORS.GROUND_ALT);
-        g.fillRect(px + padding, py + padding, size - padding * 2, size - padding * 2);
+        draw3DTile(COLORS.GROUND_FACE, COLORS.GROUND_EDGE);
         break;
 
-      case TileType.WALL:
-        // 3D wall effect
-        g.fillStyle(COLORS.WALL);
-        g.fillRect(px, py, size, size);
-        g.fillStyle(COLORS.WALL_HIGHLIGHT);
-        g.fillRect(px + 2, py + 2, size - 6, 3);
-        g.fillRect(px + 2, py + 2, 3, size - 6);
+      case TileType.START:
+        draw3DTile(COLORS.START_FACE, COLORS.START_EDGE);
         break;
 
       case TileType.GOAL:
-        // Goal has floor underneath
-        g.fillStyle(COLORS.GROUND);
-        g.fillRect(px + padding, py + padding, size - padding * 2, size - padding * 2);
+        draw3DTile(COLORS.GOAL_FACE, COLORS.GOAL_EDGE);
+        break;
+
+      case TileType.WALL:
+        draw3DTile(COLORS.WALL_FACE, COLORS.WALL_EDGE);
         break;
 
       case TileType.ICE:
-        // Ice tile with shine effect
-        g.fillStyle(COLORS.ICE);
-        g.fillRect(px + padding, py + padding, size - padding * 2, size - padding * 2);
-        // Shine lines
-        g.fillStyle(COLORS.ICE_SHINE);
-        g.fillRect(px + 4, py + 4, 8, 2);
-        g.fillRect(px + 6, py + 8, 6, 2);
-        g.fillRect(px + size - 12, py + size - 10, 6, 2);
+        draw3DTile(COLORS.ICE_FACE, COLORS.ICE_EDGE);
+        
+        // Frosty reflection lines (Clean simplified version)
+        {
+          const inset = 4;
+          const faceX = px + padding + inset;
+          const faceY = py + padding + inset;
+          const faceW = size - padding * 2 - inset * 2;
+          const faceH = size - padding * 2 - depth - inset * 2;
+
+          // Crisp white reflection streaks
+          g.lineStyle(2, 0xffffff, 0.6);
+
+          // Primary reflection
+          g.beginPath();
+          g.moveTo(faceX + faceW * 0.2, faceY + faceH * 0.8);
+          g.lineTo(faceX + faceW * 0.8, faceY + faceH * 0.2);
+          g.strokePath();
+
+          // Secondary small reflection
+          g.beginPath();
+          g.moveTo(faceX + faceW * 0.6, faceY + faceH * 0.9);
+          g.lineTo(faceX + faceW * 0.9, faceY + faceH * 0.6);
+          g.strokePath();
+        }
         break;
 
       case TileType.LEDGE_UP:
       case TileType.LEDGE_DOWN:
       case TileType.LEDGE_LEFT:
       case TileType.LEDGE_RIGHT:
-        // Ledge base
-        g.fillStyle(COLORS.LEDGE);
-        g.fillRect(px + padding, py + padding, size - padding * 2, size - padding * 2);
-        
-        // Direction arrow
-        g.fillStyle(COLORS.LEDGE_ARROW);
+        draw3DTile(COLORS.LEDGE_FACE, COLORS.LEDGE_EDGE);
+
+        // Simple filled triangle centered on the tile face
         const cx = px + size / 2;
-        const cy = py + size / 2;
-        const arrowSize = 8;
-        
-        // Arrow points in the direction you TRAVEL when entering (away from you)
-        // LEDGE_UP = enter from above, moving DOWN → arrow points DOWN
-        // LEDGE_DOWN = enter from below, moving UP → arrow points UP
-        // LEDGE_LEFT = enter from right, moving LEFT → arrow points LEFT
-        // LEDGE_RIGHT = enter from left, moving RIGHT → arrow points RIGHT
-        if (tile === TileType.LEDGE_UP) {
-          // Arrow pointing DOWN (you enter moving down)
-          g.fillTriangle(cx, cy + arrowSize, cx - arrowSize, cy - arrowSize/2, cx + arrowSize, cy - arrowSize/2);
-        } else if (tile === TileType.LEDGE_DOWN) {
-          // Arrow pointing UP (you enter moving up)
-          g.fillTriangle(cx, cy - arrowSize, cx - arrowSize, cy + arrowSize/2, cx + arrowSize, cy + arrowSize/2);
-        } else if (tile === TileType.LEDGE_RIGHT) {
-          // Arrow pointing RIGHT (you enter moving right)
-          g.fillTriangle(cx + arrowSize, cy, cx - arrowSize/2, cy - arrowSize, cx - arrowSize/2, cy + arrowSize);
-        } else {
-          // LEDGE_LEFT - Arrow pointing LEFT (you enter moving left)
-          g.fillTriangle(cx - arrowSize, cy, cx + arrowSize/2, cy - arrowSize, cx + arrowSize/2, cy + arrowSize);
-        }
+        const cy = py + size / 2 - depth / 2;
+        const baseWidth = size * 0.32;
+        const baseHeight = size * 0.20;
+        const shrink = 1;               // trim top/bottom by 1px
+        const lift = depth * 0.6;       // subtle perspective lift toward the pointing direction
+        const halfW = baseWidth / 2;
+        const halfH = Math.max(baseHeight / 2 - shrink, 1);
+
+        g.fillStyle(COLORS.LEDGE_ARROW);
+        // Base "up" triangle points relative to center
+        const upA = { x: 0, y: -halfH - lift };
+        const upB = { x: -halfW, y: halfH };
+        const upC = { x: halfW, y: halfH };
+
+        const rotate = (p: { x: number; y: number }, dir: 'up' | 'down' | 'left' | 'right') => {
+          switch (dir) {
+            case 'up':
+              return { x: p.x, y: p.y };
+            case 'down':
+              return { x: p.x, y: -p.y };
+            case 'right':
+              return { x: -p.y, y: p.x };
+            case 'left':
+              return { x: p.y, y: -p.x };
+          }
+        };
+
+        const dir =
+          tile === TileType.LEDGE_UP ? 'down' : // enter from above, exit downward
+          tile === TileType.LEDGE_DOWN ? 'up' : // enter from below, exit upward
+          tile === TileType.LEDGE_RIGHT ? 'right' : 'left';
+
+        const A = rotate(upA, dir);
+        const B = rotate(upB, dir);
+        const C = rotate(upC, dir);
+
+        g.fillTriangle(cx + A.x, cy + A.y, cx + B.x, cy + B.y, cx + C.x, cy + C.y);
         break;
 
       case TileType.BOULDER:
-        // Draw ground underneath boulder (the boulder sprite is drawn separately)
-        const isAltBoulder = (gridX + gridY) % 2 === 0;
-        g.fillStyle(isAltBoulder ? COLORS.GROUND : COLORS.GROUND_ALT);
-        g.fillRect(px + padding, py + padding, size - padding * 2, size - padding * 2);
-        // Boulder is rendered as a sprite for animation purposes
+        // Draw ground first
+        draw3DTile(COLORS.GROUND_FACE, COLORS.GROUND_EDGE);
         break;
     }
   }
@@ -245,67 +289,82 @@ export class GameScene extends Phaser.Scene {
   private createGoal() {
     const px = this.offsetX + this.puzzle.goal.x * TILE_SIZE + TILE_SIZE / 2;
     const py = this.offsetY + this.puzzle.goal.y * TILE_SIZE + TILE_SIZE / 2;
+    const FACE_LIFT = this.tileFaceLift; // raise visuals to sit on the top face of the 3D tile
     
-    this.goalSprite = this.add.container(px, py);
+    this.goalSprite = this.add.container(px, py - FACE_LIFT);
     
-    // Outer glow
-    const glow = this.add.graphics();
-    glow.fillStyle(COLORS.GOAL_GLOW, 0.3);
-    glow.fillCircle(0, 0, 14);
-    this.goalSprite.add(glow);
+    // 3D Star Drawing Helper
+    const drawStar = (color: number, offsetY: number) => {
+        const star = this.add.graphics();
+        star.fillStyle(color);
+        
+        const points = 5;
+        const outerRadius = 11;
+        const innerRadius = 4.5;  // balance between sharp and soft angles
+        const rot = Math.PI / 2 * 3;
+        const step = Math.PI / points;
+
+        star.beginPath();
+        star.moveTo(0, offsetY - outerRadius);
+        for (let i = 0; i < points; i++) {
+            star.lineTo(
+              Math.cos(rot + step * i * 2) * outerRadius,
+              offsetY + Math.sin(rot + step * i * 2) * outerRadius
+            );
+            star.lineTo(
+              Math.cos(rot + step * (i * 2 + 1)) * innerRadius,
+              offsetY + Math.sin(rot + step * (i * 2 + 1)) * innerRadius
+            );
+        }
+        star.lineTo(0, offsetY - outerRadius);
+        star.closePath();
+        star.fillPath();
+        
+        this.goalSprite.add(star);
+    };
+
+    // 1. Draw Shadow/Edge (Dark Yellow) - Offset slightly down from face center
+    drawStar(0xdaa520, 2);
+
+    // 2. Draw Face (Bright Gold) - On face center
+    drawStar(0xffd700, 0);
     
-    // Main star/goal marker - simplified circle design
-    const star = this.add.graphics();
-    star.fillStyle(COLORS.GOAL);
-    star.fillCircle(0, 0, 10);
-    star.fillStyle(COLORS.GOAL_GLOW);
-    star.fillCircle(0, 0, 5);
-    star.fillStyle(0xffffff);
-    star.fillCircle(-3, -3, 2);
-    this.goalSprite.add(star);
-    
-    // Pulsing animation
-    this.tweens.add({
-      targets: this.goalSprite,
-      scaleX: 1.1,
-      scaleY: 1.1,
-      duration: 800,
-      yoyo: true,
-      repeat: -1,
-      ease: 'Sine.easeInOut',
-    });
+    // Static (no pulse) to respect 3D tile face
   }
 
   private createPlayer() {
     const px = this.offsetX + this.puzzle.start.x * TILE_SIZE + TILE_SIZE / 2;
     const py = this.offsetY + this.puzzle.start.y * TILE_SIZE + TILE_SIZE / 2;
+    const FACE_LIFT = this.tileFaceLift; // raise visuals to sit on the top face of the 3D tile
     
-    this.player = this.add.container(px, py);
+    this.player = this.add.container(px, py - FACE_LIFT);
     
-    // Player body (pixel art style character)
-    const body = this.add.graphics();
+    // Player body - 3D Red Tile
+    const edge = this.add.graphics();
+    const face = this.add.graphics();
     
-    // Shadow
-    body.fillStyle(0x000000, 0.3);
-    body.fillEllipse(0, 8, 16, 6);
+    const size = TILE_SIZE * 0.7; 
+    const radius = 6;
+    const depth = 4;
     
-    // Body
-    body.fillStyle(COLORS.PLAYER);
-    body.fillRoundedRect(-8, -10, 16, 18, 3);
+    // 1. Edge (Bottom/Shadow)
+    edge.fillStyle(COLORS.PLAYER_EDGE);
+    edge.fillRoundedRect(-size/2, -size/2, size, size, radius);
     
-    // Outline
-    body.lineStyle(2, COLORS.PLAYER_OUTLINE);
-    body.strokeRoundedRect(-8, -10, 16, 18, 3);
+    // 2. Face (Top) - Draw slightly higher (-depth)
+    face.fillStyle(COLORS.PLAYER_FACE);
+    face.fillRoundedRect(-size/2, -size/2, size, size - depth, radius);
     
-    // Eyes
-    body.fillStyle(0xffffff);
-    body.fillCircle(-3, -4, 3);
-    body.fillCircle(3, -4, 3);
-    body.fillStyle(0x000000);
-    body.fillCircle(-2, -4, 1.5);
-    body.fillCircle(4, -4, 1.5);
-    
-    this.player.add(body);
+    this.player.add(edge);
+    this.player.add(face);
+  }
+
+  private createFlashOverlay() {
+    this.flashOverlay = this.add.graphics();
+    this.flashOverlay.fillStyle(0xff0000, 1);
+    this.flashOverlay.fillRect(0, 0, this.scale.width, this.scale.height);
+    this.flashOverlay.setAlpha(0);
+    this.flashOverlay.setDepth(100); // Ensure it's on top
   }
 
   private setupInput() {
@@ -406,42 +465,49 @@ export class GameScene extends Phaser.Scene {
     } else {
       // Block input during respawn sequence
       this.isAnimating = true;
+
+      // Visual Feedback: Camera Shake & Subtle Red Flash
+      this.cameras.main.shake(200, 0.01);
       
-      // Flash red and shake the player
+      // Flash overlay
+      this.flashOverlay.setAlpha(0.3);
       this.tweens.add({
-        targets: this.player,
-        scaleX: { from: 1.3, to: 1 },
-        scaleY: { from: 1.3, to: 1 },
-        duration: 200,
-        ease: 'Quad.easeOut',
+        targets: this.flashOverlay,
+        alpha: 0,
+        duration: 300,
+        ease: 'Quad.easeOut'
       });
       
-      // Brief pause, then fade out and teleport
-      this.time.delayedCall(400, () => {
-        // Fade out at current position
-        this.tweens.add({
-          targets: this.player,
-          alpha: 0,
-          duration: 200,
-          ease: 'Quad.easeIn',
-          onComplete: () => {
-            // Teleport to start
-            const px = this.offsetX + this.puzzle.start.x * TILE_SIZE + TILE_SIZE / 2;
-            const py = this.offsetY + this.puzzle.start.y * TILE_SIZE + TILE_SIZE / 2;
-            this.player.setPosition(px, py);
-            
-            // Fade back in
-            this.tweens.add({
-              targets: this.player,
-              alpha: 1,
-              duration: 300,
-              ease: 'Quad.easeOut',
-              onComplete: () => {
-                this.isAnimating = false; // Allow input again
-              }
-            });
-          }
-        });
+      // Player "Death" animation
+      this.tweens.add({
+        targets: this.player,
+        scaleX: 1.5,
+        scaleY: 1.5,
+        alpha: 0,
+        duration: 200,
+        ease: 'Quad.easeOut',
+        onComplete: () => {
+             // ... rest of teleport logic
+             this.time.delayedCall(200, () => {
+                const px = this.offsetX + this.puzzle.start.x * TILE_SIZE + TILE_SIZE / 2;
+                const py = this.offsetY + this.puzzle.start.y * TILE_SIZE + TILE_SIZE / 2 - this.tileFaceLift;
+                this.player.setPosition(px, py);
+                this.player.setScale(0); // Start small
+                this.player.setAlpha(1);
+
+                // Pop in at start
+                this.tweens.add({
+                    targets: this.player,
+                    scaleX: 1,
+                    scaleY: 1,
+                    duration: 400,
+                    ease: 'Back.out',
+                    onComplete: () => {
+                        this.isAnimating = false;
+                    }
+                });
+             });
+        }
       });
     }
   }
@@ -472,90 +538,125 @@ export class GameScene extends Phaser.Scene {
   private drawEndGameAnalysis() {
     if (!this.puzzle.solutionPath) return;
     
+    // Clear previous analysis if any (just in case called multiple times without restart)
+    this.clearAnalysis();
+
     const g = this.add.graphics();
+    this.analysisObjects.push(g);
     
-    // Draw path as connected line with gradient and numbered waypoints
     const path = this.puzzle.solutionPath;
+
+    // 1. Draw Solution Path
     if (path.length > 1) {
-        // Draw thick green gradient line
-        g.lineStyle(6, 0x06d6a0, 0.7);
+        // Vivid Green Path
+        const pathColor = 0x2eec71; // Brighter, more vivid green
+        
+        g.lineStyle(5, pathColor, 0.8);
         g.beginPath();
         
         const startPx = this.offsetX + path[0].x * TILE_SIZE + TILE_SIZE / 2;
-        const startPy = this.offsetY + path[0].y * TILE_SIZE + TILE_SIZE / 2;
+        const startPy = this.offsetY + path[0].y * TILE_SIZE + TILE_SIZE / 2 - this.tileFaceLift;
         g.moveTo(startPx, startPy);
         
         for (let i = 1; i < path.length; i++) {
             const px = this.offsetX + path[i].x * TILE_SIZE + TILE_SIZE / 2;
-            const py = this.offsetY + path[i].y * TILE_SIZE + TILE_SIZE / 2;
+            const py = this.offsetY + path[i].y * TILE_SIZE + TILE_SIZE / 2 - this.tileFaceLift;
             g.lineTo(px, py);
         }
         g.strokePath();
         
-        // Draw numbered circles at each waypoint
+        // Numbered Waypoints
         for (let i = 0; i < path.length; i++) {
             const px = this.offsetX + path[i].x * TILE_SIZE + TILE_SIZE / 2;
-            const py = this.offsetY + path[i].y * TILE_SIZE + TILE_SIZE / 2;
+            const py = this.offsetY + path[i].y * TILE_SIZE + TILE_SIZE / 2 - this.tileFaceLift;
             
-            // Green circle background
-            g.fillStyle(0x06d6a0, 0.9);
-            g.fillCircle(px, py, 12);
+            // Solid Green Circle
+            g.fillStyle(pathColor, 1);
+            g.fillCircle(px, py, 11);
             
-            // Move number (0-based)
-            this.add.text(
-                px, 
-                py, 
-                i.toString(), 
-                { 
-                    fontSize: '14px',
-                    color: '#ffffff',
-                    stroke: '#000000',
-                    strokeThickness: 3,
-                }
-            ).setOrigin(0.5);
+            // Dark Border for contrast
+            g.lineStyle(2, COLORS.TEXT, 1); // Using dark text color (0x1a1a1a)
+            g.strokeCircle(px, py, 11);
+            
+            // Move Number
+            const t = this.add.text(px, py, i.toString(), {
+                fontSize: '13px',
+                fontFamily: 'Arial',
+                color: '#ffffff',
+                fontStyle: 'bold'
+            }).setOrigin(0.5);
+            this.analysisObjects.push(t);
         }
     }
     
-    // Highlight deviation points in red with life numbers
-    const deviationMap = new Map<string, { lifeNumber: number }>();
+    // 2. Draw Deviation Points (Where lives were lost)
+    // Map position key to array of attempt numbers (1-based)
+    const deviationMap = new Map<string, number[]>();
     
     this.gameState.attempts.forEach((attempt, attemptIndex) => {
         let pos = attempt.failedAt;
-        
-        // If we have a deviation index, use that position
         if (attempt.deviationIndex !== undefined && attempt.deviationIndex !== -1 && attempt.path[attempt.deviationIndex]) {
              pos = attempt.path[attempt.deviationIndex];
         }
 
         if (pos) {
             const key = `${pos.x},${pos.y}`;
-            // Always update with latest attempt number
-            deviationMap.set(key, { lifeNumber: attemptIndex + 1 });
+            if (!deviationMap.has(key)) {
+                deviationMap.set(key, []);
+            }
+            deviationMap.get(key)!.push(attemptIndex + 1);
         }
     });
     
-    // Draw red cells with numbers
-    deviationMap.forEach(({ lifeNumber }, key) => {
+    deviationMap.forEach((lifeNumbers, key) => {
         const [x, y] = key.split(',').map(Number);
         const px = this.offsetX + x * TILE_SIZE + TILE_SIZE / 2;
-        const py = this.offsetY + y * TILE_SIZE + TILE_SIZE / 2;
+        const py = this.offsetY + y * TILE_SIZE + TILE_SIZE / 2 - this.tileFaceLift;
         
-        // Red circle background
-        g.fillStyle(0xef476f, 0.9);
-        g.fillCircle(px, py, 14);
+        // Draw a "Skull" or "X" marker - Cleaner than big red circle
+        const markerSize = 10;
         
-        // Life number
-        this.add.text(
-            px, 
-            py, 
-            lifeNumber.toString(), 
-            { 
-                fontSize: '18px',
-                color: '#ffffff',
-                stroke: '#000000',
-                strokeThickness: 4,
-            }
-        ).setOrigin(0.5);
+        // White background for contrast
+        g.fillStyle(0xffffff, 0.9);
+        g.fillCircle(px, py, 12);
+        
+        // Red X
+        g.lineStyle(3, COLORS.PLAYER_FACE, 1);
+        g.beginPath();
+        g.moveTo(px - markerSize/2, py - markerSize/2);
+        g.lineTo(px + markerSize/2, py + markerSize/2);
+        g.moveTo(px + markerSize/2, py - markerSize/2);
+        g.lineTo(px - markerSize/2, py + markerSize/2);
+        g.strokePath();
+
+        // Attempt Number Badges
+        lifeNumbers.forEach((lifeNumber, i) => {
+            // Distribute badges if multiple failures at same spot
+            let dx = 8;
+            let dy = 8;
+            
+            // i=0: Bottom-Right (+8, +8)
+            // i=1: Top-Right (+8, -8)
+            // i=2: Bottom-Left (-8, +8)
+            
+            if (i === 1) dy = -8;
+            if (i === 2) dx = -8;
+            
+            const badgeX = px + dx;
+            const badgeY = py + dy;
+            
+            // Badge Circle (using same graphics object 'g')
+            g.fillStyle(COLORS.PLAYER_FACE, 1);
+            g.fillCircle(badgeX, badgeY, 7);
+            
+            const t = this.add.text(badgeX, badgeY, lifeNumber.toString(), { 
+                fontSize: '10px', 
+                fontFamily: 'Arial',
+                color: '#ffffff', 
+                fontStyle: 'bold'
+            }).setOrigin(0.5);
+            this.analysisObjects.push(t);
+        });
     });
   }
 
@@ -700,42 +801,114 @@ export class GameScene extends Phaser.Scene {
   }
 
   private animatePath(path: Position[], onComplete: () => void) {
-    // For smooth ice sliding, animate directly to final position
-    // instead of chaining many tiny tweens (which can look choppy)
+    // "Jelly" Physics Animation
     const finalPos = path[path.length - 1];
     const px = this.offsetX + finalPos.x * TILE_SIZE + TILE_SIZE / 2;
-    const py = this.offsetY + finalPos.y * TILE_SIZE + TILE_SIZE / 2;
+    const py = this.offsetY + finalPos.y * TILE_SIZE + TILE_SIZE / 2 - this.tileFaceLift;
     
     const isSliding = path.length > 1;
     
-    // Different timing for walking vs sliding:
-    // - Regular step: 110ms, snappy and responsive
-    // - Ice slide: 180ms + 90ms per tile, smooth leisurely glide
-    const duration = isSliding 
-      ? 180 + (path.length - 1) * 90 
-      : 110;
+    // Calculate movement vector
+    const dx = px - this.player.x;
+    const dy = py - this.player.y;
     
+    // Timing
+    const duration = isSliding 
+      ? 150 + (path.length - 1) * 60 
+      : 120; 
+      
+    // 1. Stretch during move (Speed)
+    // We maintain this stretch for the entire duration of the move
+    let moveScaleX = 1;
+    let moveScaleY = 1;
+    
+    // More subtle stretch (was 1.25/0.75)
+    if (Math.abs(dx) > Math.abs(dy)) {
+        // Moving Horizontal
+        moveScaleX = 1.15;
+        moveScaleY = 0.85;
+    } else {
+        // Moving Vertical
+        moveScaleX = 0.85;
+        moveScaleY = 1.15;
+    }
+
+    // Apply stretch
+    this.tweens.add({
+        targets: this.player,
+        scaleX: moveScaleX,
+        scaleY: moveScaleY,
+        duration: 100,
+        ease: 'Quad.easeOut'
+    });
+      
+    // 2. Position Tween
     this.tweens.add({
       targets: this.player,
       x: px,
       y: py,
       duration,
-      ease: isSliding ? 'Sine.easeOut' : 'Quad.easeOut',
-      onComplete: onComplete,
+      ease: isSliding ? 'Quad.out' : 'Back.out',
+      onComplete: () => {
+          // 3. Impact & Snap Back
+          // When we stop, we swap the scales to "Squash" against the wall
+          // (Conservation of momentum: Length turns into Width)
+          
+          // Swap scales for instant impact deformation
+          this.player.setScale(moveScaleY, moveScaleX); 
+          
+          // 4. Elastic Snap Recovery
+          this.tweens.add({
+              targets: this.player,
+              scaleX: 1,
+              scaleY: 1,
+              duration: 500,
+              ease: 'Elastic.out',
+              easeParams: [1.2, 0.6] // Tighter elastic snap
+          });
+          
+          onComplete();
+      },
     });
   }
 
   private playBumpAnimation(dir: Direction) {
-    const delta = getDelta(dir);
-    const bumpDist = 4;
+    // Jelly Splash Effect
+    // Squash against the wall we hit
     
+    let scaleX = 1;
+    let scaleY = 1;
+    
+    // Impact deformation
+    // Hitting a vertical wall (UP/DOWN) -> Squash Y, Stretch X
+    if (dir === Direction.UP || dir === Direction.DOWN) {
+        scaleY = 0.6;
+        scaleX = 1.4;
+    } 
+    // Hitting a horizontal wall (LEFT/RIGHT) -> Squash X, Stretch Y
+    else {
+        scaleX = 0.6;
+        scaleY = 1.4;
+    }
+
+    // Tween 1: Impact (Squash)
     this.tweens.add({
       targets: this.player,
-      x: this.player.x + delta.x * bumpDist,
-      y: this.player.y + delta.y * bumpDist,
-      duration: 50,
-      yoyo: true,
+      scaleX: scaleX,
+      scaleY: scaleY,
+      duration: 100,
+      yoyo: true, // Go back to normal
       ease: 'Quad.easeOut',
+      onComplete: () => {
+         // Tween 2: Wiggle/Settle (Elastic recovery)
+         this.tweens.add({
+             targets: this.player,
+             scaleX: 1,
+             scaleY: 1,
+             duration: 300,
+             ease: 'Bounce.easeOut'
+         });
+      }
     });
   }
 
@@ -802,6 +975,7 @@ export class GameScene extends Phaser.Scene {
 
   // Public method to restart the puzzle
   public restart() {
+    this.clearAnalysis();
     this.isPlaying = false;
     this.gameState = {
       playerPos: { ...this.puzzle.start },
@@ -830,5 +1004,10 @@ export class GameScene extends Phaser.Scene {
     });
 
     emitGameEvent('stateUpdate', { ...this.gameState });
+  }
+
+  private clearAnalysis() {
+    this.analysisObjects.forEach(obj => obj.destroy());
+    this.analysisObjects = [];
   }
 }

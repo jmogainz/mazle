@@ -1,0 +1,75 @@
+[package]
+name = "mazle-generator"
+version = "0.1.0"
+edition = "2021"
+description = "High-performance puzzle generator for Mazle"
+
+# Build as both library (for WASM) and binary (for server)
+[lib]
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
+[[bin]]
+name = "mazle-generator"
+path = "src/main.rs"
+
+[dependencies]
+# Serialization (works in both native and WASM)
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Random number generation (seedable, works in both native and WASM)
+rand = "0.8"
+rand_chacha = "0.3"
+
+# Parallelism - works on both native and WASM (with threads feature)
+# Version 1.8+ required for wasm-bindgen-rayon compatibility
+rayon = "1.8"
+rustc-hash = "1"
+
+# Utilities
+thiserror = "1"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Native-only dependencies (server)
+# ─────────────────────────────────────────────────────────────────────────────
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# Web server
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.5", features = ["cors"] }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# WASM-only dependencies (browser)
+# ─────────────────────────────────────────────────────────────────────────────
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2.99"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["console"] }
+serde-wasm-bindgen = "0.6"
+getrandom = { version = "0.2", features = ["js"] }
+console_error_panic_hook = "0.1"
+# Rayon thread pool for WASM (enables parallel generation in browser)
+wasm-bindgen-rayon = "1.3"
+
+[features]
+default = []
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+incremental = false
+
+[profile.dev]
+opt-level = 1  # Faster dev builds but still reasonably fast
+incremental = true  # Incremental only works without LTO
+
+# WASM-specific release profile
+[profile.wasm-release]
+inherits = "release"
+opt-level = "s"  # Optimize for size
+lto = false
+incremental = true

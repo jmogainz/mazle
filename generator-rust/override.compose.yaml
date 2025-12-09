@@ -1,0 +1,11 @@
+# override.compose.yaml for mazle-generator
+# Activates the profiles for the Rust app services
+
+services:
+  rust-app:
+    profiles:
+      - app
+
+  rust-app-health-check:
+    profiles:
+      - app_post_check

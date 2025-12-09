@@ -1,0 +1,3 @@
+[submodule "devops-toolkit"]
+	path = devops-toolkit
+	url = git@github.com:poofware/devops-toolkit.git

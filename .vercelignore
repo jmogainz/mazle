@@ -1,0 +1,5 @@
+# Ignore Rust backend - not needed for Vercel deployment
+generator-rust/
+devops-toolkit/
+logs/
+*.log

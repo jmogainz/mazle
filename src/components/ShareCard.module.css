@@ -1,0 +1,379 @@
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.card {
+  background: var(--color-background);
+  border: 2px solid var(--color-border);
+  border-radius: 14px;
+  padding: 1.5rem;
+  max-width: 380px;
+  width: 100%;
+  position: relative;
+  animation: slideUp 0.3s ease-out;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.08);
+  font-family: var(--font-main);
+}
+
+.cardFailed {
+  border-color: var(--color-error);
+  border-width: 3px;
+}
+
+.cardSuccess {
+  border-color: var(--color-success);
+  border-width: 3px;
+}
+
+.cardInline {
+    box-shadow: none;
+    border: 1px solid var(--color-border);
+    width: 100%;
+    max-width: 420px;
+}
+
+.inlineContainer {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    padding: 0 1rem;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.closeButton {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  background: none;
+  border: none;
+  color: var(--color-secondary);
+  font-size: 1.25rem;
+  cursor: pointer;
+  padding: 0.25rem;
+  line-height: 1;
+  transition: color 0.2s;
+}
+
+.closeButton:hover {
+  color: var(--color-text);
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.title {
+  font-size: 1.6rem;
+  color: var(--color-text);
+  margin: 0 0 0.25rem 0;
+  font-family: var(--font-main);
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.cardFailed .title {
+  color: var(--color-error);
+}
+
+.cardSuccess .title {
+  color: var(--color-success);
+}
+
+.puzzleNumber {
+  color: var(--color-secondary);
+  font-size: 0.875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.rating {
+  text-align: center;
+  font-size: 2rem;
+  margin-bottom: 1rem;
+  min-height: 2.5rem;
+}
+
+.efficiencySection {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+  padding: 1rem;
+  background: var(--color-surface);
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+}
+
+.efficiencyBar {
+  font-size: 1.25rem;
+  line-height: 1;
+  letter-spacing: 0.05em;
+}
+
+.efficiencyValue {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: var(--color-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.mainStat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.mainStatValue {
+    font-size: 2.4rem;
+    font-weight: 800;
+    font-family: var(--font-main);
+    color: var(--color-text);
+}
+
+.cardFailed .mainStatValue,
+.cardSuccess .mainStatValue {
+    color: var(--color-text);
+}
+
+.mainStatLabel {
+    font-size: 0.8rem;
+    color: var(--color-secondary);
+    letter-spacing: 0.1em;
+}
+
+.subStat {
+    text-align: center;
+    margin-bottom: 0.75rem;
+    color: var(--color-secondary);
+    font-size: 0.9rem;
+}
+
+.progressSection {
+  width: 100%;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 0.75rem 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.progressHeader {
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-secondary);
+  margin-bottom: 0.5rem;
+  font-weight: 700;
+}
+
+.progressList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.progressRow {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.progressLabel {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--color-text);
+  text-transform: uppercase;
+}
+
+.progressBar {
+  position: relative;
+  width: 100%;
+  height: 10px;
+  background: var(--color-border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progressFill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--color-primary);
+  transition: width 0.25s ease;
+}
+
+.progressFillSuccess {
+  background: var(--color-primary);
+}
+
+.progressFillFail {
+  background: var(--color-warning);
+}
+
+.progressFillEmpty {
+  background: var(--color-border);
+}
+
+.progressValue {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.statsRow {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.statItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.statValue {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.statLabel {
+  font-size: 0.7rem;
+  color: var(--color-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.statDivider {
+  width: 1px;
+  height: 32px;
+  background: var(--color-border);
+}
+
+.actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.shareButton,
+.copyButton,
+.playAgainButton {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border: 2px solid;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: var(--font-main);
+}
+
+.shareButton {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-background);
+}
+
+.shareButton:hover {
+  background: transparent;
+  color: var(--color-primary);
+}
+
+.shareButton.copied {
+  background: #22c55e;
+  border-color: #22c55e;
+  color: white;
+}
+
+.shareButton.failed {
+  background: #ef4444;
+  border-color: #ef4444;
+  color: white;
+}
+
+.copyButton {
+  background: transparent;
+  border-color: var(--color-secondary);
+  color: var(--color-text);
+}
+
+.copyButton:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.copyButton.copied {
+  background: #22c55e;
+  border-color: #22c55e;
+  color: white;
+}
+
+.copyButton.failed {
+  background: #ef4444;
+  border-color: #ef4444;
+  color: white;
+}
+
+.playAgainButton {
+  background: transparent;
+  border-color: var(--color-secondary);
+  color: var(--color-secondary);
+}
+
+.playAgainButton:hover {
+  border-color: var(--color-text);
+  color: var(--color-text);
+}
+
+.comeback {
+  text-align: center;
+  color: var(--color-secondary);
+  font-size: 0.75rem;
+  margin: 0;
+}

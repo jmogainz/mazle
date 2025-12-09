@@ -1,0 +1,24 @@
+services:
+  wasm-build:
+    build:
+      context: .
+      dockerfile: wasm-builder.Dockerfile
+      args:
+        RUST_VERSION: ${WASM_RUST_VERSION:-1.83}
+        WASM_PACK_VERSION: ${WASM_PACK_VERSION:-0.13.1}
+        RUST_TOOLCHAIN: ${WASM_RUST_TOOLCHAIN:-nightly}
+        BUILD_ENV: ${ENV:-dev-test}
+    environment:
+      # Output path inside the container (mounted workspace)
+      - WASM_OUTPUT_DIR=/workspace/src/wasm/generator
+      
+      # Permission fixing
+      - HOST_UID=${HOST_UID:-}
+      - HOST_GID=${HOST_GID:-}
+    volumes:
+      # Mount only the WASM output directory (no need for full workspace or cargo caches)
+      # The build happens at Docker build time with cache mounts; runtime just copies artifacts
+      - ./src/wasm/generator:/workspace/src/wasm/generator
+    profiles:
+      - build_pre_sync
+    restart: "no"

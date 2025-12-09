@@ -1,0 +1,29 @@
+# Git
+.git/
+
+# Next.js build output
+.next/
+
+# Dependencies (will be installed fresh)
+node_modules/
+
+# Rust generator (separate build)
+generator-rust/
+
+# Devops toolkit (not needed in frontend container)
+devops-toolkit/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+*.swp
+
+# Temp files
+tmp/
+
+# IDE
+.vscode/
+.idea/

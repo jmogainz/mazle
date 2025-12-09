@@ -1,0 +1,34 @@
+{
+  "name": "mazle",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "node server.js",
+    "dev:https": "node server.js --https",
+    "dev:lan": "node server.js -H 0.0.0.0 --https",
+    "dev:ngrok": "ngrok http 8080",
+    "dev:next": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@upstash/redis": "^1.35.7",
+    "date-fns": "^3.6.0",
+    "next": "^15.0.3",
+    "phaser": "^3.80.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "seedrandom": "^3.0.5"
+  },
+  "devDependencies": {
+    "@typescript-eslint/parser": "^8.0.0",
+    "@types/node": "^20.14.10",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@types/seedrandom": "^3.0.8",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^15.0.3",
+    "typescript": "^5.5.3"
+  }
+}

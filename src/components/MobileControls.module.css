@@ -1,0 +1,76 @@
+.container {
+  display: none;
+  justify-content: center;
+  padding: 1rem;
+}
+
+@media (max-width: 768px), (pointer: coarse) {
+  .container {
+    display: flex;
+  }
+}
+
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 56px);
+  grid-template-rows: repeat(3, 56px);
+  gap: 4px;
+}
+
+.button {
+  background: var(--color-surface);
+  border: 2px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text);
+  font-size: 1.25rem;
+  cursor: pointer;
+  transition: background 0.05s, transform 0.05s, box-shadow 0.05s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  box-shadow: 0 3px 0 var(--color-border);
+}
+
+.button:active:not(:disabled),
+.button.pressed {
+  background: var(--color-primary);
+  color: var(--color-background);
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--color-border);
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.up {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.left {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.center {
+  grid-column: 2;
+  grid-row: 2;
+  background: var(--color-surface);
+  border-radius: 50%;
+  opacity: 0.3;
+}
+
+.right {
+  grid-column: 3;
+  grid-row: 2;
+}
+
+.down {
+  grid-column: 2;
+  grid-row: 3;
+}

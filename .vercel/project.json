@@ -1,0 +1,16 @@
+{
+  "projectId": "prj_SXim13MJPvbDWNMCSnwUXsD1XYlu",
+  "orgId": "team_hDgYy1ncarJLLPlHYQBJmYWg",
+  "projectName": "mazle",
+  "settings": {
+    "createdAt": 1764105464731,
+    "framework": "nextjs",
+    "devCommand": "npm run dev",
+    "installCommand": "npm install",
+    "buildCommand": "npm run build",
+    "outputDirectory": null,
+    "rootDirectory": null,
+    "directoryListing": false,
+    "nodeVersion": "24.x"
+  }
+}

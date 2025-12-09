@@ -1,0 +1,203 @@
+/* Shared Fonts */
+.headerContainer, .footerContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  font-family: var(--font-main);
+  padding: 0.35rem 0;
+}
+
+/* --- TOP HEADER VARIANT --- */
+.headerContainer {
+  gap: 0.4rem;
+  margin-bottom: 0.15rem;
+}
+
+.puzzleInfo {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+}
+
+.puzzleNumber {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--color-text);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.statsRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+}
+
+.statGroup {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  position: relative;
+  min-width: 70px;
+}
+
+.statValue {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.statValue.danger {
+  color: var(--color-error);
+  animation: pulse 1s infinite;
+}
+
+.statLabel {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-secondary);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.statDivider {
+  width: 1px;
+  height: 32px;
+  background: var(--color-border);
+}
+
+/* Lives Styling */
+.livesContainer {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    height: 1.4rem;
+}
+
+.lifeNode {
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+    transition: all 0.3s ease;
+}
+
+.lifeActive {
+    background: var(--color-warning); 
+    transform: scale(1);
+}
+
+.lifeLost {
+    background: var(--color-border);
+    transform: scale(0.8);
+    opacity: 0.5;
+}
+
+/* --- FOOTER VARIANT (Moves Remaining) --- */
+.footerContainer {
+  margin-top: 0.5rem;
+}
+
+.movesRemainingContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.movesValue {
+  font-size: 3.5rem; /* Huge Waffle Style */
+  font-weight: 700;
+  color: var(--color-text);
+  line-height: 1;
+  transition: color 0.2s ease;
+}
+
+.movesValue.danger {
+  color: var(--color-error);
+  animation: pulse 1s infinite;
+}
+
+.movesLabel {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-secondary);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-top: 0.25rem;
+}
+
+
+/* Animations & Tooltips */
+.statValue.penaltyFlash {
+    animation: penaltyFlash 0.5s ease-in-out 2;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+@keyframes penaltyFlash {
+    0%, 100% { color: var(--color-text); }
+    50% { color: var(--color-error); }
+}
+
+.infoIcon {
+  position: absolute;
+  top: 0;
+  right: -18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 0.65rem;
+  font-weight: bold;
+  color: var(--color-secondary);
+  background: var(--color-surface);
+  border-radius: 50%;
+  cursor: pointer;
+  opacity: 0.6;
+  border: 1px solid var(--color-border);
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.infoIcon:hover {
+  opacity: 1;
+}
+
+.tooltip {
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 8px);
+  transform: translateY(-50%);
+  padding: 8px 12px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+@media (max-width: 480px) {
+  .infoIcon {
+    right: -16px;
+  }
+  
+  .tooltip {
+    top: auto;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+  }
+}

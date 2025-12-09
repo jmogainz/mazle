@@ -1,0 +1,645 @@
+.main {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.gameWrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1rem;
+  gap: 0.1rem;
+}
+
+.devPanel {
+  width: 100%;
+  max-width: 420px;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  backdrop-filter: blur(8px);
+  color: var(--color-secondary);
+  animation: devPanelSlideIn 0.3s ease-out;
+}
+
+@keyframes devPanelSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.devPanelHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.devPanelTitle {
+  font-weight: 700;
+  font-size: 0.875rem;
+  color: var(--color-primary);
+  letter-spacing: 0.02em;
+}
+
+.devCloseButton {
+  background: transparent;
+  border: none;
+  color: var(--color-secondary);
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.875rem;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+
+.devCloseButton:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-primary);
+}
+
+.devSeedInfo {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  margin-bottom: 0.75rem;
+  font-size: 0.75rem;
+}
+
+.devSeedLabel {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.devSeedValue {
+  color: var(--color-secondary);
+  font-family: monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+.devStatsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.devStatItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.5rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+}
+
+.devStatValue {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.devStatLabel {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  color: var(--color-secondary);
+  letter-spacing: 0.05em;
+  margin-top: 0.125rem;
+}
+
+.devPsychSection {
+  margin-bottom: 0.75rem;
+}
+
+.devPsychHeader {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  color: var(--color-secondary);
+  letter-spacing: 0.1em;
+  margin-bottom: 0.5rem;
+  padding-left: 0.25rem;
+}
+
+.devPsychGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.375rem;
+}
+
+.devPsychItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.375rem;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+}
+
+.devPsychValue {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: rgba(99, 102, 241, 0.9);
+  font-variant-numeric: tabular-nums;
+}
+
+.devPsychLabel {
+  font-size: 0.55rem;
+  text-transform: uppercase;
+  color: var(--color-secondary);
+  letter-spacing: 0.02em;
+  margin-top: 0.125rem;
+  text-align: center;
+  line-height: 1.2;
+}
+
+/* Maze Engine Selector */
+.devBackendSection {
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 6px;
+}
+
+.devBackendHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  color: var(--color-secondary);
+  letter-spacing: 0.1em;
+  margin-bottom: 0.5rem;
+}
+
+.devBackendStatus {
+  font-size: 0.6rem;
+  color: var(--color-success);
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+}
+
+.devBackendOptions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.devBackendOption {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.75rem;
+  color: var(--color-primary);
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.devBackendOption:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.devBackendOption input[type="radio"] {
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
+.devBackendDisabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.devBackendDisabled input[type="radio"] {
+  cursor: not-allowed;
+}
+
+.devBackendDisabled span {
+  text-decoration: line-through;
+}
+
+.devControls {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0.375rem;
+}
+
+.devInput {
+  grid-column: span 3;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  color: var(--color-primary);
+  font-size: 0.8rem;
+}
+
+.devSelect {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  color: var(--color-primary);
+  font-size: 0.75rem;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  background-size: 0.8em;
+  padding-right: 1.75rem;
+}
+
+.devSelect:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.devSelect option {
+  background: var(--color-surface);
+  color: var(--color-primary);
+}
+
+.devButton,
+.devButtonSecondary,
+.devButtonGhost {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.75rem;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s;
+}
+
+.devButton {
+  background: var(--color-primary);
+  color: var(--color-background);
+  border-color: var(--color-primary);
+}
+
+.devButtonSecondary {
+  background: var(--color-surface);
+  color: var(--color-primary);
+  border-color: var(--color-border);
+}
+
+.devButtonGhost {
+  background: transparent;
+  color: var(--color-secondary);
+  border-color: var(--color-border);
+}
+
+.devButton:hover,
+.devButtonSecondary:hover,
+.devButtonGhost:hover {
+  opacity: 0.85;
+  transform: translateY(-1px);
+}
+
+.devProgress {
+  margin-top: 0.75rem;
+  padding: 0.5rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+}
+
+.devProgressHeader {
+  font-size: 0.7rem;
+  color: var(--color-secondary);
+  margin-bottom: 0.375rem;
+  text-align: center;
+}
+
+.devProgress .progressBar {
+  width: 100%;
+  height: 4px;
+}
+
+.devHint {
+  margin-top: 0.5rem;
+  font-size: 0.65rem;
+  color: var(--color-secondary);
+  text-align: center;
+  opacity: 0.7;
+}
+
+.buttonSpinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-right: 0.25rem;
+  vertical-align: middle;
+}
+
+.devButton:disabled,
+.devButtonSecondary:disabled,
+.devButtonGhost:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.gameFrame {
+  position: relative;
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.gameContainer {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  border-radius: 10px;
+  overflow: hidden;
+  /* Removed border for floating effect */
+  /* Removed background for floating effect (Phaser canvas handles its own background) */
+  position: relative;
+}
+
+.lifeFlash {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: #ef476f;
+  pointer-events: none;
+  z-index: 15;
+  animation: flashFade 0.5s ease-in-out 3;
+  border-radius: 10px;
+}
+
+@keyframes flashFade {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 0.3; }
+}
+
+.gameContent {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transition: filter 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 10px;
+}
+
+.blurred {
+  filter: blur(20px) brightness(0.6) grayscale(0.2);
+  transition: filter 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.startOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  background: rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(2px);
+  border-radius: 10px;
+}
+
+.startButton {
+  padding: 1.1rem 3.2rem;
+  font-size: 1.3rem;
+  font-weight: 800;
+  font-family: var(--font-main);
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 2px solid var(--color-border);
+  border-radius: 14px;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(0,0,0,0.12);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: none;
+}
+
+.startButton:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+  background: var(--color-primary);
+  color: var(--color-background);
+  border-color: var(--color-primary);
+}
+
+.startButton:active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+}
+
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2rem;
+  color: var(--color-secondary);
+  font-size: 0.875rem;
+  min-height: 520px;
+  width: 100%;
+}
+
+.loadingSpinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--color-surface);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.progressBar {
+  width: 200px;
+  height: 6px;
+  background: var(--color-surface);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 0.5rem;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--color-primary);
+  border-radius: 3px;
+  transition: width 0.3s ease-out;
+}
+
+.progressFillIndeterminate {
+  height: 100%;
+  width: 40%;
+  background: var(--color-primary);
+  border-radius: 3px;
+  animation: indeterminate 1.2s ease-in-out infinite;
+}
+
+@keyframes indeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+
+.previousResult {
+  text-align: center;
+  padding: 1.5rem;
+  background: var(--color-background);
+  border-radius: 14px;
+  border: 2px solid var(--color-border);
+  backdrop-filter: blur(4px);
+  box-shadow: 0 16px 40px rgba(0,0,0,0.3);
+  width: 80%;
+  max-width: 300px;
+  font-family: var(--font-main);
+}
+
+.previousResult p {
+  color: var(--color-secondary);
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+  font-weight: 500;
+}
+
+.viewResultButton {
+  padding: 0.75rem 1.5rem;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 2px solid var(--color-border);
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  font-family: var(--font-main);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.viewResultButton:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+  background: var(--color-primary);
+  color: var(--color-background);
+  border-color: var(--color-primary);
+}
+
+.inlineResultContainer {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  padding: 1rem 0;
+  animation: slideDownSnap 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes slideDownSnap {
+  0% {
+    opacity: 0;
+    transform: translateY(-100px) scale(0.95);
+  }
+  70% {
+    transform: translateY(10px) scale(1.02);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.footer {
+  text-align: center;
+  padding: 1rem;
+  color: var(--color-secondary);
+  font-size: 0.75rem;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateY(-10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Desktop layout */
+@media (min-width: 769px) {
+  .gameWrapper {
+    padding: 1.5rem;
+    justify-content: center;
+  }
+
+  .gameFrame {
+    height: min(75vh, 600px);
+    width: auto !important;
+    max-width: none !important;
+  }
+
+  .devPanel {
+    max-width: 480px;
+  }
+
+  .devStatsGrid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .devPsychGrid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* Mobile layout */
+@media (max-width: 768px) {
+  .gameWrapper {
+    padding: 0.5rem;
+  }
+  
+  .gameFrame {
+    max-width: 100%;
+  }
+  
+  .footer {
+    display: none;
+  }
+}

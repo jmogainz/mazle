@@ -107,7 +107,7 @@ export default function GameUI({ puzzleNumber, puzzleLabel, optimalMoves, varian
 
         {/* Moves */}
         <div className={styles.statGroup}>
-          <span className={`${styles.statValue} ${movesRemaining <= 5 ? styles.danger : ''}`}>{Math.max(0, movesRemaining)}</span>
+          <span className={`${styles.statValue} ${movesRemaining <= 3 ? styles.danger : ''}`}>{Math.max(0, movesRemaining)}</span>
           <span className={styles.statLabel}>MOVES LEFT</span>
         </div>
 

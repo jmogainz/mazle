@@ -435,7 +435,7 @@ export class GameScene extends Phaser.Scene {
   
   private handleLifeLost(finalPos: Position) {
     this.gameState.lives--;
-    this.gameState.penaltyTimeMs += 5000; // 5s penalty
+    this.gameState.penaltyTimeMs += 10000; // 10s penalty
     
     // Calculate deviation index
     const deviationIndex = this.findDeviationIndex(this.gameState.moveHistory, this.puzzle.solutionPath || []);
@@ -457,7 +457,7 @@ export class GameScene extends Phaser.Scene {
     emitGameEvent('stateUpdate', { ...this.gameState });
     emitGameEvent('lifeLost', { 
         lives: this.gameState.lives, 
-        penaltyMs: 5000 
+        penaltyMs: 10000 
     });
 
     if (this.gameState.lives <= 0) {
@@ -519,19 +519,30 @@ export class GameScene extends Phaser.Scene {
     // Hide player
     this.player.setVisible(false);
 
-    // Show analysis
-    this.drawEndGameAnalysis();
+    // Final intense flash and shake
+    this.cameras.main.shake(400, 0.015);
+    this.flashOverlay.setAlpha(0.5);
     
-    // Emit state update so UI knows game is complete
-    emitGameEvent('stateUpdate', { ...this.gameState });
-    
-    emitGameEvent('gameComplete', {
-      moveCount: this.gameState.moveCount,
-      timeMs: (this.gameState.endTime - this.gameState.startTime) + this.gameState.penaltyTimeMs,
-      optimalMoves: this.puzzle.optimalMoves,
-      failed: true,
-      attempts: this.gameState.attempts,
-      solutionPath: this.puzzle.solutionPath,
+    // Linger the flash then fade
+    this.tweens.add({
+      targets: this.flashOverlay,
+      alpha: 0,
+      duration: 600,
+      delay: 200, // Linger for 200ms before fading
+      ease: 'Quad.easeOut',
+      onComplete: () => {
+        // Emit state update so UI knows game is complete
+        emitGameEvent('stateUpdate', { ...this.gameState });
+        
+        emitGameEvent('gameComplete', {
+          moveCount: this.gameState.moveCount,
+          timeMs: (this.gameState.endTime - this.gameState.startTime) + this.gameState.penaltyTimeMs,
+          optimalMoves: this.puzzle.optimalMoves,
+          failed: true,
+          attempts: this.gameState.attempts,
+          solutionPath: this.puzzle.solutionPath,
+        });
+      }
     });
   }
 

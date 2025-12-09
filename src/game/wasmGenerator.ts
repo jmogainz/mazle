@@ -614,7 +614,9 @@ export async function fetchDailyPuzzle(
       });
     }
     
-    const response = await fetch('/api/daily', {
+    // Include date in query to bust CDN cache at midnight ET rollover
+    const dateForCache = seed.split('-').slice(0, 3).join('-');
+    const response = await fetch(`/api/daily?d=${dateForCache}`, {
       method: 'GET',
       headers: { 'Accept': 'application/json' },
       signal: AbortSignal.timeout(10000), // 10s timeout (cache check should be fast)
@@ -623,7 +625,8 @@ export async function fetchDailyPuzzle(
     if (response.ok) {
       const data = await response.json();
       
-      if (data.puzzle) {
+      // Validate seed matches to prevent stale CDN responses from poisoning cache
+      if (data.puzzle && data.seed === seed) {
         console.log('[Daily] Loaded from KV cache (instant!)');
         
         if (onProgress) {
@@ -639,6 +642,8 @@ export async function fetchDailyPuzzle(
           puzzle: data.puzzle as PuzzleData,
           source: 'kv',
         };
+      } else if (data.puzzle) {
+        console.warn(`[Daily] Seed mismatch: expected ${seed}, got ${data.seed} - ignoring stale response`);
       }
     }
     

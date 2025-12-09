@@ -378,7 +378,7 @@
   height: 100%;
   display: flex;
   justify-content: center;
-  border-radius: 12px;
+  border-radius: 10px;
   overflow: hidden;
   /* Removed border for floating effect */
   /* Removed background for floating effect (Phaser canvas handles its own background) */
@@ -395,6 +395,7 @@
   pointer-events: none;
   z-index: 15;
   animation: flashFade 0.5s ease-in-out 3;
+  border-radius: 10px;
 }
 
 @keyframes flashFade {
@@ -408,12 +409,13 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  transition: filter 0.5s ease;
+  transition: filter 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 10px;
 }
 
 .blurred {
   filter: blur(20px) brightness(0.6) grayscale(0.2);
-  transition: filter 0.5s ease;
+  transition: filter 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .startOverlay {
@@ -427,12 +429,13 @@
   justify-content: center;
   z-index: 10;
   background: rgba(0, 0, 0, 0.2);
-  backdrop-filter: blur(2px); /* subtle additional layer of blur */
+  backdrop-filter: blur(2px);
+  border-radius: 10px;
 }
 
 .startButton {
-  padding: 1rem 3rem;
-  font-size: 1.4rem;
+  padding: 1.1rem 3.2rem;
+  font-size: 1.3rem;
   font-weight: 800;
   font-family: var(--font-main);
   color: var(--color-text);
@@ -443,21 +446,21 @@
   box-shadow: 0 10px 24px rgba(0,0,0,0.12);
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   animation: none;
 }
 
 .startButton:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 12px 28px rgba(0,0,0,0.14);
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.15);
   background: var(--color-primary);
   color: var(--color-background);
   border-color: var(--color-primary);
 }
 
 .startButton:active {
-  transform: translateY(1px);
-  box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+  transform: translateY(0) scale(0.98);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
 }
 
 .loading {
@@ -501,7 +504,7 @@
   height: 100%;
   background: var(--color-primary);
   border-radius: 3px;
-  transition: width 0.15s ease-out;
+  transition: width 0.3s ease-out;
 }
 
 .progressFillIndeterminate {
@@ -520,35 +523,44 @@
 .previousResult {
   text-align: center;
   padding: 1.5rem;
-  background: rgba(26, 26, 46, 0.95);
-  border-radius: 12px;
-  border: 1px solid var(--color-border);
+  background: var(--color-background);
+  border-radius: 14px;
+  border: 2px solid var(--color-border);
   backdrop-filter: blur(4px);
-  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  box-shadow: 0 16px 40px rgba(0,0,0,0.3);
   width: 80%;
   max-width: 300px;
+  font-family: var(--font-main);
 }
 
 .previousResult p {
   color: var(--color-secondary);
-  font-size: 0.875rem;
-  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+  font-weight: 500;
 }
 
 .viewResultButton {
-  padding: 0.5rem 1rem;
-  background: var(--color-primary);
-  color: var(--color-background);
-  border: none;
-  border-radius: 6px;
-  font-size: 0.875rem;
-  font-weight: bold;
+  padding: 0.75rem 1.5rem;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 2px solid var(--color-border);
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  font-family: var(--font-main);
   cursor: pointer;
-  transition: opacity 0.2s;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .viewResultButton:hover {
-  opacity: 0.9;
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+  background: var(--color-primary);
+  color: var(--color-background);
+  border-color: var(--color-primary);
 }
 
 .inlineResultContainer {

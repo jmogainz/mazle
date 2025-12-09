@@ -242,7 +242,7 @@ ${generateProgressBlocks()}
         )}
         
         <div className={styles.header}>
-          <h2 className={styles.title}>{failed ? 'Out of Lives!' : 'Puzzle Solved!'}</h2>
+          <h2 className={styles.title}>{failed ? '💀 Game Over' : '🏆 Victory!'}</h2>
           <span className={styles.puzzleNumber}>{mapEmoji} Mazle {displayLabel}</span>
         </div>
 

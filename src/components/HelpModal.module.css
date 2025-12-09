@@ -31,10 +31,41 @@
   width: 100%;
   max-height: 90vh;
   overflow-y: auto;
+  overflow-x: hidden;
   position: relative;
   animation: slideUp 0.3s ease-out;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.08);
   font-family: var(--font-main);
+  
+  /* Custom scrollbar - light when idle, dark on hover/active */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.card::-webkit-scrollbar {
+  width: 8px;
+}
+
+.card::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 14px 0; /* Match border-radius to prevent overflow */
+}
+
+.card::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.card::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.4);
+  background-clip: padding-box;
+}
+
+.card::-webkit-scrollbar-thumb:active {
+  background: rgba(255, 255, 255, 0.5);
+  background-clip: padding-box;
 }
 
 @keyframes slideUp {
@@ -162,6 +193,14 @@
   font-size: 1.25rem;
   min-width: 80px;
   text-align: center;
+}
+
+.dpad {
+  font-size: 1.5rem;
+  min-width: 80px;
+  text-align: center;
+  color: var(--color-text);
+  font-weight: 700;
 }
 
 .controlLabel {

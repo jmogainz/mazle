@@ -4,7 +4,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.8);
+  background: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -36,13 +36,13 @@
 }
 
 .cardFailed {
-    border-color: #ef476f;
-    box-shadow: 0 16px 40px rgba(239, 71, 111, 0.15);
+  border-color: var(--color-error);
+  border-width: 3px;
 }
 
 .cardSuccess {
-    border-color: #06d6a0;
-    box-shadow: 0 16px 40px rgba(6, 214, 160, 0.15);
+  border-color: var(--color-success);
+  border-width: 3px;
 }
 
 .cardInline {
@@ -103,9 +103,12 @@
   text-transform: uppercase;
 }
 
-.cardFailed .title,
+.cardFailed .title {
+  color: var(--color-error);
+}
+
 .cardSuccess .title {
-    color: var(--color-text);
+  color: var(--color-success);
 }
 
 .puzzleNumber {

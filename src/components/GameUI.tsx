@@ -124,12 +124,15 @@ export default function GameUI({ puzzleNumber, puzzleLabel, optimalMoves, varian
             className={styles.infoIcon}
             onMouseEnter={() => setShowTooltip(true)}
             onMouseLeave={() => setShowTooltip(false)}
-            onClick={() => setShowTooltip(!showTooltip)}
+            onTouchStart={(e) => {
+              e.preventDefault();
+              setShowTooltip(prev => !prev);
+            }}
           >
             ?
             {showTooltip && (
               <span className={styles.tooltip}>
-                +5s/life penalty
+                +10s/life penalty
               </span>
             )}
           </span>

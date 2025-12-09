@@ -279,9 +279,13 @@ export default function Home() {
       }
     });
 
-    const unsubscribeLifeLost = onGameEvent('lifeLost', () => {
+    const unsubscribeLifeLost = onGameEvent('lifeLost', (data) => {
+      const { lives } = data as { lives: number; penaltyMs: number };
+      // Final life gets longer flash handled by GameScene, but still trigger React flash
       setLifeFlash(true);
-      setTimeout(() => setLifeFlash(false), 500);
+      // Longer timeout for final life to match GameScene's linger
+      const flashDuration = lives <= 0 ? 800 : 500;
+      setTimeout(() => setLifeFlash(false), flashDuration);
     });
 
     return () => {
@@ -401,11 +405,14 @@ export default function Home() {
 
   const handleCloseShareCard = useCallback(() => {
     setShowShareCard(false);
-    setShowInlineResult(true);
-    // Show analysis when closing share card
-    if (gameResult?.attempts && gameControlsRef.current) {
-        gameControlsRef.current.showAnalysis(gameResult.attempts);
-    }
+    // Small delay before showing analysis for smooth transition
+    setTimeout(() => {
+      setShowInlineResult(true);
+      // Show analysis when closing share card
+      if (gameResult?.attempts && gameControlsRef.current) {
+          gameControlsRef.current.showAnalysis(gameResult.attempts);
+      }
+    }, 100);
   }, [gameResult]);
 
   // Calculate progress percentage (works for both loading screen and dev tools)
@@ -439,7 +446,7 @@ export default function Home() {
   const puzzleWidth = puzzle?.width ?? 10;
   const puzzleHeight = puzzle?.height ?? 10;
   const baseWidth = Math.max(420, puzzleWidth * TILE_SIZE + 64);
-  const baseHeight = Math.max(520, puzzleHeight * TILE_SIZE + 120);
+  const baseHeight = Math.max(480, puzzleHeight * TILE_SIZE + 80);
 
   return (
     <ErrorBoundary>
@@ -656,7 +663,7 @@ export default function Home() {
           }}
         >
           <div className={styles.gameContainer}>
-            <div className={`${styles.gameContent} ${(!isPlaying && isGameReady && !showInlineResult) ? styles.blurred : ''}`}>
+            <div className={`${styles.gameContent} ${(!isPlaying && isGameReady && !showInlineResult) || showShareCard ? styles.blurred : ''}`}>
               <PhaserGame
                 key={renderKey}
                 puzzle={puzzle}
@@ -667,7 +674,7 @@ export default function Home() {
             </div>
             {lifeFlash && <div className={styles.lifeFlash} />}
           </div>
-          {!isPlaying && isGameReady && !showInlineResult && (
+          {!isPlaying && isGameReady && !showInlineResult && !showShareCard && (
             <div className={styles.startOverlay}>
               {previousResult ? (
                 <div className={styles.previousResult}>

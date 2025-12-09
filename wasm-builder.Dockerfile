@@ -11,7 +11,7 @@
 ARG RUST_VERSION=1.83
 ARG WASM_PACK_VERSION=0.13.1
 ARG RUST_TOOLCHAIN=nightly-2025-11-15
-# Build-time environment indicator (used to optionally skip wasm build)
+# Build-time environment indicator (used to optionally skip wasm build when artifacts already exist)
 ARG BUILD_ENV=dev-test
 
 #######################################
@@ -48,6 +48,9 @@ FROM base AS builder
 
 ARG BUILD_ENV
 
+# Copy any pre-built artifacts from the workspace so we can reuse them in non-prod builds
+COPY src/wasm/generator ./prebuilt-wasm
+
 # Copy cargo config (contains RUSTFLAGS for atomics/bulk-memory)
 COPY generator-rust/.cargo .cargo/
 
@@ -65,10 +68,15 @@ COPY generator-rust/src/ src/
 RUN --mount=type=cache,id=wasm-cargo-registry,target=/usr/local/cargo/registry \
     --mount=type=cache,id=wasm-cargo-git,target=/usr/local/cargo/git \
     --mount=type=cache,id=wasm-target,target=/app/target \
-    if [ "$BUILD_ENV" != "prod" ]; then \
-      echo "[WASM] Skipping wasm-pack build for BUILD_ENV=$BUILD_ENV"; \
-      mkdir -p /wasm-output && echo "skipped" > /wasm-output/.skip; \
+    PREBUILT_WASM="/app/prebuilt-wasm/mazle_generator_bg.wasm"; \
+    mkdir -p /wasm-output; \
+    if [ "$BUILD_ENV" != "prod" ] && [ -f "$PREBUILT_WASM" ]; then \
+      echo "[WASM] Existing artifacts detected in src/wasm/generator; skipping wasm-pack build for BUILD_ENV=$BUILD_ENV"; \
+      echo "skipped" > /wasm-output/.skip; \
     else \
+      if [ "$BUILD_ENV" != "prod" ]; then \
+        echo "[WASM] No prebuilt artifacts found; building WASM for BUILD_ENV=$BUILD_ENV"; \
+      fi; \
       wasm-pack build --target web --out-dir /wasm-output --out-name mazle_generator; \
     fi
 

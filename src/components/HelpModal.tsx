@@ -28,7 +28,7 @@ export default function HelpModal({ onClose, mapType = MapType.ICE }: HelpModalP
         </div>
 
         <div className={styles.section}>
-          <h3 className={styles.sectionTitle}>Controls</h3>
+          <h3 className={styles.sectionTitle}>Desktop Controls</h3>
           <div className={styles.controls}>
             <div className={styles.controlItem}>
               <span className={styles.keys}>↑ ↓ ← →</span>
@@ -38,9 +38,19 @@ export default function HelpModal({ onClose, mapType = MapType.ICE }: HelpModalP
               <span className={styles.keys}>W A S D</span>
               <span className={styles.controlLabel}>WASD keys</span>
             </div>
+          </div>
+        </div>
+
+        <div className={styles.section}>
+          <h3 className={styles.sectionTitle}>Mobile Controls</h3>
+          <div className={styles.controls}>
             <div className={styles.controlItem}>
               <span className={styles.swipe}>👆</span>
-              <span className={styles.controlLabel}>Swipe on mobile</span>
+              <span className={styles.controlLabel}>Swipe to move</span>
+            </div>
+            <div className={styles.controlItem}>
+              <span className={styles.dpad}>✛</span>
+              <span className={styles.controlLabel}>On-screen D-pad</span>
             </div>
           </div>
         </div>

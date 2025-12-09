@@ -24,14 +24,15 @@
 
 .card {
   background: var(--color-background);
-  border: 3px solid var(--color-primary);
-  border-radius: 12px;
+  border: 2px solid var(--color-border);
+  border-radius: 14px;
   padding: 1.5rem;
   max-width: 360px;
   width: 100%;
   position: relative;
   animation: slideUp 0.3s ease-out;
-  box-shadow: 0 0 30px rgba(255, 209, 102, 0.3);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
+  font-family: var(--font-main);
 }
 
 @keyframes slideUp {
@@ -65,10 +66,13 @@
 
 .title {
   font-size: 1.5rem;
-  color: var(--color-primary);
+  color: var(--color-text);
   margin: 0 0 1.5rem 0;
   text-align: center;
-  font-family: var(--font-pixel);
+  font-family: var(--font-main);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .statsGrid {
@@ -85,21 +89,23 @@
   gap: 0.25rem;
   padding: 0.75rem 0.25rem;
   background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
 }
 
 .statValue {
   font-size: 1.25rem;
-  font-weight: bold;
+  font-weight: 700;
   color: var(--color-text);
 }
 
 .statLabel {
-  font-size: 0.5rem;
+  font-size: 0.55rem;
   color: var(--color-secondary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   text-align: center;
+  font-weight: 600;
 }
 
 .history {
@@ -113,6 +119,7 @@
   margin: 0 0 0.75rem 0;
   text-transform: uppercase;
   letter-spacing: 0.1em;
+  font-weight: 700;
 }
 
 .historyList {
@@ -127,6 +134,7 @@
   gap: 0.75rem;
   padding: 0.5rem 0.75rem;
   background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 6px;
 }
 
@@ -143,12 +151,12 @@
 }
 
 .historyWin {
-  color: #06d6a0;
+  color: var(--color-success);
   font-weight: bold;
 }
 
 .historyLoss {
-  color: #ef476f;
+  color: var(--color-error);
   font-weight: bold;
 }
 

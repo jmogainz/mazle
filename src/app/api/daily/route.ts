@@ -69,9 +69,9 @@ export async function GET() {
         source: 'kv',
       }, {
         headers: {
-          // Cache for 5 minutes on CDN, stale-while-revalidate for 1 hour
-          // This reduces KV reads while still allowing timely updates
-          'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=3600',
+          // CDN caching enabled - date param in URL busts cache at midnight
+          // Client also validates seed match as defense in depth
+          'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=60',
         },
       });
     }

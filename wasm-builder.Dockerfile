@@ -11,6 +11,8 @@
 ARG RUST_VERSION=1.83
 ARG WASM_PACK_VERSION=0.13.1
 ARG RUST_TOOLCHAIN=nightly-2025-11-15
+# Build-time environment indicator (used to optionally skip wasm build)
+ARG BUILD_ENV=dev-test
 
 #######################################
 # Stage 1: Base with wasm-pack & toolchain
@@ -19,6 +21,7 @@ FROM rust:${RUST_VERSION}-slim-bookworm AS base
 
 ARG WASM_PACK_VERSION
 ARG RUST_TOOLCHAIN
+ARG BUILD_ENV
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
@@ -43,6 +46,8 @@ WORKDIR /app
 #######################################
 FROM base AS builder
 
+ARG BUILD_ENV
+
 # Copy cargo config (contains RUSTFLAGS for atomics/bulk-memory)
 COPY generator-rust/.cargo .cargo/
 
@@ -60,7 +65,12 @@ COPY generator-rust/src/ src/
 RUN --mount=type=cache,id=wasm-cargo-registry,target=/usr/local/cargo/registry \
     --mount=type=cache,id=wasm-cargo-git,target=/usr/local/cargo/git \
     --mount=type=cache,id=wasm-target,target=/app/target \
-    wasm-pack build --target web --out-dir /wasm-output --out-name mazle_generator
+    if [ "$BUILD_ENV" != "prod" ]; then \
+      echo "[WASM] Skipping wasm-pack build for BUILD_ENV=$BUILD_ENV"; \
+      mkdir -p /wasm-output && echo "skipped" > /wasm-output/.skip; \
+    else \
+      wasm-pack build --target web --out-dir /wasm-output --out-name mazle_generator; \
+    fi
 
 #######################################
 # Stage 3: Runtime (copy artifacts)

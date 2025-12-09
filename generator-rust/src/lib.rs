@@ -96,7 +96,10 @@ pub fn wasm_generate_ground(seed: &str) -> Result<JsValue, JsValue> {
 /// A JavaScript object containing the puzzle data
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(js_name = generateGroundWithConfig)]
-pub fn wasm_generate_ground_with_config(seed: &str, config_js: JsValue) -> Result<JsValue, JsValue> {
+pub fn wasm_generate_ground_with_config(
+    seed: &str,
+    config_js: JsValue,
+) -> Result<JsValue, JsValue> {
     let config: GenerationConfig = serde_wasm_bindgen::from_value(config_js)
         .map_err(|e| JsValue::from_str(&format!("Invalid config: {}", e)))?;
     let puzzle = generate_ground_puzzle(seed, &config);

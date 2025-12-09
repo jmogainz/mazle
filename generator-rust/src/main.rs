@@ -10,9 +10,7 @@ use std::time::Instant;
 use tower_http::cors::{Any, CorsLayer};
 
 // Import from library
-use mazle_generator::{
-    generate_ground_puzzle, generate_ice_puzzle, GenerationConfig, PuzzleData,
-};
+use mazle_generator::{generate_ground_puzzle, generate_ice_puzzle, GenerationConfig, PuzzleData};
 
 /// Application state
 struct AppState {
@@ -93,7 +91,12 @@ async fn generate_by_seed(
         ..Default::default()
     };
 
-    let puzzle = generate_by_type(&seed, &config, &query.map_type);
+    let map_type = query.map_type.clone();
+
+    // Spawn CPU-intensive work on blocking thread pool to avoid starving async runtime
+    let puzzle = tokio::task::spawn_blocking(move || generate_by_type(&seed, &config, &map_type))
+        .await
+        .expect("Blocking task panicked");
 
     Json(GenerateResponse {
         puzzle,
@@ -105,7 +108,14 @@ async fn generate_by_seed(
 async fn generate_post(Json(request): Json<GenerateRequest>) -> Json<GenerateResponse> {
     let start = Instant::now();
 
-    let puzzle = generate_by_type(&request.seed, &request.config, &request.map_type);
+    let seed = request.seed.clone();
+    let config = request.config.clone();
+    let map_type = request.map_type.clone();
+
+    // Spawn CPU-intensive work on blocking thread pool
+    let puzzle = tokio::task::spawn_blocking(move || generate_by_type(&seed, &config, &map_type))
+        .await
+        .expect("Blocking task panicked");
 
     Json(GenerateResponse {
         puzzle,
@@ -133,18 +143,22 @@ struct BatchResponse {
 }
 
 async fn generate_batch(Json(request): Json<BatchRequest>) -> Json<BatchResponse> {
-    use rayon::prelude::*;
-
     let start = Instant::now();
 
     let map_type = request.map_type.clone();
     let config = request.config.clone();
+    let seeds = request.seeds.clone();
 
-    let puzzles: Vec<PuzzleData> = request
-        .seeds
-        .par_iter()
-        .map(|seed| generate_by_type(seed, &config, &map_type))
-        .collect();
+    // Spawn CPU-intensive work on blocking thread pool
+    let puzzles = tokio::task::spawn_blocking(move || {
+        use rayon::prelude::*;
+        seeds
+            .par_iter()
+            .map(|seed| generate_by_type(seed, &config, &map_type))
+            .collect::<Vec<PuzzleData>>()
+    })
+    .await
+    .expect("Blocking task panicked");
 
     let total_time = start.elapsed().as_millis();
     let count = puzzles.len() as u128;

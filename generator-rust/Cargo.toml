@@ -25,6 +25,7 @@ rand_chacha = "0.3"
 # Parallelism - works on both native and WASM (with threads feature)
 # Version 1.8+ required for wasm-bindgen-rayon compatibility
 rayon = "1.8"
+rustc-hash = "1"
 
 # Utilities
 thiserror = "1"
@@ -57,10 +58,10 @@ default = []
 
 [profile.release]
 opt-level = 3
-lto = false
-codegen-units = 16
+lto = "thin"
+codegen-units = 1
 panic = "abort"
-incremental = true
+incremental = false
 
 [profile.dev]
 opt-level = 1  # Faster dev builds but still reasonably fast

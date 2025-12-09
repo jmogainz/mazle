@@ -435,7 +435,7 @@ export class GameScene extends Phaser.Scene {
   
   private handleLifeLost(finalPos: Position) {
     this.gameState.lives--;
-    this.gameState.penaltyTimeMs += 20000; // 20s penalty
+    this.gameState.penaltyTimeMs += 5000; // 5s penalty
     
     // Calculate deviation index
     const deviationIndex = this.findDeviationIndex(this.gameState.moveHistory, this.puzzle.solutionPath || []);
@@ -457,7 +457,7 @@ export class GameScene extends Phaser.Scene {
     emitGameEvent('stateUpdate', { ...this.gameState });
     emitGameEvent('lifeLost', { 
         lives: this.gameState.lives, 
-        penaltyMs: 20000 
+        penaltyMs: 5000 
     });
 
     if (this.gameState.lives <= 0) {

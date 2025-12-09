@@ -22,6 +22,8 @@ services:
         NEXT_PUBLIC_ENV: ${NEXT_PUBLIC_ENV:?Docker Compose Config Error! NEXT_PUBLIC_ENV is not set!}
         NEXT_PUBLIC_DEVTOOLS_ENABLED: ${NEXT_PUBLIC_DEVTOOLS_ENABLED:-0}
         NEXT_PUBLIC_GENERATOR_URL: ${NEXT_PUBLIC_GENERATOR_URL:-}
+        NEXT_PUBLIC_DEV_GENERATOR_URL: ${NEXT_PUBLIC_DEV_GENERATOR_URL:-}
+        ENABLE_NGROK_FOR_DEV: ${ENABLE_NGROK_FOR_DEV:-1}
         APP_URL_FROM_ANYWHERE: ${APP_URL_FROM_ANYWHERE:-}
 
       # Have to do this until there is a better option to control this from the compose cli
@@ -35,11 +37,13 @@ services:
       - NEXT_PUBLIC_ENV=${NEXT_PUBLIC_ENV}
       - NEXT_PUBLIC_DEVTOOLS_ENABLED=${NEXT_PUBLIC_DEVTOOLS_ENABLED:-0}
       - NEXT_PUBLIC_GENERATOR_URL=${NEXT_PUBLIC_GENERATOR_URL:-}
-      - NEXT_PUBLIC_DEV_GENERATOR_URL=${APP_URL_FROM_ANYWHERE:-}
+      - NEXT_PUBLIC_DEV_GENERATOR_URL=${NEXT_PUBLIC_DEV_GENERATOR_URL:-}
+      - ENABLE_NGROK_FOR_DEV=${ENABLE_NGROK_FOR_DEV:-1}
       - PORT=${APP_PORT:-8080}
       - HOSTNAME=0.0.0.0
       - CHOKIDAR_USEPOLLING=1
       - WATCHPACK_POLLING=1
+    entrypoint: ["/usr/local/bin/dev-env-entrypoint.sh"]
     # Internal port only, accessed via Nginx
     # ports:
     #   - "127.0.0.1:${APP_HOST_PORT:-8080}:${APP_PORT:-8080}"

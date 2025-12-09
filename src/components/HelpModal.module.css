@@ -101,16 +101,36 @@
   margin: 0;
 }
 
-.start {
-  color: #06d6a0;
-  font-size: 1.25rem;
+.tileStart,
+.tileGoal {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
   vertical-align: middle;
+  margin: 0 4px;
+  position: relative;
+  top: -1px;
 }
 
-.goal {
-  color: #ffd166;
-  font-size: 1.25rem;
-  vertical-align: middle;
+.tileStart {
+  background: linear-gradient(135deg, #d7b74a 50%, #bd9e3c 50%);
+  border: 1px solid #b0892f;
+}
+
+.tileGoal {
+  background: linear-gradient(135deg, #6aaa64 50%, #538d4e 50%);
+  border: 1px solid #3f703c;
+}
+
+.tileGoal::after {
+  content: '★';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -52%);
+  font-size: 12px;
+  color: #ffd700;
 }
 
 .controls {

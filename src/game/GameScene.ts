@@ -268,8 +268,8 @@ export class GameScene extends Phaser.Scene {
         };
 
         const dir =
-          tile === TileType.LEDGE_UP ? 'up' :
-          tile === TileType.LEDGE_DOWN ? 'down' :
+          tile === TileType.LEDGE_UP ? 'down' : // enter from above, exit downward
+          tile === TileType.LEDGE_DOWN ? 'up' : // enter from below, exit upward
           tile === TileType.LEDGE_RIGHT ? 'right' : 'left';
 
         const A = rotate(upA, dir);

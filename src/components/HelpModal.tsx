@@ -23,7 +23,7 @@ export default function HelpModal({ onClose, mapType = MapType.ICE }: HelpModalP
         <div className={styles.section}>
           <h3 className={styles.sectionTitle}>Goal</h3>
           <p className={styles.text}>
-            Navigate from the start <span className={styles.start}>●</span> to the goal <span className={styles.goal}>★</span> in as few moves as possible.
+            Navigate from the start <span className={styles.tileStart}></span> to the goal <span className={styles.tileGoal}></span> in as few moves as possible.
           </p>
         </div>
 

@@ -125,6 +125,16 @@ export const COLORS = {
   LEDGE_EDGE: 0xc0c0c0,
   LEDGE_ARROW: 0x3a3d41, // Lighter than wall to keep contrast while matching theme
 
+  // Legacy flat colors (compatibility with tileset maps)
+  GROUND: 0xbfa46b,          // Alias to GROUND_FACE
+  WALL: 0x202124,            // Alias to WALL_FACE
+  START: 0xd7b74a,           // Alias to START_FACE
+  GOAL: 0x6aaa64,            // Alias to GOAL_FACE
+  ICE: 0xa6d8ff,             // Alias to ICE_FACE
+  LEDGE: 0xe8e8e8,           // Alias to LEDGE_FACE
+  WALL_HIGHLIGHT: 0x2d2f33,  // Subtle lighter tone for wall shine
+  ICE_SHINE: 0xb8e0f0,       // Light reflection for ice tiles
+
   // Player (Red "Active" Tile)
   PLAYER_FACE: 0xff4d4d,
   PLAYER_EDGE: 0xcc0000,

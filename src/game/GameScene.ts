@@ -215,8 +215,8 @@ export class GameScene extends Phaser.Scene {
           const faceW = size - padding * 2 - inset * 2;
           const faceH = size - padding * 2 - depth - inset * 2;
 
-          // Crisp white reflection streaks
-          g.lineStyle(2, 0xffffff, 0.6);
+          // Subtle white reflection streaks
+          g.lineStyle(1, 0xffffff, 0.65);
 
           // Primary reflection
           g.beginPath();
@@ -536,7 +536,7 @@ export class GameScene extends Phaser.Scene {
         
         emitGameEvent('gameComplete', {
           moveCount: this.gameState.moveCount,
-          timeMs: (this.gameState.endTime - this.gameState.startTime) + this.gameState.penaltyTimeMs,
+          timeMs: ((this.gameState.endTime ?? this.gameState.startTime) - this.gameState.startTime) + this.gameState.penaltyTimeMs,
           optimalMoves: this.puzzle.optimalMoves,
           failed: true,
           attempts: this.gameState.attempts,
@@ -955,7 +955,7 @@ export class GameScene extends Phaser.Scene {
     // Emit win event
     emitGameEvent('gameComplete', {
       moveCount: this.gameState.moveCount,
-      timeMs: (this.gameState.endTime - this.gameState.startTime) + this.gameState.penaltyTimeMs,
+      timeMs: ((this.gameState.endTime ?? this.gameState.startTime) - this.gameState.startTime) + this.gameState.penaltyTimeMs,
       optimalMoves: this.puzzle.optimalMoves,
       failed: false,
       attempts: this.gameState.attempts,

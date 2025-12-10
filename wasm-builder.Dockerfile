@@ -44,6 +44,8 @@ WORKDIR /app
 SHELL ["/bin/bash", "-c"]
 FROM base AS builder
 
+SHELL ["/bin/bash","-c"]
+
 # Build-time environment indicator (used to optionally skip wasm build when artifacts already exist)
 ARG BUILD_ENV=dev-test
 

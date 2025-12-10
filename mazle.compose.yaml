@@ -33,7 +33,8 @@ services:
     container_name: ${APP_NAME:?Docker Compose Config Error! APP_NAME is not set!}-frontend_instance
     environment:
       - ENV=${ENV}
-      - NODE_ENV=development
+      - NODE_ENV=${FRONTEND_NODE_ENV:-development}
+      - FRONTEND_RELEASE_MODE=${FRONTEND_RELEASE_MODE:-0}
       - NEXT_PUBLIC_ENV=${NEXT_PUBLIC_ENV}
       - NEXT_PUBLIC_DEVTOOLS_ENABLED=${NEXT_PUBLIC_DEVTOOLS_ENABLED:-0}
       - NEXT_PUBLIC_GENERATOR_URL=${NEXT_PUBLIC_GENERATOR_URL:-}
@@ -42,8 +43,8 @@ services:
       - APP_URL_FROM_ANYWHERE=${APP_URL_FROM_ANYWHERE:-}
       - PORT=${APP_PORT:-8080}
       - HOSTNAME=0.0.0.0
-      - CHOKIDAR_USEPOLLING=1
-      - WATCHPACK_POLLING=1
+      - CHOKIDAR_USEPOLLING=${FRONTEND_CHOKIDAR_USEPOLLING:-1}
+      - WATCHPACK_POLLING=${FRONTEND_WATCHPACK_POLLING:-1}
     entrypoint: ["/usr/local/bin/dev-env-entrypoint.sh"]
     # Internal port only, accessed via Nginx
     # ports:

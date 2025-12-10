@@ -21,11 +21,22 @@ make up
 | `make up` | Start frontend (ENV=dev-test default, WASM fallback) |
 | `make up ENV=dev` | Start with Rust backend auto-launching |
 | `make up ENV=dev WITH_DEPS=0` | Dev mode, frontend only |
+| `make up FRONTEND_RELEASE_MODE=1` | Run prod-style Next.js build (no hot reload) |
 | `make up ENV=prod` | Deploy backend (Fly.io) + frontend (Vercel) |
 | `make down` | Stop containers |
 | `make clean` | Full cleanup (containers, images, volumes) |
 | `make build` | Rebuild WASM from Rust sources (Dockerized, no host Rust needed) |
 | `make help` | List all targets |
+
+## Release-mode Toggle
+
+Need to reproduce Vercel's optimized build locally? Append `FRONTEND_RELEASE_MODE=1` to any `make up` invocation (e.g. `make up FRONTEND_RELEASE_MODE=1`). The frontend container will:
+
+- force `NODE_ENV=production` and disable dev overlays/devtools
+- run `npm run build` once, then serve with `npm run start`
+- skip aggressive file watchers (no hot reload — restart the service after code changes)
+
+This keeps the rest of your Make/ENV flags intact while letting you benchmark the exact code we deploy.
 
 ## Environments
 

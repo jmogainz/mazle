@@ -72,7 +72,26 @@ NEXT_PUBLIC_DEVTOOLS_ENABLED := 0
 ifneq (,$(filter $(ENV),$(DEV_TEST_ENV)))
   NEXT_PUBLIC_DEVTOOLS_ENABLED := 1
 endif
+
+# Toggle for running the frontend as a production-style build locally
+FRONTEND_RELEASE_MODE ?= 0
+
+FRONTEND_NODE_ENV := development
+FRONTEND_CHOKIDAR_USEPOLLING := 1
+FRONTEND_WATCHPACK_POLLING := 1
+
+ifeq ($(FRONTEND_RELEASE_MODE),1)
+  NEXT_PUBLIC_DEVTOOLS_ENABLED := 0
+  FRONTEND_NODE_ENV := production
+  FRONTEND_CHOKIDAR_USEPOLLING := 0
+  FRONTEND_WATCHPACK_POLLING := 0
+endif
+
 export NEXT_PUBLIC_DEVTOOLS_ENABLED
+export FRONTEND_RELEASE_MODE
+export FRONTEND_NODE_ENV
+export FRONTEND_CHOKIDAR_USEPOLLING
+export FRONTEND_WATCHPACK_POLLING
 
 ifndef INCLUDED_COMPOSE_APP_CONFIGURATION
   include $(DEVOPS_TOOLKIT_PATH)/backend/make/compose/compose-project-configurations/compose-file-configurations/app/compose_app_configuration.mk
@@ -100,9 +119,11 @@ export HOST_GID
 # Next.js App Configuration (for backend URL resolution)
 # --------------------------------
 
-# Tell the toolkit which env var to set with the backend URL
-# This will be passed to Vercel via --build-env during deployment
-NEXTJS_BACKEND_ENV_VAR := NEXT_PUBLIC_GENERATOR_URL
+ifneq ($(WITH_DEPS),0)
+  # Tell the toolkit which env var to set with the backend URL
+  # This will be passed to Vercel via --build-env during deployment
+  NEXTJS_BACKEND_ENV_VAR := NEXT_PUBLIC_GENERATOR_URL
+endif
 
 ifndef INCLUDED_NEXTJS_APP_CONFIGURATION
   include $(DEVOPS_TOOLKIT_PATH)/frontend/make/utils/nextjs_app_configuration.mk

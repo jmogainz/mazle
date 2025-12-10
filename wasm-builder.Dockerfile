@@ -11,8 +11,6 @@
 ARG RUST_VERSION=1.83
 ARG WASM_PACK_VERSION=0.13.1
 ARG RUST_TOOLCHAIN=nightly-2025-11-15
-# Build-time environment indicator (used to optionally skip wasm build when artifacts already exist)
-ARG BUILD_ENV=dev-test
 
 #######################################
 # Stage 1: Base with wasm-pack & toolchain
@@ -21,7 +19,6 @@ FROM rust:${RUST_VERSION}-slim-bookworm AS base
 
 ARG WASM_PACK_VERSION
 ARG RUST_TOOLCHAIN
-ARG BUILD_ENV
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
@@ -46,7 +43,8 @@ WORKDIR /app
 #######################################
 FROM base AS builder
 
-ARG BUILD_ENV
+# Build-time environment indicator (used to optionally skip wasm build when artifacts already exist)
+ARG BUILD_ENV=dev-test
 
 # Copy any pre-built artifacts from the workspace so we can reuse them in non-prod builds
 COPY src/wasm/generator ./prebuilt-wasm

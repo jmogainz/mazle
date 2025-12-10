@@ -100,6 +100,8 @@ export default function PhaserGame({ puzzle, viewportWidth, viewportHeight, onRe
         antialias: true,
         roundPixels: false, // Enable sub-pixel positioning for smooth ease functions
       },
+      // Fix for high-DPI (Retina) displays (cap at 2x to save battery/perf)
+      resolution: Math.min(window.devicePixelRatio, 2),
     };
 
     const game = new Phaser.Game(config);

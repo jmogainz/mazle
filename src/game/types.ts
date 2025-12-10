@@ -152,4 +152,4 @@ export const COLORS = {
   BOULDER_EDGE: 0x5e6163,
 };
 
-export const TILE_SIZE = 32;
+export const TILE_SIZE = 64;

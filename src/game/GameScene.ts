@@ -36,7 +36,7 @@ export class GameScene extends Phaser.Scene {
   private swipeStartY = 0;
   private offsetX = 0;
   private offsetY = 0;
-  private readonly tileFaceLift = 3; // lift sprites to sit on the top face of 3D tiles
+  private readonly tileFaceLift = 3 * (TILE_SIZE / 32); // lift sprites to sit on the top face of 3D tiles
 
   private isPlaying = false;
   
@@ -127,22 +127,23 @@ export class GameScene extends Phaser.Scene {
     // Boulder graphics - matches the tile drawing
     const g = this.add.graphics();
     const size = TILE_SIZE;
+    const s = size / 32; // Scale factor
     const boulderSize = size * 0.75;
     const halfSize = boulderSize / 2;
     
     // Main boulder body
     g.fillStyle(COLORS.BOULDER);
-    g.fillRoundedRect(-halfSize, -halfSize, boulderSize, boulderSize, 6);
+    g.fillRoundedRect(-halfSize, -halfSize, boulderSize, boulderSize, 6 * s);
     
     // Shadow
     g.fillStyle(COLORS.BOULDER_SHADOW);
-    g.fillRoundedRect(-halfSize + 3, -halfSize + boulderSize - 6, boulderSize - 6, 4, 2);
-    g.fillRoundedRect(-halfSize + boulderSize - 6, -halfSize + 3, 4, boulderSize - 6, 2);
+    g.fillRoundedRect(-halfSize + 3 * s, -halfSize + boulderSize - 6 * s, boulderSize - 6 * s, 4 * s, 2 * s);
+    g.fillRoundedRect(-halfSize + boulderSize - 6 * s, -halfSize + 3 * s, 4 * s, boulderSize - 6 * s, 2 * s);
     
     // Highlight
     g.fillStyle(COLORS.BOULDER_HIGHLIGHT);
-    g.fillCircle(-halfSize + 8, -halfSize + 8, 3);
-    g.fillRoundedRect(-halfSize + 4, -halfSize + 3, boulderSize * 0.4, 3, 1);
+    g.fillCircle(-halfSize + 8 * s, -halfSize + 8 * s, 3 * s);
+    g.fillRoundedRect(-halfSize + 4 * s, -halfSize + 3 * s, boulderSize * 0.4, 3 * s, 1 * s);
     
     boulder.add(g);
     this.boulderSprites.set(key, boulder);
@@ -167,9 +168,11 @@ export class GameScene extends Phaser.Scene {
   private drawTile(px: number, py: number, tile: TileType, gridX: number, gridY: number) {
     const g = this.tileGraphics;
     const size = TILE_SIZE;
-    const padding = 2; // Gap between tiles
-    const radius = 8;
-    const depth = 4;   // 3D lip height
+    const s = size / 32; // Scale factor based on original design (32px)
+
+    const padding = 2 * s; // Gap between tiles
+    const radius = 8 * s;
+    const depth = 4 * s;   // 3D lip height
 
     // Helper: Draw a "Waffle Style" 3D Tile
     const draw3DTile = (faceColor: number, edgeColor: number) => {
@@ -209,14 +212,14 @@ export class GameScene extends Phaser.Scene {
         
         // Frosty reflection lines (Clean simplified version)
         {
-          const inset = 4;
+          const inset = 4 * s;
           const faceX = px + padding + inset;
           const faceY = py + padding + inset;
           const faceW = size - padding * 2 - inset * 2;
           const faceH = size - padding * 2 - depth - inset * 2;
 
           // Subtle white reflection streaks
-          g.lineStyle(1, 0xffffff, 0.65);
+          g.lineStyle(1 * s, 0xffffff, 0.65);
 
           // Primary reflection
           g.beginPath();
@@ -243,7 +246,7 @@ export class GameScene extends Phaser.Scene {
         const cy = py + size / 2 - depth / 2;
         const baseWidth = size * 0.32;
         const baseHeight = size * 0.20;
-        const shrink = 1;               // trim top/bottom by 1px
+        const shrink = 1 * s;               // trim top/bottom by 1px
         const lift = depth * 0.6;       // subtle perspective lift toward the pointing direction
         const halfW = baseWidth / 2;
         const halfH = Math.max(baseHeight / 2 - shrink, 1);
@@ -293,14 +296,19 @@ export class GameScene extends Phaser.Scene {
     
     this.goalSprite = this.add.container(px, py - FACE_LIFT);
     
+    const s = TILE_SIZE / 32;
+
     // 3D Star Drawing Helper
-    const drawStar = (color: number, offsetY: number) => {
+    const drawStar = (color: number, offsetY: number, outlineColor?: number) => {
         const star = this.add.graphics();
         star.fillStyle(color);
+        if (outlineColor !== undefined) {
+            star.lineStyle(.5 * s, outlineColor);
+        }
         
         const points = 5;
-        const outerRadius = 11;
-        const innerRadius = 4.5;  // balance between sharp and soft angles
+        const outerRadius = 11 * s;
+        const innerRadius = 4.5 * s;  // balance between sharp and soft angles
         const rot = Math.PI / 2 * 3;
         const step = Math.PI / points;
 
@@ -319,15 +327,19 @@ export class GameScene extends Phaser.Scene {
         star.lineTo(0, offsetY - outerRadius);
         star.closePath();
         star.fillPath();
+        if (outlineColor !== undefined) {
+            star.strokePath();
+        }
         
         this.goalSprite.add(star);
     };
 
     // 1. Draw Shadow/Edge (Dark Yellow) - Offset slightly down from face center
-    drawStar(0xdaa520, 2);
+    drawStar(0xdaa520, 2 * s);
 
     // 2. Draw Face (Bright Gold) - On face center
-    drawStar(0xffd700, 0);
+    // Use darker gold/brown for outline (Dark Goldenrod: 0xb8860b)
+    drawStar(0xffd700, 0, 0xb8860b);
     
     // Static (no pulse) to respect 3D tile face
   }
@@ -339,28 +351,30 @@ export class GameScene extends Phaser.Scene {
     
     this.player = this.add.container(px, py - FACE_LIFT);
     
+    const s = TILE_SIZE / 32;
+
     // Classic little character with eyes (returns from pre-overhaul)
     const body = this.add.graphics();
 
     // Shadow
     body.fillStyle(0x000000, 0.25);
-    body.fillEllipse(0, 8, 16, 6);
+    body.fillEllipse(0, 8 * s, 16 * s, 6 * s);
 
     // Body
     body.fillStyle(COLORS.PLAYER_FACE);
-    body.fillRoundedRect(-8, -10, 16, 18, 3);
+    body.fillRoundedRect(-8 * s, -10 * s, 16 * s, 18 * s, 3 * s);
 
     // Outline
-    body.lineStyle(2, COLORS.PLAYER_EDGE);
-    body.strokeRoundedRect(-8, -10, 16, 18, 3);
+    body.lineStyle(1.25 * s, COLORS.PLAYER_EDGE);
+    body.strokeRoundedRect(-8 * s, -10 * s, 16 * s, 18 * s, 3 * s);
 
     // Eyes
     body.fillStyle(0xffffff);
-    body.fillCircle(-3, -4, 3);
-    body.fillCircle(3, -4, 3);
+    body.fillCircle(-3 * s, -4 * s, 3 * s);
+    body.fillCircle(3 * s, -4 * s, 3 * s);
     body.fillStyle(0x000000);
-    body.fillCircle(-2, -4, 1.5);
-    body.fillCircle(4, -4, 1.5);
+    body.fillCircle(-2 * s, -4 * s, 1.5 * s);
+    body.fillCircle(4 * s, -4 * s, 1.5 * s);
 
     this.player.add(body);
   }
@@ -562,13 +576,14 @@ export class GameScene extends Phaser.Scene {
     this.analysisObjects.push(g);
     
     const path = this.puzzle.solutionPath;
+    const s = TILE_SIZE / 32;
 
     // 1. Draw Solution Path
     if (path.length > 1) {
         // Vivid Green Path
         const pathColor = 0x2eec71; // Brighter, more vivid green
         
-        g.lineStyle(5, pathColor, 0.8);
+        g.lineStyle(5 * s, pathColor, 0.8);
         g.beginPath();
         
         const startPx = this.offsetX + path[0].x * TILE_SIZE + TILE_SIZE / 2;
@@ -589,15 +604,15 @@ export class GameScene extends Phaser.Scene {
             
             // Solid Green Circle
             g.fillStyle(pathColor, 1);
-            g.fillCircle(px, py, 11);
+            g.fillCircle(px, py, 11 * s);
             
             // Dark Border for contrast
-            g.lineStyle(2, COLORS.TEXT, 1); // Using dark text color (0x1a1a1a)
-            g.strokeCircle(px, py, 11);
+            g.lineStyle(2 * s, COLORS.TEXT, 1); // Using dark text color (0x1a1a1a)
+            g.strokeCircle(px, py, 11 * s);
             
             // Move Number
             const t = this.add.text(px, py, i.toString(), {
-                fontSize: '13px',
+                fontSize: `${13 * s}px`,
                 fontFamily: 'Arial',
                 color: '#ffffff',
                 fontStyle: 'bold'
@@ -631,14 +646,14 @@ export class GameScene extends Phaser.Scene {
         const py = this.offsetY + y * TILE_SIZE + TILE_SIZE / 2 - this.tileFaceLift;
         
         // Draw a "Skull" or "X" marker - Cleaner than big red circle
-        const markerSize = 10;
+        const markerSize = 10 * s;
         
         // White background for contrast
         g.fillStyle(0xffffff, 0.9);
-        g.fillCircle(px, py, 12);
+        g.fillCircle(px, py, 12 * s);
         
         // Red X
-        g.lineStyle(3, COLORS.PLAYER_FACE, 1);
+        g.lineStyle(3 * s, COLORS.PLAYER_FACE, 1);
         g.beginPath();
         g.moveTo(px - markerSize/2, py - markerSize/2);
         g.lineTo(px + markerSize/2, py + markerSize/2);
@@ -649,25 +664,25 @@ export class GameScene extends Phaser.Scene {
         // Attempt Number Badges
         lifeNumbers.forEach((lifeNumber, i) => {
             // Distribute badges if multiple failures at same spot
-            let dx = 8;
-            let dy = 8;
+            let dx = 8 * s;
+            let dy = 8 * s;
             
             // i=0: Bottom-Right (+8, +8)
             // i=1: Top-Right (+8, -8)
             // i=2: Bottom-Left (-8, +8)
             
-            if (i === 1) dy = -8;
-            if (i === 2) dx = -8;
+            if (i === 1) dy = -8 * s;
+            if (i === 2) dx = -8 * s;
             
             const badgeX = px + dx;
             const badgeY = py + dy;
             
             // Badge Circle (using same graphics object 'g')
             g.fillStyle(COLORS.PLAYER_FACE, 1);
-            g.fillCircle(badgeX, badgeY, 7);
+            g.fillCircle(badgeX, badgeY, 7 * s);
             
             const t = this.add.text(badgeX, badgeY, lifeNumber.toString(), { 
-                fontSize: '10px', 
+                fontSize: `${10 * s}px`, 
                 fontFamily: 'Arial',
                 color: '#ffffff', 
                 fontStyle: 'bold'

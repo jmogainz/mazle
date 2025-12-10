@@ -41,6 +41,7 @@ WORKDIR /app
 #######################################
 # Stage 2: Builder (compile WASM)
 #######################################
+SHELL ["/bin/bash", "-c"]
 FROM base AS builder
 
 # Build-time environment indicator (used to optionally skip wasm build when artifacts already exist)

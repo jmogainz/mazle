@@ -339,24 +339,30 @@ export class GameScene extends Phaser.Scene {
     
     this.player = this.add.container(px, py - FACE_LIFT);
     
-    // Player body - 3D Red Tile
-    const edge = this.add.graphics();
-    const face = this.add.graphics();
-    
-    const size = TILE_SIZE * 0.7; 
-    const radius = 6;
-    const depth = 4;
-    
-    // 1. Edge (Bottom/Shadow)
-    edge.fillStyle(COLORS.PLAYER_EDGE);
-    edge.fillRoundedRect(-size/2, -size/2, size, size, radius);
-    
-    // 2. Face (Top) - Draw slightly higher (-depth)
-    face.fillStyle(COLORS.PLAYER_FACE);
-    face.fillRoundedRect(-size/2, -size/2, size, size - depth, radius);
-    
-    this.player.add(edge);
-    this.player.add(face);
+    // Classic little character with eyes (returns from pre-overhaul)
+    const body = this.add.graphics();
+
+    // Shadow
+    body.fillStyle(0x000000, 0.25);
+    body.fillEllipse(0, 8, 16, 6);
+
+    // Body
+    body.fillStyle(COLORS.PLAYER_FACE);
+    body.fillRoundedRect(-8, -10, 16, 18, 3);
+
+    // Outline
+    body.lineStyle(2, COLORS.PLAYER_EDGE);
+    body.strokeRoundedRect(-8, -10, 16, 18, 3);
+
+    // Eyes
+    body.fillStyle(0xffffff);
+    body.fillCircle(-3, -4, 3);
+    body.fillCircle(3, -4, 3);
+    body.fillStyle(0x000000);
+    body.fillCircle(-2, -4, 1.5);
+    body.fillCircle(4, -4, 1.5);
+
+    this.player.add(body);
   }
 
   private createFlashOverlay() {

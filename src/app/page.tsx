@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
-import { Header, GameUI, ShareCard, StatsModal, HelpModal, MobileControls, ErrorBoundary } from '@/components';
+import { Header, GameUI, ShareCard, StatsModal, HelpModal, MobileControls, ErrorBoundary, Loader } from '@/components';
 import {
   getPuzzleNumber,
   onGameEvent,
@@ -28,8 +28,7 @@ const PhaserGame = dynamic(() => import('@/game/PhaserGame'), {
   ssr: false,
   loading: () => (
     <div className={styles.loading}>
-      <div className={styles.loadingSpinner} />
-      <p>Loading puzzle...</p>
+      <Loader text="Loading puzzle..." />
     </div>
   ),
 });
@@ -423,22 +422,10 @@ export default function Home() {
   if (!puzzle) {
     return (
       <main className={`${styles.main} bg-pattern`} style={{ justifyContent: 'center' }}>
-        <div className={styles.loading} style={{ minHeight: 'auto' }}>
-          <div className={styles.loadingSpinner} />
-          <p>
-            {isGenerating 
-              ? 'Generating daily puzzle...'
-              : 'Loading Mazle...'}
-          </p>
-          {isGenerating && (
-            <div className={styles.progressBar}>
-              <div 
-                className={styles.progressFill} 
-                style={{ width: `${progressPercent}%` }} 
-              />
-            </div>
-          )}
-        </div>
+        <Loader 
+          text={isGenerating ? 'Generating daily puzzle...' : 'Loading puzzle...'} 
+          progress={isGenerating ? progressPercent : undefined}
+        />
       </main>
     );
   }

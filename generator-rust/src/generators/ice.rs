@@ -55,11 +55,16 @@ const TRADITIONAL_ATTEMPTS: usize = 1000;
 const SIZE_OPTIONS: [(usize, usize); 1] = [(15, 15)];
 
 // Weighting knobs for psychology scoring (emphasize traps over length)
-const WEIGHT_COUNTER_INTUITIVE: f64 = 70.0;
-const WEIGHT_ATTRACTIVE_DECOYS: f64 = 80.0;
-const WEIGHT_COMMITMENT_GATES: f64 = 70.0;
-const WEIGHT_FALSE_PROGRESS: f64 = 100.0;
-const WEIGHT_MOVE_BONUS: f64 = 0.5;
+const WEIGHT_COUNTER_INTUITIVE: f64 = 50.0;   // Reduced - was overweighted
+const WEIGHT_ATTRACTIVE_DECOYS: f64 = 40.0;   // Reduced - was overweighted
+const WEIGHT_COMMITMENT_GATES: f64 = 80.0;    // Increased slightly - important metric
+const WEIGHT_FALSE_PROGRESS: f64 = 50.0;      // Reduced - less predictive than thought
+
+// NEW METRIC WEIGHTS - These capture human-perceived difficulty better
+const WEIGHT_PATH_LOCALITY: f64 = 350.0;      // High impact - concentrated paths are harder
+const WEIGHT_DIRECTION_CHANGES: f64 = 70.0;   // Each direction change adds confusion
+const WEIGHT_BACKTRACK_DEPTH: f64 = 50.0;     // Going "wrong way" is frustrating
+const WEIGHT_DECISION_AMBIGUITY: f64 = 80.0;  // Many similar choices = harder
 
 // Diversity bonus for non-traditional placements (helps them compete with traditional)
 const DIVERSITY_BONUS: f64 = 150.0;
@@ -73,6 +78,13 @@ const BASE_PREFILTER_MIN_COUNTER_INTUITIVE: i32 = 10;
 const BASE_PREFILTER_MIN_ATTRACTIVE_DECOYS: i32 = 14;
 const BASE_PREFILTER_MIN_COMMITMENT_GATES: i32 = 5;
 const BASE_PREFILTER_MIN_FALSE_PROGRESS: i32 = 14;
+
+// NEW PREFILTER BASE THRESHOLDS (for 35x35 reference, scaled for smaller maps)
+// Tuned based on empirical testing - tightened to select harder puzzles
+const BASE_PREFILTER_MAX_PATH_LOCALITY: f64 = 0.40;      // Tightened: path must cover <40% of map area
+const BASE_PREFILTER_MIN_DIRECTION_CHANGES: i32 = 16;    // Raised: require more direction changes
+const BASE_PREFILTER_MIN_BACKTRACK_DEPTH: i32 = 10;      // Raised: require deeper backtracks
+const BASE_PREFILTER_MIN_DECISION_AMBIGUITY: f64 = 2.8;  // Keep same: avg choices per decision
 
 // Reference map size for scaling calculations
 const REFERENCE_SIZE: f64 = 35.0;
@@ -1499,25 +1511,20 @@ fn create_commitment_traps(
 
 #[derive(Clone, Debug)]
 struct PsychMetrics {
+    // Original metrics
     counter_intuitive_moves: i32,
     attractive_decoys: i32,
     commitment_gates: i32,
     false_progress_paths: i32,
-    psychology_score: f64,
-}
 
-fn trap_bonus(false_progress_paths: i32, attractive_decoys: i32) -> f64 {
-    let fp_bonus = if false_progress_paths > 8 {
-        (false_progress_paths - 8) * 40
-    } else {
-        0
-    };
-    let decoy_bonus = if attractive_decoys > 12 {
-        (attractive_decoys - 12) * 25
-    } else {
-        0
-    };
-    (fp_bonus + decoy_bonus) as f64
+    // NEW metrics
+    path_locality: f64,           // 0.0-1.0, lower = more concentrated = harder
+    direction_changes: i32,       // Count of direction changes in optimal path
+    backtrack_depth: i32,         // How far "wrong way" the path goes
+    decision_ambiguity: f64,      // Average valid moves at each decision point
+
+    // Final computed score
+    psychology_score: f64,
 }
 
 fn get_direction_between(from: &Position, to: &Position) -> Option<Direction> {
@@ -1723,7 +1730,12 @@ fn count_commitment_gates(
             }
         }
 
+        // Graduated commitment gate scoring:
+        // - Severe gates (cost 5+): worth 2 points
+        // - Moderate gates (cost 3-4): worth 1 point
         if max_wrong_move_cost >= 5 {
+            gate_count += 2;
+        } else if max_wrong_move_cost >= 3 {
             gate_count += 1;
         }
     }
@@ -1788,6 +1800,139 @@ fn count_false_progress_paths(
     false_path_count
 }
 
+// =============================================================================
+// NEW PSYCHOLOGY METRICS - Better predictors of human-perceived difficulty
+// =============================================================================
+
+/// Calculate how concentrated the solution path is within the puzzle grid.
+/// Returns 0.0-1.0 where LOWER = more concentrated = HARDER for humans.
+/// A path that zigzags in a small area is much harder than one that sweeps across the map.
+fn calculate_path_locality(
+    optimal_path: &[Position],
+    width: usize,
+    height: usize,
+) -> f64 {
+    if optimal_path.len() < 2 {
+        return 1.0; // Default to "easy" if no real path
+    }
+
+    // Calculate bounding box of the solution path
+    let min_x = optimal_path.iter().map(|p| p.x).min().unwrap_or(0);
+    let max_x = optimal_path.iter().map(|p| p.x).max().unwrap_or(0);
+    let min_y = optimal_path.iter().map(|p| p.y).min().unwrap_or(0);
+    let max_y = optimal_path.iter().map(|p| p.y).max().unwrap_or(0);
+
+    let bbox_width = (max_x - min_x + 1) as f64;
+    let bbox_height = (max_y - min_y + 1) as f64;
+    let bbox_area = bbox_width * bbox_height;
+
+    // Inner playable area (excluding walls)
+    let inner_width = (width - 2) as f64;
+    let inner_height = (height - 2) as f64;
+    let inner_area = inner_width * inner_height;
+
+    if inner_area <= 0.0 {
+        return 1.0;
+    }
+
+    // Return ratio: what fraction of the playable area does the path span?
+    (bbox_area / inner_area).min(1.0)
+}
+
+/// Count how many times the optimal path changes direction.
+/// More direction changes = harder to discover the pattern.
+/// Example: RIGHT → DOWN → RIGHT → UP → LEFT = 4 changes
+fn count_direction_changes(optimal_path: &[Position]) -> i32 {
+    if optimal_path.len() < 3 {
+        return 0;
+    }
+
+    let mut changes = 0;
+    let mut prev_dir: Option<Direction> = None;
+
+    for i in 0..optimal_path.len() - 1 {
+        let current = &optimal_path[i];
+        let next = &optimal_path[i + 1];
+
+        let current_dir = get_direction_between(current, next);
+
+        if let (Some(prev), Some(curr)) = (prev_dir, current_dir) {
+            if prev != curr {
+                changes += 1;
+            }
+        }
+        prev_dir = current_dir;
+    }
+
+    changes
+}
+
+/// Calculate how far "backwards" the solution path goes before reaching the goal.
+/// If goal is to the right but solution goes far left first, that's a deep backtrack.
+/// Returns the maximum extra distance from goal compared to the starting distance.
+fn calculate_backtrack_depth(
+    start: &Position,
+    goal: &Position,
+    optimal_path: &[Position],
+) -> i32 {
+    if optimal_path.is_empty() {
+        return 0;
+    }
+
+    let start_dist = manhattan_dist(start, goal);
+    let mut max_dist_from_goal = start_dist;
+
+    for pos in optimal_path {
+        let dist = manhattan_dist(pos, goal);
+        max_dist_from_goal = max_dist_from_goal.max(dist);
+    }
+
+    // How much further from goal did we go compared to where we started?
+    (max_dist_from_goal - start_dist).max(0)
+}
+
+/// Calculate average number of valid moves at each decision point along the optimal path.
+/// Higher ambiguity = more choices that look equally valid = harder to pick the right one.
+/// Only counts positions where player has 2+ valid moves (actual decision points).
+fn calculate_decision_ambiguity(
+    tiles: &Vec<Vec<TileType>>,
+    optimal_path: &[Position],
+    width: usize,
+    height: usize,
+) -> f64 {
+    if optimal_path.len() < 2 {
+        return 0.0;
+    }
+
+    let mut total_options = 0;
+    let mut decision_points = 0;
+
+    // Check each position on the path except the last (goal)
+    for pos in optimal_path.iter().take(optimal_path.len() - 1) {
+        let mut valid_moves = 0;
+
+        for dir in get_all_dirs() {
+            let result = simulate_move(tiles, pos, dir, width, height);
+            if result.valid && !pos_eq(&result.pos, pos) {
+                valid_moves += 1;
+            }
+        }
+
+        // Only count as decision point if there are 2+ options
+        if valid_moves >= 2 {
+            decision_points += 1;
+            total_options += valid_moves;
+        }
+    }
+
+    if decision_points == 0 {
+        return 0.0;
+    }
+
+    // Return average number of options per decision point
+    total_options as f64 / decision_points as f64
+}
+
 fn calculate_psychology_score(
     tiles: &Vec<Vec<TileType>>,
     start: &Position,
@@ -1802,6 +1947,10 @@ fn calculate_psychology_score(
             attractive_decoys: 0,
             commitment_gates: 0,
             false_progress_paths: 0,
+            path_locality: 1.0,
+            direction_changes: 0,
+            backtrack_depth: 0,
+            decision_ambiguity: 0.0,
             psychology_score: 0.0,
         };
     }
@@ -1809,6 +1958,7 @@ fn calculate_psychology_score(
     let optimal_moves = (optimal_path.len() - 1) as i32;
     let distance_to_goal = compute_distance_to_goal(tiles, goal, width, height);
 
+    // Original metrics
     let counter_intuitive_moves = count_counter_intuitive_moves(goal, &optimal_path);
     let attractive_decoys = count_attractive_decoys(tiles, goal, width, height, &optimal_path);
     let commitment_gates =
@@ -1823,18 +1973,33 @@ fn calculate_psychology_score(
         &distance_to_goal,
     );
 
-    let psychology_score = (counter_intuitive_moves as f64 * WEIGHT_COUNTER_INTUITIVE)
+    // NEW metrics
+    let path_locality = calculate_path_locality(&optimal_path, width, height);
+    let direction_changes = count_direction_changes(&optimal_path);
+    let backtrack_depth = calculate_backtrack_depth(start, goal, &optimal_path);
+    let decision_ambiguity = calculate_decision_ambiguity(tiles, &optimal_path, width, height);
+
+    // Calculate final psychology score
+    // Key insight: path_locality is INVERTED (lower = harder, so we use 1.0 - locality)
+    let psychology_score =
+        (counter_intuitive_moves as f64 * WEIGHT_COUNTER_INTUITIVE)
         + (attractive_decoys as f64 * WEIGHT_ATTRACTIVE_DECOYS)
         + (commitment_gates as f64 * WEIGHT_COMMITMENT_GATES)
         + (false_progress_paths as f64 * WEIGHT_FALSE_PROGRESS)
-        + (optimal_moves as f64 * WEIGHT_MOVE_BONUS)
-        + trap_bonus(false_progress_paths, attractive_decoys);
+        + ((1.0 - path_locality) * WEIGHT_PATH_LOCALITY)  // Inverted: low locality = high score
+        + (direction_changes as f64 * WEIGHT_DIRECTION_CHANGES)
+        + (backtrack_depth as f64 * WEIGHT_BACKTRACK_DEPTH)
+        + (decision_ambiguity * WEIGHT_DECISION_AMBIGUITY);
 
     PsychMetrics {
         counter_intuitive_moves,
         attractive_decoys,
         commitment_gates,
         false_progress_paths,
+        path_locality,
+        direction_changes,
+        backtrack_depth,
+        decision_ambiguity,
         psychology_score,
     }
 }
@@ -1842,10 +2007,17 @@ fn calculate_psychology_score(
 /// Prefilter thresholds scaled to map size
 #[derive(Clone, Copy)]
 struct PrefilterThresholds {
+    // Original thresholds (minimum values)
     min_counter_intuitive: i32,
     min_attractive_decoys: i32,
     min_commitment_gates: i32,
     min_false_progress: i32,
+
+    // NEW thresholds
+    max_path_locality: f64,        // Maximum allowed (lower = harder, so we set a ceiling)
+    min_direction_changes: i32,    // Minimum direction changes required
+    min_backtrack_depth: i32,      // Minimum backtrack depth required
+    min_decision_ambiguity: f64,   // Minimum average choices per decision
 }
 
 fn compute_prefilter_thresholds(width: usize, height: usize) -> PrefilterThresholds {
@@ -1855,26 +2027,59 @@ fn compute_prefilter_thresholds(width: usize, height: usize) -> PrefilterThresho
     // For small maps (<= 18), cap thresholds to achievable values
     let is_small_map = min_dim <= 18.0;
 
+    // Original thresholds (scaled)
     let ci = ((BASE_PREFILTER_MIN_COUNTER_INTUITIVE as f64 * scale).round() as i32).max(2);
     let decoys = ((BASE_PREFILTER_MIN_ATTRACTIVE_DECOYS as f64 * scale).round() as i32).max(3);
     let gates = ((BASE_PREFILTER_MIN_COMMITMENT_GATES as f64 * scale).round() as i32).max(1);
     let fp = ((BASE_PREFILTER_MIN_FALSE_PROGRESS as f64 * scale).round() as i32).max(3);
 
-    // Tuned thresholds based on empirical testing:
-    // 15x15 with step-1 maze achieves: ci=4-5, decoys=6-8, gates=2-4, fp=7-14
+    // NEW thresholds (scaled)
+    // Path locality: smaller maps naturally have higher locality, so we're more lenient
+    let max_locality = if is_small_map {
+        BASE_PREFILTER_MAX_PATH_LOCALITY + 0.15  // Allow up to 0.60 for small maps
+    } else {
+        BASE_PREFILTER_MAX_PATH_LOCALITY
+    };
+
+    // Direction changes: scale with map size, minimum 4 for small maps
+    let min_dir_changes = ((BASE_PREFILTER_MIN_DIRECTION_CHANGES as f64 * scale).round() as i32).max(4);
+
+    // Backtrack depth: scale with map size, minimum 2 for small maps
+    let min_backtrack = ((BASE_PREFILTER_MIN_BACKTRACK_DEPTH as f64 * scale).round() as i32).max(2);
+
+    // Decision ambiguity: slightly lower for small maps (less room for options)
+    let min_ambiguity = if is_small_map {
+        (BASE_PREFILTER_MIN_DECISION_AMBIGUITY - 0.3).max(2.0)
+    } else {
+        BASE_PREFILTER_MIN_DECISION_AMBIGUITY
+    };
+
     PrefilterThresholds {
-        min_counter_intuitive: if is_small_map { ci.min(4) } else { ci },
-        min_attractive_decoys: if is_small_map { decoys.min(6) } else { decoys },
-        min_commitment_gates: if is_small_map { gates.min(2) } else { gates },
-        min_false_progress: if is_small_map { fp.min(7) } else { fp },
+        // Original (capped for small maps - using .max() to set floors)
+        min_counter_intuitive: if is_small_map { ci.max(4) } else { ci },
+        min_attractive_decoys: if is_small_map { decoys.max(6) } else { decoys },
+        min_commitment_gates: if is_small_map { gates.max(3) } else { gates },
+        min_false_progress: if is_small_map { fp.max(5) } else { fp },
+
+        // NEW thresholds (tightened based on empirical testing)
+        max_path_locality: if is_small_map { max_locality.min(0.55) } else { max_locality },
+        min_direction_changes: if is_small_map { min_dir_changes.max(7) } else { min_dir_changes },
+        min_backtrack_depth: if is_small_map { min_backtrack.max(4) } else { min_backtrack },
+        min_decision_ambiguity: min_ambiguity,
     }
 }
 
 fn passes_prefilters(metrics: &PsychMetrics, thresholds: &PrefilterThresholds) -> bool {
+    // Original checks
     metrics.counter_intuitive_moves >= thresholds.min_counter_intuitive
         && metrics.attractive_decoys >= thresholds.min_attractive_decoys
         && metrics.commitment_gates >= thresholds.min_commitment_gates
         && metrics.false_progress_paths >= thresholds.min_false_progress
+        // NEW checks
+        && metrics.path_locality <= thresholds.max_path_locality  // Note: <= because lower is harder
+        && metrics.direction_changes >= thresholds.min_direction_changes
+        && metrics.backtrack_depth >= thresholds.min_backtrack_depth
+        && metrics.decision_ambiguity >= thresholds.min_decision_ambiguity
 }
 
 // =============================================================================
@@ -3095,11 +3300,15 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
         width, height, required_optimal_moves
     ));
     log_to_console(&format!(
-        "[Rust] Prefilters: counter_intuitive>={}, decoys>={}, gates>={}, false_progress>={}",
+        "[Rust] Prefilters: ci>={}, decoys>={}, gates>={}, fp>={}, locality<={:.2}, dir_changes>={}, backtrack>={}, ambiguity>={:.1}",
         prefilter_thresholds.min_counter_intuitive,
         prefilter_thresholds.min_attractive_decoys,
         prefilter_thresholds.min_commitment_gates,
-        prefilter_thresholds.min_false_progress
+        prefilter_thresholds.min_false_progress,
+        prefilter_thresholds.max_path_locality,
+        prefilter_thresholds.min_direction_changes,
+        prefilter_thresholds.min_backtrack_depth,
+        prefilter_thresholds.min_decision_ambiguity
     ));
     log_to_console(&format!(
         "[Rust] Running {} traditional attempts per batch",

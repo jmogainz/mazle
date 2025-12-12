@@ -72,7 +72,10 @@ services:
       - ./nginx/nginx.conf.template:/etc/nginx/nginx.conf.template:ro
     environment:
       - APP_PORT=${APP_PORT:-8080}
-    command: /bin/sh -c "envsubst '$$APP_PORT' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf && nginx -g 'daemon off;'"
+      - NGINX_RESOLVER_DIRECTIVE=${NGINX_RESOLVER_DIRECTIVE:-}
+      - NGINX_BACKEND_RESOLVE_SUFFIX=${NGINX_BACKEND_RESOLVE_SUFFIX:-}
+      - NGINX_BACKEND_ZONE_DIRECTIVE=${NGINX_BACKEND_ZONE_DIRECTIVE:-}
+    command: /bin/sh -c "envsubst '$$APP_PORT $$NGINX_RESOLVER_DIRECTIVE $$NGINX_BACKEND_RESOLVE_SUFFIX $$NGINX_BACKEND_ZONE_DIRECTIVE' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf && nginx -g 'daemon off;'"
     ports:
       - "127.0.0.1:${APP_HOST_PORT:-8080}:${APP_PORT:-8080}"
     depends_on:

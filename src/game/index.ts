@@ -14,7 +14,6 @@ export type { MapTypeDefinition, PsychologyMetrics } from './puzzleGenerator';
 export {
   generatePuzzleParallel,
   fetchDailyPuzzle,
-  getWorkerPool,
   isRustBackendConfigured,
   getRustBackendUrl,
   getGeneratorStatus,

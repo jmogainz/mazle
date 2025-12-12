@@ -1,28 +1,94 @@
-# Mazle - AI Agent Guide
+# Mazle - AI Agent Instructions
 
 ## What is Mazle?
 
 A daily Wordle-style puzzle game inspired by Pokémon ice gym puzzles. Players navigate compact rooms using step movement, ice sliding, and one-way ledges. Browser-first (Next.js + Phaser 3).
 
-## Development Workflow
+---
+
+## 🚨 CRITICAL: Use Make Commands Only
+
+**DO NOT use these commands directly:**
+- ❌ `npm install` / `npm run build` / `npm run dev`
+- ❌ `cargo build` / `cargo run`
+- ❌ `docker build` / `docker compose`
+- ❌ `vercel deploy`
+- ❌ `fly deploy`
+
+**ALWAYS use the Make targets provided below.** All build, test, and deployment workflows are orchestrated through the root `Makefile` and `generator-rust/Makefile`.
+
+---
+
+## Required Setup
+
+Before ANY command, you MUST export:
 
 ```bash
-# Required env var (add to shell profile)
 export UNIQUE_RUNNER_ID=$(whoami)
-
-# Common workflows
-make up                       # Quick start (WASM fallback)
-make up ENV=dev               # Full stack (frontend + Rust backend)
-make up ENV=dev WITH_DEPS=0   # Dev mode, frontend only
-make up ENV=prod              # Deploy both frontend (Vercel) + backend (Fly.io)
-make down                     # Stop containers
-make clean                    # Full cleanup
-make help                     # List all targets
-
-# Build/compile verification
-make build                              # Build frontend (from root)
-cd generator-rust && make build         # Build Rust backend
 ```
+
+This is required for all Make commands. Set it once per session.
+
+---
+
+## Development Workflow
+
+### Starting Services
+
+```bash
+# Quick start (WASM fallback, no backend) - DEFAULT
+make up
+
+# Full stack (frontend + Rust backend auto-launch)
+make up ENV=dev
+
+# Dev mode, frontend only (backend must already be running)
+make up ENV=dev WITH_DEPS=0
+
+# Stop all services
+make down
+
+# Full cleanup (containers, images, volumes)
+make clean
+```
+
+### Building Code
+
+```bash
+# Build frontend (from root directory)
+# This also rebuilds WASM from Rust sources
+make build
+
+# Build ONLY the Rust backend (from generator-rust/ directory)
+cd generator-rust && UNIQUE_RUNNER_ID=$(whoami) make build
+```
+
+**IMPORTANT:**
+- Frontend changes: Use `make build` from root
+- Backend changes: Use `cd generator-rust && UNIQUE_RUNNER_ID=$(whoami) make build`
+- Never use `npm` or `cargo` directly
+
+### Testing Changes
+
+```bash
+# Restart backend after changes
+cd generator-rust && UNIQUE_RUNNER_ID=$(whoami) make up ENV=dev
+
+# Test backend endpoint (example)
+curl -s "http://10.0.0.240:8080/api/generate/test" | python3 -c "import sys,json; d=json.load(sys.stdin); p=d['puzzle']; print(f\"{p['width']}x{p['height']}, {p['optimalMoves']} moves\")"
+
+# Check backend logs
+docker logs mazle-generator_instance 2>&1 | tail -30
+```
+
+**Testing Checklist:**
+1. After frontend changes: `make build` → verify build succeeds
+2. After backend changes: `cd generator-rust && UNIQUE_RUNNER_ID=$(whoami) make build`
+3. Restart services if needed: `make up ENV=dev` or `cd generator-rust && UNIQUE_RUNNER_ID=$(whoami) make up ENV=dev`
+4. Test the specific feature you changed
+5. Do NOT run full test suites unless explicitly requested by user
+
+---
 
 ## Environment Behavior
 
@@ -32,6 +98,14 @@ cd generator-rust && make build         # Build Rust backend
 | `dev` | 1 (override with =0) | Full local stack |
 | `staging` | 1 | Pre-prod (Fly.io) |
 | `prod` | 1 (override with =0) | Deploy backend to Fly.io, frontend to Vercel |
+
+**Environment Selection Rules:**
+- **Default (no ENV)**: Use `dev-test` with WASM fallback
+- **Local full stack**: Use `ENV=dev`
+- **Skip backend**: Add `WITH_DEPS=0` to any environment
+- **Production**: Only use `ENV=prod` when explicitly deploying
+
+---
 
 ## Architecture
 
@@ -48,203 +122,258 @@ mazle/
 └── Makefile               # Root orchestration
 ```
 
-## Key Files
+---
 
-- `Makefile` - Root build targets, WASM build, backend wiring
+## Key Files Reference
+
+**Build & Deploy:**
+- `Makefile` - Root build targets, WASM build, orchestration (USE THIS)
+- `generator-rust/Makefile` - Backend build/deploy (USE THIS for backend)
 - `mazle.compose.yaml` - Docker Compose for frontend
-- `generator-rust/Makefile` - Backend build/deploy (Fly.io)
-- `src/game/GameScene.ts` - Main Phaser game logic
-- `src/game/puzzleGenerator.ts` - WASM/HTTP generator interface
+- `package.json` - Frontend deps (DO NOT use npm directly)
+- `generator-rust/Cargo.toml` - Rust deps (DO NOT use cargo directly)
 
-## Puzzle Generation
+**Game Logic:**
+- `src/game/GameScene.ts` - Main Phaser game scene
+- `src/game/wasmGenerator.ts` - WASM/HTTP generator interface
+- `src/game/generationWorker.ts` - Web worker for WASM generation
+- `generator-rust/src/lib.rs` - WASM bindings
+- `generator-rust/src/generators/ice.rs` - Ice puzzle generator
 
-Two modes:
-1. **WASM** (client-side): `src/wasm/generator/` - runs in web workers
-2. **HTTP** (server-side): `generator-rust/` on port 8080 - Rust Axum server
+**API Routes:**
+- `src/app/api/daily/route.ts` - Daily puzzle endpoint
+- `src/app/api/cron/generate/route.ts` - Pre-generation cron
 
-Frontend auto-detects: uses HTTP if `NEXT_PUBLIC_GENERATOR_URL` set, else WASM fallback.
+---
+
+## Puzzle Generation System
+
+Two generation backends (produce **identical puzzles** for same seed):
+
+1. **WASM** (client-side):
+   - Location: `src/wasm/generator/` (compiled from `generator-rust/`)
+   - Runs in web worker (`src/game/generationWorker.ts`)
+   - Uses rayon thread pool for parallelism
+   - Fallback when HTTP backend unavailable
+
+2. **HTTP** (server-side):
+   - Location: `generator-rust/` (Rust Axum server on port 8080)
+   - Runs with native rayon parallelism
+   - Primary backend when available
+
+**Frontend auto-detection:**
+- Uses HTTP if `NEXT_PUBLIC_GENERATOR_URL` environment variable is set
+- Falls back to WASM if HTTP unavailable
+- See `src/game/wasmGenerator.ts` for routing logic
+
+**When modifying generation:**
+1. Edit Rust code in `generator-rust/src/generators/`
+2. Build: `cd generator-rust && UNIQUE_RUNNER_ID=$(whoami) make build`
+3. For WASM: Also run `make build` from root to rebuild WASM bundle
+4. Restart: `cd generator-rust && UNIQUE_RUNNER_ID=$(whoami) make up ENV=dev`
+
+---
 
 ## Deployment
 
-- **Full stack**: `make up ENV=prod` (requires `VERCEL_TOKEN` and `FLY_API_TOKEN`)
-- **Frontend only**: `make up ENV=prod WITH_DEPS=0` (backend must already be deployed)
-- **Backend only**: `cd generator-rust && make up ENV=prod`
+**ONLY deploy when explicitly requested by user.**
 
-## Game Spec Summary
+```bash
+# Full stack (backend + frontend)
+# Requires: VERCEL_TOKEN and FLY_API_TOKEN
+make up ENV=prod
+
+# Frontend only (backend must already be deployed)
+# Requires: VERCEL_TOKEN
+make up ENV=prod WITH_DEPS=0
+
+# Backend only
+# Requires: FLY_API_TOKEN
+cd generator-rust && UNIQUE_RUNNER_ID=$(whoami) make up ENV=prod
+```
+
+**Deployment Checklist:**
+1. Verify `ENV=prod` is correct environment
+2. Confirm required tokens are set
+3. Test locally first with `ENV=dev`
+4. Deploy backend first if doing full stack
+5. Monitor logs after deployment
+
+---
+
+## Game Specification
 
 - **Tiles**: Floor (step), Wall (block), Ice (slide), Ledge (one-way), Start, Goal
 - **Target**: ~20 moves, <3 min solve time
 - **Scoring**: Move count (primary), time (tiebreaker)
 - **Daily**: Same puzzle globally, midnight UTC reset
 
+---
 
+## Agent Decision Making
 
-## EXAMPLE AGENT WORKING IN BACKEND SO YOU CAN SEE FOR EXAMPLE AND INSPIRATION:
+### When to Edit Code
+✅ **DO edit when:**
+- User explicitly requests a feature/fix
+- You find a bug directly related to user's request
+- Code needs updating to implement requested change
 
- ✔ Build with adjusted thresholds
-    $ cd /Users/jmogainz/mazle/generator-rust && UNIQUE_RUNNER_ID=$(whoami) make build 2>&1 | tail -5
-    └ 6 lines...
+❌ **DO NOT edit when:**
+- Unrelated bugs exist
+- Tests are failing for unrelated features
+- Code style doesn't match your preferences
+- "While you're at it..." improvements
 
- ✔ Restart server
-    $ cd /Users/jmogainz/mazle/generator-rust && UNIQUE_RUNNER_ID=$(whoami) make up ENV=dev 2>&1 | tail -5
-    └ 6 lines...
+### Build Verification
+**ALWAYS verify builds after code changes:**
 
- ✔ Test 15x15 with timeout
-    $ timeout 40 curl -s "http://10.0.0.240:8080/api/generate/quick1" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); p=d['puzzle'];
-    print(f\"{p['width']}x{p['height']}, {p['optimalMoves']} moves, {d['generationTimeMs']}ms\")" || echo "Timeout/failed"
-    └ 3 lines...
+1. **Frontend changes:** 
+   ```bash
+   make build
+   ```
 
- ● Still timing out. The 15x15 with 10 moves is probably too constrained. Let me check the logs to see what's happening:
+2. **Backend changes:**
+   ```bash
+   cd generator-rust && UNIQUE_RUNNER_ID=$(whoami) make build
+   ```
 
- ✔ Check generator logs
-    $ docker logs mazle-generator_instance 2>&1 | tail -30
-    └ 31 lines...
+3. **Both changed:**
+   ```bash
+   cd generator-rust && UNIQUE_RUNNER_ID=$(whoami) make build
+   cd .. && make build
+   ```
 
- ● It's running batches but not finding valid puzzles. Let me check what parameters are being used:
+### Error Handling
+If a build/command fails:
+1. Read the error message carefully
+2. Fix ONLY the error that occurred
+3. Do NOT "improve" other code while fixing
+4. Verify fix with same command that failed
 
- ✔ Check generation parameters
-    $ docker logs mazle-generator_instance 2>&1 | grep -E "Map|Prefilters" | tail -10
-    └ 3 lines...
+---
 
- ● Interesting - it shows 14x14. But you said you changed to 15x15. Let me check the SIZE_OPTIONS:
+## Common Patterns
 
- ✔ Grep "SIZE_OPTIONS" (/Users/jmogainz/mazle/generator-rust/src/generators/ice.rs)
-   └ 2 lines found
+### Testing Backend Changes
+```bash
+# 1. Edit code in generator-rust/src/
+# 2. Build
+cd generator-rust && UNIQUE_RUNNER_ID=$(whoami) make build 2>&1 | tail -5
 
- ✔ Read generator-rust/src/generators/ice.rs:63-68
-   └ 11 lines read
+# 3. Restart
+cd generator-rust && UNIQUE_RUNNER_ID=$(whoami) make up ENV=dev 2>&1 | tail -5
 
- ● It's currently 14x14, not 15x15. The thresholds for 14x14 (which is still < 15) should use the small map path. Let me recalculate:
+# 4. Test endpoint
+curl -s "http://10.0.0.240:8080/api/generate/test" | python3 -c "import sys,json; d=json.load(sys.stdin); p=d['puzzle']; print(f\"{p['width']}x{p['height']}, {p['optimalMoves']} moves, {d['generationTimeMs']}ms\")"
 
-   For 14x14:
+# 5. Check logs if needed
+docker logs mazle-generator_instance 2>&1 | tail -30
+```
 
-     - scale = 14/35 = 0.4
-     - min_counter_intuitive = round(10 * 0.4) = 4, .max(3) = 4
-     - min_attractive_decoys = round(14 * 0.4) = 6, .max(4) = 6
+### Testing Frontend Changes
+```bash
+# 1. Edit code in src/
+# 2. Build (includes WASM rebuild if generator-rust changed)
+make build 2>&1 | tail -20
 
-   So the thresholds are: ci>=4, decoys>=6, gates>=2, fp>=6
+# 3. Start/restart
+make up ENV=dev
 
-   These might still be too high. The issue is that for a maze with only 9-10 optimal moves, getting 4+ counter-intuitive moves and 6+ decoys is hard. Let me lower
-   these further:
+# 4. Test in browser at http://localhost:8080
+```
 
- ✔ Edit generator-rust/src/generators/ice.rs (+6 -6)
-   ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-   │ 1624         let min_dim = width.min(height) as f64;                                                                                                         │
-   │ 1625         let scale = min_dim / 35.0;  // Reference: 35x35 base map size                                                                                  │
-   │ 1626                                                                                                                                                         │
-   │ 1627  -      // For small maps (<= 15), use lower thresholds tuned for faster generation                                                                     │
-   │ 1628  -      let is_small_map = min_dim <= 15.0;                                                                                                             │
-   │ 1627  +      // For small maps (<= 18), use lower thresholds tuned for faster generation                                                                     │
-   │ 1628  +      let is_small_map = min_dim <= 18.0;                                                                                                             │
-   │ 1629                                                                                                                                                         │
-   │ 1630         PrefilterThresholds {                                                                                                                           │
-   │ 1631  -          min_counter_intuitive: ((BASE_PREFILTER_MIN_COUNTER_INTUITIVE as f64 * scale).round() as i32).max(if is_small_map { 3 } else { 4 }),        │
-   │ 1632  -          min_attractive_decoys: ((BASE_PREFILTER_MIN_ATTRACTIVE_DECOYS as f64 * scale).round() as i32).max(if is_small_map { 4 } else { 5 }),        │
-   │ 1633  -          min_commitment_gates: ((BASE_PREFILTER_MIN_COMMITMENT_GATES as f64 * scale).round() as i32).max(if is_small_map { 2 } else { 2 }),          │
-   │ 1634  -          min_false_progress: ((BASE_PREFILTER_MIN_FALSE_PROGRESS as f64 * scale).round() as i32).max(if is_small_map { 4 } else { 5 }),              │
-   │ 1631  +          min_counter_intuitive: ((BASE_PREFILTER_MIN_COUNTER_INTUITIVE as f64 * scale).round() as i32).max(if is_small_map { 2 } else { 4 }),        │
-   │ 1632  +          min_attractive_decoys: ((BASE_PREFILTER_MIN_ATTRACTIVE_DECOYS as f64 * scale).round() as i32).max(if is_small_map { 3 } else { 5 }),        │
-   │ 1633  +          min_commitment_gates: ((BASE_PREFILTER_MIN_COMMITMENT_GATES as f64 * scale).round() as i32).max(if is_small_map { 1 } else { 2 }),          │
-   │ 1634  +          min_false_progress: ((BASE_PREFILTER_MIN_FALSE_PROGRESS as f64 * scale).round() as i32).max(if is_small_map { 3 } else { 5 }),              │
-   │ 1635         }                                                                                                                                               │
-   │ 1636     }                                                                                                                                                   │
-   ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+### Checking Service Status
+```bash
+# Frontend container
+docker ps | grep mazle
 
- ✘ Build and restart
-   $ cd /Users/jmogainz/mazle/generator-rust && UNIQUE_RUNNER_ID=$(whoami) make build 2>&1 | tail -3 && UNIQUE_RUNNER_ID=$(whoami) make up ENV=dev 2>&1 | tail -3
-   Operation aborted by user
+# Backend container
+docker ps | grep generator
 
- ● Operation cancelled by user
+# Backend logs
+docker logs mazle-generator_instance 2>&1 | tail -50
 
- > sure and change to 15x15
+# Frontend logs
+docker logs mazle-instance 2>&1 | tail -50
+```
 
- ✔ Edit generator-rust/src/generators/ice.rs (+1 -1)
-   ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-   │ 61     const TRADITIONAL_ATTEMPTS: usize = 1000;                                                                                                             │
-   │ 62                                                                                                                                                           │
-   │ 63     const SIZE_OPTIONS: [(usize, usize); 1] = [                                                                                                           │
-   │ 64  -      (14, 14),                                                                                                                                         │
-   │ 64  +      (15, 15),                                                                                                                                         │
-   │ 65     ];                                                                                                                                                    │
-   │ 66                                                                                                                                                           │
-   │ 67     // Weighting knobs for psychology scoring (emphasize traps over length)                                                                               │
-   ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+---
 
- ✔ Build Rust backend
-    $ cd /Users/jmogainz/mazle/generator-rust && UNIQUE_RUNNER_ID=$(whoami) make build 2>&1 | tail -3
-    └ 4 lines...
+## Example: Backend Modification Workflow
 
- ✔ Restart server
-    $ cd /Users/jmogainz/mazle/generator-rust && UNIQUE_RUNNER_ID=$(whoami) make up ENV=dev 2>&1 | tail -5
-    └ 6 lines...
+This example shows the correct workflow for modifying backend code:
 
- ✔ Test 15x15 puzzle
-    $ timeout 40 curl -s "http://10.0.0.240:8080/api/generate/test15x15" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); p=d['puzzle'];
-    print(f\"{p['width']}x{p['height']}, {p['optimalMoves']} moves, {d['generationTimeMs']}ms\")" || echo "Timeout"
-    └ 3 lines...
+```bash
+# User request: "Change puzzle size to 15x15"
 
- ✔ Check thresholds being used
-    $ docker logs mazle-generator_instance 2>&1 | grep -E "Map|Prefilters" | tail -5
-    └ 3 lines...
+# 1. Find the relevant code
+$ grep "SIZE_OPTIONS" generator-rust/src/generators/ice.rs
 
- ● The thresholds are still high. The scaled values are overriding my .max() floors. Let me check the math:
+# 2. Edit the code (using edit tool)
+# Changed: (14, 14) → (15, 15)
 
-   For 15x15:
+# 3. Build to verify changes compile
+$ cd generator-rust && UNIQUE_RUNNER_ID=$(whoami) make build 2>&1 | tail -3
+   Compiling mazle-generator v0.1.0
+   Finished release [optimized] target(s)
+Build complete
 
-     - scale = 15/35 ≈ 0.43
-     - min_counter_intuitive = round(10 * 0.43) = 4 → .max(2) = 4 (scaled wins)
-     - min_attractive_decoys = round(14 * 0.43) = 6 → .max(3) = 6 (scaled wins)
+# 4. Restart server with new code
+$ cd generator-rust && UNIQUE_RUNNER_ID=$(whoami) make up ENV=dev 2>&1 | tail -5
+Container mazle-generator_instance started
 
-   The problem is the scaled value is HIGHER than my floor. I need to use .min() as well to cap the values for small maps:
+# 5. Test the change
+$ curl -s "http://10.0.0.240:8080/api/generate/test15" | python3 -c "import sys,json; d=json.load(sys.stdin); p=d['puzzle']; print(f\"{p['width']}x{p['height']}, {p['optimalMoves']} moves\")"
+15x15, 10 moves
 
- ✔ Edit generator-rust/src/generators/ice.rs (+10 -5)
-   ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-   │ 1624         let min_dim = width.min(height) as f64;                                                                                                         │
-   │ 1625         let scale = min_dim / 35.0;  // Reference: 35x35 base map size                                                                                  │
-   │ 1626                                                                                                                                                         │
-   │ 1627  -      // For small maps (<= 18), use lower thresholds tuned for faster generation                                                                     │
-   │ 1627  +      // For small maps (<= 18), cap thresholds to achievable values                                                                                  │
-   │ 1628         let is_small_map = min_dim <= 18.0;                                                                                                             │
-   │ 1629  +                                                                                                                                                      │
-   │ 1630  +      let ci = ((BASE_PREFILTER_MIN_COUNTER_INTUITIVE as f64 * scale).round() as i32).max(2);                                                         │
-   │ 1631  +      let decoys = ((BASE_PREFILTER_MIN_ATTRACTIVE_DECOYS as f64 * scale).round() as i32).max(3);                                                     │
-   │ 1632  +      let gates = ((BASE_PREFILTER_MIN_COMMITMENT_GATES as f64 * scale).round() as i32).max(1);                                                       │
-   │ 1633  +      let fp = ((BASE_PREFILTER_MIN_FALSE_PROGRESS as f64 * scale).round() as i32).max(3);                                                            │
-   │ 1634                                                                                                                                                         │
-   │ 1635         PrefilterThresholds {                                                                                                                           │
-   │ 1636             min_counter_intuitive: ((BASE_PREFILTER_MIN_COUNTER_INTUITIVE as f64 * scale).round() as i32).max(if is_small_map { 2 } else { 4 }),        │
-   │ 1633         let is_small_map = min_dim <= 18.0;                                                                                                             │
-   │ 1634                                                                                                                                                         │
-   │ 1635         PrefilterThresholds {                                                                                                                           │
-   │ 1631  -          min_counter_intuitive: ((BASE_PREFILTER_MIN_COUNTER_INTUITIVE as f64 * scale).round() as i32).max(if is_small_map { 2 } else { 4 }),        │
-   │ 1632  -          min_attractive_decoys: ((BASE_PREFILTER_MIN_ATTRACTIVE_DECOYS as f64 * scale).round() as i32).max(if is_small_map { 3 } else { 5 }),        │
-   │ 1633  -          min_commitment_gates: ((BASE_PREFILTER_MIN_COMMITMENT_GATES as f64 * scale).round() as i32).max(if is_small_map { 1 } else { 2 }),          │
-   │ 1634  -          min_false_progress: ((BASE_PREFILTER_MIN_FALSE_PROGRESS as f64 * scale).round() as i32).max(if is_small_map { 3 } else { 5 }),              │
-   │ 1636  +          min_counter_intuitive: if is_small_map { ci.min(3) } else { ci },                                                                           │
-   │ 1637  +          min_attractive_decoys: if is_small_map { decoys.min(4) } else { decoys },                                                                   │
-   │ 1638  +          min_commitment_gates: if is_small_map { gates.min(2) } else { gates },                                                                      │
-   │ 1639  +          min_false_progress: if is_small_map { fp.min(4) } else { fp },                                                                              │
-   │ 1640         }                                                                                                                                               │
-   │ 1641     }                                                                                                                                                   │
-   ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+# 6. Success! Change verified.
+```
 
- ✔ Build and restart
-    $ cd /Users/jmogainz/mazle/generator-rust && UNIQUE_RUNNER_ID=$(whoami) make build 2>&1 | tail -3 && UNIQUE_RUNNER_ID=$(whoami) make up ENV=dev 2>&1 | tail -3
-    └ 7 lines...
+**Key Points:**
+- Used `make build` and `make up`, NOT `cargo build`
+- Used `UNIQUE_RUNNER_ID=$(whoami)` for all make commands
+- Verified change with specific test, not full test suite
+- Made minimal changes - only what was requested
 
- ✔ Check new thresholds
-    $ docker logs mazle-generator_instance 2>&1 | grep -E "Map|Prefilters" | tail -5
-    └ 1 line...
+---
 
- ✔ Test with new thresholds
-    $ timeout 40 curl -s "http://10.0.0.240:8080/api/generate/newtest" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); p=d['puzzle'];
-    print(f\"{p['width']}x{p['height']}, {p['optimalMoves']} moves, {d['generationTimeMs']}ms\")" || echo "Timeout"
-    └ 2 lines...
+## Troubleshooting
 
- ● Excellent! 15x15 with 10 moves in 1.3 seconds! Let me run a few more tests:
+### "UNIQUE_RUNNER_ID not set"
+```bash
+export UNIQUE_RUNNER_ID=$(whoami)
+```
 
- ○ Test multiple seeds
-   $ for s in a b c d e; do timeout 40 curl -s "http://10.0.0.240:8080/api/generate/$s" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin);
-   p=d['puzzle']; print(f\"{p['width']}x{p['height']}, {p['optimalMoves']} moves, {d['generationTimeMs']}ms\")" || echo "Timeout"; done
-    └ 1 line...
+### "Permission denied" on make commands
+- Ensure Docker is running
+- Check Docker permissions for your user
 
+### Build hangs or times out
+- Stop existing containers: `make down`
+- Clean up: `make clean`
+- Try again: `make build`
+
+### Backend not accessible
+- Check if container is running: `docker ps | grep generator`
+- Check logs: `docker logs mazle-generator_instance`
+- Verify port 8080 is not in use: `lsof -i :8080`
+
+### WASM build fails
+- WASM is built inside Docker - no host Rust needed
+- If build fails, check: `make build` output
+- Clean rebuild: `make clean && make build`
+
+---
+
+## Summary of Rules
+
+1. ✅ **ALWAYS** use `make` commands - NEVER use `npm`, `cargo`, `docker` directly
+2. ✅ **ALWAYS** set `UNIQUE_RUNNER_ID=$(whoami)` before any make command
+3. ✅ **ALWAYS** verify builds after code changes
+4. ✅ **ALWAYS** use minimal changes - only fix what's requested
+5. ❌ **NEVER** deploy to production unless explicitly requested
+6. ❌ **NEVER** run full test suites unless explicitly requested
+7. ❌ **NEVER** fix unrelated bugs or "improve" code beyond the request
+8. ❌ **NEVER** use `npm install`, `cargo build`, or direct Docker commands
+
+**When in doubt:** Check this file, or ask the user for clarification.

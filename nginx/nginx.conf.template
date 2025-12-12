@@ -9,6 +9,8 @@ http {
     default_type  application/octet-stream;
     sendfile        on;
     keepalive_timeout  65;
+    # Optional resolver for dev-test (no backend); empty in other envs.
+    ${NGINX_RESOLVER_DIRECTIVE}
 
     # Upstream for Next.js Frontend
     upstream frontend {
@@ -17,7 +19,9 @@ http {
 
     # Upstream for Rust Backend
     upstream backend {
-        server mazle-generator:8080;
+        # In dev-test this adds 'resolve' so nginx can start without the backend.
+        ${NGINX_BACKEND_ZONE_DIRECTIVE}
+        server mazle-generator:8080 ${NGINX_BACKEND_RESOLVE_SUFFIX};
     }
 
     server {

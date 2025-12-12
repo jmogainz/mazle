@@ -61,6 +61,11 @@ const WEIGHT_COMMITMENT_GATES: f64 = 70.0;
 const WEIGHT_FALSE_PROGRESS: f64 = 100.0;
 const WEIGHT_MOVE_BONUS: f64 = 0.5;
 
+// Diversity bonus for non-traditional placements (helps them compete with traditional)
+const DIVERSITY_BONUS: f64 = 150.0;
+// Extra bonus for Adjacent strategy (visually close, long path - very tricky!)
+const ADJACENT_BONUS: f64 = 300.0;
+
 // Prefilter thresholds - these are BASE values for reference size (35x35)
 // Actual thresholds are computed by compute_prefilter_thresholds() based on map size
 // These values are calibrated for full-puzzle difficulty (tricky parts extending to goal)
@@ -71,6 +76,49 @@ const BASE_PREFILTER_MIN_FALSE_PROGRESS: i32 = 14;
 
 // Reference map size for scaling calculations
 const REFERENCE_SIZE: f64 = 35.0;
+
+// =============================================================================
+// START/GOAL PLACEMENT STRATEGIES
+// =============================================================================
+
+/// Placement strategy for start/goal positions
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum PlacementStrategy {
+    /// Traditional: Start left, Goal right
+    LeftToRight,
+    /// Inverted: Start right, Goal left
+    RightToLeft,
+    /// Top to bottom
+    TopToBottom,
+    /// Bottom to top
+    BottomToTop,
+    /// Diagonal: top-left to bottom-right
+    DiagonalTLBR,
+    /// Diagonal: bottom-right to top-left
+    DiagonalBRTL,
+    /// Diagonal: top-right to bottom-left
+    DiagonalTRBL,
+    /// Diagonal: bottom-left to top-right
+    DiagonalBLTR,
+    /// Adjacent: Start and goal within close proximity but solution requires long detour
+    Adjacent,
+    /// Random: Fully random placement with minimum distance
+    Random,
+}
+
+/// All available placement strategies for random selection
+const PLACEMENT_STRATEGIES: [PlacementStrategy; 10] = [
+    PlacementStrategy::LeftToRight,
+    PlacementStrategy::RightToLeft,
+    PlacementStrategy::TopToBottom,
+    PlacementStrategy::BottomToTop,
+    PlacementStrategy::DiagonalTLBR,
+    PlacementStrategy::DiagonalBRTL,
+    PlacementStrategy::DiagonalTRBL,
+    PlacementStrategy::DiagonalBLTR,
+    PlacementStrategy::Adjacent,
+    PlacementStrategy::Random,
+];
 
 /// Helper to scale a range based on map size relative to reference (35x35)
 /// Returns (scaled_min, scaled_max) ensuring min >= absolute_min and max > min
@@ -227,6 +275,197 @@ fn pos_eq(a: &Position, b: &Position) -> bool {
 struct MoveResult {
     pos: Position,
     valid: bool,
+}
+
+// =============================================================================
+// START/GOAL PLACEMENT SELECTION
+// =============================================================================
+
+/// Select start/goal positions based on placement strategy
+fn select_start_goal(
+    ice_tiles: &[Position],
+    width: usize,
+    height: usize,
+    strategy: PlacementStrategy,
+    rng: &mut SeededRandom,
+) -> Option<(Position, Position)> {
+    if ice_tiles.len() < 2 {
+        return None;
+    }
+
+    let inner_max_x = (width - 2) as i32;
+    let inner_max_y = (height - 2) as i32;
+
+    // Zone thresholds (1/3 divisions)
+    let left_threshold = (width as i32 / 3).max(2);
+    let right_threshold = (2 * width as i32 / 3).min(inner_max_x);
+    let top_threshold = (height as i32 / 3).max(2);
+    let bottom_threshold = (2 * height as i32 / 3).min(inner_max_y);
+
+    match strategy {
+        PlacementStrategy::LeftToRight => {
+            let left: Vec<_> = ice_tiles.iter().filter(|p| p.x < left_threshold).cloned().collect();
+            let right: Vec<_> = ice_tiles.iter().filter(|p| p.x > right_threshold).cloned().collect();
+            if left.is_empty() || right.is_empty() { return None; }
+            Some((rng.random_choice(&left), rng.random_choice(&right)))
+        }
+
+        PlacementStrategy::RightToLeft => {
+            let left: Vec<_> = ice_tiles.iter().filter(|p| p.x < left_threshold).cloned().collect();
+            let right: Vec<_> = ice_tiles.iter().filter(|p| p.x > right_threshold).cloned().collect();
+            if left.is_empty() || right.is_empty() { return None; }
+            Some((rng.random_choice(&right), rng.random_choice(&left)))
+        }
+
+        PlacementStrategy::TopToBottom => {
+            let top: Vec<_> = ice_tiles.iter().filter(|p| p.y < top_threshold).cloned().collect();
+            let bottom: Vec<_> = ice_tiles.iter().filter(|p| p.y > bottom_threshold).cloned().collect();
+            if top.is_empty() || bottom.is_empty() { return None; }
+            Some((rng.random_choice(&top), rng.random_choice(&bottom)))
+        }
+
+        PlacementStrategy::BottomToTop => {
+            let top: Vec<_> = ice_tiles.iter().filter(|p| p.y < top_threshold).cloned().collect();
+            let bottom: Vec<_> = ice_tiles.iter().filter(|p| p.y > bottom_threshold).cloned().collect();
+            if top.is_empty() || bottom.is_empty() { return None; }
+            Some((rng.random_choice(&bottom), rng.random_choice(&top)))
+        }
+
+        PlacementStrategy::DiagonalTLBR => {
+            let tl: Vec<_> = ice_tiles.iter().filter(|p| p.x < left_threshold && p.y < top_threshold).cloned().collect();
+            let br: Vec<_> = ice_tiles.iter().filter(|p| p.x > right_threshold && p.y > bottom_threshold).cloned().collect();
+            if tl.is_empty() || br.is_empty() { return None; }
+            Some((rng.random_choice(&tl), rng.random_choice(&br)))
+        }
+
+        PlacementStrategy::DiagonalBRTL => {
+            let tl: Vec<_> = ice_tiles.iter().filter(|p| p.x < left_threshold && p.y < top_threshold).cloned().collect();
+            let br: Vec<_> = ice_tiles.iter().filter(|p| p.x > right_threshold && p.y > bottom_threshold).cloned().collect();
+            if tl.is_empty() || br.is_empty() { return None; }
+            Some((rng.random_choice(&br), rng.random_choice(&tl)))
+        }
+
+        PlacementStrategy::DiagonalTRBL => {
+            let tr: Vec<_> = ice_tiles.iter().filter(|p| p.x > right_threshold && p.y < top_threshold).cloned().collect();
+            let bl: Vec<_> = ice_tiles.iter().filter(|p| p.x < left_threshold && p.y > bottom_threshold).cloned().collect();
+            if tr.is_empty() || bl.is_empty() { return None; }
+            Some((rng.random_choice(&tr), rng.random_choice(&bl)))
+        }
+
+        PlacementStrategy::DiagonalBLTR => {
+            let tr: Vec<_> = ice_tiles.iter().filter(|p| p.x > right_threshold && p.y < top_threshold).cloned().collect();
+            let bl: Vec<_> = ice_tiles.iter().filter(|p| p.x < left_threshold && p.y > bottom_threshold).cloned().collect();
+            if tr.is_empty() || bl.is_empty() { return None; }
+            Some((rng.random_choice(&bl), rng.random_choice(&tr)))
+        }
+
+        PlacementStrategy::Adjacent => {
+            select_adjacent_start_goal(ice_tiles, width, height, rng)
+        }
+
+        PlacementStrategy::Random => {
+            select_random_start_goal(ice_tiles, width, height, rng)
+        }
+    }
+}
+
+/// Select adjacent start/goal positions (close visually, requiring long detour)
+fn select_adjacent_start_goal(
+    ice_tiles: &[Position],
+    width: usize,
+    height: usize,
+    rng: &mut SeededRandom,
+) -> Option<(Position, Position)> {
+    // Start and goal 1-4 tiles apart (manhattan distance)
+    let min_proximity = 1;
+    let max_proximity = 4;
+
+    for _ in 0..50 {
+        let start = rng.random_choice(ice_tiles);
+
+        let nearby: Vec<_> = ice_tiles.iter()
+            .filter(|p| {
+                let dist = (start.x - p.x).abs() + (start.y - p.y).abs();
+                dist >= min_proximity && dist <= max_proximity
+            })
+            .cloned()
+            .collect();
+
+        if nearby.is_empty() {
+            continue;
+        }
+
+        let goal = rng.random_choice(&nearby);
+
+        if is_inner(start.x, start.y, width, height)
+            && is_inner(goal.x, goal.y, width, height)
+        {
+            return Some((start, goal));
+        }
+    }
+
+    None
+}
+
+/// Select random start/goal with minimum distance requirement
+fn select_random_start_goal(
+    ice_tiles: &[Position],
+    width: usize,
+    height: usize,
+    rng: &mut SeededRandom,
+) -> Option<(Position, Position)> {
+    // Minimum manhattan distance scales with map size
+    let min_distance = ((width.min(height) as f64) * 0.3) as i32;
+
+    for _ in 0..50 {
+        let start = rng.random_choice(ice_tiles);
+
+        let far_enough: Vec<_> = ice_tiles.iter()
+            .filter(|p| {
+                let dist = (start.x - p.x).abs() + (start.y - p.y).abs();
+                dist >= min_distance
+            })
+            .cloned()
+            .collect();
+
+        if far_enough.is_empty() {
+            continue;
+        }
+
+        let goal = rng.random_choice(&far_enough);
+
+        if is_inner(start.x, start.y, width, height)
+            && is_inner(goal.x, goal.y, width, height)
+        {
+            return Some((start, goal));
+        }
+    }
+
+    None
+}
+
+/// Select a random placement strategy with weighted distribution
+fn select_placement_strategy(rng: &mut SeededRandom) -> PlacementStrategy {
+    let roll = rng.random();
+    // 30% traditional (LeftToRight + DiagonalTLBR) for backwards compatibility
+    // 70% distributed across all strategies
+    if roll < 0.15 {
+        PlacementStrategy::LeftToRight
+    } else if roll < 0.30 {
+        PlacementStrategy::DiagonalTLBR
+    } else {
+        // Remaining 70% split among all 10 strategies
+        rng.random_choice(&PLACEMENT_STRATEGIES)
+    }
+}
+
+/// Calculate diversity bonus for a placement strategy
+fn get_strategy_bonus(strategy: PlacementStrategy) -> f64 {
+    match strategy {
+        PlacementStrategy::LeftToRight | PlacementStrategy::DiagonalTLBR => 0.0,
+        PlacementStrategy::Adjacent => ADJACENT_BONUS,
+        _ => DIVERSITY_BONUS,
+    }
 }
 
 // =============================================================================
@@ -2846,11 +3085,6 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
     } else {
         TRADITIONAL_ATTEMPTS
     };
-    let target_score = if config.target_psychology_score > 0 {
-        config.target_psychology_score as f64
-    } else {
-        TARGET_PSYCHOLOGY_SCORE
-    };
 
     // Compute scaled parameters for this map size
     let prefilter_thresholds = compute_prefilter_thresholds(width, height);
@@ -2909,50 +3143,11 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                 return None;
             }
 
-            // Scale position filters for step-1 maze (inner area is 1..width-1)
-            let inner_max_x = (width - 2) as i32;
-            let inner_max_y = (height - 2) as i32;
-            let left_threshold = (width as i32 / 3).max(2);
-            let right_threshold = (2 * width as i32 / 3).min(inner_max_x);
-            let top_threshold = (height as i32 / 3).max(2);
-            let bottom_threshold = (2 * height as i32 / 3).min(inner_max_y);
-
-            let left_tiles: Vec<_> = ice_tiles
-                .iter()
-                .filter(|p| p.x < left_threshold)
-                .cloned()
-                .collect();
-            let right_tiles: Vec<_> = ice_tiles
-                .iter()
-                .filter(|p| p.x > right_threshold)
-                .cloned()
-                .collect();
-            let top_left_tiles: Vec<_> = ice_tiles
-                .iter()
-                .filter(|p| p.x < left_threshold && p.y < top_threshold)
-                .cloned()
-                .collect();
-            let bottom_right_tiles: Vec<_> = ice_tiles
-                .iter()
-                .filter(|p| p.x > right_threshold && p.y > bottom_threshold)
-                .cloned()
-                .collect();
-
-            let (start, goal) = if !top_left_tiles.is_empty()
-                && !bottom_right_tiles.is_empty()
-                && attempt_rng.random() < 0.6
-            {
-                (
-                    attempt_rng.random_choice(&top_left_tiles),
-                    attempt_rng.random_choice(&bottom_right_tiles),
-                )
-            } else if !left_tiles.is_empty() && !right_tiles.is_empty() {
-                (
-                    attempt_rng.random_choice(&left_tiles),
-                    attempt_rng.random_choice(&right_tiles),
-                )
-            } else {
-                return None;
+            // Select placement strategy and start/goal positions
+            let strategy = select_placement_strategy(&mut attempt_rng);
+            let (start, goal) = match select_start_goal(&ice_tiles, width, height, strategy, &mut attempt_rng) {
+                Some(pair) => pair,
+                None => return None,
             };
 
             widen_passages(&mut tiles, width, height, &mut attempt_rng, 0.20);
@@ -3202,7 +3397,9 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
             if !passes_prefilters(&psych_metrics, &prefilter_thresholds) {
                 return None;
             }
-            let score = psych_metrics.psychology_score;
+            // Apply strategy-specific bonus for placement diversity
+            let base_score = psych_metrics.psychology_score;
+            let score = base_score + get_strategy_bonus(strategy);
 
             let puzzle = PuzzleData {
                 width,
@@ -3216,7 +3413,7 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                 optimal_moves,
                 solution_path: Some(optimal_path),
                 map_type: MapType::Ice,
-                difficulty_score: Some(score.round() as i32),
+                difficulty_score: Some(base_score.round() as i32), // Store base score without bonus
                 counter_intuitive_moves: Some(psych_metrics.counter_intuitive_moves),
                 attractive_decoys: Some(psych_metrics.attractive_decoys),
                 commitment_gates: Some(psych_metrics.commitment_gates),
@@ -3226,12 +3423,13 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
             Some((puzzle, score))
         });
 
-        // Check if we found a puzzle meeting the scaled target thresholds
-        if let Some((puzzle, score)) = trad_best.clone() {
-            if score >= target_score
-                && puzzle
-                    .counter_intuitive_moves
-                    .map_or(false, |v| v >= prefilter_thresholds.min_counter_intuitive)
+        // Check if we found a puzzle meeting the prefilter thresholds
+        // Note: If prefilters pass, psychology_score is guaranteed to be high enough
+        // (minimum ~1505 for 15x15, far exceeds TARGET_PSYCHOLOGY_SCORE of 800)
+        if let Some((puzzle, _score)) = trad_best.clone() {
+            if puzzle
+                .counter_intuitive_moves
+                .map_or(false, |v| v >= prefilter_thresholds.min_counter_intuitive)
                 && puzzle
                     .attractive_decoys
                     .map_or(false, |v| v >= prefilter_thresholds.min_attractive_decoys)
@@ -3240,18 +3438,18 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                     .map_or(false, |v| v >= prefilter_thresholds.min_commitment_gates)
             {
                 log_to_console(&format!(
-                    "[Rust] Selected puzzle (batch {}, score {:.2})",
-                    batch, score
+                    "[Rust] Selected puzzle (batch {}, base_score {}, strategy bonus applied for selection)",
+                    batch, puzzle.difficulty_score.unwrap_or(0)
                 ));
                 return puzzle;
             }
         }
 
         // If we found any valid puzzle, return it
-        if let Some((puzzle, score)) = trad_best {
+        if let Some((puzzle, _score)) = trad_best {
             log_to_console(&format!(
-                "[Rust] Selected best puzzle from batch {} (score {:.2})",
-                batch, score
+                "[Rust] Selected best puzzle from batch {} (base_score {})",
+                batch, puzzle.difficulty_score.unwrap_or(0)
             ));
             return puzzle;
         }
@@ -3319,50 +3517,11 @@ pub fn generate_puzzle_partial(
                 continue;
             }
 
-            // Scale position filters for step-1 maze (inner area is 1..width-1)
-            let inner_max_x = (width - 2) as i32;
-            let inner_max_y = (height - 2) as i32;
-            let left_threshold = (width as i32 / 3).max(2);
-            let right_threshold = (2 * width as i32 / 3).min(inner_max_x);
-            let top_threshold = (height as i32 / 3).max(2);
-            let bottom_threshold = (2 * height as i32 / 3).min(inner_max_y);
-
-            let left_tiles: Vec<_> = ice_tiles
-                .iter()
-                .filter(|p| p.x < left_threshold)
-                .cloned()
-                .collect();
-            let right_tiles: Vec<_> = ice_tiles
-                .iter()
-                .filter(|p| p.x > right_threshold)
-                .cloned()
-                .collect();
-            let top_left_tiles: Vec<_> = ice_tiles
-                .iter()
-                .filter(|p| p.x < left_threshold && p.y < top_threshold)
-                .cloned()
-                .collect();
-            let bottom_right_tiles: Vec<_> = ice_tiles
-                .iter()
-                .filter(|p| p.x > right_threshold && p.y > bottom_threshold)
-                .cloned()
-                .collect();
-
-            let (start, goal) = if !top_left_tiles.is_empty()
-                && !bottom_right_tiles.is_empty()
-                && attempt_rng.random() < 0.6
-            {
-                (
-                    attempt_rng.random_choice(&top_left_tiles),
-                    attempt_rng.random_choice(&bottom_right_tiles),
-                )
-            } else if !left_tiles.is_empty() && !right_tiles.is_empty() {
-                (
-                    attempt_rng.random_choice(&left_tiles),
-                    attempt_rng.random_choice(&right_tiles),
-                )
-            } else {
-                continue;
+            // Select placement strategy and start/goal positions
+            let strategy = select_placement_strategy(&mut attempt_rng);
+            let (start, goal) = match select_start_goal(&ice_tiles, width, height, strategy, &mut attempt_rng) {
+                Some(pair) => pair,
+                None => continue,
             };
 
             widen_passages(&mut tiles, width, height, &mut attempt_rng, 0.20);
@@ -3618,7 +3777,9 @@ pub fn generate_puzzle_partial(
             if !passes_prefilters(&psych_metrics, &prefilter_thresholds) {
                 continue;
             }
-            let score = psych_metrics.psychology_score;
+            // Apply strategy-specific bonus for placement diversity
+            let base_score = psych_metrics.psychology_score;
+            let score = base_score + get_strategy_bonus(strategy);
 
             if score > best_score {
                 best_score = score;
@@ -3634,7 +3795,7 @@ pub fn generate_puzzle_partial(
                     optimal_moves,
                     solution_path: Some(optimal_path),
                     map_type: MapType::Ice,
-                    difficulty_score: Some(score.round() as i32),
+                    difficulty_score: Some(base_score.round() as i32), // Store base score without bonus
                     counter_intuitive_moves: Some(psych_metrics.counter_intuitive_moves),
                     attractive_decoys: Some(psych_metrics.attractive_decoys),
                     commitment_gates: Some(psych_metrics.commitment_gates),
@@ -3642,10 +3803,10 @@ pub fn generate_puzzle_partial(
                 });
             }
 
-            // Early exit thresholds also scale
-            if score >= TARGET_PSYCHOLOGY_SCORE
-                && psych_metrics.counter_intuitive_moves
-                    >= prefilter_thresholds.min_counter_intuitive + 2
+            // Early exit if we found a puzzle exceeding prefilter thresholds by a good margin
+            // Note: base psychology_score is guaranteed high if prefilters pass
+            if psych_metrics.counter_intuitive_moves
+                >= prefilter_thresholds.min_counter_intuitive + 2
                 && psych_metrics.attractive_decoys >= prefilter_thresholds.min_attractive_decoys + 2
                 && psych_metrics.commitment_gates >= prefilter_thresholds.min_commitment_gates
             {

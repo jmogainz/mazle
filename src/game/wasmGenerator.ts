@@ -4,14 +4,10 @@
  * Manages puzzle generation via two backends (both produce identical puzzles):
  * 
  * 1. 🦀 Rust HTTP Server - Runs on server with rayon parallelism (port 8080)
- * 2. 🔷 WASM - Runs in a dedicated web worker with rayon via wasm-bindgen-rayon
+ * 2. 🔷 WASM - Runs in a dedicated web worker (single-threaded)
  * 
- * The WASM backend runs in a single dedicated worker (generationWorker.ts) to:
- * - Keep the main thread responsive during generation (~200-500ms)
- * - Provide SharedArrayBuffer context for rayon thread pool
- * - Enable progress reporting back to UI
- * 
- * Parallelism happens inside Rust/WASM via rayon, NOT via multiple JS workers.
+ * The WASM backend runs in a dedicated worker (generationWorker.ts) to
+ * keep the main thread responsive during generation (~200-500ms).
  */
 
 import type { PuzzleData, MapType } from './types';
@@ -34,9 +30,6 @@ export interface GeneratorStatus {
   rustUrl: string | null;
   wasmLoaded: boolean;
   wasmVersion: string | null;
-  wasmThreadsInitialized: boolean;
-  wasmThreadsAvailable: boolean;
-  sharedArrayBufferAvailable: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -50,17 +43,11 @@ const RUST_BACKEND_URL = process.env.NEXT_PUBLIC_DEV_GENERATOR_URL || process.en
 // ─────────────────────────────────────────────────────────────────────────────
 // WASM Generator with Dedicated Worker
 // ─────────────────────────────────────────────────────────────────────────────
-// 
-// IMPORTANT: WASM generation runs in a dedicated web worker to prevent UI freezing.
-// The worker initializes its own WASM instance and rayon thread pool.
-// ─────────────────────────────────────────────────────────────────────────────
 
 let generationWorker: Worker | null = null;
 let workerReady = false;
 let workerReadyPromise: Promise<void> | null = null;
 let wasmVersion: string | null = null;
-let wasmThreadCount = 0;
-let wasmThreadsAvailable = false;
 let requestId = 0;
 
 interface PendingRequest {
@@ -71,36 +58,11 @@ interface PendingRequest {
 const pendingRequests = new Map<number, PendingRequest>();
 
 /**
- * Check if SharedArrayBuffer is available (required for WASM threads)
- */
-function isSharedArrayBufferAvailable(): boolean {
-  try {
-    if (typeof SharedArrayBuffer === 'undefined') {
-      return false;
-    }
-    if (typeof crossOriginIsolated !== 'undefined' && !crossOriginIsolated) {
-      console.warn('[WASM] Page is not cross-origin isolated. COOP/COEP headers may be missing.');
-      return false;
-    }
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Initialize the generation worker
  */
 async function initGenerationWorker(): Promise<void> {
   if (workerReady) return;
   if (workerReadyPromise) return workerReadyPromise;
-  
-  // Check prerequisites
-  if (!isSharedArrayBufferAvailable()) {
-    console.error('[WASM] SharedArrayBuffer not available - WASM threading disabled');
-    wasmThreadsAvailable = false;
-    return;
-  }
   
   workerReadyPromise = new Promise((resolve, reject) => {
     try {
@@ -118,10 +80,8 @@ async function initGenerationWorker(): Promise<void> {
         switch (data.type) {
           case 'ready':
             wasmVersion = data.version;
-            wasmThreadCount = data.threads;
-            wasmThreadsAvailable = true;
             workerReady = true;
-            console.log(`[WASM] Worker ready (v${data.version}, ${data.threads} threads)`);
+            console.log(`[WASM] Worker ready (v${data.version})`);
             resolve();
             break;
             
@@ -138,7 +98,6 @@ async function initGenerationWorker(): Promise<void> {
           case 'error': {
             if (data.id === -1) {
               // Initialization error
-              wasmThreadsAvailable = false;
               workerReady = false;
               reject(new Error(data.error));
             } else {
@@ -155,7 +114,6 @@ async function initGenerationWorker(): Promise<void> {
       
       generationWorker.onerror = (error) => {
         console.error('[WASM] Worker error:', error);
-        wasmThreadsAvailable = false;
         workerReady = false;
         reject(new Error(`Worker error: ${error.message}`));
       };
@@ -163,7 +121,6 @@ async function initGenerationWorker(): Promise<void> {
       // Worker auto-initializes, just wait for ready message
     } catch (error) {
       console.error('[WASM] Failed to create worker:', error);
-      wasmThreadsAvailable = false;
       reject(error);
     }
   });
@@ -179,9 +136,6 @@ async function initGenerationWorker(): Promise<void> {
  * - BUT: wasm.generate() blocks the worker thread, preventing real-time polling
  * - SO: We simulate progress based on typical generation time (~300-600ms)
  * - The simulation uses an ease-out curve for natural-feeling feedback
- * 
- * Future improvement: Use SharedArrayBuffer to share progress counter between
- * Rust and main thread, allowing real-time polling without blocking.
  */
 async function generateFromWasm(
   seed: string,
@@ -195,8 +149,8 @@ async function generateFromWasm(
     throw new Error('WASM worker not available');
   }
   
-  if (!wasmThreadsAvailable) {
-    throw new Error('WASM threads not available. SharedArrayBuffer requires COOP/COEP headers.');
+  if (!workerReady) {
+    throw new Error('WASM worker not initialized.');
   }
   
   const id = ++requestId;
@@ -271,11 +225,6 @@ async function generateFromWasm(
       mapType: type,
     });
   });
-}
-
-// For backwards compatibility
-async function initWasmThreadPool(): Promise<void> {
-  return initGenerationWorker();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -449,9 +398,6 @@ export async function getGeneratorStatus(): Promise<GeneratorStatus> {
     rustUrl: RUST_BACKEND_URL,
     wasmLoaded: workerReady,
     wasmVersion: wasmVersion,
-    wasmThreadsInitialized: workerReady,
-    wasmThreadsAvailable,
-    sharedArrayBufferAvailable: isSharedArrayBufferAvailable(),
   };
 }
 
@@ -461,7 +407,7 @@ export async function getGeneratorStatus(): Promise<GeneratorStatus> {
  */
 export async function preloadWasm(): Promise<void> {
   try {
-    await initWasmThreadPool();
+    await initGenerationWorker();
   } catch {
     // Ignore errors - will be handled during generation
   }
@@ -499,17 +445,11 @@ export async function generatePuzzleParallel(
   // Force WASM
   // ─────────────────────────────────────────────────────────────────────────
   if (forceBackend === 'wasm') {
-    // Check if WASM threads are available first
-    await initWasmThreadPool();
-    if (!wasmThreadsAvailable) {
+    // Initialize WASM worker if not already done
+    await initGenerationWorker();
+    if (!workerReady) {
       throw new Error(
-        'WASM engine unavailable: SharedArrayBuffer requires cross-origin isolation.\n\n' +
-        'To fix in development:\n' +
-        '1. Access via http://localhost:8080 (NOT an IP address like 10.x.x.x or 127.0.0.1)\n' +
-        '2. Browsers only allow SharedArrayBuffer on localhost or HTTPS origins\n' +
-        '3. Ensure server.js is running (npm run dev)\n\n' +
-        'For LAN access, you need HTTPS (use mkcert to generate local certs).\n' +
-        'Or use the Rust backend instead.'
+        'WASM worker failed to initialize. Check browser console for details.'
       );
     }
     
@@ -524,7 +464,7 @@ export async function generatePuzzleParallel(
   // ─────────────────────────────────────────────────────────────────────────
   
   // Pre-check WASM availability for better error messages
-  await initWasmThreadPool();
+  await initGenerationWorker();
   
   if (RUST_BACKEND_URL) {
     console.log(`[Engine] Rust backend configured at ${RUST_BACKEND_URL}`);
@@ -535,13 +475,12 @@ export async function generatePuzzleParallel(
       console.warn('[Engine] Rust backend failed:', error);
       
       // Check if WASM fallback is available
-      if (!wasmThreadsAvailable) {
+      if (!workerReady) {
         throw new Error(
           'Rust backend failed and WASM fallback unavailable.\n\n' +
           'Options:\n' +
           '1. Start the Rust backend (make up-backend)\n' +
-          '2. Enable WASM: access via http://localhost:8080 (NOT an IP address)\n' +
-          '   Browsers only allow SharedArrayBuffer on localhost or HTTPS'
+          '2. Enable WASM: access via http://localhost:8080 or HTTPS'
         );
       }
       
@@ -550,13 +489,12 @@ export async function generatePuzzleParallel(
   }
 
   // Check if WASM is available
-  if (!wasmThreadsAvailable) {
+  if (!workerReady) {
     throw new Error(
       'No puzzle engine available.\n\n' +
       'Options:\n' +
       '1. Configure Rust backend (NEXT_PUBLIC_GENERATOR_URL)\n' +
-      '2. Enable WASM: access via http://localhost:8080 (NOT an IP address)\n' +
-      '   Browsers only allow SharedArrayBuffer on localhost or HTTPS'
+      '2. Enable WASM: access via http://localhost:8080 or HTTPS'
     );
   }
 
@@ -686,9 +624,9 @@ export async function fetchDailyPuzzle(
   console.log('[Daily] Falling back to WASM generation...');
   
   // Pre-initialize WASM
-  await initWasmThreadPool();
+  await initGenerationWorker();
   
-  if (!wasmThreadsAvailable) {
+  if (!workerReady) {
     throw new Error(
       'Unable to load daily puzzle.\n\n' +
       'The puzzle server is temporarily unavailable and WASM fallback is not supported in this browser.\n\n' +
@@ -742,13 +680,4 @@ async function backfillKvCache(seed: string, puzzle: PuzzleData, source: 'rust' 
     // Don't throw - this is best-effort
     console.warn('[Daily] Backfill error:', error);
   }
-}
-
-// Legacy export for compatibility
-export function getWorkerPool() {
-  return {
-    terminate: () => {
-      // No-op: WASM threads are managed by the runtime
-    }
-  };
 }

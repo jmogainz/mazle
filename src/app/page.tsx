@@ -45,7 +45,7 @@ const CHEAT_CODE_LENGTH = 5;
 
 // Mobile tap-to-open dev tools config
 const TAP_COUNT_THRESHOLD = 10;
-const TAP_WINDOW_MS = 3000;
+const TAP_WINDOW_MS = 2000;
 // Hash of the cheat code (pre-computed, code itself not in source)
 const CHEAT_HASH = 0x5f69e7c;
 
@@ -140,13 +140,8 @@ export default function Home() {
     };
   }, []);
 
-  // Mobile tap-to-open dev tools (10 taps in 3 seconds outside maze viewport)
-  const handleDevToolsTap = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    // Ignore if tap is inside the game frame (maze viewport)
-    if (gameFrameRef.current && gameFrameRef.current.contains(e.target as Node)) {
-      return;
-    }
-
+  // Mobile tap-to-open dev tools (10 taps in 2 seconds on the scoreboard)
+  const handleDevToolsTap = useCallback(() => {
     const now = Date.now();
     
     // Filter out taps older than the window
@@ -437,7 +432,7 @@ export default function Home() {
 
   return (
     <ErrorBoundary>
-    <main className={`${styles.main} bg-pattern`} onClick={handleDevToolsTap}>
+    <main className={`${styles.main} bg-pattern`}>
       <Header
         streak={stats?.currentStreak || 0}
         onHelpClick={() => setShowHelp(true)}
@@ -634,12 +629,14 @@ export default function Home() {
           </div>
         )}
 
-        <GameUI
-          puzzleNumber={puzzleNumber}
-          puzzleLabel={puzzleLabel ?? undefined}
-          optimalMoves={puzzle.optimalMoves}
-          variant="header"
-        />
+        <div onPointerUp={handleDevToolsTap}>
+          <GameUI
+            puzzleNumber={puzzleNumber}
+            puzzleLabel={puzzleLabel ?? undefined}
+            optimalMoves={puzzle.optimalMoves}
+            variant="header"
+          />
+        </div>
         
         <div
           ref={gameFrameRef}

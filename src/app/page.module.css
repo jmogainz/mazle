@@ -18,16 +18,50 @@
   gap: 0.1rem;
 }
 
+.devToolsTapTarget {
+  /* Ensure taps register on mobile even with global touch-action: none */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.devOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1200;
+  padding: 1rem;
+  animation: fadeIn 0.2s ease-out;
+  /* Allow the overlay itself to scroll if needed (very small screens) */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 .devPanel {
-  width: 100%;
-  max-width: 420px;
-  padding: 0.75rem;
+  width: min(760px, 100%);
+  padding: 1rem;
   border: 1px solid var(--color-border);
   border-radius: 12px;
   background: var(--color-surface);
   backdrop-filter: blur(8px);
   color: var(--color-secondary);
   animation: devPanelSlideIn 0.3s ease-out;
+  /* Big, usable modal; scroll inside if content exceeds viewport */
+  max-height: min(calc(var(--vh) - 2rem), 92vh);
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.25);
 }
 
 @keyframes devPanelSlideIn {
@@ -48,6 +82,11 @@
   margin-bottom: 0.75rem;
   padding-bottom: 0.5rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  /* Keep title/close visible while scrolling */
+  position: sticky;
+  top: 0;
+  background: var(--color-surface);
+  z-index: 1;
 }
 
 .devPanelTitle {

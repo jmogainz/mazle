@@ -6,9 +6,11 @@ interface HeaderProps {
   streak: number;
   onHelpClick: () => void;
   onStatsClick: () => void;
+  logoRef?: React.Ref<HTMLDivElement>;
+  logoClassName?: string;
 }
 
-export default function Header({ streak, onHelpClick, onStatsClick }: HeaderProps) {
+export default function Header({ streak, onHelpClick, onStatsClick, logoRef, logoClassName }: HeaderProps) {
   return (
     <header className={styles.header}>
       <div className={styles.leftSection}>
@@ -21,7 +23,7 @@ export default function Header({ streak, onHelpClick, onStatsClick }: HeaderProp
         </button>
       </div>
       
-      <div className={styles.logo}>
+      <div className={`${styles.logo} ${logoClassName ?? ''}`.trim()} ref={logoRef}>
         <span className={styles.logoText}>MAZLE</span>
       </div>
       
@@ -37,5 +39,4 @@ export default function Header({ streak, onHelpClick, onStatsClick }: HeaderProp
     </header>
   );
 }
-
 

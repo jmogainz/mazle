@@ -44,7 +44,7 @@ const CHEAT_CODE_LENGTH = 5;
 
 // Mobile tap-to-open dev tools config
 const TAP_COUNT_THRESHOLD = 10;
-const TAP_WINDOW_MS = 2000;
+const TAP_WINDOW_MS = 3000;
 // Hash of the cheat code (pre-computed, code itself not in source)
 const CHEAT_HASH = 0x5f69e7c;
 
@@ -95,6 +95,8 @@ export default function Home() {
   const cheatTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const gameFrameRef = useRef<HTMLDivElement | null>(null);
   const tapTimestampsRef = useRef<number[]>([]);
+  const lastDevToolsTouchTsRef = useRef<number>(0);
+  const devToolsTapTargetRef = useRef<HTMLDivElement | null>(null);
 
   // Sync CSS custom property to the real visual viewport height (iOS-safe)
   useEffect(() => {
@@ -176,6 +178,44 @@ export default function Home() {
       setShowDevTools((prev) => !prev);
     }
   }, []);
+
+  // Robust mobile activation: use native event listeners in capture phase.
+  // This avoids React/pointer-event edge cases with global `touch-action: none`.
+  useEffect(() => {
+    const isInsideTapTarget = (eventTarget: EventTarget | null) => {
+      const node = eventTarget as Node | null;
+      return !!node && !!devToolsTapTargetRef.current && devToolsTapTargetRef.current.contains(node);
+    };
+
+    const onTouchEndCapture = (e: TouchEvent) => {
+      if (!isInsideTapTarget(e.target)) return;
+      lastDevToolsTouchTsRef.current = Date.now();
+      handleDevToolsTap();
+    };
+
+    // Some browsers may still deliver pointer events; keep as a non-invasive fallback.
+    const onPointerUpCapture = (e: PointerEvent) => {
+      if (!isInsideTapTarget(e.target)) return;
+      // If we've just processed a touch, ignore the follow-up pointer event.
+      if (Date.now() - lastDevToolsTouchTsRef.current < 700) return;
+      handleDevToolsTap();
+    };
+
+    const onClickCapture = (e: MouseEvent) => {
+      if (!isInsideTapTarget(e.target)) return;
+      if (Date.now() - lastDevToolsTouchTsRef.current < 700) return;
+      handleDevToolsTap();
+    };
+
+    document.addEventListener('touchend', onTouchEndCapture, { capture: true });
+    document.addEventListener('pointerup', onPointerUpCapture, { capture: true });
+    document.addEventListener('click', onClickCapture, { capture: true });
+    return () => {
+      document.removeEventListener('touchend', onTouchEndCapture, { capture: true } as any);
+      document.removeEventListener('pointerup', onPointerUpCapture, { capture: true } as any);
+      document.removeEventListener('click', onClickCapture, { capture: true } as any);
+    };
+  }, [handleDevToolsTap]);
 
   const loadDailyPuzzle = useCallback(async () => {
     const today = new Date();
@@ -472,21 +512,29 @@ export default function Home() {
         streak={stats?.currentStreak || 0}
         onHelpClick={() => setShowHelp(true)}
         onStatsClick={() => setShowStats(true)}
+        logoRef={devToolsTapTargetRef}
+        logoClassName={styles.devToolsTapTarget}
       />
 
       <div className={styles.gameWrapper}>
         {showDevTools && (
-          <div className={styles.devPanel}>
-            <div className={styles.devPanelHeader}>
-              <span className={styles.devPanelTitle}>Dev Tools</span>
-              <button 
-                className={styles.devCloseButton}
-                onClick={() => setShowDevTools(false)}
-                title="Close (or type 'iddqd' again)"
-              >
-                ✕
-              </button>
-            </div>
+          <div
+            className={styles.devOverlay}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Dev Tools"
+          >
+            <div className={styles.devPanel} onClick={(e) => e.stopPropagation()}>
+              <div className={styles.devPanelHeader}>
+                <span className={styles.devPanelTitle}>Dev Tools</span>
+                <button 
+                  className={styles.devCloseButton}
+                  onClick={() => setShowDevTools(false)}
+                  title="Close (or type 'iddqd' again)"
+                >
+                  ✕
+                </button>
+              </div>
 
             {/* Seed Info */}
             <div className={styles.devSeedInfo}>
@@ -661,10 +709,11 @@ export default function Home() {
             )}
             
             <p className={styles.devHint}>Dev runs are not saved to stats</p>
+            </div>
           </div>
         )}
 
-        <div onPointerUp={handleDevToolsTap}>
+        <div>
           <GameUI
             puzzleNumber={puzzleNumber}
             puzzleLabel={puzzleLabel ?? undefined}

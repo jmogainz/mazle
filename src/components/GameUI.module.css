@@ -67,6 +67,7 @@
   text-transform: uppercase;
 }
 
+
 .statDivider {
   width: 1px;
   height: 32px;
@@ -78,7 +79,7 @@
     display: flex;
     gap: 6px;
     align-items: center;
-    height: 1.4rem;
+    height: 1.8rem;
 }
 
 .lifeNode {
@@ -201,5 +202,9 @@
     left: 50%;
     right: auto;
     transform: translateX(-50%);
+  }
+
+  .statValue {
+    font-size: 1.45rem;
   }
 }

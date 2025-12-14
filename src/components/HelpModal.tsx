@@ -48,10 +48,6 @@ export default function HelpModal({ onClose, mapType = MapType.ICE }: HelpModalP
               <span className={styles.swipe}>👆</span>
               <span className={styles.controlLabel}>Swipe to move</span>
             </div>
-            <div className={styles.controlItem}>
-              <span className={styles.dpad}>✛</span>
-              <span className={styles.controlLabel}>On-screen D-pad</span>
-            </div>
           </div>
         </div>
 

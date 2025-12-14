@@ -4,6 +4,7 @@
   align-items: center;
   padding: 0.75rem 1rem;
   background: var(--color-background);
+  transition: padding 0.2s;
 }
 
 .leftSection {
@@ -25,6 +26,7 @@
   color: var(--color-text);
   letter-spacing: 0.1em;
   text-transform: uppercase;
+  transition: font-size 0.2s;
 }
 
 .rightSection {
@@ -52,3 +54,22 @@
   color: var(--color-primary);
 }
 
+/* Compact mode for short screens (e.g., iPhone SE, mobile landscape) */
+@media (max-height: 740px) {
+  .header {
+    padding: 0.25rem 0.75rem;
+  }
+
+  .logoText {
+    font-size: 1.4rem;
+  }
+
+  .iconButton {
+    padding: 0.25rem;
+  }
+
+  .iconButton svg {
+    width: 20px;
+    height: 20px;
+  }
+}

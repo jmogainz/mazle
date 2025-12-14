@@ -6,7 +6,6 @@ import { Header, GameUI, ShareCard, StatsModal, HelpModal, MobileControls, Error
 import {
   getPuzzleNumber,
   onGameEvent,
-  Direction,
   PuzzleData,
   MapType,
   generatePuzzleParallel,
@@ -96,6 +95,25 @@ export default function Home() {
   const cheatTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const gameFrameRef = useRef<HTMLDivElement | null>(null);
   const tapTimestampsRef = useRef<number[]>([]);
+
+  // Sync CSS custom property to the real visual viewport height (iOS-safe)
+  useEffect(() => {
+    function setVH() {
+      const vh = window.visualViewport?.height || window.innerHeight;
+      document.documentElement.style.setProperty('--vh', `${vh}px`);
+    }
+
+    window.visualViewport?.addEventListener('resize', setVH);
+    window.visualViewport?.addEventListener('scroll', setVH);
+    window.addEventListener('resize', setVH);
+    setVH();
+
+    return () => {
+      window.visualViewport?.removeEventListener('resize', setVH);
+      window.visualViewport?.removeEventListener('scroll', setVH);
+      window.removeEventListener('resize', setVH);
+    };
+  }, []);
 
   // Secret cheat code listener (hash-based, code not in plain text)
   useEffect(() => {
@@ -191,6 +209,10 @@ export default function Home() {
         attempts: existingResult.attempts,
         failed: existingResult.failed,
       });
+      // Keep overlay prompt; let user choose to view results
+      setShowShareCard(false);
+      setShowInlineResult(false);
+      setIsPlaying(false);
     } else {
       setGameResult(null);
     }
@@ -293,11 +315,6 @@ export default function Home() {
     };
   }, [puzzleNumber, previousResult]);
 
-  // Handle mobile control input
-  const handleMobileMove = useCallback((direction: Direction) => {
-    gameControlsRef.current?.movePlayer(direction);
-  }, []);
-
   const handleRestart = useCallback(() => {
     setIsPlaying(false);
     gameControlsRef.current?.restart();
@@ -381,6 +398,13 @@ export default function Home() {
     loadDailyPuzzle();
   }, [loadDailyPuzzle]);
 
+  const showAnalysis = useCallback(() => {
+    const attempts = gameResult?.attempts ?? previousResult?.attempts;
+    if (attempts && gameControlsRef.current) {
+      gameControlsRef.current.showAnalysis(attempts);
+    }
+  }, [gameResult?.attempts, previousResult?.attempts]);
+
   const handleGameReady = useCallback((controls: GameControls) => {
     gameControlsRef.current = controls;
     setIsGameReady(true);
@@ -391,28 +415,35 @@ export default function Home() {
       setShowHelp(true);
       localStorage.setItem('mazle_seen_help', 'true');
     }
-  }, []);
+
+    // If inline results are already visible (e.g., post-game), re-sync analysis
+    if (showInlineResult) {
+      showAnalysis();
+      setIsPlaying(false);
+    }
+  }, [showAnalysis, showInlineResult]);
 
   const handleViewResult = useCallback(() => {
+    // Show analysis on the map; share card can be opened from the bottom button
+    showAnalysis();
     setShowInlineResult(true);
     setIsPlaying(false);
-    // Ensure analysis is shown
-    if (gameResult?.attempts && gameControlsRef.current) {
-        gameControlsRef.current.showAnalysis(gameResult.attempts);
-    }
-  }, [gameResult]);
+    setShowShareCard(false);
+  }, [showAnalysis]);
+
+  const handleShowShareCard = useCallback(() => {
+    showAnalysis();
+    setShowInlineResult(true);
+    setIsPlaying(false);
+    setShowShareCard(true);
+  }, [showAnalysis]);
 
   const handleCloseShareCard = useCallback(() => {
+    // Hide the share card but keep inline analysis visible
     setShowShareCard(false);
-    // Small delay before showing analysis for smooth transition
-    setTimeout(() => {
-      setShowInlineResult(true);
-      // Show analysis when closing share card
-      if (gameResult?.attempts && gameControlsRef.current) {
-          gameControlsRef.current.showAnalysis(gameResult.attempts);
-      }
-    }, 100);
-  }, [gameResult]);
+    setShowInlineResult(true);
+    showAnalysis();
+  }, [showAnalysis]);
 
   // Calculate progress percentage (works for both loading screen and dev tools)
   const progressPercent = generationProgress 
@@ -432,8 +463,12 @@ export default function Home() {
 
   const puzzleWidth = puzzle?.width ?? 10;
   const puzzleHeight = puzzle?.height ?? 10;
-  const baseWidth = Math.max(420, puzzleWidth * TILE_SIZE + 64);
-  const baseHeight = Math.max(480, puzzleHeight * TILE_SIZE + 80);
+  const baseWidth = puzzleWidth * TILE_SIZE;
+  const baseHeight = puzzleHeight * TILE_SIZE;
+
+  const isPostGame = !isPlaying && (!!gameResult || !!previousResult);
+  const shouldBlur = showShareCard || (!isPlaying && isGameReady && !showInlineResult);
+  const showResultsButton = showInlineResult;
 
   return (
     <ErrorBoundary>
@@ -649,8 +684,8 @@ export default function Home() {
             aspectRatio: `${baseWidth} / ${baseHeight}`,
           }}
         >
-          <div className={styles.gameContainer}>
-            <div className={`${styles.gameContent} ${(!isPlaying && isGameReady && !showInlineResult) || showShareCard ? styles.blurred : ''}`}>
+            <div className={styles.gameContainer}>
+            <div className={`${styles.gameContent} ${shouldBlur ? styles.blurred : ''}`}>
               <PhaserGame
                 key={renderKey}
                 puzzle={puzzle}
@@ -680,27 +715,17 @@ export default function Home() {
         </div>
 
         <MobileControls
-          onMove={handleMobileMove}
-          disabled={!isGameReady || !isPlaying}
+          showResults={showResultsButton}
+          onShowResults={handleShowShareCard}
         />
-      </div>
-
-      {/* Inline Share Card (below map) */}
-      {showInlineResult && gameResult && !showShareCard && (
-        <div className={styles.inlineResultContainer}>
-             <ShareCard
-               puzzleNumber={puzzleNumber}
-               puzzleLabel={puzzleLabel ?? undefined}
-               moveCount={gameResult.moveCount}
-               timeMs={gameResult.timeMs}
-               optimalMoves={puzzle.optimalMoves}
-               failed={gameResult.failed}
-               attempts={gameResult.attempts}
-               onClose={() => {}} // No close button for inline
-               inline={true}
-             />
+        <div className={styles.desktopShareSlot}>
+          {showInlineResult && gameResult && !showShareCard && (
+            <button className={styles.desktopShareButton} onClick={handleShowShareCard}>
+              Share Score
+            </button>
+          )}
         </div>
-      )}
+      </div>
 
       <footer className={styles.footer}>
         <p>Use arrow keys or swipe to move</p>

@@ -32,6 +32,8 @@
   max-height: 90vh;
   overflow-y: auto;
   overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   position: relative;
   animation: slideUp 0.3s ease-out;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.08);
@@ -193,14 +195,6 @@
   font-size: 1.25rem;
   min-width: 80px;
   text-align: center;
-}
-
-.dpad {
-  font-size: 1.5rem;
-  min-width: 80px;
-  text-align: center;
-  color: var(--color-text);
-  font-weight: 700;
 }
 
 .controlLabel {

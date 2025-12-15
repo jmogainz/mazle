@@ -227,6 +227,7 @@ fn make_placeholder(seed: &str, width: usize, height: usize) -> PuzzleData {
         solution_path: None,
         map_type: MapType::Ground,
         difficulty_score: Some(optimal_moves),
+        selected_batch: None,
         // Original metrics (Phase 0) - not computed for ground
         counter_intuitive_moves: None,
         attractive_decoys: None,

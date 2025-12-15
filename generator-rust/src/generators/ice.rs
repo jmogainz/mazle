@@ -3510,6 +3510,29 @@ enum TrapFunction {
     DivergentCorridors,  // NEW: Creates independent corridors for path diversity
 }
 
+impl TrapFunction {
+    fn short_name(&self) -> &'static str {
+        match self {
+            TrapFunction::AlmostThere => "almost",
+            TrapFunction::DecoyOpenAreas => "decoy",
+            TrapFunction::HiddenChokePoints => "choke",
+            TrapFunction::MomentumTraps => "momentum",
+            TrapFunction::AntiGradientZones => "antigrad",
+            TrapFunction::ParallelPathIllusion => "parallel",
+            TrapFunction::LedgeMisdirection => "ledge",
+            TrapFunction::GoalProximityDeadEnds => "goalprox",
+            TrapFunction::CommitmentTraps => "commit",
+            TrapFunction::PrecisionGates => "precision",
+            TrapFunction::FunnelPatterns => "funnel",
+            TrapFunction::TrapAlcoves => "alcove",
+            TrapFunction::DeceptivePaths => "deceptive",
+            TrapFunction::DeadEndMagnets => "deadend",
+            TrapFunction::PathDivergence => "diverge",
+            TrapFunction::DivergentCorridors => "corridor",
+        }
+    }
+}
+
 /// All available trap functions
 const ALL_TRAPS: [TrapFunction; 16] = [
     TrapFunction::AlmostThere,
@@ -3534,6 +3557,7 @@ const ALL_TRAPS: [TrapFunction; 16] = [
 /// - Randomly skips some traps (40-80% of traps run)
 /// - Randomizes order of trap execution
 /// - Varies count ranges by ±30%
+/// Returns list of applied trap short names
 fn apply_chaos_traps(
     tiles: &mut Vec<Vec<TileType>>,
     start: &Position,
@@ -3542,7 +3566,8 @@ fn apply_chaos_traps(
     height: usize,
     rng: &mut SeededRandom,
     scale_range: impl Fn(i32, i32) -> (i32, i32),
-) {
+) -> Vec<String> {
+    let mut applied_traps: Vec<String> = Vec::new();
     // CHAOS MODE v2: More randomization for puzzle diversity
     
     // Shuffle trap order for variety
@@ -3565,6 +3590,7 @@ fn apply_chaos_traps(
     
     // First pass: Apply selected traps
     for trap in shuffled_traps.into_iter().take(num_traps) {
+        applied_traps.push(trap.short_name().to_string());
         match trap {
             TrapFunction::AlmostThere => {
                 let (min, max) = scale_range(5, 10);
@@ -3655,6 +3681,7 @@ fn apply_chaos_traps(
         let wild_card_count = rng.random_int(2, 5);
         for _ in 0..wild_card_count {
             let wild_trap = rng.random_choice(&ALL_TRAPS);
+            applied_traps.push(format!("{}*", wild_trap.short_name())); // * marks wild card
             match wild_trap {
                 TrapFunction::AlmostThere => {
                     let count = vary_count(rng, 2, 6);
@@ -3723,6 +3750,8 @@ fn apply_chaos_traps(
             }
         }
     }
+    
+    applied_traps
 }
 
 // =============================================================================
@@ -3789,6 +3818,7 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
     // Format: (closeness_score, paths, paths_thresh, olap_min, olap_min_thresh, olap_avg, olap_avg_thresh, ediv, ediv_thresh, dir, dir_thresh, amb, amb_thresh, loc, loc_min_thresh, loc_max_thresh, optimal_count)
     use std::sync::Mutex;
     static CLOSEST_PUZZLE: Mutex<Option<(f64, i32, i32, f64, f64, f64, f64, f64, f64, i32, i32, f64, f64, f64, f64, f64, i32)>> = Mutex::new(None);
+    static CLOSEST_TRAPS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
     // Reset counters for this generation
     FAIL_CI.store(0, Ordering::Relaxed);
@@ -3807,6 +3837,7 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
     FAIL_UNIQUE_OPT.store(0, Ordering::Relaxed);
     TOTAL_CHECKED.store(0, Ordering::Relaxed);
     *CLOSEST_PUZZLE.lock().unwrap() = None;
+    CLOSEST_TRAPS.lock().unwrap().clear();
 
     let mut batch = config.start_batch;
     if batch > 0 {
@@ -3899,7 +3930,7 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
             );
             
             // Apply trap functions with randomized selection and ordering (CHAOS MODE)
-            apply_chaos_traps(
+            let applied_traps = apply_chaos_traps(
                 &mut tiles,
                 &start,
                 &goal,
@@ -4057,6 +4088,10 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                                 prefilter_thresholds.max_path_locality,
                                 psych_metrics.optimal_path_count,
                             ));
+                            // Also update the traps for this closest puzzle
+                            if let Ok(mut traps) = CLOSEST_TRAPS.lock() {
+                                *traps = applied_traps.clone();
+                            }
                         }
                     }
                 }
@@ -4084,6 +4119,7 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                 solution_path: Some(optimal_path),
                 map_type: MapType::Ice,
                 difficulty_score: Some(base_score.round() as i32), // Store base score without bonus
+                selected_batch: None, // Will be set when puzzle is selected
                 // Original metrics (Phase 0)
                 counter_intuitive_moves: Some(psych_metrics.counter_intuitive_moves),
                 attractive_decoys: Some(psych_metrics.attractive_decoys),
@@ -4101,13 +4137,13 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                 early_divergence: Some(psych_metrics.early_divergence),
             };
 
-            Some((puzzle, score))
+            Some(((puzzle, applied_traps), score))
         });
 
         // Check if we found a puzzle meeting the prefilter thresholds
         // Note: If prefilters pass, psychology_score is guaranteed to be high enough
         // (minimum ~1505 for 15x15, far exceeds TARGET_PSYCHOLOGY_SCORE of 800)
-        if let Some((puzzle, _score)) = batch_best.clone() {
+        if let Some(((mut puzzle, traps), _score)) = batch_best.clone() {
             if puzzle
                 .counter_intuitive_moves
                 .map_or(false, |v| v >= prefilter_thresholds.min_counter_intuitive)
@@ -4118,8 +4154,10 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                     .commitment_gates
                     .map_or(false, |v| v >= prefilter_thresholds.min_commitment_gates)
             {
+                puzzle.selected_batch = Some(batch);
+                let traps_str = traps.join(",");
                 info!(
-                    "Selected puzzle at batch {}: score={}, ci={}, dec={}, gate={}, fp={}, loc={:.2}, dir={}, bt={}, amb={:.1}, paths={}, olap_min={:.2}, olap_avg={:.2}, ediv={:.2}",
+                    "Selected puzzle at batch {}: score={}, ci={}, dec={}, gate={}, fp={}, loc={:.2}, dir={}, bt={}, amb={:.1}, paths={}, olap_min={:.2}, olap_avg={:.2}, ediv={:.2}, traps=[{}]",
                     batch,
                     puzzle.difficulty_score.unwrap_or(0),
                     puzzle.counter_intuitive_moves.unwrap_or(0),
@@ -4134,15 +4172,18 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                     puzzle.path_overlap.unwrap_or(0.0),
                     puzzle.path_overlap_avg.unwrap_or(0.0),
                     puzzle.early_divergence.unwrap_or(0.0),
+                    traps_str,
                 );
                 return puzzle;
             }
         }
 
         // If we found any valid puzzle, return it
-        if let Some((puzzle, _score)) = batch_best {
+        if let Some(((mut puzzle, traps), _score)) = batch_best {
+            puzzle.selected_batch = Some(batch);
+            let traps_str = traps.join(",");
             info!(
-                "Selected puzzle (fallback) at batch {}: score={}, ci={}, dec={}, gate={}, fp={}, loc={:.2}, dir={}, bt={}, amb={:.1}, paths={}, olap_min={:.2}, olap_avg={:.2}, ediv={:.2}",
+                "Selected puzzle (fallback) at batch {}: score={}, ci={}, dec={}, gate={}, fp={}, loc={:.2}, dir={}, bt={}, amb={:.1}, paths={}, olap_min={:.2}, olap_avg={:.2}, ediv={:.2}, traps=[{}]",
                 batch,
                 puzzle.difficulty_score.unwrap_or(0),
                 puzzle.counter_intuitive_moves.unwrap_or(0),
@@ -4157,6 +4198,7 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                 puzzle.path_overlap.unwrap_or(0.0),
                 puzzle.path_overlap_avg.unwrap_or(0.0),
                 puzzle.early_divergence.unwrap_or(0.0),
+                traps_str,
             );
             return puzzle;
         }
@@ -4187,9 +4229,14 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                 // Log closest puzzle metrics (value/threshold format)
                 if let Ok(closest) = CLOSEST_PUZZLE.lock() {
                     if let Some((closeness, paths, paths_t, olap, olap_t, olap_avg, olap_avg_t, ediv, ediv_t, dir, dir_t, amb, amb_t, loc, loc_min_t, loc_max_t, opt_count)) = *closest {
+                        let traps_str = if let Ok(traps) = CLOSEST_TRAPS.lock() {
+                            traps.join(",")
+                        } else {
+                            String::from("?")
+                        };
                         info!(
-                            "Closest puzzle (score={:.3}): paths={}/{} olap={:.2}/{:.2} olap_avg={:.2}/{:.2} ediv={:.2}/{:.2} dir={}/{} amb={:.1}/{:.1} loc={:.2}/({:.2}-{:.2}) (opt_paths={})",
-                            closeness, paths, paths_t, olap, olap_t, olap_avg, olap_avg_t, ediv, ediv_t, dir, dir_t, amb, amb_t, loc, loc_min_t, loc_max_t, opt_count
+                            "Closest puzzle (score={:.3}): paths={}/{} olap={:.2}/{:.2} olap_avg={:.2}/{:.2} ediv={:.2}/{:.2} dir={}/{} amb={:.1}/{:.1} loc={:.2}/({:.2}-{:.2}) (opt_paths={}) traps=[{}]",
+                            closeness, paths, paths_t, olap, olap_t, olap_avg, olap_avg_t, ediv, ediv_t, dir, dir_t, amb, amb_t, loc, loc_min_t, loc_max_t, opt_count, traps_str
                         );
                     }
                 }

@@ -42,10 +42,12 @@ export interface PuzzleData {
   
   // Psychology-based difficulty metrics (for dev mode display)
   difficultyScore?: number;           // Overall psychology score
+  selectedBatch?: number;             // Batch number where puzzle was selected
   
   // TIER 1: Core difficulty metrics (what actually makes puzzles hard)
   nearOptimalPaths?: number;          // Count of paths within optimal+2 moves
-  pathOverlap?: number;               // 0-1, how much alternatives share with optimal (lower = harder)
+  pathOverlap?: number;               // 0-1, min overlap (best alternative's overlap with optimal)
+  pathOverlapAvg?: number;            // 0-1, avg overlap across all alternatives
   earlyDivergence?: number;           // 0-1, when alternatives diverge (higher = earlier = harder)
   
   // TIER 2: Per-move confusion

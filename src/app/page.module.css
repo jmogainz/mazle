@@ -100,6 +100,13 @@
   margin-bottom: 0.75rem;
 }
 
+.devStatsGrid6 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
 .devStatItem {
   display: flex;
   flex-direction: column;
@@ -160,6 +167,12 @@
 }
 
 .devMetricsGrid2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+}
+
+.devMetricsGrid2x2 {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 0.5rem;

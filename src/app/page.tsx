@@ -463,8 +463,8 @@ export default function Home() {
               <span className={styles.devSeedValue}>{activeSeed || 'daily'}</span>
             </div>
             
-            {/* Core Stats */}
-            <div className={styles.devStatsGrid}>
+            {/* Core Stats - 3x2 grid */}
+            <div className={styles.devStatsGrid6}>
               <div className={styles.devStatItem}>
                 <span className={styles.devStatValue} style={{ textTransform: 'uppercase' }}>
                   {puzzle.mapType ?? 'ice'}
@@ -477,48 +477,59 @@ export default function Home() {
               </div>
               <div className={styles.devStatItem}>
                 <span className={styles.devStatValue}>{puzzle.optimalMoves}</span>
-                <span className={styles.devStatLabel}>Optimal</span>
+                <span className={styles.devStatLabel}>Moves</span>
               </div>
               <div className={styles.devStatItem}>
                 <span className={styles.devStatValue}>{puzzle.difficultyScore ?? '—'}</span>
                 <span className={styles.devStatLabel}>Score</span>
               </div>
+              <div className={styles.devStatItem}>
+                <span className={styles.devStatValue}>{puzzle.selectedBatch ?? '—'}</span>
+                <span className={styles.devStatLabel}>Batch</span>
+              </div>
+              <div className={styles.devStatItem}>
+                <span className={styles.devStatValue}>{puzzle.nearOptimalPaths ?? '—'}</span>
+                <span className={styles.devStatLabel}>Paths</span>
+              </div>
             </div>
 
-            {/* TIER 1: Core Difficulty Metrics */}
+            {/* Key Metrics - 2x2 grid */}
             <div className={styles.devMetricsSection}>
               <div className={styles.devMetricsHeader}>
-                <span className={styles.devMetricsTier}>TIER 1</span>
-                <span className={styles.devMetricsTitle}>Core Difficulty</span>
+                <span className={styles.devMetricsTitle}>Key Metrics</span>
               </div>
-              <div className={styles.devMetricsGrid3}>
-                <div className={styles.devMetricItemPrimary}>
-                  <span className={styles.devMetricValue}>{puzzle.nearOptimalPaths ?? '—'}</span>
-                  <span className={styles.devMetricLabel}>Paths</span>
-                  <span className={styles.devMetricHint}>Near-optimal routes</span>
-                </div>
+              <div className={styles.devMetricsGrid2x2}>
                 <div className={styles.devMetricItemPrimary}>
                   <span className={styles.devMetricValue}>
                     {puzzle.pathOverlap != null ? puzzle.pathOverlap.toFixed(2) : '—'}
                   </span>
-                  <span className={styles.devMetricLabel}>Overlap</span>
-                  <span className={styles.devMetricHint}>Lower = harder</span>
+                  <span className={styles.devMetricLabel}>Overlap Min</span>
+                </div>
+                <div className={styles.devMetricItemPrimary}>
+                  <span className={styles.devMetricValue}>
+                    {puzzle.pathOverlapAvg != null ? puzzle.pathOverlapAvg.toFixed(2) : '—'}
+                  </span>
+                  <span className={styles.devMetricLabel}>Overlap Avg</span>
                 </div>
                 <div className={styles.devMetricItemPrimary}>
                   <span className={styles.devMetricValue}>
                     {puzzle.earlyDivergence != null ? puzzle.earlyDivergence.toFixed(2) : '—'}
                   </span>
                   <span className={styles.devMetricLabel}>Early Div</span>
-                  <span className={styles.devMetricHint}>First-move confusion</span>
+                </div>
+                <div className={styles.devMetricItemPrimary}>
+                  <span className={styles.devMetricValue}>
+                    {puzzle.pathLocality != null ? puzzle.pathLocality.toFixed(2) : '—'}
+                  </span>
+                  <span className={styles.devMetricLabel}>Locality</span>
                 </div>
               </div>
             </div>
 
-            {/* TIER 2: Per-Move Confusion */}
+            {/* Secondary Metrics - 2 column */}
             <div className={styles.devMetricsSection}>
               <div className={styles.devMetricsHeader}>
-                <span className={styles.devMetricsTier}>TIER 2</span>
-                <span className={styles.devMetricsTitle}>Per-Move Confusion</span>
+                <span className={styles.devMetricsTitle}>Per-Move</span>
               </div>
               <div className={styles.devMetricsGrid2}>
                 <div className={styles.devMetricItemSecondary}>
@@ -534,13 +545,12 @@ export default function Home() {
               </div>
             </div>
 
-            {/* TIER 3: Legacy Metrics (Collapsed) */}
+            {/* Legacy Metrics (Collapsed) */}
             <details className={styles.devMetricsCollapsible}>
               <summary className={styles.devMetricsSummary}>
-                <span className={styles.devMetricsTier}>TIER 3</span>
                 <span className={styles.devMetricsTitle}>Legacy Metrics</span>
               </summary>
-              <div className={styles.devMetricsGrid4}>
+              <div className={styles.devMetricsGrid3}>
                 <div className={styles.devMetricItemTertiary}>
                   <span className={styles.devMetricValue}>{puzzle.counterIntuitiveMoves ?? '—'}</span>
                   <span className={styles.devMetricLabel}>CI</span>
@@ -555,13 +565,7 @@ export default function Home() {
                 </div>
                 <div className={styles.devMetricItemTertiary}>
                   <span className={styles.devMetricValue}>{puzzle.falseProgressPaths ?? '—'}</span>
-                  <span className={styles.devMetricLabel}>FP</span>
-                </div>
-                <div className={styles.devMetricItemTertiary}>
-                  <span className={styles.devMetricValue}>
-                    {puzzle.pathLocality != null ? puzzle.pathLocality.toFixed(2) : '—'}
-                  </span>
-                  <span className={styles.devMetricLabel}>Locality</span>
+                  <span className={styles.devMetricLabel}>False Prog</span>
                 </div>
                 <div className={styles.devMetricItemTertiary}>
                   <span className={styles.devMetricValue}>{puzzle.backtrackDepth ?? '—'}</span>

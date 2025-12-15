@@ -55,6 +55,8 @@ pub struct PuzzleData {
     pub map_type: MapType,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub difficulty_score: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selected_batch: Option<usize>,
     // Original metrics (Phase 0)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub counter_intuitive_moves: Option<i32>,

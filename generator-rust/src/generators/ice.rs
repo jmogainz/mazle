@@ -2314,23 +2314,23 @@ fn compute_prefilter_thresholds(width: usize, height: usize) -> PrefilterThresho
     };
 
     PrefilterThresholds {
-        // TIER 3 - Relaxed significantly (less important for difficulty)
-        min_counter_intuitive: if is_small_map { ci.max(2) } else { ci },  // Relaxed from 3 to 2
-        min_attractive_decoys: if is_small_map { decoys.max(3) } else { decoys },  // Relaxed from 4 to 3
-        min_commitment_gates: if is_small_map { gates.max(1) } else { gates },
-        min_false_progress: if is_small_map { fp.max(2) } else { fp },  // Relaxed from 3 to 2
+        // Keep light - these overlap with paths/olap but add some filtering
+        min_counter_intuitive: if is_small_map { ci.max(1) } else { ci },  // Relaxed from 2 to 1
+        min_attractive_decoys: if is_small_map { decoys.max(2) } else { decoys },  // Relaxed from 3 to 2
+        min_commitment_gates: 0,  // DISABLED - irrelevant with binary lives
+        min_false_progress: if is_small_map { fp.max(1) } else { fp },  // Relaxed from 2 to 1
 
-        // TIER 2 - Moderate (secondary difficulty drivers)
-        max_path_locality: if is_small_map { max_locality.min(0.80) } else { max_locality },  // Relaxed from 0.75 to 0.80
-        min_direction_changes: if is_small_map { min_dir_changes.max(7) } else { min_dir_changes },  // Relaxed from 8 to 7
-        min_backtrack_depth: if is_small_map { min_backtrack.max(1) } else { min_backtrack },  // Relaxed from 2 to 1
-        min_decision_ambiguity: if is_small_map { min_ambiguity.max(2.4) } else { min_ambiguity },  // Relaxed from 2.6 to 2.4
+        // DISABLED - irrelevant with binary lives
+        max_path_locality: 1.0,  // DISABLED
+        min_direction_changes: if is_small_map { min_dir_changes.max(6) } else { min_dir_changes },
+        min_backtrack_depth: 0,  // DISABLED
+        min_decision_ambiguity: if is_small_map { min_ambiguity.max(2.3) } else { min_ambiguity },  // Relaxed from 2.4 to 2.3
 
-        // TIER 1 - Keep strict (core difficulty metrics)
-        min_near_optimal_paths: if is_small_map { min_near_optimal.max(25) } else { min_near_optimal },  // Relaxed from 30 to 25
+        // TIER 1 - Core difficulty (keep strict)
+        min_near_optimal_paths: if is_small_map { min_near_optimal.max(25) } else { min_near_optimal },
         min_path_overlap: min_overlap,
         max_path_overlap: max_overlap,  // 0.98 - hunting for low overlap!
-        min_early_divergence: min_early_div,  // Keep at 0.55
+        min_early_divergence: min_early_div,
     }
 }
 

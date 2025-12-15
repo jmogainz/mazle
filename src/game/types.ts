@@ -1,3 +1,6 @@
+// Feature flags
+export const HINTS_ENABLED = true;
+
 // Map types for different puzzle variants
 export enum MapType {
   ICE = 'ice',
@@ -51,10 +54,12 @@ export interface GameState {
   playerPos: Position;
   moveCount: number;
   currentAttemptMoves: number;
+  currentAttemptCorrectMoves: number;
   lives: number;
   penaltyTimeMs: number;
   attempts: {
     moveCount: number;
+    correctMoves: number;
     path: Position[];
     failedAt?: Position;
     deviationIndex?: number;
@@ -76,6 +81,7 @@ export interface DailyStats {
   failed?: boolean;  // Track if player ran out of lives
   attempts?: {
     moveCount: number;
+    correctMoves?: number;
     path: Position[];
     failedAt?: Position;
     deviationIndex?: number;
@@ -150,6 +156,13 @@ export const COLORS = {
   BOULDER_HIGHLIGHT: 0x9aa0a3,
   BOULDER_FACE: 0x787c7e,
   BOULDER_EDGE: 0x5e6163,
+
+  // Hints - stopping points match goal green + glow, intermediate tiles lighter version
+  HINT_GLOW: 0x6aaa64,        // Match goal green for glow
+  HINT_TILE_FACE: 0x6aaa64,   // Match GOAL_FACE - stopping points
+  HINT_TILE_EDGE: 0x538d4e,   // Match GOAL_EDGE - stopping points
+  HINT_PATH_FACE: 0xa8d8a8,   // Lighter tint of goal green - intermediate path
+  HINT_PATH_EDGE: 0x8fc98a,   // Light green edge - intermediate path
 };
 
 export const TILE_SIZE = 64;

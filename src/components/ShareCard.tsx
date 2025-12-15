@@ -74,9 +74,13 @@ export default function ShareCard({
   const mapEmoji = getMapEmoji(mapType);
   const maxBlocks = Math.max(optimalMoves, 1);
   
-  // Calculate best attempt for failed runs
+  // Calculate best attempt for failed runs (using correctMoves if available)
   const bestAttempt = attempts && attempts.length > 0 
     ? Math.max(...attempts.map(a => {
+        // Prefer correctMoves (new system), fall back to deviationIndex (legacy)
+        if (a.correctMoves !== undefined) {
+            return a.correctMoves;
+        }
         if (a.deviationIndex !== undefined && a.deviationIndex !== -1) {
             return Math.max(0, a.deviationIndex - 1);
         }
@@ -86,15 +90,23 @@ export default function ShareCard({
 
   // Generate progress blocks - one row per attempt/life
   const generateProgressBlocks = (): string => {
+    const getAttemptProgress = (attempt: any): number => {
+      // Prefer correctMoves (new system), fall back to deviationIndex (legacy)
+      if (attempt.correctMoves !== undefined) {
+        return attempt.correctMoves;
+      }
+      if (attempt.deviationIndex !== undefined && attempt.deviationIndex !== -1) {
+        return Math.max(0, attempt.deviationIndex - 1);
+      }
+      return attempt.moveCount;
+    };
+
     if (failed) {
       // Show each attempt as a separate row
       const rows: string[] = [];
       
       for (let i = 0; i < attempts.length; i++) {
-        const attempt = attempts[i];
-        const progress = attempt.deviationIndex !== undefined && attempt.deviationIndex !== -1
-          ? Math.max(0, attempt.deviationIndex - 1)
-          : attempt.moveCount;
+        const progress = getAttemptProgress(attempts[i]);
         
         const filledBlocks = Math.min(progress, optimalMoves - 1);
         const remainingBlocks = optimalMoves - filledBlocks - 1;
@@ -113,10 +125,7 @@ export default function ShareCard({
       
       // Add rows for failed attempts (only if there were any)
       for (let i = 0; i < attempts.length; i++) {
-        const attempt = attempts[i];
-        const progress = attempt.deviationIndex !== undefined && attempt.deviationIndex !== -1
-          ? Math.max(0, attempt.deviationIndex - 1)
-          : attempt.moveCount;
+        const progress = getAttemptProgress(attempts[i]);
         
         const filledBlocks = Math.min(progress, optimalMoves - 1);
         const remainingBlocks = optimalMoves - filledBlocks - 1;
@@ -206,6 +215,10 @@ ${generateProgressBlocks()}
 
   const calcProgress = (attempt: any) => {
     if (!attempt) return 0;
+    // Prefer correctMoves (new system), fall back to deviationIndex (legacy)
+    if (attempt.correctMoves !== undefined) {
+      return attempt.correctMoves;
+    }
     if (attempt.deviationIndex !== undefined && attempt.deviationIndex !== -1) {
       return Math.max(0, attempt.deviationIndex - 1);
     }

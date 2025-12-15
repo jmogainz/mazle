@@ -8,6 +8,7 @@ import {
   COLORS,
   TILE_SIZE,
   MapType,
+  HINTS_ENABLED,
 } from './types';
 import { emitGameEvent } from './events';
 import {
@@ -27,6 +28,8 @@ export class GameScene extends Phaser.Scene {
   private movementConfig!: MovementConfig;
   private player!: Phaser.GameObjects.Container;
   private tileGraphics!: Phaser.GameObjects.Graphics;
+  private hintTileContainers: Phaser.GameObjects.Container[] = [];
+  private hintTileTweens: Phaser.Tweens.Tween[] = [];
   private goalSprite!: Phaser.GameObjects.Container;
   private flashOverlay!: Phaser.GameObjects.Graphics;
   private isAnimating = false;
@@ -45,6 +48,16 @@ export class GameScene extends Phaser.Scene {
   private boulderSprites: Map<string, Phaser.GameObjects.Container> = new Map();
   private analysisObjects: Phaser.GameObjects.GameObject[] = [];
 
+  private solutionIndexByKey: Map<string, number> | null = null;
+  private solutionNextByKey: Map<string, string> | null = null;
+  private solutionPosByKey: Map<string, Position> | null = null;
+  private solutionEdges: Set<string> | null = null; // All edges in solution for correct move counting
+
+  private unlockedHintTiles: Set<string> = new Set();
+  private unlockedHintEdges: Set<string> = new Set();
+  private unlockedThisLifeTiles: Set<string> = new Set();
+  private unlockedThisLifeEdges: Set<string> = new Set();
+
   constructor() {
     super({ key: 'GameScene' });
   }
@@ -58,6 +71,7 @@ export class GameScene extends Phaser.Scene {
       playerPos: { ...this.puzzle.start },
       moveCount: 0,
       currentAttemptMoves: 0,
+      currentAttemptCorrectMoves: 0,
       lives: 3,
       penaltyTimeMs: 0,
       attempts: [],
@@ -67,6 +81,12 @@ export class GameScene extends Phaser.Scene {
       isSliding: false,
       moveHistory: [{ ...this.puzzle.start }],
     };
+
+    this.unlockedHintTiles = new Set();
+    this.unlockedHintEdges = new Set();
+    this.unlockedThisLifeTiles = new Set();
+    this.unlockedThisLifeEdges = new Set();
+    this.indexSolutionPath();
     
     // Initialize boulder positions from puzzle tiles
     this.boulderPositions = new Set();
@@ -89,6 +109,9 @@ export class GameScene extends Phaser.Scene {
 
     // Draw tiles
     this.drawTiles();
+
+    // Create hint overlays (above tiles, below sprites)
+    this.createHintOverlays();
     
     // Create boulder sprites (for ground maps)
     this.createBoulderSprites();
@@ -165,7 +188,8 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private drawTile(px: number, py: number, tile: TileType, gridX: number, gridY: number) {
+  // hintLevel: 0 = none, 1 = path (lighter green), 2 = stop (brighter glow)
+  private drawTile(px: number, py: number, tile: TileType, gridX: number, gridY: number, hintLevel = 0) {
     const g = this.tileGraphics;
     const size = TILE_SIZE;
     const s = size / 32; // Scale factor based on original design (32px)
@@ -181,12 +205,49 @@ export class GameScene extends Phaser.Scene {
         const w = size - padding * 2;
         const h = size - padding * 2;
 
+        // Subtle layered glow for hinted tiles
+        if (hintLevel > 0) {
+          const glowColor = COLORS.HINT_GLOW;
+          const layers = 2;
+          const maxExpand = 4 * s;
+          const baseAlpha = hintLevel === 2 ? 0.08 : 0.05;
+          const maxAlpha = hintLevel === 2 ? 0.2 : 0.12;
+          
+          for (let i = layers; i >= 1; i--) {
+            const expand = (i / layers) * maxExpand;
+            const alpha = baseAlpha + (1 - i / layers) * (maxAlpha - baseAlpha);
+            
+            g.fillStyle(glowColor, alpha);
+            g.fillRoundedRect(
+              x - expand, 
+              y - expand, 
+              w + expand * 2, 
+              h + expand * 2, 
+              radius + expand
+            );
+          }
+        }
+
+        // Determine tile colors based on hint level
+        let actualFace = faceColor;
+        let actualEdge = edgeColor;
+        
+        if (hintLevel === 2) {
+          // Stopping points: darker green
+          actualFace = COLORS.HINT_TILE_FACE;
+          actualEdge = COLORS.HINT_TILE_EDGE;
+        } else if (hintLevel === 1) {
+          // Intermediate path: lighter green
+          actualFace = COLORS.HINT_PATH_FACE;
+          actualEdge = COLORS.HINT_PATH_EDGE;
+        }
+
         // 1. Draw Edge (Bottom Layer / Shadow)
-        g.fillStyle(edgeColor);
+        g.fillStyle(actualEdge);
         g.fillRoundedRect(x, y, w, h, radius);
 
         // 2. Draw Face (Top Layer)
-        g.fillStyle(faceColor);
+        g.fillStyle(actualFace);
         g.fillRoundedRect(x, y, w, h - depth, radius);
     };
 
@@ -295,6 +356,7 @@ export class GameScene extends Phaser.Scene {
     const FACE_LIFT = this.tileFaceLift; // raise visuals to sit on the top face of the 3D tile
     
     this.goalSprite = this.add.container(px, py - FACE_LIFT);
+    this.goalSprite.setDepth(10); // Above hint tiles
     
     const s = TILE_SIZE / 32;
 
@@ -350,6 +412,7 @@ export class GameScene extends Phaser.Scene {
     const FACE_LIFT = this.tileFaceLift; // raise visuals to sit on the top face of the 3D tile
     
     this.player = this.add.container(px, py - FACE_LIFT);
+    this.player.setDepth(20); // Above everything except flash overlay
     
     const s = TILE_SIZE / 32;
 
@@ -456,6 +519,8 @@ export class GameScene extends Phaser.Scene {
   private handleLifeLost(finalPos: Position) {
     this.gameState.lives--;
     this.gameState.penaltyTimeMs += 10000; // 10s penalty
+
+    this.mergeHintsForNextLife();
     
     // Calculate deviation index
     const deviationIndex = this.findDeviationIndex(this.gameState.moveHistory, this.puzzle.solutionPath || []);
@@ -463,6 +528,7 @@ export class GameScene extends Phaser.Scene {
     // Record attempt
     this.gameState.attempts.push({
       moveCount: this.gameState.currentAttemptMoves,
+      correctMoves: this.gameState.currentAttemptCorrectMoves,
       path: [...this.gameState.moveHistory], // Snapshot of history for this attempt
       failedAt: finalPos,
       deviationIndex,
@@ -470,8 +536,14 @@ export class GameScene extends Phaser.Scene {
 
     // Reset for next life
     this.gameState.currentAttemptMoves = 0;
+    this.gameState.currentAttemptCorrectMoves = 0;
     this.gameState.moveHistory = [{ ...this.puzzle.start }];
     this.gameState.playerPos = { ...this.puzzle.start };
+
+    // Apply hint visuals (visible starting next life)
+    if (HINTS_ENABLED) {
+      this.redrawHintOverlays();
+    }
 
     // Emit event for UI (penalty visual)
     emitGameEvent('stateUpdate', { ...this.gameState });
@@ -767,6 +839,7 @@ export class GameScene extends Phaser.Scene {
     const newPos = result.pos;
     const path = result.path ?? [newPos];
 
+    this.recordHintProgress(currentPos, newPos);
     this.updateGameStateAndCheckLives(newPos, path, () => {});
   }
   
@@ -792,6 +865,8 @@ export class GameScene extends Phaser.Scene {
 
     const newPos = result.playerPos;
     const path = result.path ?? [newPos];
+
+    this.recordHintProgress(currentPos, newPos);
 
     // Handle boulder push animation
     if (result.boulderPushed && result.boulderFrom && result.boulderTo && result.newBoulderPositions) {
@@ -1013,6 +1088,7 @@ export class GameScene extends Phaser.Scene {
       playerPos: { ...this.puzzle.start },
       moveCount: 0,
       currentAttemptMoves: 0,
+      currentAttemptCorrectMoves: 0,
       lives: 3,
       penaltyTimeMs: 0,
       attempts: [],
@@ -1023,10 +1099,19 @@ export class GameScene extends Phaser.Scene {
       moveHistory: [{ ...this.puzzle.start }],
     };
 
-    // Reset player position
+    this.unlockedHintTiles = new Set();
+    this.unlockedHintEdges = new Set();
+    this.unlockedThisLifeTiles = new Set();
+    this.unlockedThisLifeEdges = new Set();
+    if (HINTS_ENABLED) {
+      this.redrawHintOverlays();
+    }
+
+    // Reset player position and visibility
     const px = this.offsetX + this.puzzle.start.x * TILE_SIZE + TILE_SIZE / 2;
-    const py = this.offsetY + this.puzzle.start.y * TILE_SIZE + TILE_SIZE / 2;
+    const py = this.offsetY + this.puzzle.start.y * TILE_SIZE + TILE_SIZE / 2 - this.tileFaceLift;
     
+    this.player.setVisible(true);
     this.tweens.add({
       targets: this.player,
       x: px,
@@ -1036,6 +1121,296 @@ export class GameScene extends Phaser.Scene {
     });
 
     emitGameEvent('stateUpdate', { ...this.gameState });
+  }
+
+  private indexSolutionPath() {
+    const path = this.puzzle.solutionPath;
+    if (!path || path.length < 2) {
+      this.solutionIndexByKey = null;
+      this.solutionNextByKey = null;
+      this.solutionPosByKey = null;
+      this.solutionEdges = null;
+      return;
+    }
+
+    const indexByKey = new Map<string, number>();
+    const nextByKey = new Map<string, string>();
+    const posByKey = new Map<string, Position>();
+    const edges = new Set<string>();
+
+    for (let i = 0; i < path.length; i++) {
+      const key = positionKey(path[i]);
+      indexByKey.set(key, i);
+      posByKey.set(key, { ...path[i] });
+      if (i + 1 < path.length) {
+        const nextKey = positionKey(path[i + 1]);
+        nextByKey.set(key, nextKey);
+        edges.add(`${key}->${nextKey}`);
+      }
+    }
+
+    this.solutionIndexByKey = indexByKey;
+    this.solutionNextByKey = nextByKey;
+    this.solutionPosByKey = posByKey;
+    this.solutionEdges = edges;
+  }
+
+  private recordHintProgress(fromPos: Position, toPos: Position) {
+    if (!this.solutionIndexByKey || !this.solutionNextByKey || !this.solutionEdges) return;
+    if (this.gameState.isComplete) return;
+
+    const startKey = positionKey(this.puzzle.start);
+    const goalKey = positionKey(this.puzzle.goal);
+
+    const fromKey = positionKey(fromPos);
+    const toKey = positionKey(toPos);
+    const edgeKey = `${fromKey}->${toKey}`;
+
+    // 1) Check if this move is ANY correct move in the solution (for scoring)
+    if (this.solutionEdges.has(edgeKey)) {
+      this.gameState.currentAttemptCorrectMoves++;
+    }
+
+    // Visual hint unlocking (only if hints enabled)
+    if (HINTS_ENABLED) {
+      // 2) Stopping on an optimal-path tile (landing positions only; not intermediate slide tiles)
+      const toIndex = this.solutionIndexByKey.get(toKey);
+      if (toIndex !== undefined && toKey !== startKey && toKey !== goalKey) {
+        this.unlockedThisLifeTiles.add(toKey);
+      }
+
+      // 3) Making a move along the optimal path (consecutive step) - for hint unlocking
+      const expectedNextKey = this.solutionNextByKey.get(fromKey);
+      if (expectedNextKey === toKey && toKey !== goalKey) {
+        this.unlockedThisLifeEdges.add(edgeKey);
+        if (fromKey !== startKey && fromKey !== goalKey) this.unlockedThisLifeTiles.add(fromKey);
+        if (toKey !== startKey && toKey !== goalKey) this.unlockedThisLifeTiles.add(toKey);
+      }
+    }
+  }
+
+  private mergeHintsForNextLife() {
+    for (const key of this.unlockedThisLifeTiles) this.unlockedHintTiles.add(key);
+    for (const key of this.unlockedThisLifeEdges) this.unlockedHintEdges.add(key);
+    this.unlockedThisLifeTiles = new Set();
+    this.unlockedThisLifeEdges = new Set();
+  }
+
+  private createHintOverlays() {
+    // Initial call - no hints exist yet, skip redraw
+    // Hints only appear after losing a life, which calls redrawHintOverlays()
+  }
+
+  private redrawHintOverlays() {
+    // Clean up previous hint tile containers and tweens
+    this.hintTileTweens.forEach(t => t.stop());
+    this.hintTileTweens = [];
+    this.hintTileContainers.forEach(c => c.destroy());
+    this.hintTileContainers = [];
+
+    // Skip redraw if no hints to show (avoids unnecessary tile redraw)
+    if (this.unlockedHintTiles.size === 0 && this.unlockedHintEdges.size === 0) {
+      return;
+    }
+
+    // Build set of intermediate path tiles
+    const intermediateTiles = new Set<string>();
+    
+    if (this.solutionPosByKey) {
+      for (const edgeKey of this.unlockedHintEdges) {
+        const [fromKey, toKey] = edgeKey.split('->');
+        const from = this.solutionPosByKey.get(fromKey);
+        const to = this.solutionPosByKey.get(toKey);
+        if (!from || !to) continue;
+
+        // Walk from 'from' to 'to' and mark all intermediate tiles
+        const dx = Math.sign(to.x - from.x);
+        const dy = Math.sign(to.y - from.y);
+        let cx = from.x + dx;
+        let cy = from.y + dy;
+        
+        while (cx !== to.x || cy !== to.y) {
+          intermediateTiles.add(positionKey({ x: cx, y: cy }));
+          cx += dx;
+          cy += dy;
+        }
+      }
+    }
+
+    // Redraw the entire tilemap - draw non-hinted tiles normally
+    this.tileGraphics.clear();
+    
+    // Collect hinted tiles to draw separately
+    const hintedTileData: { x: number; y: number; tile: TileType; hintLevel: number }[] = [];
+    
+    for (let y = 0; y < this.puzzle.height; y++) {
+      for (let x = 0; x < this.puzzle.width; x++) {
+        const tile = this.puzzle.tiles[y][x];
+        const px = this.offsetX + x * TILE_SIZE;
+        const py = this.offsetY + y * TILE_SIZE;
+        
+        const key = positionKey({ x, y });
+        
+        // Determine hint level: 2 = stop tile, 1 = intermediate path, 0 = none
+        let hintLevel = 0;
+        if (this.unlockedHintTiles.has(key)) {
+          hintLevel = 2;
+        } else if (intermediateTiles.has(key)) {
+          hintLevel = 1;
+        }
+        
+        if (hintLevel > 0) {
+          // Draw base tile without hint, collect for animated overlay
+          this.drawTile(px, py, tile, x, y, 0);
+          hintedTileData.push({ x, y, tile, hintLevel });
+        } else {
+          this.drawTile(px, py, tile, x, y, 0);
+        }
+      }
+    }
+
+    // Create animated containers for hinted tiles
+    for (const data of hintedTileData) {
+      const px = this.offsetX + data.x * TILE_SIZE;
+      const py = this.offsetY + data.y * TILE_SIZE;
+      
+      // Create a container at tile position
+      const container = this.add.container(px + TILE_SIZE / 2, py + TILE_SIZE / 2);
+      container.setDepth(1); // Above base tiles, below player/goal
+      
+      // Draw the hinted tile into a graphics object centered in container
+      const g = this.add.graphics();
+      this.drawHintedTileGraphics(g, data.tile, data.hintLevel);
+      container.add(g);
+      
+      this.hintTileContainers.push(container);
+      
+      // Add subtle wiggle animation
+      const wiggleAmount = data.hintLevel === 2 ? .6 : .5;
+      const duration = data.hintLevel === 2 ? 135 : 110;
+      const delay = Math.random() * 50; // Stagger animations
+      
+      const tween = this.tweens.add({
+        targets: container,
+        x: { from: container.x - wiggleAmount, to: container.x + wiggleAmount },
+        duration,
+        delay,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut',
+      });
+      
+      this.hintTileTweens.push(tween);
+    }
+  }
+
+  // Draw a hinted tile into a graphics object (centered at 0,0)
+  private drawHintedTileGraphics(g: Phaser.GameObjects.Graphics, tile: TileType, hintLevel: number) {
+    const size = TILE_SIZE;
+    const s = size / 32;
+    const padding = 2 * s;
+    const radius = 8 * s;
+    const depth = 4 * s;
+
+    const x = -size / 2 + padding;
+    const y = -size / 2 + padding;
+    const w = size - padding * 2;
+    const h = size - padding * 2;
+
+    // Glow
+    const glowColor = COLORS.HINT_GLOW;
+    const layers = 2;
+    const maxExpand = 4 * s;
+    const baseAlpha = hintLevel === 2 ? 0.08 : 0.05;
+    const maxAlpha = hintLevel === 2 ? 0.2 : 0.12;
+    
+    for (let i = layers; i >= 1; i--) {
+      const expand = (i / layers) * maxExpand;
+      const alpha = baseAlpha + (1 - i / layers) * (maxAlpha - baseAlpha);
+      
+      g.fillStyle(glowColor, alpha);
+      g.fillRoundedRect(
+        x - expand, 
+        y - expand, 
+        w + expand * 2, 
+        h + expand * 2, 
+        radius + expand
+      );
+    }
+
+    // Tile colors
+    const faceColor = hintLevel === 2 ? COLORS.HINT_TILE_FACE : COLORS.HINT_PATH_FACE;
+    const edgeColor = hintLevel === 2 ? COLORS.HINT_TILE_EDGE : COLORS.HINT_PATH_EDGE;
+
+    // Edge
+    g.fillStyle(edgeColor);
+    g.fillRoundedRect(x, y, w, h, radius);
+
+    // Face
+    g.fillStyle(faceColor);
+    g.fillRoundedRect(x, y, w, h - depth, radius);
+
+    // Ice reflection lines
+    if (tile === TileType.ICE) {
+      const inset = 4 * s;
+      const faceX = x + inset;
+      const faceY = y + inset;
+      const faceW = w - inset * 2;
+      const faceH = h - depth - inset * 2;
+
+      g.lineStyle(1 * s, 0xffffff, 0.65);
+
+      // Primary reflection
+      g.beginPath();
+      g.moveTo(faceX + faceW * 0.2, faceY + faceH * 0.8);
+      g.lineTo(faceX + faceW * 0.8, faceY + faceH * 0.2);
+      g.strokePath();
+
+      // Secondary small reflection
+      g.beginPath();
+      g.moveTo(faceX + faceW * 0.6, faceY + faceH * 0.9);
+      g.lineTo(faceX + faceW * 0.9, faceY + faceH * 0.6);
+      g.strokePath();
+    }
+
+    // Ledge arrows
+    if (tile === TileType.LEDGE_UP || tile === TileType.LEDGE_DOWN || 
+        tile === TileType.LEDGE_LEFT || tile === TileType.LEDGE_RIGHT) {
+      const cx = 0;
+      const cy = -depth / 2;
+      const baseWidth = size * 0.32;
+      const baseHeight = size * 0.20;
+      const shrink = 1 * s;
+      const lift = depth * 0.6;
+      const halfW = baseWidth / 2;
+      const halfH = Math.max(baseHeight / 2 - shrink, 1);
+
+      g.fillStyle(COLORS.LEDGE_ARROW);
+
+      const upA = { x: 0, y: -halfH - lift };
+      const upB = { x: -halfW, y: halfH };
+      const upC = { x: halfW, y: halfH };
+
+      const rotate = (p: { x: number; y: number }, dir: 'up' | 'down' | 'left' | 'right') => {
+        switch (dir) {
+          case 'up': return { x: p.x, y: p.y };
+          case 'down': return { x: p.x, y: -p.y };
+          case 'right': return { x: -p.y, y: p.x };
+          case 'left': return { x: p.y, y: -p.x };
+        }
+      };
+
+      const dir =
+        tile === TileType.LEDGE_UP ? 'down' :
+        tile === TileType.LEDGE_DOWN ? 'up' :
+        tile === TileType.LEDGE_RIGHT ? 'right' : 'left';
+
+      const A = rotate(upA, dir);
+      const B = rotate(upB, dir);
+      const C = rotate(upC, dir);
+
+      g.fillTriangle(cx + A.x, cy + A.y, cx + B.x, cy + B.y, cx + C.x, cy + C.y);
+    }
   }
 
   private clearAnalysis() {

@@ -9,8 +9,6 @@ interface HelpModalProps {
 }
 
 export default function HelpModal({ onClose, mapType = MapType.ICE }: HelpModalProps) {
-  const isIceMap = mapType === MapType.ICE;
-
   return (
     <div className={styles.overlay} onClick={onClose}>
       <div className={styles.card} onClick={(e) => e.stopPropagation()}>
@@ -20,75 +18,86 @@ export default function HelpModal({ onClose, mapType = MapType.ICE }: HelpModalP
         
         <h2 className={styles.title}>How to Play</h2>
 
-        <div className={styles.section}>
-          <h3 className={styles.sectionTitle}>Goal</h3>
-          <p className={styles.text}>
-            Navigate from the start <span className={styles.tileStart}></span> to the goal <span className={styles.tileGoal}></span> in as few moves as possible.
+        <div className={styles.goalSection}>
+          <p className={styles.goalText}>
+            Reach the <span className={styles.tileGoal}></span> in 10 moves or less.
+          </p>
+          <p className={styles.goalSubtext}>
+            Miss it? You have 3 lives.
           </p>
         </div>
 
         <div className={styles.section}>
-          <h3 className={styles.sectionTitle}>Desktop Controls</h3>
-          <div className={styles.controls}>
-            <div className={styles.controlItem}>
-              <span className={styles.keys}>↑ ↓ ← →</span>
-              <span className={styles.controlLabel}>Arrow keys</span>
-            </div>
-            <div className={styles.controlItem}>
-              <span className={styles.keys}>W A S D</span>
-              <span className={styles.controlLabel}>WASD keys</span>
-            </div>
-          </div>
-        </div>
-
-        <div className={styles.section}>
-          <h3 className={styles.sectionTitle}>Mobile Controls</h3>
-          <div className={styles.controls}>
-            <div className={styles.controlItem}>
-              <span className={styles.swipe}>👆</span>
-              <span className={styles.controlLabel}>Swipe to move</span>
-            </div>
-          </div>
+          <h3 className={styles.sectionTitle}>Controls</h3>
+          <p className={styles.controlsText}>
+            Swipe or Arrow Keys / WASD
+          </p>
         </div>
 
         <div className={styles.section}>
           <h3 className={styles.sectionTitle}>Tiles</h3>
-          <div className={styles.tiles}>
-            <div className={styles.tileItem}>
-              <div className={styles.tileFloor} />
-              <span>Ground - {isIceMap ? 'Stops sliding' : 'Normal movement'}</span>
-            </div>
-            <div className={styles.tileItem}>
-              <div className={styles.tileWall} />
-              <span>Wall - Blocks movement</span>
-            </div>
-            {isIceMap && (
-              <div className={styles.tileItem}>
-                <div className={styles.tileIce} />
-                <span>Ice - Slide until hitting a wall</span>
+          <div className={styles.animationGrid}>
+            {/* Ice - slides through and disappears */}
+            <div className={styles.animationDemo}>
+              <div className={styles.demoRow}>
+                <div className={styles.demoTile}>
+                  <div className={styles.tileIceEx} />
+                  <div className={styles.playerSlides} />
+                </div>
+                <div className={styles.demoTile}><div className={styles.tileIceEx} /></div>
+                <div className={styles.demoTile}><div className={styles.tileIceEx} /></div>
               </div>
-            )}
-            <div className={styles.tileItem}>
-              <div className={styles.tileLedge}>▼</div>
-              <span>Ledge - One-way only</span>
+              <span className={styles.demoLabel}>Ice slides</span>
+            </div>
+
+            {/* Ground - stops on ground */}
+            <div className={styles.animationDemo}>
+              <div className={styles.demoRow}>
+                <div className={styles.demoTile}>
+                  <div className={styles.tileIceEx} />
+                  <div className={styles.playerStops} />
+                </div>
+                <div className={styles.demoTile}><div className={styles.tileIceEx} /></div>
+                <div className={styles.demoTile}><div className={styles.tileFloorEx} /></div>
+              </div>
+              <span className={styles.demoLabel}>Ground stops</span>
+            </div>
+
+            {/* Wall - blocks in middle */}
+            <div className={styles.animationDemo}>
+              <div className={styles.demoRow}>
+                <div className={styles.demoTile}>
+                  <div className={styles.tileIceEx} />
+                  <div className={styles.playerBumps} />
+                </div>
+                <div className={styles.demoTile}><div className={styles.tileIceEx} /></div>
+                <div className={styles.demoTile}><div className={styles.tileWallEx} /></div>
+              </div>
+              <span className={styles.demoLabel}>Wall blocks</span>
             </div>
           </div>
         </div>
 
-        {isIceMap && (
-          <div className={styles.section}>
-            <h3 className={styles.sectionTitle}>Ice Mechanics</h3>
-            <p className={styles.text}>
-              On ice tiles, you&apos;ll slide in your chosen direction until you hit a wall or reach a non-ice tile. Plan your path carefully!
-            </p>
-          </div>
-        )}
-
         <div className={styles.section}>
-          <h3 className={styles.sectionTitle}>Daily Challenge</h3>
-          <p className={styles.text}>
-            A new puzzle is available each day. Complete it to build your streak!
-          </p>
+          <h3 className={styles.sectionTitle}>Hints</h3>
+          <div className={styles.exampleRow}>
+            <div className={styles.exampleTile}>
+              <div className={styles.tileHintDark} />
+            </div>
+            <div className={styles.exampleTile}>
+              <div className={styles.tileHintLight} />
+            </div>
+            <div className={styles.exampleTile}>
+              <div className={styles.tileHintLight} />
+            </div>
+            <div className={styles.exampleTile}>
+              <div className={styles.tileHintDark} />
+            </div>
+            <div className={styles.exampleTile}>
+              <div className={styles.tileIceEx} />
+            </div>
+          </div>
+          <p className={styles.exampleCaption}>Lost a life? Green shows correct path</p>
         </div>
       </div>
     </div>

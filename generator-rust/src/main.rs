@@ -4,6 +4,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use log::info;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -58,16 +59,12 @@ struct GenerateResponse {
 /// Query parameters for GET endpoint
 #[derive(Deserialize)]
 struct GenerateQuery {
-    #[serde(default = "default_attempts")]
-    attempts: usize,
     #[serde(default)]
     parallel: bool,
     #[serde(default = "default_map_type")]
     map_type: String,
-}
-
-fn default_attempts() -> usize {
-    1000
+    #[serde(default)]
+    start_batch: usize,
 }
 
 /// Health check endpoint
@@ -86,8 +83,8 @@ async fn generate_by_seed(
     let start = Instant::now();
 
     let config = GenerationConfig {
-        traditional_attempts: query.attempts,
         parallel: query.parallel,
+        start_batch: query.start_batch,
         ..Default::default()
     };
 
@@ -194,7 +191,11 @@ fn build_router() -> Router {
 
 #[tokio::main]
 async fn main() {
-    println!("🧊 Mazle Generator Server starting...");
+    // Initialize env_logger - defaults to info level, configurable via RUST_LOG env var
+    // Examples: RUST_LOG=debug, RUST_LOG=mazle_generator=trace, RUST_LOG=warn
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+
+    info!("🧊 Mazle Generator Server starting...");
 
     let app = build_router();
 
@@ -202,14 +203,12 @@ async fn main() {
     let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
     let addr = format!("0.0.0.0:{}", port);
 
-    println!("🚀 Server running at http://{}", addr);
-    println!("");
-    println!("Endpoints:");
-    println!("  GET  /health                  - Health check");
-    println!("  GET  /api/generate/:seed      - Generate puzzle by seed");
-    println!("  POST /api/generate            - Generate with config");
-    println!("  POST /api/generate/batch      - Generate multiple puzzles");
-    println!("");
+    info!("🚀 Server running at http://{}", addr);
+    info!("Endpoints:");
+    info!("  GET  /health                  - Health check");
+    info!("  GET  /api/generate/:seed      - Generate puzzle by seed");
+    info!("  POST /api/generate            - Generate with config");
+    info!("  POST /api/generate/batch      - Generate multiple puzzles");
 
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();

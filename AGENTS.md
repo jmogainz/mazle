@@ -4,6 +4,8 @@
 
 A daily Wordle-style puzzle game inspired by Pokémon ice gym puzzles. Players navigate compact rooms using step movement, ice sliding, and one-way ledges. Browser-first (Next.js + Phaser 3).
 
+**Game Mechanic:** Binary lives system - player must complete puzzle in exactly the optimal number of moves or they lose that life. Backtracking cost is irrelevant; once you make a wrong move, the life is burned.
+
 ---
 
 ## 🚨 CRITICAL: Use Make Commands Only
@@ -35,11 +37,13 @@ This is required for all Make commands. Set it once per session.
 
 ### Starting Services
 
+**NOTE:** `make up` automatically builds before starting. You do NOT need to run `make build` first.
+
 ```bash
 # Quick start (WASM fallback, no backend) - DEFAULT
 make up
 
-# Full stack (frontend + Rust backend auto-launch)
+# Full stack (frontend + Rust backend) - BUILDS AND STARTS
 make up ENV=dev
 
 # Dev mode, frontend only (backend must already be running)
@@ -52,41 +56,134 @@ make down
 make clean
 ```
 
-### Building Code
+### Building Code (Only When Needed)
+
+`make up` handles builds automatically. Only use `make build` directly when:
+- You want to verify compilation without starting services
+- You need to rebuild WASM for frontend-only deployment
 
 ```bash
-# Build frontend (from root directory)
-# This also rebuilds WASM from Rust sources
+# Build frontend + WASM (from root directory)
 make build
 
 # Build ONLY the Rust backend (from generator-rust/ directory)
 cd generator-rust && UNIQUE_RUNNER_ID=$(whoami) make build
 ```
 
-**IMPORTANT:**
-- Frontend changes: Use `make build` from root
-- Backend changes: Use `cd generator-rust && UNIQUE_RUNNER_ID=$(whoami) make build`
-- Never use `npm` or `cargo` directly
+### Backend Development Workflow
 
-### Testing Changes
+**The standard iterative workflow for backend changes:**
 
 ```bash
-# Restart backend after changes
-cd generator-rust && UNIQUE_RUNNER_ID=$(whoami) make up ENV=dev
+# 1. Edit code in generator-rust/src/
 
-# Test backend endpoint (example)
-curl -s "http://10.0.0.240:8080/api/generate/test" | python3 -c "import sys,json; d=json.load(sys.stdin); p=d['puzzle']; print(f\"{p['width']}x{p['height']}, {p['optimalMoves']} moves\")"
+# 2. Build and restart (make up does both!)
+cd generator-rust && UNIQUE_RUNNER_ID=$(whoami) make up ENV=dev 2>&1 | tail -5
 
-# Check backend logs
-docker logs mazle-generator_instance 2>&1 | tail -30
+# 3. Test the endpoint with inline Python parsing
+curl -s "http://10.0.0.240:8080/api/generate/test-seed" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+p=d['puzzle']
+print(f\"paths={p.get('nearOptimalPaths',0)} olap={p.get('pathOverlap',1.0):.3f} ediv={p.get('earlyDivergence',0):.2f} time={d['generationTimeMs']/1000:.1f}s\")
+"
+
+# 4. Check logs for fail rates and diagnostics
+docker logs mazle-generator_instance 2>&1 | grep "fail rates:" | tail -1
+
+# 5. Iterate: edit code → make up → test → check logs
 ```
 
-**Testing Checklist:**
-1. After frontend changes: `make build` → verify build succeeds
-2. After backend changes: `cd generator-rust && UNIQUE_RUNNER_ID=$(whoami) make build`
-3. Restart services if needed: `make up ENV=dev` or `cd generator-rust && UNIQUE_RUNNER_ID=$(whoami) make up ENV=dev`
-4. Test the specific feature you changed
-5. Do NOT run full test suites unless explicitly requested by user
+---
+
+## Iterative Testing Patterns
+
+### Testing Puzzle Generation
+
+Use inline Python to parse JSON responses and extract metrics:
+
+```bash
+# Single puzzle test with full metrics
+curl -s "http://10.0.0.240:8080/api/generate/test-1" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+p=d['puzzle']
+print(f\"score={p.get('difficultyScore',0)} paths={p.get('nearOptimalPaths',0)} olap={p.get('pathOverlap',1.0):.3f} ediv={p.get('earlyDivergence',0):.2f} dir={p.get('directionChanges',0)} amb={p.get('decisionAmbiguity',0):.1f} time={d['generationTimeMs']/1000:.1f}s\")
+"
+```
+
+### Batch Testing (Multiple Puzzles)
+
+```bash
+# Generate 10 puzzles and show metrics
+for i in $(seq 1 10); do
+  curl -s "http://10.0.0.240:8080/api/generate/batch-$i" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+p=d['puzzle']
+print(f\"paths={p.get('nearOptimalPaths',0)} olap={p.get('pathOverlap',1.0):.3f} ediv={p.get('earlyDivergence',0):.2f} time={d['generationTimeMs']/1000:.1f}s\")
+"
+done
+```
+
+### Analyzing Fail Rates
+
+The generator logs which filters are causing rejections:
+
+```bash
+# Check current fail rates
+docker logs mazle-generator_instance 2>&1 | grep "fail rates:" | tail -1
+
+# Example output:
+# Batch 170 fail rates: uopt=17% ci=0% dec=0% gate=0% fp=0% loc=0% dir=24% bt=0% amb=24% paths=64% olap_max=76% ediv=75% (n=6565)
+```
+
+**Key metrics to watch:**
+- `uopt` - Unique optimal path (must be exactly 1)
+- `paths` - Near-optimal path count threshold
+- `olap_max` - Maximum path overlap threshold
+- `ediv` - Early divergence threshold
+- `dir` - Direction changes
+- `amb` - Decision ambiguity
+
+**Target:** ~50-70% fail rate on core metrics (paths, olap, ediv) indicates good difficulty filtering.
+
+### Statistical Analysis
+
+For deeper analysis, save to file and process:
+
+```bash
+# Generate 20 puzzles to CSV
+for i in $(seq 1 20); do
+  curl -s "http://10.0.0.240:8080/api/generate/stats-$i" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+p=d['puzzle']
+print(f\"{p.get('difficultyScore',0)},{p.get('nearOptimalPaths',0)},{p.get('pathOverlap',0):.3f},{p.get('earlyDivergence',0):.2f},{d['generationTimeMs']}\")
+"
+done | tee /tmp/metrics.csv
+
+# Analyze with Python
+python3 << 'EOF'
+import statistics
+data = open('/tmp/metrics.csv').read().strip().split('\n')
+scores, paths, olaps, edivs, times = [], [], [], [], []
+for line in data:
+    parts = line.split(',')
+    if len(parts) == 5:
+        scores.append(int(parts[0]))
+        paths.append(int(parts[1]))
+        olaps.append(float(parts[2]))
+        edivs.append(float(parts[3]))
+        times.append(int(parts[4]))
+
+print(f"score:  {min(scores)}-{max(scores)}, avg={statistics.mean(scores):.0f}")
+print(f"paths:  {min(paths)}-{max(paths)}, avg={statistics.mean(paths):.1f}")
+print(f"olap:   {min(olaps):.3f}-{max(olaps):.3f}, avg={statistics.mean(olaps):.3f}")
+print(f"ediv:   {min(edivs):.2f}-{max(edivs):.2f}, avg={statistics.mean(edivs):.2f}")
+print(f"time:   {min(times)}-{max(times)}ms, avg={statistics.mean(times):.0f}ms")
+EOF
+```
 
 ---
 
@@ -138,7 +235,7 @@ mazle/
 - `src/game/wasmGenerator.ts` - WASM/HTTP generator interface
 - `src/game/generationWorker.ts` - Web worker for WASM generation
 - `generator-rust/src/lib.rs` - WASM bindings
-- `generator-rust/src/generators/ice.rs` - Ice puzzle generator
+- `generator-rust/src/generators/ice.rs` - Ice puzzle generator (MAIN FILE)
 
 **API Routes:**
 - `src/app/api/daily/route.ts` - Daily puzzle endpoint
@@ -148,29 +245,51 @@ mazle/
 
 ## Puzzle Generation System
 
-Two generation backends (produce **identical puzzles** for same seed):
+### Two Generation Backends
+
+Both produce **identical puzzles** for same seed:
 
 1. **WASM** (client-side):
    - Location: `src/wasm/generator/` (compiled from `generator-rust/`)
    - Runs in web worker (`src/game/generationWorker.ts`)
-   - Uses rayon thread pool for parallelism
    - Fallback when HTTP backend unavailable
 
 2. **HTTP** (server-side):
    - Location: `generator-rust/` (Rust Axum server on port 8080)
-   - Runs with native rayon parallelism
    - Primary backend when available
 
-**Frontend auto-detection:**
-- Uses HTTP if `NEXT_PUBLIC_GENERATOR_URL` environment variable is set
-- Falls back to WASM if HTTP unavailable
-- See `src/game/wasmGenerator.ts` for routing logic
+### Difficulty Metrics (Ranked by Importance)
 
-**When modifying generation:**
-1. Edit Rust code in `generator-rust/src/generators/`
-2. Build: `cd generator-rust && UNIQUE_RUNNER_ID=$(whoami) make build`
-3. For WASM: Also run `make build` from root to rebuild WASM bundle
-4. Restart: `cd generator-rust && UNIQUE_RUNNER_ID=$(whoami) make up ENV=dev`
+**TIER 1 - Core Difficulty (what actually makes puzzles hard):**
+- `paths` (near_optimal_paths) - More paths = more "this could work" confusion
+- `olap` (path_overlap) - Low overlap = truly different routes exist
+- `ediv` (early_divergence) - Confusion from move 1
+
+**TIER 2 - Per-Move Confusion:**
+- `dir` (direction_changes) - Zigzags harder to visualize
+- `amb` (decision_ambiguity) - More choices per move
+
+**DISABLED (irrelevant with binary lives):**
+- `gate` (commitment_gates) - Backtrack cost doesn't matter
+- `bt` (backtrack_depth) - Backtrack cost doesn't matter
+- `loc` (path_locality) - Spread doesn't matter
+- `ci`, `dec`, `fp` - Overlap with paths/olap metrics
+
+### Modifying Generation
+
+```bash
+# 1. Edit Rust code
+vi generator-rust/src/generators/ice.rs
+
+# 2. Build and restart (single command!)
+cd generator-rust && UNIQUE_RUNNER_ID=$(whoami) make up ENV=dev 2>&1 | tail -5
+
+# 3. Test
+curl -s "http://10.0.0.240:8080/api/generate/test" | python3 -c "import sys,json; d=json.load(sys.stdin); p=d['puzzle']; print(f\"paths={p.get('nearOptimalPaths',0)} olap={p.get('pathOverlap',1.0):.3f}\")"
+
+# 4. Check fail rates
+docker logs mazle-generator_instance 2>&1 | grep "fail rates:" | tail -1
+```
 
 ---
 
@@ -192,20 +311,13 @@ make up ENV=prod WITH_DEPS=0
 cd generator-rust && UNIQUE_RUNNER_ID=$(whoami) make up ENV=prod
 ```
 
-**Deployment Checklist:**
-1. Verify `ENV=prod` is correct environment
-2. Confirm required tokens are set
-3. Test locally first with `ENV=dev`
-4. Deploy backend first if doing full stack
-5. Monitor logs after deployment
-
 ---
 
 ## Game Specification
 
 - **Tiles**: Floor (step), Wall (block), Ice (slide), Ledge (one-way), Start, Goal
-- **Target**: ~20 moves, <3 min solve time
-- **Scoring**: Move count (primary), time (tiebreaker)
+- **Target**: 10 moves optimal for 15x15 map
+- **Lives**: Binary success/failure - must complete in exactly optimal moves
 - **Daily**: Same puzzle globally, midnight UTC reset
 
 ---
@@ -225,23 +337,18 @@ cd generator-rust && UNIQUE_RUNNER_ID=$(whoami) make up ENV=prod
 - "While you're at it..." improvements
 
 ### Build Verification
-**ALWAYS verify builds after code changes:**
 
-1. **Frontend changes:** 
-   ```bash
-   make build
-   ```
+**Use `make up` - it builds automatically!**
 
-2. **Backend changes:**
-   ```bash
-   cd generator-rust && UNIQUE_RUNNER_ID=$(whoami) make build
-   ```
+```bash
+# Backend changes - builds and restarts:
+cd generator-rust && UNIQUE_RUNNER_ID=$(whoami) make up ENV=dev 2>&1 | tail -5
 
-3. **Both changed:**
-   ```bash
-   cd generator-rust && UNIQUE_RUNNER_ID=$(whoami) make build
-   cd .. && make build
-   ```
+# Frontend changes - builds and restarts:
+make up ENV=dev 2>&1 | tail -10
+```
+
+Only use standalone `make build` when you want to verify compilation without starting services.
 
 ### Error Handling
 If a build/command fails:
@@ -252,91 +359,6 @@ If a build/command fails:
 
 ---
 
-## Common Patterns
-
-### Testing Backend Changes
-```bash
-# 1. Edit code in generator-rust/src/
-# 2. Build
-cd generator-rust && UNIQUE_RUNNER_ID=$(whoami) make build 2>&1 | tail -5
-
-# 3. Restart
-cd generator-rust && UNIQUE_RUNNER_ID=$(whoami) make up ENV=dev 2>&1 | tail -5
-
-# 4. Test endpoint
-curl -s "http://10.0.0.240:8080/api/generate/test" | python3 -c "import sys,json; d=json.load(sys.stdin); p=d['puzzle']; print(f\"{p['width']}x{p['height']}, {p['optimalMoves']} moves, {d['generationTimeMs']}ms\")"
-
-# 5. Check logs if needed
-docker logs mazle-generator_instance 2>&1 | tail -30
-```
-
-### Testing Frontend Changes
-```bash
-# 1. Edit code in src/
-# 2. Build (includes WASM rebuild if generator-rust changed)
-make build 2>&1 | tail -20
-
-# 3. Start/restart
-make up ENV=dev
-
-# 4. Test in browser at http://localhost:8080
-```
-
-### Checking Service Status
-```bash
-# Frontend container
-docker ps | grep mazle
-
-# Backend container
-docker ps | grep generator
-
-# Backend logs
-docker logs mazle-generator_instance 2>&1 | tail -50
-
-# Frontend logs
-docker logs mazle-instance 2>&1 | tail -50
-```
-
----
-
-## Example: Backend Modification Workflow
-
-This example shows the correct workflow for modifying backend code:
-
-```bash
-# User request: "Change puzzle size to 15x15"
-
-# 1. Find the relevant code
-$ grep "SIZE_OPTIONS" generator-rust/src/generators/ice.rs
-
-# 2. Edit the code (using edit tool)
-# Changed: (14, 14) → (15, 15)
-
-# 3. Build to verify changes compile
-$ cd generator-rust && UNIQUE_RUNNER_ID=$(whoami) make build 2>&1 | tail -3
-   Compiling mazle-generator v0.1.0
-   Finished release [optimized] target(s)
-Build complete
-
-# 4. Restart server with new code
-$ cd generator-rust && UNIQUE_RUNNER_ID=$(whoami) make up ENV=dev 2>&1 | tail -5
-Container mazle-generator_instance started
-
-# 5. Test the change
-$ curl -s "http://10.0.0.240:8080/api/generate/test15" | python3 -c "import sys,json; d=json.load(sys.stdin); p=d['puzzle']; print(f\"{p['width']}x{p['height']}, {p['optimalMoves']} moves\")"
-15x15, 10 moves
-
-# 6. Success! Change verified.
-```
-
-**Key Points:**
-- Used `make build` and `make up`, NOT `cargo build`
-- Used `UNIQUE_RUNNER_ID=$(whoami)` for all make commands
-- Verified change with specific test, not full test suite
-- Made minimal changes - only what was requested
-
----
-
 ## Troubleshooting
 
 ### "UNIQUE_RUNNER_ID not set"
@@ -344,33 +366,38 @@ $ curl -s "http://10.0.0.240:8080/api/generate/test15" | python3 -c "import sys,
 export UNIQUE_RUNNER_ID=$(whoami)
 ```
 
-### "Permission denied" on make commands
-- Ensure Docker is running
-- Check Docker permissions for your user
-
-### Build hangs or times out
-- Stop existing containers: `make down`
-- Clean up: `make clean`
-- Try again: `make build`
-
 ### Backend not accessible
-- Check if container is running: `docker ps | grep generator`
-- Check logs: `docker logs mazle-generator_instance`
-- Verify port 8080 is not in use: `lsof -i :8080`
+```bash
+# Check if container is running
+docker ps | grep generator
+
+# Check logs
+docker logs mazle-generator_instance 2>&1 | tail -30
+
+# Verify port
+lsof -i :8080
+```
+
+### Generation too slow
+Check fail rates - if any metric is >80%, consider relaxing that threshold:
+```bash
+docker logs mazle-generator_instance 2>&1 | grep "fail rates:" | tail -1
+```
 
 ### WASM build fails
-- WASM is built inside Docker - no host Rust needed
-- If build fails, check: `make build` output
-- Clean rebuild: `make clean && make build`
+WASM is built inside Docker - no host Rust needed:
+```bash
+make clean && make build
+```
 
 ---
 
 ## Summary of Rules
 
-1. ✅ **ALWAYS** use `make` commands - NEVER use `npm`, `cargo`, `docker` directly
+1. ✅ **ALWAYS** use `make up` to build AND start (not `make build` then `make up`)
 2. ✅ **ALWAYS** set `UNIQUE_RUNNER_ID=$(whoami)` before any make command
-3. ✅ **ALWAYS** verify builds after code changes
-4. ✅ **ALWAYS** use minimal changes - only fix what's requested
+3. ✅ **ALWAYS** test with curl + Python parsing after changes
+4. ✅ **ALWAYS** check fail rates in logs when tuning thresholds
 5. ❌ **NEVER** deploy to production unless explicitly requested
 6. ❌ **NEVER** run full test suites unless explicitly requested
 7. ❌ **NEVER** fix unrelated bugs or "improve" code beyond the request

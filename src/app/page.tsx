@@ -90,6 +90,7 @@ export default function Home() {
   const [generationProgress, setGenerationProgress] = useState<GenerationProgress | null>(null);
   const [showInlineResult, setShowInlineResult] = useState(false);
   const [lifeFlash, setLifeFlash] = useState(false);
+  const [startBatchInput, setStartBatchInput] = useState('');
   const gameControlsRef = useRef<GameControls | null>(null);
   const debugModeRef = useRef(false);
   const cheatBufferRef = useRef('');
@@ -309,6 +310,7 @@ export default function Home() {
       const trimmed = rawSeed?.trim() ?? '';
       const isDateSeed = /^\d{4}-\d{2}-\d{2}$/.test(trimmed);
       const forceMapType = selectedMapType === 'random' ? undefined : selectedMapType;
+      const startBatch = startBatchInput ? parseInt(startBatchInput, 10) : undefined;
 
       const progressHandler = (progress: GenerationProgress) => {
         setGenerationProgress(progress);
@@ -323,7 +325,7 @@ export default function Home() {
         const dailySeed = getDailySeed(targetDate);
         
         try {
-          const datedPuzzle = await generatePuzzleParallel(dailySeed, progressHandler, forceMapType, selectedBackend);
+          const datedPuzzle = await generatePuzzleParallel(dailySeed, progressHandler, forceMapType, selectedBackend, startBatch);
           debugModeRef.current = true;
           setPuzzle(datedPuzzle);
           setPuzzleNumber(getPuzzleNumber(targetDate));
@@ -352,7 +354,7 @@ export default function Home() {
       setGenerationProgress(null);
       
       try {
-        const newPuzzle = await generatePuzzleParallel(newSeed, progressHandler, forceMapType, selectedBackend);
+        const newPuzzle = await generatePuzzleParallel(newSeed, progressHandler, forceMapType, selectedBackend, startBatch);
         debugModeRef.current = true;
         setPuzzle(newPuzzle);
         setPuzzleLabel(`DEV ${newSeed}`);
@@ -369,7 +371,7 @@ export default function Home() {
         setGenerationProgress(null);
       }
     },
-    [selectedMapType, selectedBackend],
+    [selectedMapType, selectedBackend, startBatchInput],
   );
 
   const handleLoadDaily = useCallback(() => {
@@ -443,11 +445,11 @@ export default function Home() {
         {showDevTools && (
           <div className={styles.devPanel}>
             <div className={styles.devPanelHeader}>
-              <span className={styles.devPanelTitle}>Dev Tools</span>
+              <span className={styles.devPanelTitle}>🛠 Dev Tools</span>
               <button 
                 className={styles.devCloseButton}
                 onClick={() => setShowDevTools(false)}
-                title="Close (or type 'iddqd' again)"
+                title="Close"
               >
                 ✕
               </button>
@@ -461,7 +463,7 @@ export default function Home() {
               <span className={styles.devSeedValue}>{activeSeed || 'daily'}</span>
             </div>
             
-            {/* Core Metrics Grid */}
+            {/* Core Stats */}
             <div className={styles.devStatsGrid}>
               <div className={styles.devStatItem}>
                 <span className={styles.devStatValue} style={{ textTransform: 'uppercase' }}>
@@ -475,7 +477,7 @@ export default function Home() {
               </div>
               <div className={styles.devStatItem}>
                 <span className={styles.devStatValue}>{puzzle.optimalMoves}</span>
-                <span className={styles.devStatLabel}>Moves</span>
+                <span className={styles.devStatLabel}>Optimal</span>
               </div>
               <div className={styles.devStatItem}>
                 <span className={styles.devStatValue}>{puzzle.difficultyScore ?? '—'}</span>
@@ -483,28 +485,90 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Psychology Metrics */}
-            <div className={styles.devPsychSection}>
-              <div className={styles.devPsychHeader}>Psychology Metrics</div>
-              <div className={styles.devPsychGrid}>
-                <div className={styles.devPsychItem}>
-                  <span className={styles.devPsychValue}>{puzzle.counterIntuitiveMoves ?? '—'}</span>
-                  <span className={styles.devPsychLabel}>Counter-Intuitive</span>
+            {/* TIER 1: Core Difficulty Metrics */}
+            <div className={styles.devMetricsSection}>
+              <div className={styles.devMetricsHeader}>
+                <span className={styles.devMetricsTier}>TIER 1</span>
+                <span className={styles.devMetricsTitle}>Core Difficulty</span>
+              </div>
+              <div className={styles.devMetricsGrid3}>
+                <div className={styles.devMetricItemPrimary}>
+                  <span className={styles.devMetricValue}>{puzzle.nearOptimalPaths ?? '—'}</span>
+                  <span className={styles.devMetricLabel}>Paths</span>
+                  <span className={styles.devMetricHint}>Near-optimal routes</span>
                 </div>
-                <div className={styles.devPsychItem}>
-                  <span className={styles.devPsychValue}>{puzzle.attractiveDecoys ?? '—'}</span>
-                  <span className={styles.devPsychLabel}>Decoys</span>
+                <div className={styles.devMetricItemPrimary}>
+                  <span className={styles.devMetricValue}>
+                    {puzzle.pathOverlap != null ? puzzle.pathOverlap.toFixed(2) : '—'}
+                  </span>
+                  <span className={styles.devMetricLabel}>Overlap</span>
+                  <span className={styles.devMetricHint}>Lower = harder</span>
                 </div>
-                <div className={styles.devPsychItem}>
-                  <span className={styles.devPsychValue}>{puzzle.commitmentGates ?? '—'}</span>
-                  <span className={styles.devPsychLabel}>Commitments</span>
-                </div>
-                <div className={styles.devPsychItem}>
-                  <span className={styles.devPsychValue}>{puzzle.falseProgressPaths ?? '—'}</span>
-                  <span className={styles.devPsychLabel}>False Progress</span>
+                <div className={styles.devMetricItemPrimary}>
+                  <span className={styles.devMetricValue}>
+                    {puzzle.earlyDivergence != null ? puzzle.earlyDivergence.toFixed(2) : '—'}
+                  </span>
+                  <span className={styles.devMetricLabel}>Early Div</span>
+                  <span className={styles.devMetricHint}>First-move confusion</span>
                 </div>
               </div>
             </div>
+
+            {/* TIER 2: Per-Move Confusion */}
+            <div className={styles.devMetricsSection}>
+              <div className={styles.devMetricsHeader}>
+                <span className={styles.devMetricsTier}>TIER 2</span>
+                <span className={styles.devMetricsTitle}>Per-Move Confusion</span>
+              </div>
+              <div className={styles.devMetricsGrid2}>
+                <div className={styles.devMetricItemSecondary}>
+                  <span className={styles.devMetricValue}>{puzzle.directionChanges ?? '—'}</span>
+                  <span className={styles.devMetricLabel}>Dir Changes</span>
+                </div>
+                <div className={styles.devMetricItemSecondary}>
+                  <span className={styles.devMetricValue}>
+                    {puzzle.decisionAmbiguity != null ? puzzle.decisionAmbiguity.toFixed(1) : '—'}
+                  </span>
+                  <span className={styles.devMetricLabel}>Ambiguity</span>
+                </div>
+              </div>
+            </div>
+
+            {/* TIER 3: Legacy Metrics (Collapsed) */}
+            <details className={styles.devMetricsCollapsible}>
+              <summary className={styles.devMetricsSummary}>
+                <span className={styles.devMetricsTier}>TIER 3</span>
+                <span className={styles.devMetricsTitle}>Legacy Metrics</span>
+              </summary>
+              <div className={styles.devMetricsGrid4}>
+                <div className={styles.devMetricItemTertiary}>
+                  <span className={styles.devMetricValue}>{puzzle.counterIntuitiveMoves ?? '—'}</span>
+                  <span className={styles.devMetricLabel}>CI</span>
+                </div>
+                <div className={styles.devMetricItemTertiary}>
+                  <span className={styles.devMetricValue}>{puzzle.attractiveDecoys ?? '—'}</span>
+                  <span className={styles.devMetricLabel}>Decoys</span>
+                </div>
+                <div className={styles.devMetricItemTertiary}>
+                  <span className={styles.devMetricValue}>{puzzle.commitmentGates ?? '—'}</span>
+                  <span className={styles.devMetricLabel}>Gates</span>
+                </div>
+                <div className={styles.devMetricItemTertiary}>
+                  <span className={styles.devMetricValue}>{puzzle.falseProgressPaths ?? '—'}</span>
+                  <span className={styles.devMetricLabel}>FP</span>
+                </div>
+                <div className={styles.devMetricItemTertiary}>
+                  <span className={styles.devMetricValue}>
+                    {puzzle.pathLocality != null ? puzzle.pathLocality.toFixed(2) : '—'}
+                  </span>
+                  <span className={styles.devMetricLabel}>Locality</span>
+                </div>
+                <div className={styles.devMetricItemTertiary}>
+                  <span className={styles.devMetricValue}>{puzzle.backtrackDepth ?? '—'}</span>
+                  <span className={styles.devMetricLabel}>Backtrack</span>
+                </div>
+              </div>
+            </details>
 
             {/* Maze Engine Selector */}
             <div className={styles.devBackendSection}>
@@ -568,44 +632,56 @@ export default function Home() {
                 className={styles.devInput}
                 disabled={isGenerating}
               />
-              <select
-                value={selectedMapType}
-                onChange={(e) => setSelectedMapType(e.target.value as MapType | 'random')}
-                className={styles.devSelect}
-                disabled={isGenerating}
-              >
-                <option value="random">Random Map</option>
-                <option value={MapType.ICE}>Ice Map</option>
-                <option value={MapType.GROUND}>Ground Map</option>
-              </select>
-              <button
-                type="button"
-                className={styles.devButton}
-                onClick={() => handleDevSeedGenerate(seedInput)}
-                disabled={isGenerating}
-              >
-                Load
-              </button>
-              <button
-                type="button"
-                className={styles.devButtonSecondary}
-                onClick={() => handleDevSeedGenerate()}
-                disabled={isGenerating}
-              >
-                {isGenerating ? (
-                  <span className={styles.buttonSpinner} />
-                ) : (
-                  'Random'
-                )}
-              </button>
-              <button 
-                type="button" 
-                className={styles.devButtonGhost} 
-                onClick={handleLoadDaily}
-                disabled={isGenerating}
-              >
-                ↩ Daily
-              </button>
+              <div className={styles.devInputRow}>
+                <select
+                  value={selectedMapType}
+                  onChange={(e) => setSelectedMapType(e.target.value as MapType | 'random')}
+                  className={styles.devSelect}
+                  disabled={isGenerating}
+                >
+                  <option value="random">Random Map</option>
+                  <option value={MapType.ICE}>Ice Map</option>
+                  <option value={MapType.GROUND}>Ground Map</option>
+                </select>
+                <input
+                  value={startBatchInput}
+                  onChange={(e) => setStartBatchInput(e.target.value.replace(/\D/g, ''))}
+                  placeholder="Start batch #"
+                  className={styles.devInputSmall}
+                  disabled={isGenerating}
+                  title="Start generation at a specific batch number (deterministic)"
+                />
+              </div>
+              <div className={styles.devButtonRow}>
+                <button
+                  type="button"
+                  className={styles.devButton}
+                  onClick={() => handleDevSeedGenerate(seedInput)}
+                  disabled={isGenerating}
+                >
+                  Load
+                </button>
+                <button
+                  type="button"
+                  className={styles.devButtonSecondary}
+                  onClick={() => handleDevSeedGenerate()}
+                  disabled={isGenerating}
+                >
+                  {isGenerating ? (
+                    <span className={styles.buttonSpinner} />
+                  ) : (
+                    '🎲 Random'
+                  )}
+                </button>
+                <button 
+                  type="button" 
+                  className={styles.devButtonGhost} 
+                  onClick={handleLoadDaily}
+                  disabled={isGenerating}
+                >
+                  ↩ Daily
+                </button>
+              </div>
             </div>
             
             {/* Generation Progress */}
@@ -613,8 +689,8 @@ export default function Home() {
               <div className={styles.devProgress}>
                 <div className={styles.devProgressHeader}>
                   {generationProgress.phase === 'rust-backend' 
-                    ? `🦀 Rust ${progressPercent}%` 
-                    : `WASM ${progressPercent}%`}
+                    ? `🦀 Generating... ${progressPercent}%` 
+                    : `⚡ Generating... ${progressPercent}%`}
                 </div>
                 <div className={styles.progressBar}>
                   <div 

@@ -39,12 +39,26 @@ export interface PuzzleData {
   optimalMoves: number;
   solutionPath?: Position[];
   mapType: MapType;  // Type of map/puzzle variant
+  
   // Psychology-based difficulty metrics (for dev mode display)
   difficultyScore?: number;           // Overall psychology score
+  
+  // TIER 1: Core difficulty metrics (what actually makes puzzles hard)
+  nearOptimalPaths?: number;          // Count of paths within optimal+2 moves
+  pathOverlap?: number;               // 0-1, how much alternatives share with optimal (lower = harder)
+  earlyDivergence?: number;           // 0-1, when alternatives diverge (higher = earlier = harder)
+  
+  // TIER 2: Per-move confusion
+  directionChanges?: number;          // How many times optimal path changes direction
+  decisionAmbiguity?: number;         // Avg valid moves at each position on optimal path
+  
+  // TIER 3: Legacy metrics (less relevant for binary lives game mechanic)
   counterIntuitiveMoves?: number;     // Moves that go away from goal
   attractiveDecoys?: number;          // Wrong moves that look better than optimal
   commitmentGates?: number;           // Points where wrong choice is very costly
   falseProgressPaths?: number;        // Paths that look good but waste moves
+  pathLocality?: number;              // How spread out the optimal path is
+  backtrackDepth?: number;            // Max distance traveled in wrong direction
 }
 
 export interface GameState {

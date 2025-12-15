@@ -59,16 +59,12 @@ struct GenerateResponse {
 /// Query parameters for GET endpoint
 #[derive(Deserialize)]
 struct GenerateQuery {
-    #[serde(default = "default_attempts")]
-    attempts: usize,
     #[serde(default)]
     parallel: bool,
     #[serde(default = "default_map_type")]
     map_type: String,
-}
-
-fn default_attempts() -> usize {
-    1000
+    #[serde(default)]
+    start_batch: usize,
 }
 
 /// Health check endpoint
@@ -87,8 +83,8 @@ async fn generate_by_seed(
     let start = Instant::now();
 
     let config = GenerationConfig {
-        traditional_attempts: query.attempts,
         parallel: query.parallel,
+        start_batch: query.start_batch,
         ..Default::default()
     };
 

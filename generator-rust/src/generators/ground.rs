@@ -240,6 +240,7 @@ fn make_placeholder(seed: &str, width: usize, height: usize) -> PuzzleData {
         // Path diversity metrics (Phase 2) - not computed for ground
         near_optimal_paths: None,
         path_overlap: None,
+        path_overlap_avg: None,
         early_divergence: None,
     }
 }

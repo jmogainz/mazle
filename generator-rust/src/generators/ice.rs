@@ -40,33 +40,32 @@ where
 // =============================================================================
 
 const TARGET_PSYCHOLOGY_SCORE: f64 = 800.0;
-const TRADITIONAL_ATTEMPTS: usize = 10000;
+const BATCH_SIZE: usize = 10000;  // Attempts per batch
 
 const SIZE_OPTIONS: [(usize, usize); 1] = [(15, 15)];
 
 // =============================================================================
-// PSYCHOLOGY SCORING WEIGHTS
+// PSYCHOLOGY SCORING WEIGHTS - Tuned for binary lives game mechanic
 // =============================================================================
-// Balanced distribution across 11 metrics for puzzle variety while maintaining difficulty
 
-// Original metrics (keep for baseline difficulty)
-const WEIGHT_COUNTER_INTUITIVE: f64 = 50.0;   // Moves away from goal
-const WEIGHT_ATTRACTIVE_DECOYS: f64 = 40.0;   // Tempting wrong moves
-const WEIGHT_COMMITMENT_GATES: f64 = 80.0;    // Costly wrong decisions
-const WEIGHT_FALSE_PROGRESS: f64 = 50.0;      // Deceptive progress paths
+// TIER 1: Core difficulty (what actually makes puzzles hard)
+const WEIGHT_NEAR_OPTIMAL_PATHS: f64 = 40.0;  // RAISED - more paths = more confusion
+const WEIGHT_PATH_OVERLAP: f64 = 200.0;       // RAISED - low overlap = truly different routes
+const WEIGHT_EARLY_DIVERGENCE: f64 = 180.0;   // RAISED - early confusion is critical
 
-// Path structure metrics (Phase 1 - rebalanced)
-const WEIGHT_PATH_LOCALITY: f64 = 120.0;      // Concentrated vs spread path (REDUCED from 350)
-const WEIGHT_DIRECTION_CHANGES: f64 = 60.0;   // Zigzag complexity
-const WEIGHT_BACKTRACK_DEPTH: f64 = 50.0;     // Going wrong way distance
-const WEIGHT_DECISION_AMBIGUITY: f64 = 70.0;  // Choice paralysis at each step
+// TIER 2: Per-move confusion (secondary difficulty)
+const WEIGHT_DIRECTION_CHANGES: f64 = 80.0;   // RAISED - zigzags harder to visualize
+const WEIGHT_DECISION_AMBIGUITY: f64 = 100.0; // RAISED - more choices per move
 
-// Path diversity metrics (Phase 2 - NEW)
-const WEIGHT_NEAR_OPTIMAL_PATHS: f64 = 25.0;  // Per alternative path found
-const WEIGHT_PATH_OVERLAP: f64 = 100.0;       // Structural similarity of alternatives
-const WEIGHT_EARLY_DIVERGENCE: f64 = 120.0;   // Early decision pressure
+// TIER 3: Low priority (irrelevant with binary lives or overlaps with TIER 1)
+const WEIGHT_COUNTER_INTUITIVE: f64 = 20.0;   // LOWERED - overlaps with paths
+const WEIGHT_ATTRACTIVE_DECOYS: f64 = 20.0;   // LOWERED - overlaps with paths
+const WEIGHT_COMMITMENT_GATES: f64 = 0.0;     // DISABLED - backtrack cost irrelevant
+const WEIGHT_FALSE_PROGRESS: f64 = 20.0;      // LOWERED - overlaps with paths
+const WEIGHT_PATH_LOCALITY: f64 = 0.0;        // DISABLED - irrelevant
+const WEIGHT_BACKTRACK_DEPTH: f64 = 0.0;      // DISABLED - backtrack cost irrelevant
 
-// Diversity bonus for non-traditional placements (helps them compete with traditional)
+// Diversity bonus for non-standard placements
 const DIVERSITY_BONUS: f64 = 150.0;
 // Extra bonus for Adjacent strategy (visually close, long path - very tricky!)
 const ADJACENT_BONUS: f64 = 300.0;
@@ -90,7 +89,7 @@ const BASE_PREFILTER_MIN_DECISION_AMBIGUITY: f64 = 2.6;   // RAISED - was too ea
 // Phase 2 thresholds (key difficulty metrics)
 const BASE_PREFILTER_MIN_NEAR_OPTIMAL_PATHS: i32 = 60;    // Back to moderate level
 const BASE_PREFILTER_MIN_PATH_OVERLAP: f64 = 0.0;         // No minimum
-const BASE_PREFILTER_MAX_PATH_OVERLAP: f64 = 0.98;        // ENABLED - hunt for rare low-overlap gems
+const BASE_PREFILTER_MAX_PATH_OVERLAP: f64 = 0.98;        // Now measures MIN overlap - need at least one different path
 const BASE_PREFILTER_MIN_EARLY_DIVERGENCE: f64 = 0.58;    // Want early confusion
 
 // Reference map size for scaling calculations
@@ -1530,10 +1529,11 @@ struct PsychMetrics {
     backtrack_depth: i32,         // How far "wrong way" the path goes
     decision_ambiguity: f64,      // Average valid moves at each decision point
 
-    // Path diversity metrics (Phase 2 - NEW)
+    // Path diversity metrics (Phase 2)
     near_optimal_paths: i32,      // Count of paths within tolerance of optimal
     optimal_path_count: i32,      // Count of paths at exactly optimal length
-    path_overlap: f64,            // 0.0-1.0, how much alternatives overlap with optimal
+    path_overlap: f64,            // MINIMUM overlap - best alternative's overlap with optimal
+    path_overlap_avg: f64,        // AVERAGE overlap - how similar alternatives are on average
     early_divergence: f64,        // 0.0-1.0, how early alternatives diverge
 
     // Final computed score
@@ -2016,12 +2016,14 @@ fn count_near_optimal_paths(
     (total_near_optimal.min(1000) as i32, exactly_optimal.min(100) as i32)
 }
 
-/// Calculate average overlap between near-optimal paths and the optimal path.
-/// Returns 0.0-1.0 where:
-/// - 1.0 = alternatives are nearly identical to optimal (diverge only at end)
-/// - 0.0 = alternatives share almost no positions with optimal
+/// Calculate overlap metrics between near-optimal paths and the optimal path.
+/// Returns (min_overlap, avg_overlap) where:
+/// - min_overlap: the BEST alternative (lowest overlap with optimal)
+/// - avg_overlap: average overlap across all alternatives
 ///
-/// Medium values (~0.3-0.6) create best difficulty - some structure but real choices.
+/// For filtering:
+/// - min_overlap <= 0.70 ensures at least one truly different path exists
+/// - avg_overlap <= 0.90 ensures alternatives aren't all nearly identical
 fn calculate_path_overlap(
     tiles: &Vec<Vec<TileType>>,
     start: &Position,
@@ -2030,9 +2032,9 @@ fn calculate_path_overlap(
     width: usize,
     height: usize,
     optimal_moves: i32,
-) -> f64 {
+) -> (f64, f64) {
     if optimal_path.len() < 2 {
-        return 1.0;
+        return (1.0, 1.0);
     }
 
     let optimal_set: HashSet<Position> = optimal_path.iter().cloned().collect();
@@ -2072,10 +2074,11 @@ fn calculate_path_overlap(
     }
 
     if paths_found.len() <= 1 {
-        return 1.0; // Only one path, maximum "overlap" with itself
+        return (1.0, 1.0); // Only one path, maximum "overlap" with itself
     }
 
     // Calculate overlap for each non-optimal path
+    let mut min_overlap = 1.0;
     let mut total_overlap = 0.0;
     let mut alt_count = 0;
 
@@ -2090,15 +2093,20 @@ fn calculate_path_overlap(
 
         let overlap_count = path.iter().filter(|p| optimal_set.contains(p)).count();
         let overlap_ratio = overlap_count as f64 / path.len() as f64;
+        
+        if overlap_ratio < min_overlap {
+            min_overlap = overlap_ratio;
+        }
         total_overlap += overlap_ratio;
         alt_count += 1;
     }
 
     if alt_count == 0 {
-        return 1.0;
+        return (1.0, 1.0);
     }
 
-    total_overlap / alt_count as f64
+    let avg_overlap = total_overlap / alt_count as f64;
+    (min_overlap, avg_overlap)
 }
 
 /// Calculate how early in the solution alternatives diverge from optimal path.
@@ -2183,6 +2191,7 @@ fn calculate_psychology_score(
             near_optimal_paths: 0,
             optimal_path_count: 0,
             path_overlap: 1.0,
+            path_overlap_avg: 1.0,
             early_divergence: 0.0,
             psychology_score: 0.0,
         };
@@ -2216,7 +2225,7 @@ fn calculate_psychology_score(
     let tolerance = 2; // Count paths within optimal+2 moves
     let (near_optimal_paths, optimal_path_count) =
         count_near_optimal_paths(tiles, start, goal, width, height, optimal_moves, tolerance);
-    let path_overlap = calculate_path_overlap(
+    let (path_overlap, path_overlap_avg) = calculate_path_overlap(
         tiles, start, goal, &optimal_path, width, height, optimal_moves
     );
     let early_divergence = calculate_early_divergence(tiles, &optimal_path, width, height);
@@ -2250,6 +2259,7 @@ fn calculate_psychology_score(
         near_optimal_paths,
         optimal_path_count,
         path_overlap,
+        path_overlap_avg,
         early_divergence,
         psychology_score,
     }
@@ -2265,15 +2275,17 @@ struct PrefilterThresholds {
     min_false_progress: i32,
 
     // Phase 1 thresholds
+    min_path_locality: f64,
     max_path_locality: f64,
     min_direction_changes: i32,
     min_backtrack_depth: i32,
     min_decision_ambiguity: f64,
 
-    // Phase 2 thresholds (NEW)
+    // Phase 2 thresholds
     min_near_optimal_paths: i32,  // Minimum alternative paths required
     min_path_overlap: f64,        // Minimum overlap (not too chaotic)
-    max_path_overlap: f64,        // Maximum overlap (real alternatives exist)
+    max_path_overlap: f64,        // Maximum MIN overlap - best alternative must be different
+    max_path_overlap_avg: f64,    // Maximum AVG overlap - alternatives can't all be the same
     min_early_divergence: f64,    // Minimum early divergence score
 }
 
@@ -2314,23 +2326,26 @@ fn compute_prefilter_thresholds(width: usize, height: usize) -> PrefilterThresho
     };
 
     PrefilterThresholds {
-        // Keep light - these overlap with paths/olap but add some filtering
-        min_counter_intuitive: if is_small_map { ci.max(1) } else { ci },  // Relaxed from 2 to 1
-        min_attractive_decoys: if is_small_map { decoys.max(2) } else { decoys },  // Relaxed from 3 to 2
-        min_commitment_gates: 0,  // DISABLED - irrelevant with binary lives
-        min_false_progress: if is_small_map { fp.max(1) } else { fp },  // Relaxed from 2 to 1
+        // DISABLED - these overlap heavily with paths/olap metrics
+        min_counter_intuitive: 0,  // DISABLED - overlaps with paths
+        min_attractive_decoys: 0,  // DISABLED - overlaps with paths/olap
+        min_commitment_gates: 0,   // DISABLED - irrelevant with binary lives
+        min_false_progress: 0,     // DISABLED - overlaps with paths
 
-        // DISABLED - irrelevant with binary lives
-        max_path_locality: 1.0,  // DISABLED
-        min_direction_changes: if is_small_map { min_dir_changes.max(6) } else { min_dir_changes },
-        min_backtrack_depth: 0,  // DISABLED
-        min_decision_ambiguity: if is_small_map { min_ambiguity.max(2.3) } else { min_ambiguity },  // Relaxed from 2.4 to 2.3
+        // Path locality - want paths that use moderate area of the map (0.50-0.80)
+        // Too low (< 0.5) = path too concentrated = easy, too high (> 0.8) = scattered mess
+        min_path_locality: if is_small_map { 0.50 } else { 0.40 },
+        max_path_locality: if is_small_map { 0.80 } else { max_locality },
+        min_direction_changes: if is_small_map { min_dir_changes.max(8) } else { min_dir_changes },
+        min_backtrack_depth: 0,    // DISABLED - irrelevant with binary lives
+        min_decision_ambiguity: if is_small_map { min_ambiguity.max(2.4) } else { min_ambiguity },
 
-        // TIER 1 - Core difficulty (keep strict)
-        min_near_optimal_paths: if is_small_map { min_near_optimal.max(25) } else { min_near_optimal },
+        // TIER 1 - Core difficulty
+        min_near_optimal_paths: if is_small_map { min_near_optimal.max(40) } else { min_near_optimal },
         min_path_overlap: min_overlap,
-        max_path_overlap: max_overlap,  // 0.98 - hunting for low overlap!
-        min_early_divergence: min_early_div,
+        max_path_overlap: if is_small_map { 0.60 } else { max_overlap },  // 0.60 - best alternative must share <=60% with optimal
+        max_path_overlap_avg: if is_small_map { 0.70 } else { 0.75 },     // 0.70 - alternatives can't ALL be nearly identical
+        min_early_divergence: if is_small_map { 0.48 } else { min_early_div },
     }
 }
 
@@ -2345,7 +2360,7 @@ fn passes_prefilters_with_stats(
         (metrics.attractive_decoys >= thresholds.min_attractive_decoys, 1),
         (metrics.commitment_gates >= thresholds.min_commitment_gates, 2),
         (metrics.false_progress_paths >= thresholds.min_false_progress, 3),
-        (metrics.path_locality <= thresholds.max_path_locality, 4),
+        (metrics.path_locality >= thresholds.min_path_locality && metrics.path_locality <= thresholds.max_path_locality, 4),
         (metrics.direction_changes >= thresholds.min_direction_changes, 5),
         (metrics.backtrack_depth >= thresholds.min_backtrack_depth, 6),
         (metrics.decision_ambiguity >= thresholds.min_decision_ambiguity, 7),
@@ -2377,6 +2392,7 @@ fn passes_prefilters(metrics: &PsychMetrics, thresholds: &PrefilterThresholds) -
         && metrics.commitment_gates >= thresholds.min_commitment_gates
         && metrics.false_progress_paths >= thresholds.min_false_progress
         // Phase 1 checks
+        && metrics.path_locality >= thresholds.min_path_locality
         && metrics.path_locality <= thresholds.max_path_locality
         && metrics.direction_changes >= thresholds.min_direction_changes
         && metrics.backtrack_depth >= thresholds.min_backtrack_depth
@@ -3317,6 +3333,149 @@ fn add_dead_end_magnets(
     }
 }
 
+/// Create early path forks to increase path diversity and lower overlap.
+/// This trap specifically targets the metrics we care about most:
+/// - More near-optimal paths
+/// - Lower path overlap (different routes don't share cells)
+/// - Earlier divergence
+fn create_path_divergence(
+    tiles: &mut Vec<Vec<TileType>>,
+    start: &Position,
+    goal: &Position,
+    width: usize,
+    height: usize,
+    rng: &mut SeededRandom,
+    count: i32,
+) {
+    let optimal_path = find_optimal_path(tiles, start, goal, width, height);
+    if optimal_path.is_none() {
+        return;
+    }
+    let optimal_path = optimal_path.unwrap();
+    if optimal_path.len() < 4 {
+        return;
+    }
+    
+    // Target early positions on the optimal path (first 30%)
+    let early_count = (optimal_path.len() as f64 * 0.3).ceil() as usize;
+    let early_positions: Vec<&Position> = optimal_path.iter().skip(1).take(early_count).collect();
+    
+    for _ in 0..count {
+        if early_positions.is_empty() {
+            break;
+        }
+        
+        // Pick a position near the early optimal path
+        let target = rng.random_choice(&early_positions);
+        
+        // Find walls adjacent to this position that could create alternate routes
+        let mut candidates: Vec<Position> = Vec::new();
+        for radius in 1..=3 {
+            for dy in -radius..=radius {
+                for dx in -radius..=radius {
+                    let x = target.x + dx;
+                    let y = target.y + dy;
+                    if is_inner(x, y, width, height) 
+                        && tiles[y as usize][x as usize] == TileType::Wall
+                        && !pos_eq(&Position { x, y }, start)
+                        && !pos_eq(&Position { x, y }, goal)
+                    {
+                        // Check if this wall has ice neighbors (potential connection point)
+                        let mut ice_neighbors = 0;
+                        for dir in get_all_dirs() {
+                            let (ddx, ddy) = get_delta(dir);
+                            let nx = x + ddx;
+                            let ny = y + ddy;
+                            if is_valid(nx, ny, width, height)
+                                && tiles[ny as usize][nx as usize] == TileType::Ice
+                            {
+                                ice_neighbors += 1;
+                            }
+                        }
+                        if ice_neighbors >= 2 {
+                            candidates.push(Position { x, y });
+                        }
+                    }
+                }
+            }
+        }
+        
+        if candidates.is_empty() {
+            continue;
+        }
+        
+        // Try opening up walls to create alternate paths
+        let shuffled = rng.shuffle(&candidates);
+        for pos in shuffled.into_iter().take(5) {
+            let original = tiles[pos.y as usize][pos.x as usize];
+            tiles[pos.y as usize][pos.x as usize] = TileType::Ice;
+            
+            // Check if puzzle is still solvable with same optimal length
+            if let Some(new_path) = find_optimal_path(tiles, start, goal, width, height) {
+                if new_path.len() == optimal_path.len() {
+                    // Good - created alternate route without changing optimal
+                    break;
+                }
+            }
+            // Revert if it broke the puzzle or changed optimal length
+            tiles[pos.y as usize][pos.x as usize] = original;
+        }
+    }
+}
+
+/// Create multiple independent corridors that reach the goal area.
+/// This increases the chance of having different routes with low overlap.
+fn create_divergent_corridors(
+    tiles: &mut Vec<Vec<TileType>>,
+    start: &Position,
+    goal: &Position,
+    width: usize,
+    height: usize,
+    rng: &mut SeededRandom,
+    count: i32,
+) {
+    for _ in 0..count {
+        // Pick a random direction to carve a corridor
+        let horizontal = rng.random() < 0.5;
+        
+        // Pick a position away from the optimal path
+        let margin = 3;
+        let x = rng.random_int(margin, width as i32 - margin);
+        let y = rng.random_int(margin, height as i32 - margin);
+        
+        if !is_inner(x, y, width, height) {
+            continue;
+        }
+        
+        // Carve a short corridor (3-6 tiles)
+        let length = rng.random_int(3, 7);
+        let mut backup: Vec<(Position, TileType)> = Vec::new();
+        
+        for i in 0..length {
+            let (cx, cy) = if horizontal {
+                (x + i, y)
+            } else {
+                (x, y + i)
+            };
+            
+            if is_inner(cx, cy, width, height) 
+                && !pos_eq(&Position { x: cx, y: cy }, start)
+                && !pos_eq(&Position { x: cx, y: cy }, goal)
+            {
+                backup.push((Position { x: cx, y: cy }, tiles[cy as usize][cx as usize]));
+                tiles[cy as usize][cx as usize] = TileType::Ice;
+            }
+        }
+        
+        // Check if still solvable
+        if !is_solvable(tiles, start, goal, width, height) {
+            for (pos, tile) in backup {
+                tiles[pos.y as usize][pos.x as usize] = tile;
+            }
+        }
+    }
+}
+
 /// Compute required optimal moves based on map size.
 /// Reference: 10 moves for a 15x15 map, scales linearly with smaller dimension.
 fn compute_required_moves(width: usize, height: usize) -> i32 {
@@ -3347,10 +3506,12 @@ enum TrapFunction {
     TrapAlcoves,
     DeceptivePaths,
     DeadEndMagnets,
+    PathDivergence,      // NEW: Creates early path forks for low overlap
+    DivergentCorridors,  // NEW: Creates independent corridors for path diversity
 }
 
 /// All available trap functions
-const ALL_TRAPS: [TrapFunction; 14] = [
+const ALL_TRAPS: [TrapFunction; 16] = [
     TrapFunction::AlmostThere,
     TrapFunction::DecoyOpenAreas,
     TrapFunction::HiddenChokePoints,
@@ -3365,6 +3526,8 @@ const ALL_TRAPS: [TrapFunction; 14] = [
     TrapFunction::TrapAlcoves,
     TrapFunction::DeceptivePaths,
     TrapFunction::DeadEndMagnets,
+    TrapFunction::PathDivergence,      // NEW
+    TrapFunction::DivergentCorridors,  // NEW
 ];
 
 /// Apply trap functions with randomization for increased diversity
@@ -3473,6 +3636,16 @@ fn apply_chaos_traps(
                 let count = vary_count(rng, min, max);
                 add_dead_end_magnets(tiles, start, goal, width, height, rng, count);
             }
+            TrapFunction::PathDivergence => {
+                let (min, max) = scale_range(8, 16);
+                let count = vary_count(rng, min, max);
+                create_path_divergence(tiles, start, goal, width, height, rng, count);
+            }
+            TrapFunction::DivergentCorridors => {
+                let (min, max) = scale_range(6, 12);
+                let count = vary_count(rng, min, max);
+                create_divergent_corridors(tiles, start, goal, width, height, rng, count);
+            }
         }
     }
     
@@ -3539,6 +3712,14 @@ fn apply_chaos_traps(
                     let count = vary_count(rng, 3, 8);
                     add_dead_end_magnets(tiles, start, goal, width, height, rng, count);
                 }
+                TrapFunction::PathDivergence => {
+                    let count = vary_count(rng, 4, 10);
+                    create_path_divergence(tiles, start, goal, width, height, rng, count);
+                }
+                TrapFunction::DivergentCorridors => {
+                    let count = vary_count(rng, 3, 8);
+                    create_divergent_corridors(tiles, start, goal, width, height, rng, count);
+                }
             }
         }
     }
@@ -3552,6 +3733,7 @@ fn pick_size(rng: &mut SeededRandom) -> (usize, usize) {
     rng.random_choice(&SIZE_OPTIONS)
 }
 
+#[allow(unused_variables)]
 pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
     // Log rayon thread pool info
     let num_threads = rayon::current_num_threads();
@@ -3561,12 +3743,6 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
     let (width, height) = {
         let mut rng = SeededRandom::new(seed);
         pick_size(&mut rng)
-    };
-
-    let traditional_attempts = if config.traditional_attempts > 0 {
-        config.traditional_attempts
-    } else {
-        TRADITIONAL_ATTEMPTS
     };
 
     // Compute scaled parameters for this map size
@@ -3589,7 +3765,7 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
         prefilter_thresholds.max_path_overlap,
         prefilter_thresholds.min_early_divergence,
     );
-    info!("Running {} traditional attempts per batch", traditional_attempts);
+    info!("Running {} attempts per batch", BATCH_SIZE);
 
     // Diagnostic counters for tracking which prefilters fail most
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -3604,9 +3780,15 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
     static FAIL_PATHS: AtomicU64 = AtomicU64::new(0);
     static FAIL_OLAP_MIN: AtomicU64 = AtomicU64::new(0);
     static FAIL_OLAP_MAX: AtomicU64 = AtomicU64::new(0);
+    static FAIL_OLAP_AVG: AtomicU64 = AtomicU64::new(0);
     static FAIL_EDIV: AtomicU64 = AtomicU64::new(0);
     static FAIL_UNIQUE_OPT: AtomicU64 = AtomicU64::new(0);  // Track puzzles with multiple optimal paths
     static TOTAL_CHECKED: AtomicU64 = AtomicU64::new(0);
+
+    // Track the closest puzzle to passing all thresholds
+    // Format: (closeness_score, paths, paths_thresh, olap_min, olap_min_thresh, olap_avg, olap_avg_thresh, ediv, ediv_thresh, dir, dir_thresh, amb, amb_thresh, loc, loc_min_thresh, loc_max_thresh, optimal_count)
+    use std::sync::Mutex;
+    static CLOSEST_PUZZLE: Mutex<Option<(f64, i32, i32, f64, f64, f64, f64, f64, f64, i32, i32, f64, f64, f64, f64, f64, i32)>> = Mutex::new(None);
 
     // Reset counters for this generation
     FAIL_CI.store(0, Ordering::Relaxed);
@@ -3620,14 +3802,19 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
     FAIL_PATHS.store(0, Ordering::Relaxed);
     FAIL_OLAP_MIN.store(0, Ordering::Relaxed);
     FAIL_OLAP_MAX.store(0, Ordering::Relaxed);
+    FAIL_OLAP_AVG.store(0, Ordering::Relaxed);
     FAIL_EDIV.store(0, Ordering::Relaxed);
     FAIL_UNIQUE_OPT.store(0, Ordering::Relaxed);
     TOTAL_CHECKED.store(0, Ordering::Relaxed);
+    *CLOSEST_PUZZLE.lock().unwrap() = None;
 
-    let mut batch = 0;
+    let mut batch = config.start_batch;
+    if batch > 0 {
+        info!("Starting generation at batch {} (skipping first {} batches)", batch, batch);
+    }
     loop {
-        let trad_start = batch * traditional_attempts;
-        let trad_end = trad_start + traditional_attempts;
+        let batch_start = batch * BATCH_SIZE;
+        let batch_end = batch_start + BATCH_SIZE;
 
         // Scale factor for generation parameters based on map size (reference: 35x35)
         let gen_scale = (width.min(height) as f64) / 35.0;
@@ -3637,9 +3824,9 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
             (scaled_min, scaled_max)
         };
 
-        // Traditional attempts (parallel on native, sequential on WASM)
-        let trad_best = find_best_in_range("traditional", trad_start..trad_end, |attempt| {
-            let mut attempt_rng = SeededRandom::new(&format!("{}-trad-{}", seed, attempt));
+        // Generate puzzles in parallel (native) or sequential (WASM)
+        let batch_best = find_best_in_range("batch", batch_start..batch_end, |attempt| {
+            let mut attempt_rng = SeededRandom::new(&format!("{}-{}", seed, attempt));
             let mut tiles = create_base_maze(width, height, &mut attempt_rng);
 
             let mut ice_tiles: Vec<Position> = Vec::new();
@@ -3790,13 +3977,15 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                 let pass_dec = psych_metrics.attractive_decoys >= prefilter_thresholds.min_attractive_decoys;
                 let pass_gate = psych_metrics.commitment_gates >= prefilter_thresholds.min_commitment_gates;
                 let pass_fp = psych_metrics.false_progress_paths >= prefilter_thresholds.min_false_progress;
-                let pass_loc = psych_metrics.path_locality <= prefilter_thresholds.max_path_locality;
+                let pass_loc = psych_metrics.path_locality >= prefilter_thresholds.min_path_locality 
+                    && psych_metrics.path_locality <= prefilter_thresholds.max_path_locality;
                 let pass_dir = psych_metrics.direction_changes >= prefilter_thresholds.min_direction_changes;
                 let pass_bt = psych_metrics.backtrack_depth >= prefilter_thresholds.min_backtrack_depth;
                 let pass_amb = psych_metrics.decision_ambiguity >= prefilter_thresholds.min_decision_ambiguity;
                 let pass_paths = psych_metrics.near_optimal_paths >= prefilter_thresholds.min_near_optimal_paths;
                 let pass_olap_min = psych_metrics.path_overlap >= prefilter_thresholds.min_path_overlap;
                 let pass_olap_max = psych_metrics.path_overlap <= prefilter_thresholds.max_path_overlap;
+                let pass_olap_avg = psych_metrics.path_overlap_avg <= prefilter_thresholds.max_path_overlap_avg;
                 let pass_ediv = psych_metrics.early_divergence >= prefilter_thresholds.min_early_divergence;
 
                 if !pass_unique_opt { FAIL_UNIQUE_OPT.fetch_add(1, Ordering::Relaxed); }
@@ -3811,9 +4000,68 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                 if !pass_paths { FAIL_PATHS.fetch_add(1, Ordering::Relaxed); }
                 if !pass_olap_min { FAIL_OLAP_MIN.fetch_add(1, Ordering::Relaxed); }
                 if !pass_olap_max { FAIL_OLAP_MAX.fetch_add(1, Ordering::Relaxed); }
+                if !pass_olap_avg { FAIL_OLAP_AVG.fetch_add(1, Ordering::Relaxed); }
                 if !pass_ediv { FAIL_EDIV.fetch_add(1, Ordering::Relaxed); }
 
-                pass_unique_opt && pass_ci && pass_dec && pass_gate && pass_fp && pass_loc && pass_dir && pass_bt && pass_amb && pass_paths && pass_olap_min && pass_olap_max && pass_ediv
+                // Calculate closeness score for tracking (only for puzzles with unique optimal path)
+                // Higher score = closer to passing all thresholds
+                // For "min X" thresholds: ratio = actual / threshold (capped at 1.0)
+                // For "max X" thresholds: ratio = threshold / actual (capped at 1.0)
+                if pass_unique_opt {
+                    let paths_ratio = (psych_metrics.near_optimal_paths as f64 / prefilter_thresholds.min_near_optimal_paths as f64).min(1.0);
+                    let olap_max_ratio = if psych_metrics.path_overlap > 0.0 {
+                        (prefilter_thresholds.max_path_overlap / psych_metrics.path_overlap).min(1.0)
+                    } else { 1.0 };
+                    let olap_avg_ratio = if psych_metrics.path_overlap_avg > 0.0 {
+                        (prefilter_thresholds.max_path_overlap_avg / psych_metrics.path_overlap_avg).min(1.0)
+                    } else { 1.0 };
+                    let ediv_ratio = if prefilter_thresholds.min_early_divergence > 0.0 {
+                        (psych_metrics.early_divergence / prefilter_thresholds.min_early_divergence).min(1.0)
+                    } else { 1.0 };
+                    let dir_ratio = (psych_metrics.direction_changes as f64 / prefilter_thresholds.min_direction_changes as f64).min(1.0);
+                    let amb_ratio = (psych_metrics.decision_ambiguity / prefilter_thresholds.min_decision_ambiguity).min(1.0);
+                    // Locality must be in range [min, max] - calculate how close we are to that range
+                    let loc_ratio = if psych_metrics.path_locality < prefilter_thresholds.min_path_locality {
+                        psych_metrics.path_locality / prefilter_thresholds.min_path_locality
+                    } else if psych_metrics.path_locality > prefilter_thresholds.max_path_locality {
+                        prefilter_thresholds.max_path_locality / psych_metrics.path_locality
+                    } else {
+                        1.0  // In range = perfect
+                    };
+                    
+                    // Geometric mean gives equal weight and penalizes any single bad metric
+                    let closeness = (paths_ratio * olap_max_ratio * olap_avg_ratio * ediv_ratio * dir_ratio * amb_ratio * loc_ratio).powf(1.0 / 7.0);
+                    
+                    if let Ok(mut closest) = CLOSEST_PUZZLE.lock() {
+                        let should_update = match &*closest {
+                            None => true,
+                            Some((best_closeness, ..)) => closeness > *best_closeness,
+                        };
+                        if should_update {
+                            *closest = Some((
+                                closeness,
+                                psych_metrics.near_optimal_paths,
+                                prefilter_thresholds.min_near_optimal_paths,
+                                psych_metrics.path_overlap,
+                                prefilter_thresholds.max_path_overlap,
+                                psych_metrics.path_overlap_avg,
+                                prefilter_thresholds.max_path_overlap_avg,
+                                psych_metrics.early_divergence,
+                                prefilter_thresholds.min_early_divergence,
+                                psych_metrics.direction_changes,
+                                prefilter_thresholds.min_direction_changes,
+                                psych_metrics.decision_ambiguity,
+                                prefilter_thresholds.min_decision_ambiguity,
+                                psych_metrics.path_locality,
+                                prefilter_thresholds.min_path_locality,
+                                prefilter_thresholds.max_path_locality,
+                                psych_metrics.optimal_path_count,
+                            ));
+                        }
+                    }
+                }
+
+                pass_unique_opt && pass_ci && pass_dec && pass_gate && pass_fp && pass_loc && pass_dir && pass_bt && pass_amb && pass_paths && pass_olap_min && pass_olap_max && pass_olap_avg && pass_ediv
             };
             
             if !passed {
@@ -3849,6 +4097,7 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                 // Path diversity metrics (Phase 2)
                 near_optimal_paths: Some(psych_metrics.near_optimal_paths),
                 path_overlap: Some(psych_metrics.path_overlap),
+                path_overlap_avg: Some(psych_metrics.path_overlap_avg),
                 early_divergence: Some(psych_metrics.early_divergence),
             };
 
@@ -3858,7 +4107,7 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
         // Check if we found a puzzle meeting the prefilter thresholds
         // Note: If prefilters pass, psychology_score is guaranteed to be high enough
         // (minimum ~1505 for 15x15, far exceeds TARGET_PSYCHOLOGY_SCORE of 800)
-        if let Some((puzzle, _score)) = trad_best.clone() {
+        if let Some((puzzle, _score)) = batch_best.clone() {
             if puzzle
                 .counter_intuitive_moves
                 .map_or(false, |v| v >= prefilter_thresholds.min_counter_intuitive)
@@ -3870,7 +4119,8 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                     .map_or(false, |v| v >= prefilter_thresholds.min_commitment_gates)
             {
                 info!(
-                    "Selected puzzle: score={}, ci={}, dec={}, gate={}, fp={}, loc={:.2}, dir={}, bt={}, amb={:.1}, paths={}, olap={:.2}, ediv={:.2}",
+                    "Selected puzzle at batch {}: score={}, ci={}, dec={}, gate={}, fp={}, loc={:.2}, dir={}, bt={}, amb={:.1}, paths={}, olap_min={:.2}, olap_avg={:.2}, ediv={:.2}",
+                    batch,
                     puzzle.difficulty_score.unwrap_or(0),
                     puzzle.counter_intuitive_moves.unwrap_or(0),
                     puzzle.attractive_decoys.unwrap_or(0),
@@ -3882,6 +4132,7 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                     puzzle.decision_ambiguity.unwrap_or(0.0),
                     puzzle.near_optimal_paths.unwrap_or(0),
                     puzzle.path_overlap.unwrap_or(0.0),
+                    puzzle.path_overlap_avg.unwrap_or(0.0),
                     puzzle.early_divergence.unwrap_or(0.0),
                 );
                 return puzzle;
@@ -3889,9 +4140,10 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
         }
 
         // If we found any valid puzzle, return it
-        if let Some((puzzle, _score)) = trad_best {
+        if let Some((puzzle, _score)) = batch_best {
             info!(
-                "Selected puzzle (fallback): score={}, ci={}, dec={}, gate={}, fp={}, loc={:.2}, dir={}, bt={}, amb={:.1}, paths={}, olap={:.2}, ediv={:.2}",
+                "Selected puzzle (fallback) at batch {}: score={}, ci={}, dec={}, gate={}, fp={}, loc={:.2}, dir={}, bt={}, amb={:.1}, paths={}, olap_min={:.2}, olap_avg={:.2}, ediv={:.2}",
+                batch,
                 puzzle.difficulty_score.unwrap_or(0),
                 puzzle.counter_intuitive_moves.unwrap_or(0),
                 puzzle.attractive_decoys.unwrap_or(0),
@@ -3903,6 +4155,7 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                 puzzle.decision_ambiguity.unwrap_or(0.0),
                 puzzle.near_optimal_paths.unwrap_or(0),
                 puzzle.path_overlap.unwrap_or(0.0),
+                puzzle.path_overlap_avg.unwrap_or(0.0),
                 puzzle.early_divergence.unwrap_or(0.0),
             );
             return puzzle;
@@ -3913,7 +4166,7 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
             let total = TOTAL_CHECKED.load(Ordering::Relaxed);
             if total > 0 {
                 info!(
-                    "Batch {} fail rates: uopt={:.0}% ci={:.0}% dec={:.0}% gate={:.0}% fp={:.0}% loc={:.0}% dir={:.0}% bt={:.0}% amb={:.0}% paths={:.0}% olap_max={:.0}% ediv={:.0}% (n={})",
+                    "Batch {} fail rates: uopt={:.0}% ci={:.0}% dec={:.0}% gate={:.0}% fp={:.0}% loc={:.0}% dir={:.0}% bt={:.0}% amb={:.0}% paths={:.0}% olap_min={:.0}% olap_avg={:.0}% ediv={:.0}% (n={})",
                     batch,
                     FAIL_UNIQUE_OPT.load(Ordering::Relaxed) as f64 / total as f64 * 100.0,
                     FAIL_CI.load(Ordering::Relaxed) as f64 / total as f64 * 100.0,
@@ -3926,9 +4179,20 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                     FAIL_AMB.load(Ordering::Relaxed) as f64 / total as f64 * 100.0,
                     FAIL_PATHS.load(Ordering::Relaxed) as f64 / total as f64 * 100.0,
                     FAIL_OLAP_MAX.load(Ordering::Relaxed) as f64 / total as f64 * 100.0,
+                    FAIL_OLAP_AVG.load(Ordering::Relaxed) as f64 / total as f64 * 100.0,
                     FAIL_EDIV.load(Ordering::Relaxed) as f64 / total as f64 * 100.0,
                     total,
                 );
+                
+                // Log closest puzzle metrics (value/threshold format)
+                if let Ok(closest) = CLOSEST_PUZZLE.lock() {
+                    if let Some((closeness, paths, paths_t, olap, olap_t, olap_avg, olap_avg_t, ediv, ediv_t, dir, dir_t, amb, amb_t, loc, loc_min_t, loc_max_t, opt_count)) = *closest {
+                        info!(
+                            "Closest puzzle (score={:.3}): paths={}/{} olap={:.2}/{:.2} olap_avg={:.2}/{:.2} ediv={:.2}/{:.2} dir={}/{} amb={:.1}/{:.1} loc={:.2}/({:.2}-{:.2}) (opt_paths={})",
+                            closeness, paths, paths_t, olap, olap_t, olap_avg, olap_avg_t, ediv, ediv_t, dir, dir_t, amb, amb_t, loc, loc_min_t, loc_max_t, opt_count
+                        );
+                    }
+                }
             }
         }
 

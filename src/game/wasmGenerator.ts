@@ -263,14 +263,18 @@ export class BackendConnectionError extends Error {
 async function generateFromRustBackend(
   seed: string,
   mapType?: MapType,
-  onProgress?: (progress: GenerationProgress) => void
+  onProgress?: (progress: GenerationProgress) => void,
+  startBatch?: number
 ): Promise<PuzzleData> {
   if (!RUST_BACKEND_URL) {
     throw new Error('Rust backend URL not configured');
   }
 
   const type = mapType || 'ice';
-  const url = `${RUST_BACKEND_URL}/api/generate/${encodeURIComponent(seed)}?map_type=${type}&parallel=true`;
+  let url = `${RUST_BACKEND_URL}/api/generate/${encodeURIComponent(seed)}?map_type=${type}&parallel=true`;
+  if (startBatch !== undefined && startBatch > 0) {
+    url += `&start_batch=${startBatch}`;
+  }
   
   console.log(`[Rust] Fetching puzzle from ${url}`);
   
@@ -422,12 +426,14 @@ export async function preloadWasm(): Promise<void> {
  * @param onProgress - Progress callback
  * @param forceMapType - Force a specific map type
  * @param forceBackend - Force a specific engine ('auto' uses priority: rust > wasm)
+ * @param startBatch - Start generation at a specific batch number (for deterministic replay)
  */
 export async function generatePuzzleParallel(
   seed: string,
   onProgress?: (progress: GenerationProgress) => void,
   forceMapType?: MapType,
-  forceBackend: GeneratorBackend = 'auto'
+  forceBackend: GeneratorBackend = 'auto',
+  startBatch?: number
 ): Promise<PuzzleData> {
   
   // ─────────────────────────────────────────────────────────────────────────
@@ -438,7 +444,7 @@ export async function generatePuzzleParallel(
       throw new Error('Rust backend not configured');
     }
     
-    return await generateFromRustBackend(seed, forceMapType, onProgress);
+    return await generateFromRustBackend(seed, forceMapType, onProgress, startBatch);
   }
   
   // ─────────────────────────────────────────────────────────────────────────
@@ -454,6 +460,7 @@ export async function generatePuzzleParallel(
     }
     
     // Progress is now tracked via worker messages
+    // Note: WASM doesn't support startBatch yet
     const puzzle = await generateFromWasm(seed, forceMapType, onProgress);
     
     return puzzle;
@@ -470,7 +477,7 @@ export async function generatePuzzleParallel(
     console.log(`[Engine] Rust backend configured at ${RUST_BACKEND_URL}`);
 
     try {
-      return await generateFromRustBackend(seed, forceMapType, onProgress);
+      return await generateFromRustBackend(seed, forceMapType, onProgress, startBatch);
     } catch (error) {
       console.warn('[Engine] Rust backend failed:', error);
       
@@ -502,6 +509,7 @@ export async function generatePuzzleParallel(
   console.log('[Engine] Using WASM engine...');
   
   // Progress is now tracked via worker messages
+  // Note: WASM doesn't support startBatch yet
   const puzzle = await generateFromWasm(seed, forceMapType, onProgress);
   
   return puzzle;

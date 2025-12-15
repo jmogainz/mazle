@@ -55,6 +55,7 @@ pub struct PuzzleData {
     pub map_type: MapType,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub difficulty_score: Option<i32>,
+    // Original metrics (Phase 0)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub counter_intuitive_moves: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -63,6 +64,22 @@ pub struct PuzzleData {
     pub commitment_gates: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub false_progress_paths: Option<i32>,
+    // Path structure metrics (Phase 1)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path_locality: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub direction_changes: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub backtrack_depth: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub decision_ambiguity: Option<f64>,
+    // Path diversity metrics (Phase 2)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub near_optimal_paths: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path_overlap: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub early_divergence: Option<f64>,
 }
 
 /// Generation configuration

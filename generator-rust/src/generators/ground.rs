@@ -227,10 +227,20 @@ fn make_placeholder(seed: &str, width: usize, height: usize) -> PuzzleData {
         solution_path: None,
         map_type: MapType::Ground,
         difficulty_score: Some(optimal_moves),
+        // Original metrics (Phase 0) - not computed for ground
         counter_intuitive_moves: None,
         attractive_decoys: None,
         commitment_gates: None,
         false_progress_paths: None,
+        // Path structure metrics (Phase 1) - not computed for ground
+        path_locality: None,
+        direction_changes: None,
+        backtrack_depth: None,
+        decision_ambiguity: None,
+        // Path diversity metrics (Phase 2) - not computed for ground
+        near_optimal_paths: None,
+        path_overlap: None,
+        early_divergence: None,
     }
 }
 
@@ -238,9 +248,4 @@ pub fn generate_puzzle(seed: &str, _config: &GenerationConfig) -> PuzzleData {
     let mut rng = create_rng(seed);
     let (width, height) = SIZE_OPTIONS[rng.gen_range(0..SIZE_OPTIONS.len())];
     make_placeholder(seed, width, height)
-}
-
-#[allow(dead_code)]
-pub fn generate_puzzle_parallel(seed: &str, config: &GenerationConfig) -> PuzzleData {
-    generate_puzzle(seed, config)
 }

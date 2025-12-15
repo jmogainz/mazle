@@ -19,67 +19,114 @@ export default function HelpModal({ onClose, mapType = MapType.ICE }: HelpModalP
         <h2 className={styles.title}>How to Play</h2>
 
         <div className={styles.goalSection}>
-          <p className={styles.goalText}>
-            Reach the <span className={styles.tileGoal}></span> in 10 moves or less.
-          </p>
-          <p className={styles.goalSubtext}>
-            Miss it? You have 3 lives.
-          </p>
+          <div className={styles.tileGoalLarge}></div>
+          <div className={styles.goalTextWrapper}>
+            <p className={styles.goalText}>Reach the star in 10 moves.</p>
+            <p className={styles.goalSubtext}>Be careful, you only have 3 lives!</p>
+          </div>
         </div>
 
         <div className={styles.section}>
-          <h3 className={styles.sectionTitle}>Controls</h3>
-          <p className={styles.controlsText}>
-            Swipe or Arrow Keys / WASD
-          </p>
-        </div>
-
-        <div className={styles.section}>
-          <h3 className={styles.sectionTitle}>Tiles</h3>
-          <div className={styles.animationGrid}>
-            {/* Ice - slides through and disappears */}
-            <div className={styles.animationDemo}>
-              <div className={styles.demoRow}>
-                <div className={styles.demoTile}>
-                  <div className={styles.tileIceEx} />
-                  <div className={styles.playerSlides} />
-                </div>
-                <div className={styles.demoTile}><div className={styles.tileIceEx} /></div>
-                <div className={styles.demoTile}><div className={styles.tileIceEx} /></div>
-              </div>
-              <span className={styles.demoLabel}>Ice slides</span>
+          <h3 className={styles.sectionTitleCentered}>Controls</h3>
+          <div className={styles.controlsRow}>
+            <div className={styles.controlOption}>
+              <div className={styles.controlIcon}>👆</div>
+              <span className={styles.controlLabelKeys}>Swipe</span>
             </div>
-
-            {/* Ground - stops on ground */}
-            <div className={styles.animationDemo}>
-              <div className={styles.demoRow}>
-                <div className={styles.demoTile}>
-                  <div className={styles.tileIceEx} />
-                  <div className={styles.playerStops} />
+            <div className={styles.controlOption}>
+              <div className={styles.controlKeys}>
+                <span className={styles.keySmall}><span className={styles.arrowUp}></span></span>
+                <div className={styles.keyRow}>
+                  <span className={styles.keySmall}><span className={styles.arrowLeft}></span></span>
+                  <span className={styles.keySmall}><span className={styles.arrowDown}></span></span>
+                  <span className={styles.keySmall}><span className={styles.arrowRight}></span></span>
                 </div>
-                <div className={styles.demoTile}><div className={styles.tileIceEx} /></div>
-                <div className={styles.demoTile}><div className={styles.tileFloorEx} /></div>
               </div>
-              <span className={styles.demoLabel}>Ground stops</span>
+              <span className={styles.controlLabelKeys}>Arrow Keys</span>
             </div>
-
-            {/* Wall - blocks in middle */}
-            <div className={styles.animationDemo}>
-              <div className={styles.demoRow}>
-                <div className={styles.demoTile}>
-                  <div className={styles.tileIceEx} />
-                  <div className={styles.playerBumps} />
+            <div className={styles.controlOption}>
+              <div className={styles.controlKeys}>
+                <span className={styles.keySmall}>W</span>
+                <div className={styles.keyRow}>
+                  <span className={styles.keySmall}>A</span>
+                  <span className={styles.keySmall}>S</span>
+                  <span className={styles.keySmall}>D</span>
                 </div>
-                <div className={styles.demoTile}><div className={styles.tileIceEx} /></div>
-                <div className={styles.demoTile}><div className={styles.tileWallEx} /></div>
               </div>
-              <span className={styles.demoLabel}>Wall blocks</span>
+              <span className={styles.controlLabelKeys}>WASD</span>
             </div>
           </div>
         </div>
 
         <div className={styles.section}>
-          <h3 className={styles.sectionTitle}>Hints</h3>
+          <h3 className={styles.sectionTitleCentered}>Tiles</h3>
+          <div className={styles.animationGridTwoRows}>
+            <div className={styles.animationRow}>
+              {/* Ice - slides through and disappears */}
+              <div className={styles.animationDemo}>
+                <div className={styles.demoRow}>
+                  <div className={styles.demoTile}>
+                    <div className={styles.tileIceEx} />
+                    <div className={styles.playerSlides} />
+                  </div>
+                  <div className={styles.demoTile}><div className={styles.tileIceEx} /></div>
+                  <div className={styles.demoTile}><div className={styles.tileIceEx} /></div>
+                </div>
+                <span className={styles.demoLabel}>Ice slides</span>
+              </div>
+
+              {/* Ground - stops on ground */}
+              <div className={styles.animationDemo}>
+                <div className={styles.demoRow}>
+                  <div className={styles.demoTile}>
+                    <div className={styles.tileIceEx} />
+                    <div className={styles.playerStops} />
+                  </div>
+                  <div className={styles.demoTile}><div className={styles.tileIceEx} /></div>
+                  <div className={styles.demoTile}><div className={styles.tileFloorEx} /></div>
+                </div>
+                <span className={styles.demoLabel}>Ground stops</span>
+              </div>
+            </div>
+
+            <div className={styles.animationRow}>
+              {/* Wall - blocks in middle */}
+              <div className={styles.animationDemo}>
+                <div className={styles.demoRow}>
+                  <div className={styles.demoTile}>
+                    <div className={styles.tileIceEx} />
+                    <div className={styles.playerBumps} />
+                  </div>
+                  <div className={styles.demoTile}><div className={styles.tileIceEx} /></div>
+                  <div className={styles.demoTile}><div className={styles.tileWallEx} /></div>
+                </div>
+                <span className={styles.demoLabel}>Wall blocks</span>
+              </div>
+
+              {/* Ledge - one way entry only */}
+              <div className={styles.animationDemo}>
+                <div className={styles.demoRow}>
+                  <div className={styles.demoTile}>
+                    <div className={styles.tileIceEx} />
+                    <div className={styles.playerLedge} />
+                  </div>
+                  <div className={styles.demoTile}><div className={styles.tileIceEx} /></div>
+                  <div className={styles.demoTile}>
+                    <div className={styles.tileLedgeEx}>
+                      <span className={styles.ledgeArrowRight}></span>
+                      <span className={styles.ledgeArrowDown}></span>
+                    </div>
+                  </div>
+                </div>
+                <span className={styles.demoLabel}>One-way entry</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className={styles.section}>
+          <h3 className={styles.sectionTitleCentered}>Hints</h3>
+          <p className={styles.hintSubtext}>After you lose a life:</p>
           <div className={styles.exampleRow}>
             <div className={styles.exampleTile}>
               <div className={styles.tileHintDark} />
@@ -97,8 +144,12 @@ export default function HelpModal({ onClose, mapType = MapType.ICE }: HelpModalP
               <div className={styles.tileIceEx} />
             </div>
           </div>
-          <p className={styles.exampleCaption}>Lost a life? Green shows correct path</p>
+          <p className={styles.exampleCaption}>Correct moves from previous attempts turn green</p>
         </div>
+
+        <button className={styles.gotItButton} onClick={onClose}>
+          Got it!
+        </button>
       </div>
     </div>
   );

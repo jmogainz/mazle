@@ -1500,6 +1500,9 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
+    // Sort so intermediate tiles (hintLevel 1) are drawn first, stopping tiles (hintLevel 2) on top
+    hintedTileData.sort((a, b) => a.hintLevel - b.hintLevel);
+
     // Create animated containers for hinted tiles
     for (const data of hintedTileData) {
       const px = this.offsetX + data.x * TILE_SIZE;

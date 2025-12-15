@@ -641,126 +641,357 @@ export class GameScene extends Phaser.Scene {
   private drawEndGameAnalysis() {
     if (!this.puzzle.solutionPath) return;
     
-    // Clear previous analysis if any (just in case called multiple times without restart)
+    // Clear previous analysis if any
     this.clearAnalysis();
 
-    const g = this.add.graphics();
-    this.analysisObjects.push(g);
-    
     const path = this.puzzle.solutionPath;
     const s = TILE_SIZE / 32;
+    const moveDelay = 150; // ms per move
 
-    // 1. Draw Solution Path
-    if (path.length > 1) {
-        // Vivid Green Path
-        const pathColor = 0x2eec71; // Brighter, more vivid green
-        
-        g.lineStyle(5 * s, pathColor, 0.8);
-        g.beginPath();
-        
-        const startPx = this.offsetX + path[0].x * TILE_SIZE + TILE_SIZE / 2;
-        const startPy = this.offsetY + path[0].y * TILE_SIZE + TILE_SIZE / 2 - this.tileFaceLift;
-        g.moveTo(startPx, startPy);
-        
-        for (let i = 1; i < path.length; i++) {
-            const px = this.offsetX + path[i].x * TILE_SIZE + TILE_SIZE / 2;
-            const py = this.offsetY + path[i].y * TILE_SIZE + TILE_SIZE / 2 - this.tileFaceLift;
-            g.lineTo(px, py);
-        }
-        g.strokePath();
-        
-        // Numbered Waypoints
-        for (let i = 0; i < path.length; i++) {
-            const px = this.offsetX + path[i].x * TILE_SIZE + TILE_SIZE / 2;
-            const py = this.offsetY + path[i].y * TILE_SIZE + TILE_SIZE / 2 - this.tileFaceLift;
-            
-            // Solid Green Circle
-            g.fillStyle(pathColor, 1);
-            g.fillCircle(px, py, 11 * s);
-            
-            // Dark Border for contrast
-            g.lineStyle(2 * s, COLORS.TEXT, 1); // Using dark text color (0x1a1a1a)
-            g.strokeCircle(px, py, 11 * s);
-            
-            // Move Number
-            const t = this.add.text(px, py, i.toString(), {
-                fontSize: `${13 * s}px`,
-                fontFamily: 'Arial',
-                color: '#ffffff',
-                fontStyle: 'bold'
-            }).setOrigin(0.5);
-            this.analysisObjects.push(t);
-        }
-    }
+    // Create ghost sprite (semi-transparent version of player)
+    const ghostStartX = this.offsetX + path[0].x * TILE_SIZE + TILE_SIZE / 2;
+    const ghostStartY = this.offsetY + path[0].y * TILE_SIZE + TILE_SIZE / 2 - this.tileFaceLift;
     
-    // 2. Draw Deviation Points (Where lives were lost)
-    // Map position key to array of attempt numbers (1-based)
-    const deviationMap = new Map<string, number[]>();
+    const ghost = this.add.container(ghostStartX, ghostStartY);
+    ghost.setAlpha(0.6);
+    ghost.setDepth(15); // Above hint tiles, below UI
+    this.analysisObjects.push(ghost);
     
-    this.gameState.attempts.forEach((attempt, attemptIndex) => {
-        let pos = attempt.failedAt;
-        if (attempt.deviationIndex !== undefined && attempt.deviationIndex !== -1 && attempt.path[attempt.deviationIndex]) {
-             pos = attempt.path[attempt.deviationIndex];
-        }
+    // Draw ghost body (same as player but tinted)
+    const body = this.add.graphics();
+    body.fillStyle(0x000000, 0.25);
+    body.fillEllipse(0, 8 * s, 16 * s, 6 * s);
+    body.fillStyle(COLORS.HINT_TILE_FACE); // Green tint
+    body.fillRoundedRect(-8 * s, -10 * s, 16 * s, 18 * s, 3 * s);
+    body.lineStyle(1.25 * s, COLORS.HINT_TILE_EDGE);
+    body.strokeRoundedRect(-8 * s, -10 * s, 16 * s, 18 * s, 3 * s);
+    body.fillStyle(0xffffff);
+    body.fillCircle(-3 * s, -4 * s, 3 * s);
+    body.fillCircle(3 * s, -4 * s, 3 * s);
+    body.fillStyle(0x000000);
+    body.fillCircle(-2 * s, -4 * s, 1.5 * s);
+    body.fillCircle(4 * s, -4 * s, 1.5 * s);
+    ghost.add(body);
 
-        if (pos) {
-            const key = `${pos.x},${pos.y}`;
-            if (!deviationMap.has(key)) {
-                deviationMap.set(key, []);
-            }
-            deviationMap.get(key)!.push(attemptIndex + 1);
-        }
-    });
+    // Track which tiles have been revealed
+    const revealedTiles: Set<string> = new Set();
     
-    deviationMap.forEach((lifeNumbers, key) => {
-        const [x, y] = key.split(',').map(Number);
-        const px = this.offsetX + x * TILE_SIZE + TILE_SIZE / 2;
-        const py = this.offsetY + y * TILE_SIZE + TILE_SIZE / 2 - this.tileFaceLift;
-        
-        // Draw a "Skull" or "X" marker - Cleaner than big red circle
-        const markerSize = 10 * s;
-        
-        // White background for contrast
-        g.fillStyle(0xffffff, 0.9);
-        g.fillCircle(px, py, 12 * s);
-        
-        // Red X
-        g.lineStyle(3 * s, COLORS.PLAYER_FACE, 1);
-        g.beginPath();
-        g.moveTo(px - markerSize/2, py - markerSize/2);
-        g.lineTo(px + markerSize/2, py + markerSize/2);
-        g.moveTo(px + markerSize/2, py - markerSize/2);
-        g.lineTo(px - markerSize/2, py + markerSize/2);
-        g.strokePath();
+    // Function to reveal a tile with green overlay and number
+    const revealTile = (pos: Position, moveNumber: number) => {
+      const key = positionKey(pos);
+      if (revealedTiles.has(key)) return;
+      revealedTiles.add(key);
+      
+      const px = this.offsetX + pos.x * TILE_SIZE;
+      const py = this.offsetY + pos.y * TILE_SIZE;
+      
+      // Create tile overlay container
+      const container = this.add.container(px + TILE_SIZE / 2, py + TILE_SIZE / 2);
+      container.setDepth(5);
+      container.setAlpha(0);
+      this.analysisObjects.push(container);
+      
+      // Draw green tile overlay
+      const tileG = this.add.graphics();
+      const tile = this.puzzle.tiles[pos.y][pos.x];
+      this.drawAnalysisTileGraphics(tileG, tile);
+      container.add(tileG);
+      
+      // Add move number in top-left corner (skip 0 for start tile, skip goal tile)
+      const isGoal = pos.x === this.puzzle.goal.x && pos.y === this.puzzle.goal.y;
+      if (moveNumber > 0 && !isGoal) {
+        const numText = this.add.text(-TILE_SIZE / 2 + 6 * s, -TILE_SIZE / 2 + 5 * s - this.tileFaceLift, moveNumber.toString(), {
+          fontSize: '22px',
+          fontFamily: 'Nunito, sans-serif',
+          color: '#ffffff',
+          fontStyle: 'bold',
+          padding: { x: 0, y: 0 },
+          backgroundColor: undefined,
+        }).setOrigin(0, 0);
+        container.add(numText);
+      }
+      
+      // Fade in the tile
+      this.tweens.add({
+        targets: container,
+        alpha: 1,
+        duration: 200,
+        ease: 'Quad.easeOut',
+      });
+    };
+    
+    // Reveal intermediate tiles between two points
+    const revealIntermediateTiles = (from: Position, to: Position) => {
+      const dx = Math.sign(to.x - from.x);
+      const dy = Math.sign(to.y - from.y);
+      let cx = from.x + dx;
+      let cy = from.y + dy;
+      
+      while (cx !== to.x || cy !== to.y) {
+        const key = positionKey({ x: cx, y: cy });
+        if (!revealedTiles.has(key)) {
+          revealedTiles.add(key);
+          
+          const px = this.offsetX + cx * TILE_SIZE;
+          const py = this.offsetY + cy * TILE_SIZE;
+          
+          const container = this.add.container(px + TILE_SIZE / 2, py + TILE_SIZE / 2);
+          container.setDepth(4); // Slightly below stopping tiles
+          container.setAlpha(0);
+          this.analysisObjects.push(container);
+          
+          const tileG = this.add.graphics();
+          const tile = this.puzzle.tiles[cy][cx];
+          this.drawAnalysisTileGraphics(tileG, tile, true); // lighter green for intermediate
+          container.add(tileG);
+          
+          this.tweens.add({
+            targets: container,
+            alpha: 1,
+            duration: 150,
+            ease: 'Quad.easeOut',
+          });
+        }
+        cx += dx;
+        cy += dy;
+      }
+    };
 
-        // Attempt Number Badges
-        lifeNumbers.forEach((lifeNumber, i) => {
-            // Distribute badges if multiple failures at same spot
-            let dx = 8 * s;
-            let dy = 8 * s;
-            
-            // i=0: Bottom-Right (+8, +8)
-            // i=1: Top-Right (+8, -8)
-            // i=2: Bottom-Left (-8, +8)
-            
-            if (i === 1) dy = -8 * s;
-            if (i === 2) dx = -8 * s;
-            
-            const badgeX = px + dx;
-            const badgeY = py + dy;
-            
-            // Badge Circle (using same graphics object 'g')
-            g.fillStyle(COLORS.PLAYER_FACE, 1);
-            g.fillCircle(badgeX, badgeY, 7 * s);
-            
-            const t = this.add.text(badgeX, badgeY, lifeNumber.toString(), { 
-                fontSize: `${10 * s}px`, 
-                fontFamily: 'Arial',
-                color: '#ffffff', 
-                fontStyle: 'bold'
-            }).setOrigin(0.5);
-            this.analysisObjects.push(t);
+    // Reveal start tile immediately
+    revealTile(path[0], 0);
+
+    // Animate ghost along the path
+    let totalDelay = 0;
+    
+    for (let i = 1; i < path.length; i++) {
+      const from = path[i - 1];
+      const to = path[i];
+      const targetX = this.offsetX + to.x * TILE_SIZE + TILE_SIZE / 2;
+      const targetY = this.offsetY + to.y * TILE_SIZE + TILE_SIZE / 2 - this.tileFaceLift;
+      
+      // Calculate distance for duration scaling
+      const dist = Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y));
+      const duration = moveDelay * Math.max(dist, 1);
+      
+      // Schedule ghost movement
+      this.time.delayedCall(totalDelay, () => {
+        // Reveal intermediate tiles as ghost starts moving
+        revealIntermediateTiles(from, to);
+        
+        this.tweens.add({
+          targets: ghost,
+          x: targetX,
+          y: targetY,
+          duration,
+          ease: dist > 1 ? 'Quad.easeOut' : 'Quad.easeInOut',
+          onComplete: () => {
+            // Reveal stopping tile when ghost arrives
+            revealTile(to, i);
+          },
         });
+      });
+      
+      totalDelay += duration + 50; // Small gap between moves
+    }
+
+    // After ghost completes, fade in user attempt lines
+    const totalGhostTime = totalDelay + 300;
+    
+    this.time.delayedCall(totalGhostTime, () => {
+      // Fade out ghost
+      this.tweens.add({
+        targets: ghost,
+        alpha: 0,
+        duration: 300,
+        ease: 'Quad.easeOut',
+      });
+      
+      // Draw user attempt paths as thin red lines
+      this.drawUserAttemptPaths();
+    });
+  }
+
+  // Draw a tile for analysis overlay (similar to hint tiles but no shake)
+  private drawAnalysisTileGraphics(g: Phaser.GameObjects.Graphics, tile: TileType, isIntermediate = false) {
+    const size = TILE_SIZE;
+    const s = size / 32;
+    const padding = 2 * s;
+    const radius = 8 * s;
+    const depth = 4 * s;
+
+    const x = -size / 2 + padding;
+    const y = -size / 2 + padding;
+    const w = size - padding * 2;
+    const h = size - padding * 2;
+
+    // Glow (subtle)
+    const glowColor = COLORS.HINT_GLOW;
+    const layers = 2;
+    const maxExpand = 4 * s;
+    
+    for (let i = layers; i >= 1; i--) {
+      const expand = (i / layers) * maxExpand;
+      const alpha = 0.05 + (1 - i / layers) * 0.15;
+      
+      g.fillStyle(glowColor, alpha);
+      g.fillRoundedRect(
+        x - expand, 
+        y - expand, 
+        w + expand * 2, 
+        h + expand * 2, 
+        radius + expand
+      );
+    }
+
+    // Tile colors
+    const faceColor = isIntermediate ? COLORS.HINT_PATH_FACE : COLORS.HINT_TILE_FACE;
+    const edgeColor = isIntermediate ? COLORS.HINT_PATH_EDGE : COLORS.HINT_TILE_EDGE;
+
+    // Edge
+    g.fillStyle(edgeColor);
+    g.fillRoundedRect(x, y, w, h, radius);
+
+    // Face
+    g.fillStyle(faceColor);
+    g.fillRoundedRect(x, y, w, h - depth, radius);
+
+    // Ice reflection lines
+    if (tile === TileType.ICE) {
+      const inset = 4 * s;
+      const faceX = x + inset;
+      const faceY = y + inset;
+      const faceW = w - inset * 2;
+      const faceH = h - depth - inset * 2;
+
+      g.lineStyle(1 * s, 0xffffff, 0.65);
+      g.beginPath();
+      g.moveTo(faceX + faceW * 0.2, faceY + faceH * 0.8);
+      g.lineTo(faceX + faceW * 0.8, faceY + faceH * 0.2);
+      g.strokePath();
+      g.beginPath();
+      g.moveTo(faceX + faceW * 0.6, faceY + faceH * 0.9);
+      g.lineTo(faceX + faceW * 0.9, faceY + faceH * 0.6);
+      g.strokePath();
+    }
+
+    // Ledge arrows
+    if (tile === TileType.LEDGE_UP || tile === TileType.LEDGE_DOWN || 
+        tile === TileType.LEDGE_LEFT || tile === TileType.LEDGE_RIGHT) {
+      const cx = 0;
+      const cy = -depth / 2;
+      const baseWidth = size * 0.32;
+      const baseHeight = size * 0.20;
+      const shrink = 1 * s;
+      const lift = depth * 0.6;
+      const halfW = baseWidth / 2;
+      const halfH = Math.max(baseHeight / 2 - shrink, 1);
+
+      g.fillStyle(COLORS.LEDGE_ARROW);
+
+      const upA = { x: 0, y: -halfH - lift };
+      const upB = { x: -halfW, y: halfH };
+      const upC = { x: halfW, y: halfH };
+
+      const rotate = (p: { x: number; y: number }, dir: 'up' | 'down' | 'left' | 'right') => {
+        switch (dir) {
+          case 'up': return { x: p.x, y: p.y };
+          case 'down': return { x: p.x, y: -p.y };
+          case 'right': return { x: -p.y, y: p.x };
+          case 'left': return { x: p.y, y: -p.x };
+        }
+      };
+
+      const dir =
+        tile === TileType.LEDGE_UP ? 'down' :
+        tile === TileType.LEDGE_DOWN ? 'up' :
+        tile === TileType.LEDGE_RIGHT ? 'right' : 'left';
+
+      const A = rotate(upA, dir);
+      const B = rotate(upB, dir);
+      const C = rotate(upC, dir);
+
+      g.fillTriangle(cx + A.x, cy + A.y, cx + B.x, cy + B.y, cx + C.x, cy + C.y);
+    }
+  }
+
+  // Draw dead character markers at failure points with attempt numbers
+  private drawUserAttemptPaths() {
+    if (this.gameState.attempts.length === 0) return;
+    
+    const s = TILE_SIZE / 32;
+    
+    // Draw dead character at each failure point
+    this.gameState.attempts.forEach((attempt, idx) => {
+      if (attempt.failedAt) {
+        const fx = this.offsetX + attempt.failedAt.x * TILE_SIZE + TILE_SIZE / 2;
+        const fy = this.offsetY + attempt.failedAt.y * TILE_SIZE + TILE_SIZE / 2 - this.tileFaceLift;
+        
+        // Create container for the failure marker
+        const container = this.add.container(fx, fy);
+        container.setDepth(6);
+        container.setAlpha(0);
+        this.analysisObjects.push(container);
+        
+        // Draw character body (same as player but with X eyes)
+        const body = this.add.graphics();
+        
+        // Shadow
+        body.fillStyle(0x000000, 0.25);
+        body.fillEllipse(0, 8 * s, 16 * s, 6 * s);
+        
+        // Body
+        body.fillStyle(COLORS.PLAYER_FACE);
+        body.fillRoundedRect(-8 * s, -10 * s, 16 * s, 18 * s, 3 * s);
+        
+        // Outline
+        body.lineStyle(1.25 * s, COLORS.PLAYER_EDGE);
+        body.strokeRoundedRect(-8 * s, -10 * s, 16 * s, 18 * s, 3 * s);
+        
+        // X eyes instead of normal eyes
+        body.lineStyle(1.5 * s, 0xffffff, 1);
+        // Left eye X
+        body.beginPath();
+        body.moveTo(-5 * s, -6 * s);
+        body.lineTo(-1 * s, -2 * s);
+        body.moveTo(-1 * s, -6 * s);
+        body.lineTo(-5 * s, -2 * s);
+        body.strokePath();
+        // Right eye X
+        body.beginPath();
+        body.moveTo(1 * s, -6 * s);
+        body.lineTo(5 * s, -2 * s);
+        body.moveTo(5 * s, -6 * s);
+        body.lineTo(1 * s, -2 * s);
+        body.strokePath();
+        
+        container.add(body);
+        
+        // Attempt number badge in corner
+        const badgeG = this.add.graphics();
+        badgeG.fillStyle(0xffffff, 1);
+        badgeG.fillCircle(10 * s, -12 * s, 6 * s);
+        badgeG.lineStyle(1 * s, COLORS.PLAYER_FACE, 1);
+        badgeG.strokeCircle(10 * s, -12 * s, 6 * s);
+        container.add(badgeG);
+        
+        const numText = this.add.text(10 * s, -12 * s, (idx + 1).toString(), {
+          fontSize: '18px',
+          fontFamily: 'Nunito, sans-serif',
+          color: '#cc0000',
+          fontStyle: 'bold',
+          padding: { x: 0, y: 0 },
+          backgroundColor: undefined,
+        }).setOrigin(0.5);
+        container.add(numText);
+        
+        // Fade in
+        this.tweens.add({
+          targets: container,
+          alpha: 1,
+          duration: 400,
+          ease: 'Quad.easeOut',
+        });
+      }
     });
   }
 

@@ -75,16 +75,16 @@ export async function GET(request: NextRequest) {
     // Generate today's if missing (or if we can't check cache)
     if (!existingToday) {
       console.log(`[cron/generate] Today's puzzle missing, generating for ${todayDateStr}`);
-      const todayPuzzle = await generateFromRust(todaySeed);
-      if (todayPuzzle) {
+      const result = await generateFromRust(todaySeed);
+      if (result) {
         let cached = false;
         if (redis) {
-          await redis.set(todayKey, todayPuzzle, { ex: 7 * 24 * 60 * 60 }); // 7 day TTL
+          await redis.set(todayKey, result.puzzle, { ex: 7 * 24 * 60 * 60 }); // 7 day TTL
           cached = true;
         }
         results.push({ 
           date: todayDateStr, 
-          status: 'generated', 
+          status: result.backendCached ? 'from_backend_cache' : 'generated', 
           puzzleNumber: getPuzzleNumber(now),
           cached,
         });
@@ -100,27 +100,27 @@ export async function GET(request: NextRequest) {
     const existingTomorrow = redis ? await redis.get(tomorrowKey) : null;
     
     if (!existingTomorrow) {
-      const tomorrowPuzzle = await generateFromRust(tomorrowSeed);
-      if (tomorrowPuzzle) {
+      const result = await generateFromRust(tomorrowSeed);
+      if (result) {
         let cached = false;
         if (redis) {
-          await redis.set(tomorrowKey, tomorrowPuzzle, { ex: 7 * 24 * 60 * 60 }); // 7 day TTL
+          await redis.set(tomorrowKey, result.puzzle, { ex: 7 * 24 * 60 * 60 }); // 7 day TTL
           cached = true;
         }
         results.push({ 
           date: tomorrowDateStr, 
-          status: 'generated', 
+          status: result.backendCached ? 'from_backend_cache' : 'generated', 
           puzzleNumber: tomorrowPuzzleNumber,
           cached,
         });
-        console.log(`[cron/generate] Successfully generated puzzle #${tomorrowPuzzleNumber}${cached ? ' (cached)' : ' (not cached - Redis unavailable)'}`);
+        console.log(`[cron/generate] Successfully ${result.backendCached ? 'fetched' : 'generated'} puzzle #${tomorrowPuzzleNumber}${cached ? ' (stored in KV)' : ' (KV unavailable)'}`);
       } else {
         results.push({ date: tomorrowDateStr, status: 'generation_failed' });
         console.error(`[cron/generate] Failed to generate puzzle for ${tomorrowDateStr}`);
       }
     } else {
       results.push({ date: tomorrowDateStr, status: 'exists' });
-      console.log(`[cron/generate] Puzzle for ${tomorrowDateStr} already exists`);
+      console.log(`[cron/generate] Puzzle for ${tomorrowDateStr} already exists in KV`);
     }
     
     return NextResponse.json({
@@ -140,8 +140,9 @@ export async function GET(request: NextRequest) {
 
 /**
  * Generate puzzle from Rust backend
+ * Returns puzzle data and whether it was served from backend cache
  */
-async function generateFromRust(seed: string): Promise<PuzzleData | null> {
+async function generateFromRust(seed: string): Promise<{ puzzle: PuzzleData; backendCached: boolean } | null> {
   try {
     const url = `${GENERATOR_URL}/api/generate/${encodeURIComponent(seed)}?parallel=true`;
     console.log(`[cron/generate] Calling Rust backend: ${url}`);
@@ -158,9 +159,10 @@ async function generateFromRust(seed: string): Promise<PuzzleData | null> {
     }
     
     const data = await response.json();
-    console.log(`[cron/generate] Generated in ${data.generationTimeMs}ms (optimal: ${data.puzzle.optimalMoves} moves)`);
+    const backendCached = data.cached === true;
+    console.log(`[cron/generate] ${backendCached ? '⚡ Cache HIT' : '🔧 Generated'} in ${data.generationTimeMs}ms (optimal: ${data.puzzle.optimalMoves} moves)`);
     
-    return data.puzzle as PuzzleData;
+    return { puzzle: data.puzzle as PuzzleData, backendCached };
   } catch (error) {
     console.error('[cron/generate] Failed to call Rust backend:', error);
     return null;

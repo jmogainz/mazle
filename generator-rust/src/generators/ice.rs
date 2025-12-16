@@ -3,8 +3,186 @@ use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 // Rayon for parallel processing (works on both native and WASM with wasm-bindgen-rayon)
 use crate::types::{Direction, GenerationConfig, MapType, Position, PuzzleData, TileType};
-use log::{debug, info, trace};
+use log::info;
 use rayon::prelude::*;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
+
+// =============================================================================
+// GENERATION CONTEXT - Per-run state for isolated tracking
+// =============================================================================
+
+/// Tracks the closest puzzle to passing all thresholds
+#[derive(Clone, Default)]
+struct ClosestPuzzleInfo {
+    closeness: f64,
+    paths: i32,
+    paths_thresh: i32,
+    olap_best: f64,
+    olap_best_thresh: f64,
+    olap_avg: f64,
+    olap_avg_thresh: f64,
+    ediv: f64,
+    ediv_thresh: f64,
+    dir: i32,
+    dir_thresh: i32,
+    amb: f64,
+    amb_thresh: f64,
+    loc: f64,
+    loc_min_thresh: f64,
+    loc_max_thresh: f64,
+    opt_count: i32,
+    traps: Vec<String>,
+}
+
+/// Per-generation context for isolated tracking (not shared between runs)
+struct GenerationContext {
+    /// Short identifier for this run (first 8 chars of seed or truncated)
+    run_id: String,
+    /// Full seed for reference
+    seed: String,
+    /// Diagnostic counters
+    fail_ci: AtomicU64,
+    fail_dec: AtomicU64,
+    fail_gate: AtomicU64,
+    fail_fp: AtomicU64,
+    fail_loc: AtomicU64,
+    fail_dir: AtomicU64,
+    fail_bt: AtomicU64,
+    fail_amb: AtomicU64,
+    fail_paths: AtomicU64,
+    fail_olap_best: AtomicU64,
+    fail_olap_avg: AtomicU64,
+    fail_ediv: AtomicU64,
+    fail_unique_opt: AtomicU64,
+    total_checked: AtomicU64,
+    /// Closest puzzle to passing all thresholds
+    closest: Mutex<Option<ClosestPuzzleInfo>>,
+}
+
+impl GenerationContext {
+    fn new(seed: &str) -> Self {
+        // Create short run ID from seed (for log prefixing)
+        let run_id = if seed.starts_with("daily-") {
+            // For daily seeds, use the date part: "daily-2025-12-16" -> "12-16"
+            seed.split('-').skip(2).collect::<Vec<_>>().join("-")
+        } else if seed.len() > 12 {
+            // For long seeds, take first 8 chars
+            seed[..8].to_string()
+        } else {
+            seed.to_string()
+        };
+
+        Self {
+            run_id,
+            seed: seed.to_string(),
+            fail_ci: AtomicU64::new(0),
+            fail_dec: AtomicU64::new(0),
+            fail_gate: AtomicU64::new(0),
+            fail_fp: AtomicU64::new(0),
+            fail_loc: AtomicU64::new(0),
+            fail_dir: AtomicU64::new(0),
+            fail_bt: AtomicU64::new(0),
+            fail_amb: AtomicU64::new(0),
+            fail_paths: AtomicU64::new(0),
+            fail_olap_best: AtomicU64::new(0),
+            fail_olap_avg: AtomicU64::new(0),
+            fail_ediv: AtomicU64::new(0),
+            fail_unique_opt: AtomicU64::new(0),
+            total_checked: AtomicU64::new(0),
+            closest: Mutex::new(None),
+        }
+    }
+
+    /// Update closest puzzle if this one is better
+    fn update_closest(&self, info: ClosestPuzzleInfo) {
+        if let Ok(mut closest) = self.closest.lock() {
+            let should_update = match &*closest {
+                None => true,
+                Some(current) => info.closeness > current.closeness,
+            };
+            if should_update {
+                *closest = Some(info);
+            }
+        }
+    }
+
+    /// Get fail rates as formatted string (only enabled filters)
+    fn format_fail_rates(&self, thresholds: &PrefilterThresholds) -> String {
+        let total = self.total_checked.load(Ordering::Relaxed);
+        if total == 0 {
+            return String::from("n=0");
+        }
+        let pct = |counter: &AtomicU64| -> f64 {
+            counter.load(Ordering::Relaxed) as f64 / total as f64 * 100.0
+        };
+        
+        let mut parts = Vec::new();
+        
+        // Always show unique optimal (required for all puzzles)
+        parts.push(format!("uopt={:.0}%", pct(&self.fail_unique_opt)));
+        
+        // Only show enabled filters
+        if thresholds.ci_enabled { parts.push(format!("ci={:.0}%", pct(&self.fail_ci))); }
+        if thresholds.dec_enabled { parts.push(format!("dec={:.0}%", pct(&self.fail_dec))); }
+        if thresholds.gate_enabled { parts.push(format!("gate={:.0}%", pct(&self.fail_gate))); }
+        if thresholds.fp_enabled { parts.push(format!("fp={:.0}%", pct(&self.fail_fp))); }
+        if thresholds.loc_enabled { parts.push(format!("loc={:.0}%", pct(&self.fail_loc))); }
+        if thresholds.dir_enabled { parts.push(format!("dir={:.0}%", pct(&self.fail_dir))); }
+        if thresholds.bt_enabled { parts.push(format!("bt={:.0}%", pct(&self.fail_bt))); }
+        if thresholds.amb_enabled { parts.push(format!("amb={:.0}%", pct(&self.fail_amb))); }
+        if thresholds.paths_enabled { parts.push(format!("paths={:.0}%", pct(&self.fail_paths))); }
+        if thresholds.olap_best_enabled { parts.push(format!("olap_best={:.0}%", pct(&self.fail_olap_best))); }
+        if thresholds.olap_avg_enabled { parts.push(format!("olap_avg={:.0}%", pct(&self.fail_olap_avg))); }
+        if thresholds.ediv_enabled { parts.push(format!("ediv={:.0}%", pct(&self.fail_ediv))); }
+        
+        parts.push(format!("(n={})", total));
+        parts.join(" ")
+    }
+
+    /// Get closest puzzle info as formatted string (only enabled filters)
+    fn format_closest(&self, thresholds: &PrefilterThresholds) -> Option<String> {
+        if let Ok(closest) = self.closest.lock() {
+            if let Some(info) = &*closest {
+                let mut parts = Vec::new();
+                
+                parts.push(format!("score={:.3}", info.closeness));
+                
+                if thresholds.paths_enabled { 
+                    parts.push(format!("paths={}/{}", info.paths, info.paths_thresh)); 
+                }
+                if thresholds.olap_best_enabled { 
+                    parts.push(format!("olap_best={:.2}/{:.2}", info.olap_best, info.olap_best_thresh)); 
+                }
+                if thresholds.olap_avg_enabled { 
+                    parts.push(format!("olap_avg={:.2}/{:.2}", info.olap_avg, info.olap_avg_thresh)); 
+                }
+                if thresholds.ediv_enabled { 
+                    parts.push(format!("ediv={:.2}/{:.2}", info.ediv, info.ediv_thresh)); 
+                }
+                if thresholds.dir_enabled { 
+                    parts.push(format!("dir={}/{}", info.dir, info.dir_thresh)); 
+                }
+                if thresholds.amb_enabled { 
+                    parts.push(format!("amb={:.1}/{:.1}", info.amb, info.amb_thresh)); 
+                }
+                if thresholds.loc_enabled { 
+                    parts.push(format!("loc={:.2}/({:.2}-{:.2})", info.loc, info.loc_min_thresh, info.loc_max_thresh)); 
+                }
+                
+                let traps_str = if info.traps.is_empty() {
+                    String::from("-")
+                } else {
+                    info.traps.join(",")
+                };
+                parts.push(format!("traps=[{}]", traps_str));
+                
+                return Some(parts.join(" "));
+            }
+        }
+        None
+    }
+}
 
 // =============================================================================
 // PARALLEL ITERATION HELPERS
@@ -88,8 +266,7 @@ const BASE_PREFILTER_MIN_DECISION_AMBIGUITY: f64 = 2.6;   // RAISED - was too ea
 
 // Phase 2 thresholds (key difficulty metrics)
 const BASE_PREFILTER_MIN_NEAR_OPTIMAL_PATHS: i32 = 60;    // Back to moderate level
-const BASE_PREFILTER_MIN_PATH_OVERLAP: f64 = 0.0;         // No minimum
-const BASE_PREFILTER_MAX_PATH_OVERLAP: f64 = 0.98;        // Now measures MIN overlap - need at least one different path
+const BASE_PREFILTER_MAX_PATH_OVERLAP: f64 = 0.98;        // Maximum overlap for best alternative - need at least one different path
 const BASE_PREFILTER_MIN_EARLY_DIVERGENCE: f64 = 0.58;    // Want early confusion
 
 // Reference map size for scaling calculations
@@ -2283,10 +2460,71 @@ struct PrefilterThresholds {
 
     // Phase 2 thresholds
     min_near_optimal_paths: i32,  // Minimum alternative paths required
-    min_path_overlap: f64,        // Minimum overlap (not too chaotic)
-    max_path_overlap: f64,        // Maximum MIN overlap - best alternative must be different
+    max_path_overlap_best: f64,   // Maximum overlap for BEST alternative (must be different enough)
     max_path_overlap_avg: f64,    // Maximum AVG overlap - alternatives can't all be the same
     min_early_divergence: f64,    // Minimum early divergence score
+
+    // Enabled flags - determines what gets logged and filtered
+    ci_enabled: bool,
+    dec_enabled: bool,
+    gate_enabled: bool,
+    fp_enabled: bool,
+    loc_enabled: bool,
+    dir_enabled: bool,
+    bt_enabled: bool,
+    amb_enabled: bool,
+    paths_enabled: bool,
+    olap_best_enabled: bool,
+    olap_avg_enabled: bool,
+    ediv_enabled: bool,
+}
+
+impl PrefilterThresholds {
+    /// Format thresholds for logging (only enabled filters)
+    fn format_thresholds(&self) -> String {
+        let mut parts = Vec::new();
+        
+        if self.ci_enabled { parts.push(format!("ci≥{}", self.min_counter_intuitive)); }
+        if self.dec_enabled { parts.push(format!("dec≥{}", self.min_attractive_decoys)); }
+        if self.gate_enabled { parts.push(format!("gate≥{}", self.min_commitment_gates)); }
+        if self.fp_enabled { parts.push(format!("fp≥{}", self.min_false_progress)); }
+        if self.loc_enabled { parts.push(format!("loc={:.2}-{:.2}", self.min_path_locality, self.max_path_locality)); }
+        if self.dir_enabled { parts.push(format!("dir≥{}", self.min_direction_changes)); }
+        if self.bt_enabled { parts.push(format!("bt≥{}", self.min_backtrack_depth)); }
+        if self.amb_enabled { parts.push(format!("amb≥{:.1}", self.min_decision_ambiguity)); }
+        if self.paths_enabled { parts.push(format!("paths≥{}", self.min_near_optimal_paths)); }
+        if self.olap_best_enabled { parts.push(format!("olap_best≤{:.2}", self.max_path_overlap_best)); }
+        if self.olap_avg_enabled { parts.push(format!("olap_avg≤{:.2}", self.max_path_overlap_avg)); }
+        if self.ediv_enabled { parts.push(format!("ediv≥{:.2}", self.min_early_divergence)); }
+        
+        parts.join(" ")
+    }
+
+    /// Format puzzle metrics for selected puzzle logging (ALL metrics, not just enabled)
+    fn format_puzzle(&self, puzzle: &PuzzleData, traps: &[String]) -> String {
+        let mut parts = Vec::new();
+        
+        parts.push(format!("score={}", puzzle.difficulty_score.unwrap_or(0)));
+        
+        // Always show all metrics for selected puzzle (for debugging/analysis)
+        if let Some(v) = puzzle.counter_intuitive_moves { parts.push(format!("ci={}", v)); }
+        if let Some(v) = puzzle.attractive_decoys { parts.push(format!("dec={}", v)); }
+        if let Some(v) = puzzle.commitment_gates { parts.push(format!("gate={}", v)); }
+        if let Some(v) = puzzle.false_progress_paths { parts.push(format!("fp={}", v)); }
+        if let Some(v) = puzzle.path_locality { parts.push(format!("loc={:.2}", v)); }
+        if let Some(v) = puzzle.direction_changes { parts.push(format!("dir={}", v)); }
+        if let Some(v) = puzzle.backtrack_depth { parts.push(format!("bt={}", v)); }
+        if let Some(v) = puzzle.decision_ambiguity { parts.push(format!("amb={:.1}", v)); }
+        if let Some(v) = puzzle.near_optimal_paths { parts.push(format!("paths={}", v)); }
+        if let Some(v) = puzzle.path_overlap { parts.push(format!("olap_best={:.2}", v)); }
+        if let Some(v) = puzzle.path_overlap_avg { parts.push(format!("olap_avg={:.2}", v)); }
+        if let Some(v) = puzzle.early_divergence { parts.push(format!("ediv={:.2}", v)); }
+        
+        let traps_str = if traps.is_empty() { "-".to_string() } else { traps.join(",") };
+        parts.push(format!("traps=[{}]", traps_str));
+        
+        parts.join(" ")
+    }
 }
 
 fn compute_prefilter_thresholds(width: usize, height: usize) -> PrefilterThresholds {
@@ -2317,8 +2555,7 @@ fn compute_prefilter_thresholds(width: usize, height: usize) -> PrefilterThresho
 
     // Phase 2 thresholds (TIGHTENED - these are the key psychological metrics)
     let min_near_optimal = ((BASE_PREFILTER_MIN_NEAR_OPTIMAL_PATHS as f64 * scale * scale).round() as i32).max(4);
-    let min_overlap = BASE_PREFILTER_MIN_PATH_OVERLAP; // Not scaled, ratio stays same
-    let max_overlap = BASE_PREFILTER_MAX_PATH_OVERLAP; // Not scaled
+    let max_overlap_best = BASE_PREFILTER_MAX_PATH_OVERLAP; // Not scaled
     let min_early_div = if is_small_map {
         (BASE_PREFILTER_MIN_EARLY_DIVERGENCE - 0.03).max(0.55)  // Slightly lenient for small maps
     } else {
@@ -2342,10 +2579,23 @@ fn compute_prefilter_thresholds(width: usize, height: usize) -> PrefilterThresho
 
         // TIER 1 - Core difficulty
         min_near_optimal_paths: if is_small_map { min_near_optimal.max(40) } else { min_near_optimal },
-        min_path_overlap: min_overlap,
-        max_path_overlap: if is_small_map { 0.60 } else { max_overlap },  // 0.60 - best alternative must share <=60% with optimal
+        max_path_overlap_best: if is_small_map { 0.60 } else { max_overlap_best },  // 0.60 - best alternative must share <=60% with optimal
         max_path_overlap_avg: if is_small_map { 0.70 } else { 0.75 },     // 0.70 - alternatives can't ALL be nearly identical
         min_early_divergence: if is_small_map { 0.48 } else { min_early_div },
+
+        // Enabled flags
+        ci_enabled: false,        // DISABLED
+        dec_enabled: false,       // DISABLED
+        gate_enabled: false,      // DISABLED
+        fp_enabled: false,        // DISABLED
+        loc_enabled: true,        // ENABLED
+        dir_enabled: true,        // ENABLED
+        bt_enabled: false,        // DISABLED
+        amb_enabled: true,        // ENABLED
+        paths_enabled: true,      // ENABLED
+        olap_best_enabled: true,  // ENABLED
+        olap_avg_enabled: true,   // ENABLED
+        ediv_enabled: true,       // ENABLED
     }
 }
 
@@ -2353,7 +2603,7 @@ fn compute_prefilter_thresholds(width: usize, height: usize) -> PrefilterThresho
 fn passes_prefilters_with_stats(
     metrics: &PsychMetrics,
     thresholds: &PrefilterThresholds,
-    fail_counts: &mut [u64; 12],
+    fail_counts: &mut [u64; 11],
 ) -> bool {
     let checks = [
         (metrics.counter_intuitive_moves >= thresholds.min_counter_intuitive, 0),
@@ -2365,9 +2615,8 @@ fn passes_prefilters_with_stats(
         (metrics.backtrack_depth >= thresholds.min_backtrack_depth, 6),
         (metrics.decision_ambiguity >= thresholds.min_decision_ambiguity, 7),
         (metrics.near_optimal_paths >= thresholds.min_near_optimal_paths, 8),
-        (metrics.path_overlap >= thresholds.min_path_overlap, 9),
-        (metrics.path_overlap <= thresholds.max_path_overlap, 10),
-        (metrics.early_divergence >= thresholds.min_early_divergence, 11),
+        (metrics.path_overlap <= thresholds.max_path_overlap_best, 9),
+        (metrics.early_divergence >= thresholds.min_early_divergence, 10),
     ];
 
     let mut all_passed = true;
@@ -2399,8 +2648,8 @@ fn passes_prefilters(metrics: &PsychMetrics, thresholds: &PrefilterThresholds) -
         && metrics.decision_ambiguity >= thresholds.min_decision_ambiguity
         // Phase 2 checks
         && metrics.near_optimal_paths >= thresholds.min_near_optimal_paths
-        && metrics.path_overlap >= thresholds.min_path_overlap
-        && metrics.path_overlap <= thresholds.max_path_overlap
+        && metrics.path_overlap <= thresholds.max_path_overlap_best
+        && metrics.path_overlap_avg <= thresholds.max_path_overlap_avg
         && metrics.early_divergence >= thresholds.min_early_divergence
 }
 
@@ -3764,10 +4013,14 @@ fn pick_size(rng: &mut SeededRandom) -> (usize, usize) {
 
 #[allow(unused_variables)]
 pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
-    // Log rayon thread pool info
+    // Create per-run context for isolated tracking
+    let ctx = Arc::new(GenerationContext::new(seed));
+    let run_id = &ctx.run_id;
+
+    // Log generation start with run identifier
     let num_threads = rayon::current_num_threads();
-    info!("generate_puzzle called with seed: {}", seed);
-    info!("Rayon thread pool has {} threads", num_threads);
+    info!("[{}] ━━━ Starting generation ━━━", run_id);
+    info!("[{}] seed={} threads={}", run_id, seed, num_threads);
 
     let (width, height) = {
         let mut rng = SeededRandom::new(seed);
@@ -3778,70 +4031,19 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
     let prefilter_thresholds = compute_prefilter_thresholds(width, height);
     let required_optimal_moves = compute_required_moves(width, height);
 
-    info!("Map {}x{}: required_optimal_moves={}", width, height, required_optimal_moves);
     info!(
-        "Prefilters: ci>={}, dec>={}, gate>={}, fp>={}, loc<={:.2}, dir>={}, bt>={}, amb>={:.1}, paths>={}, olap={:.2}-{:.2}, ediv>={:.2}",
-        prefilter_thresholds.min_counter_intuitive,
-        prefilter_thresholds.min_attractive_decoys,
-        prefilter_thresholds.min_commitment_gates,
-        prefilter_thresholds.min_false_progress,
-        prefilter_thresholds.max_path_locality,
-        prefilter_thresholds.min_direction_changes,
-        prefilter_thresholds.min_backtrack_depth,
-        prefilter_thresholds.min_decision_ambiguity,
-        prefilter_thresholds.min_near_optimal_paths,
-        prefilter_thresholds.min_path_overlap,
-        prefilter_thresholds.max_path_overlap,
-        prefilter_thresholds.min_early_divergence,
+        "[{}] map={}x{} target_moves={} batch_size={}",
+        run_id, width, height, required_optimal_moves, BATCH_SIZE
     );
-    info!("Running {} attempts per batch", BATCH_SIZE);
-
-    // Diagnostic counters for tracking which prefilters fail most
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static FAIL_CI: AtomicU64 = AtomicU64::new(0);
-    static FAIL_DEC: AtomicU64 = AtomicU64::new(0);
-    static FAIL_GATE: AtomicU64 = AtomicU64::new(0);
-    static FAIL_FP: AtomicU64 = AtomicU64::new(0);
-    static FAIL_LOC: AtomicU64 = AtomicU64::new(0);
-    static FAIL_DIR: AtomicU64 = AtomicU64::new(0);
-    static FAIL_BT: AtomicU64 = AtomicU64::new(0);
-    static FAIL_AMB: AtomicU64 = AtomicU64::new(0);
-    static FAIL_PATHS: AtomicU64 = AtomicU64::new(0);
-    static FAIL_OLAP_MIN: AtomicU64 = AtomicU64::new(0);
-    static FAIL_OLAP_MAX: AtomicU64 = AtomicU64::new(0);
-    static FAIL_OLAP_AVG: AtomicU64 = AtomicU64::new(0);
-    static FAIL_EDIV: AtomicU64 = AtomicU64::new(0);
-    static FAIL_UNIQUE_OPT: AtomicU64 = AtomicU64::new(0);  // Track puzzles with multiple optimal paths
-    static TOTAL_CHECKED: AtomicU64 = AtomicU64::new(0);
-
-    // Track the closest puzzle to passing all thresholds
-    // Format: (closeness_score, paths, paths_thresh, olap_min, olap_min_thresh, olap_avg, olap_avg_thresh, ediv, ediv_thresh, dir, dir_thresh, amb, amb_thresh, loc, loc_min_thresh, loc_max_thresh, optimal_count)
-    use std::sync::Mutex;
-    static CLOSEST_PUZZLE: Mutex<Option<(f64, i32, i32, f64, f64, f64, f64, f64, f64, i32, i32, f64, f64, f64, f64, f64, i32)>> = Mutex::new(None);
-    static CLOSEST_TRAPS: Mutex<Vec<String>> = Mutex::new(Vec::new());
-
-    // Reset counters for this generation
-    FAIL_CI.store(0, Ordering::Relaxed);
-    FAIL_DEC.store(0, Ordering::Relaxed);
-    FAIL_GATE.store(0, Ordering::Relaxed);
-    FAIL_FP.store(0, Ordering::Relaxed);
-    FAIL_LOC.store(0, Ordering::Relaxed);
-    FAIL_DIR.store(0, Ordering::Relaxed);
-    FAIL_BT.store(0, Ordering::Relaxed);
-    FAIL_AMB.store(0, Ordering::Relaxed);
-    FAIL_PATHS.store(0, Ordering::Relaxed);
-    FAIL_OLAP_MIN.store(0, Ordering::Relaxed);
-    FAIL_OLAP_MAX.store(0, Ordering::Relaxed);
-    FAIL_OLAP_AVG.store(0, Ordering::Relaxed);
-    FAIL_EDIV.store(0, Ordering::Relaxed);
-    FAIL_UNIQUE_OPT.store(0, Ordering::Relaxed);
-    TOTAL_CHECKED.store(0, Ordering::Relaxed);
-    *CLOSEST_PUZZLE.lock().unwrap() = None;
-    CLOSEST_TRAPS.lock().unwrap().clear();
+    info!(
+        "[{}] thresholds: {}",
+        run_id,
+        prefilter_thresholds.format_thresholds(),
+    );
 
     let mut batch = config.start_batch;
     if batch > 0 {
-        info!("Starting generation at batch {} (skipping first {} batches)", batch, batch);
+        info!("[{}] Resuming from batch {}", run_id, batch);
     }
     loop {
         let batch_start = batch * BATCH_SIZE;
@@ -3854,6 +4056,10 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
             let scaled_max = ((max as f64 * gen_scale).round() as i32).max(scaled_min + 1);
             (scaled_min, scaled_max)
         };
+
+        // Clone context Arc for use in parallel closure
+        let ctx_clone = ctx.clone();
+        let prefilter_thresholds_clone = prefilter_thresholds.clone();
 
         // Generate puzzles in parallel (native) or sequential (WASM)
         let batch_best = find_best_in_range("batch", batch_start..batch_end, |attempt| {
@@ -3998,105 +4204,93 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
 
             let psych_metrics = calculate_psychology_score(&tiles, &start, &goal, width, height);
             
-            // Track which prefilters fail
-            TOTAL_CHECKED.fetch_add(1, Ordering::Relaxed);
+            // Track which prefilters fail (using per-run context)
+            ctx_clone.total_checked.fetch_add(1, Ordering::Relaxed);
             let passed = {
                 // CRITICAL: Must have exactly ONE optimal path
                 let pass_unique_opt = psych_metrics.optimal_path_count == 1;
                 
-                let pass_ci = psych_metrics.counter_intuitive_moves >= prefilter_thresholds.min_counter_intuitive;
-                let pass_dec = psych_metrics.attractive_decoys >= prefilter_thresholds.min_attractive_decoys;
-                let pass_gate = psych_metrics.commitment_gates >= prefilter_thresholds.min_commitment_gates;
-                let pass_fp = psych_metrics.false_progress_paths >= prefilter_thresholds.min_false_progress;
-                let pass_loc = psych_metrics.path_locality >= prefilter_thresholds.min_path_locality 
-                    && psych_metrics.path_locality <= prefilter_thresholds.max_path_locality;
-                let pass_dir = psych_metrics.direction_changes >= prefilter_thresholds.min_direction_changes;
-                let pass_bt = psych_metrics.backtrack_depth >= prefilter_thresholds.min_backtrack_depth;
-                let pass_amb = psych_metrics.decision_ambiguity >= prefilter_thresholds.min_decision_ambiguity;
-                let pass_paths = psych_metrics.near_optimal_paths >= prefilter_thresholds.min_near_optimal_paths;
-                let pass_olap_min = psych_metrics.path_overlap >= prefilter_thresholds.min_path_overlap;
-                let pass_olap_max = psych_metrics.path_overlap <= prefilter_thresholds.max_path_overlap;
-                let pass_olap_avg = psych_metrics.path_overlap_avg <= prefilter_thresholds.max_path_overlap_avg;
-                let pass_ediv = psych_metrics.early_divergence >= prefilter_thresholds.min_early_divergence;
+                let pass_ci = psych_metrics.counter_intuitive_moves >= prefilter_thresholds_clone.min_counter_intuitive;
+                let pass_dec = psych_metrics.attractive_decoys >= prefilter_thresholds_clone.min_attractive_decoys;
+                let pass_gate = psych_metrics.commitment_gates >= prefilter_thresholds_clone.min_commitment_gates;
+                let pass_fp = psych_metrics.false_progress_paths >= prefilter_thresholds_clone.min_false_progress;
+                let pass_loc = psych_metrics.path_locality >= prefilter_thresholds_clone.min_path_locality 
+                    && psych_metrics.path_locality <= prefilter_thresholds_clone.max_path_locality;
+                let pass_dir = psych_metrics.direction_changes >= prefilter_thresholds_clone.min_direction_changes;
+                let pass_bt = psych_metrics.backtrack_depth >= prefilter_thresholds_clone.min_backtrack_depth;
+                let pass_amb = psych_metrics.decision_ambiguity >= prefilter_thresholds_clone.min_decision_ambiguity;
+                let pass_paths = psych_metrics.near_optimal_paths >= prefilter_thresholds_clone.min_near_optimal_paths;
+                let pass_olap_best = psych_metrics.path_overlap <= prefilter_thresholds_clone.max_path_overlap_best;
+                let pass_olap_avg = psych_metrics.path_overlap_avg <= prefilter_thresholds_clone.max_path_overlap_avg;
+                let pass_ediv = psych_metrics.early_divergence >= prefilter_thresholds_clone.min_early_divergence;
 
-                if !pass_unique_opt { FAIL_UNIQUE_OPT.fetch_add(1, Ordering::Relaxed); }
-                if !pass_ci { FAIL_CI.fetch_add(1, Ordering::Relaxed); }
-                if !pass_dec { FAIL_DEC.fetch_add(1, Ordering::Relaxed); }
-                if !pass_gate { FAIL_GATE.fetch_add(1, Ordering::Relaxed); }
-                if !pass_fp { FAIL_FP.fetch_add(1, Ordering::Relaxed); }
-                if !pass_loc { FAIL_LOC.fetch_add(1, Ordering::Relaxed); }
-                if !pass_dir { FAIL_DIR.fetch_add(1, Ordering::Relaxed); }
-                if !pass_bt { FAIL_BT.fetch_add(1, Ordering::Relaxed); }
-                if !pass_amb { FAIL_AMB.fetch_add(1, Ordering::Relaxed); }
-                if !pass_paths { FAIL_PATHS.fetch_add(1, Ordering::Relaxed); }
-                if !pass_olap_min { FAIL_OLAP_MIN.fetch_add(1, Ordering::Relaxed); }
-                if !pass_olap_max { FAIL_OLAP_MAX.fetch_add(1, Ordering::Relaxed); }
-                if !pass_olap_avg { FAIL_OLAP_AVG.fetch_add(1, Ordering::Relaxed); }
-                if !pass_ediv { FAIL_EDIV.fetch_add(1, Ordering::Relaxed); }
+                if !pass_unique_opt { ctx_clone.fail_unique_opt.fetch_add(1, Ordering::Relaxed); }
+                if !pass_ci { ctx_clone.fail_ci.fetch_add(1, Ordering::Relaxed); }
+                if !pass_dec { ctx_clone.fail_dec.fetch_add(1, Ordering::Relaxed); }
+                if !pass_gate { ctx_clone.fail_gate.fetch_add(1, Ordering::Relaxed); }
+                if !pass_fp { ctx_clone.fail_fp.fetch_add(1, Ordering::Relaxed); }
+                if !pass_loc { ctx_clone.fail_loc.fetch_add(1, Ordering::Relaxed); }
+                if !pass_dir { ctx_clone.fail_dir.fetch_add(1, Ordering::Relaxed); }
+                if !pass_bt { ctx_clone.fail_bt.fetch_add(1, Ordering::Relaxed); }
+                if !pass_amb { ctx_clone.fail_amb.fetch_add(1, Ordering::Relaxed); }
+                if !pass_paths { ctx_clone.fail_paths.fetch_add(1, Ordering::Relaxed); }
+                if !pass_olap_best { ctx_clone.fail_olap_best.fetch_add(1, Ordering::Relaxed); }
+                if !pass_olap_avg { ctx_clone.fail_olap_avg.fetch_add(1, Ordering::Relaxed); }
+                if !pass_ediv { ctx_clone.fail_ediv.fetch_add(1, Ordering::Relaxed); }
 
                 // Calculate closeness score for tracking (only for puzzles with unique optimal path)
                 // Higher score = closer to passing all thresholds
                 // For "min X" thresholds: ratio = actual / threshold (capped at 1.0)
                 // For "max X" thresholds: ratio = threshold / actual (capped at 1.0)
                 if pass_unique_opt {
-                    let paths_ratio = (psych_metrics.near_optimal_paths as f64 / prefilter_thresholds.min_near_optimal_paths as f64).min(1.0);
-                    let olap_max_ratio = if psych_metrics.path_overlap > 0.0 {
-                        (prefilter_thresholds.max_path_overlap / psych_metrics.path_overlap).min(1.0)
+                    let paths_ratio = (psych_metrics.near_optimal_paths as f64 / prefilter_thresholds_clone.min_near_optimal_paths as f64).min(1.0);
+                    let olap_best_ratio = if psych_metrics.path_overlap > 0.0 {
+                        (prefilter_thresholds_clone.max_path_overlap_best / psych_metrics.path_overlap).min(1.0)
                     } else { 1.0 };
                     let olap_avg_ratio = if psych_metrics.path_overlap_avg > 0.0 {
-                        (prefilter_thresholds.max_path_overlap_avg / psych_metrics.path_overlap_avg).min(1.0)
+                        (prefilter_thresholds_clone.max_path_overlap_avg / psych_metrics.path_overlap_avg).min(1.0)
                     } else { 1.0 };
-                    let ediv_ratio = if prefilter_thresholds.min_early_divergence > 0.0 {
-                        (psych_metrics.early_divergence / prefilter_thresholds.min_early_divergence).min(1.0)
+                    let ediv_ratio = if prefilter_thresholds_clone.min_early_divergence > 0.0 {
+                        (psych_metrics.early_divergence / prefilter_thresholds_clone.min_early_divergence).min(1.0)
                     } else { 1.0 };
-                    let dir_ratio = (psych_metrics.direction_changes as f64 / prefilter_thresholds.min_direction_changes as f64).min(1.0);
-                    let amb_ratio = (psych_metrics.decision_ambiguity / prefilter_thresholds.min_decision_ambiguity).min(1.0);
+                    let dir_ratio = (psych_metrics.direction_changes as f64 / prefilter_thresholds_clone.min_direction_changes as f64).min(1.0);
+                    let amb_ratio = (psych_metrics.decision_ambiguity / prefilter_thresholds_clone.min_decision_ambiguity).min(1.0);
                     // Locality must be in range [min, max] - calculate how close we are to that range
-                    let loc_ratio = if psych_metrics.path_locality < prefilter_thresholds.min_path_locality {
-                        psych_metrics.path_locality / prefilter_thresholds.min_path_locality
-                    } else if psych_metrics.path_locality > prefilter_thresholds.max_path_locality {
-                        prefilter_thresholds.max_path_locality / psych_metrics.path_locality
+                    let loc_ratio = if psych_metrics.path_locality < prefilter_thresholds_clone.min_path_locality {
+                        psych_metrics.path_locality / prefilter_thresholds_clone.min_path_locality
+                    } else if psych_metrics.path_locality > prefilter_thresholds_clone.max_path_locality {
+                        prefilter_thresholds_clone.max_path_locality / psych_metrics.path_locality
                     } else {
                         1.0  // In range = perfect
                     };
                     
                     // Geometric mean gives equal weight and penalizes any single bad metric
-                    let closeness = (paths_ratio * olap_max_ratio * olap_avg_ratio * ediv_ratio * dir_ratio * amb_ratio * loc_ratio).powf(1.0 / 7.0);
+                    let closeness = (paths_ratio * olap_best_ratio * olap_avg_ratio * ediv_ratio * dir_ratio * amb_ratio * loc_ratio).powf(1.0 / 7.0);
                     
-                    if let Ok(mut closest) = CLOSEST_PUZZLE.lock() {
-                        let should_update = match &*closest {
-                            None => true,
-                            Some((best_closeness, ..)) => closeness > *best_closeness,
-                        };
-                        if should_update {
-                            *closest = Some((
-                                closeness,
-                                psych_metrics.near_optimal_paths,
-                                prefilter_thresholds.min_near_optimal_paths,
-                                psych_metrics.path_overlap,
-                                prefilter_thresholds.max_path_overlap,
-                                psych_metrics.path_overlap_avg,
-                                prefilter_thresholds.max_path_overlap_avg,
-                                psych_metrics.early_divergence,
-                                prefilter_thresholds.min_early_divergence,
-                                psych_metrics.direction_changes,
-                                prefilter_thresholds.min_direction_changes,
-                                psych_metrics.decision_ambiguity,
-                                prefilter_thresholds.min_decision_ambiguity,
-                                psych_metrics.path_locality,
-                                prefilter_thresholds.min_path_locality,
-                                prefilter_thresholds.max_path_locality,
-                                psych_metrics.optimal_path_count,
-                            ));
-                            // Also update the traps for this closest puzzle
-                            if let Ok(mut traps) = CLOSEST_TRAPS.lock() {
-                                *traps = applied_traps.clone();
-                            }
-                        }
-                    }
+                    // Update closest puzzle in context
+                    ctx_clone.update_closest(ClosestPuzzleInfo {
+                        closeness,
+                        paths: psych_metrics.near_optimal_paths,
+                        paths_thresh: prefilter_thresholds_clone.min_near_optimal_paths,
+                        olap_best: psych_metrics.path_overlap,
+                        olap_best_thresh: prefilter_thresholds_clone.max_path_overlap_best,
+                        olap_avg: psych_metrics.path_overlap_avg,
+                        olap_avg_thresh: prefilter_thresholds_clone.max_path_overlap_avg,
+                        ediv: psych_metrics.early_divergence,
+                        ediv_thresh: prefilter_thresholds_clone.min_early_divergence,
+                        dir: psych_metrics.direction_changes,
+                        dir_thresh: prefilter_thresholds_clone.min_direction_changes,
+                        amb: psych_metrics.decision_ambiguity,
+                        amb_thresh: prefilter_thresholds_clone.min_decision_ambiguity,
+                        loc: psych_metrics.path_locality,
+                        loc_min_thresh: prefilter_thresholds_clone.min_path_locality,
+                        loc_max_thresh: prefilter_thresholds_clone.max_path_locality,
+                        opt_count: psych_metrics.optimal_path_count,
+                        traps: applied_traps.clone(),
+                    });
                 }
 
-                pass_unique_opt && pass_ci && pass_dec && pass_gate && pass_fp && pass_loc && pass_dir && pass_bt && pass_amb && pass_paths && pass_olap_min && pass_olap_max && pass_olap_avg && pass_ediv
+                pass_unique_opt && pass_ci && pass_dec && pass_gate && pass_fp && pass_loc && pass_dir && pass_bt && pass_amb && pass_paths && pass_olap_best && pass_olap_avg && pass_ediv
             };
             
             if !passed {
@@ -4155,25 +4349,13 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                     .map_or(false, |v| v >= prefilter_thresholds.min_commitment_gates)
             {
                 puzzle.selected_batch = Some(batch);
-                let traps_str = traps.join(",");
                 info!(
-                    "Selected puzzle at batch {}: score={}, ci={}, dec={}, gate={}, fp={}, loc={:.2}, dir={}, bt={}, amb={:.1}, paths={}, olap_min={:.2}, olap_avg={:.2}, ediv={:.2}, traps=[{}]",
+                    "[{}] ✓ FOUND at batch {} │ {}",
+                    run_id,
                     batch,
-                    puzzle.difficulty_score.unwrap_or(0),
-                    puzzle.counter_intuitive_moves.unwrap_or(0),
-                    puzzle.attractive_decoys.unwrap_or(0),
-                    puzzle.commitment_gates.unwrap_or(0),
-                    puzzle.false_progress_paths.unwrap_or(0),
-                    puzzle.path_locality.unwrap_or(0.0),
-                    puzzle.direction_changes.unwrap_or(0),
-                    puzzle.backtrack_depth.unwrap_or(0),
-                    puzzle.decision_ambiguity.unwrap_or(0.0),
-                    puzzle.near_optimal_paths.unwrap_or(0),
-                    puzzle.path_overlap.unwrap_or(0.0),
-                    puzzle.path_overlap_avg.unwrap_or(0.0),
-                    puzzle.early_divergence.unwrap_or(0.0),
-                    traps_str,
+                    prefilter_thresholds.format_puzzle(&puzzle, &traps),
                 );
+                info!("[{}] ━━━ Generation complete ━━━", run_id);
                 return puzzle;
             }
         }
@@ -4181,72 +4363,27 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
         // If we found any valid puzzle, return it
         if let Some(((mut puzzle, traps), _score)) = batch_best {
             puzzle.selected_batch = Some(batch);
-            let traps_str = traps.join(",");
             info!(
-                "Selected puzzle (fallback) at batch {}: score={}, ci={}, dec={}, gate={}, fp={}, loc={:.2}, dir={}, bt={}, amb={:.1}, paths={}, olap_min={:.2}, olap_avg={:.2}, ediv={:.2}, traps=[{}]",
+                "[{}] ✓ FOUND (fallback) at batch {} │ {}",
+                run_id,
                 batch,
-                puzzle.difficulty_score.unwrap_or(0),
-                puzzle.counter_intuitive_moves.unwrap_or(0),
-                puzzle.attractive_decoys.unwrap_or(0),
-                puzzle.commitment_gates.unwrap_or(0),
-                puzzle.false_progress_paths.unwrap_or(0),
-                puzzle.path_locality.unwrap_or(0.0),
-                puzzle.direction_changes.unwrap_or(0),
-                puzzle.backtrack_depth.unwrap_or(0),
-                puzzle.decision_ambiguity.unwrap_or(0.0),
-                puzzle.near_optimal_paths.unwrap_or(0),
-                puzzle.path_overlap.unwrap_or(0.0),
-                puzzle.path_overlap_avg.unwrap_or(0.0),
-                puzzle.early_divergence.unwrap_or(0.0),
-                traps_str,
+                prefilter_thresholds.format_puzzle(&puzzle, &traps),
             );
+            info!("[{}] ━━━ Generation complete ━━━", run_id);
             return puzzle;
         }
 
-        // Log failure stats every 10 batches
+        // Log progress every 10 batches
         if batch > 0 && batch % 10 == 0 {
-            let total = TOTAL_CHECKED.load(Ordering::Relaxed);
-            if total > 0 {
-                info!(
-                    "Batch {} fail rates: uopt={:.0}% ci={:.0}% dec={:.0}% gate={:.0}% fp={:.0}% loc={:.0}% dir={:.0}% bt={:.0}% amb={:.0}% paths={:.0}% olap_min={:.0}% olap_avg={:.0}% ediv={:.0}% (n={})",
-                    batch,
-                    FAIL_UNIQUE_OPT.load(Ordering::Relaxed) as f64 / total as f64 * 100.0,
-                    FAIL_CI.load(Ordering::Relaxed) as f64 / total as f64 * 100.0,
-                    FAIL_DEC.load(Ordering::Relaxed) as f64 / total as f64 * 100.0,
-                    FAIL_GATE.load(Ordering::Relaxed) as f64 / total as f64 * 100.0,
-                    FAIL_FP.load(Ordering::Relaxed) as f64 / total as f64 * 100.0,
-                    FAIL_LOC.load(Ordering::Relaxed) as f64 / total as f64 * 100.0,
-                    FAIL_DIR.load(Ordering::Relaxed) as f64 / total as f64 * 100.0,
-                    FAIL_BT.load(Ordering::Relaxed) as f64 / total as f64 * 100.0,
-                    FAIL_AMB.load(Ordering::Relaxed) as f64 / total as f64 * 100.0,
-                    FAIL_PATHS.load(Ordering::Relaxed) as f64 / total as f64 * 100.0,
-                    FAIL_OLAP_MAX.load(Ordering::Relaxed) as f64 / total as f64 * 100.0,
-                    FAIL_OLAP_AVG.load(Ordering::Relaxed) as f64 / total as f64 * 100.0,
-                    FAIL_EDIV.load(Ordering::Relaxed) as f64 / total as f64 * 100.0,
-                    total,
-                );
-                
-                // Log closest puzzle metrics (value/threshold format)
-                if let Ok(closest) = CLOSEST_PUZZLE.lock() {
-                    if let Some((closeness, paths, paths_t, olap, olap_t, olap_avg, olap_avg_t, ediv, ediv_t, dir, dir_t, amb, amb_t, loc, loc_min_t, loc_max_t, opt_count)) = *closest {
-                        let traps_str = if let Ok(traps) = CLOSEST_TRAPS.lock() {
-                            traps.join(",")
-                        } else {
-                            String::from("?")
-                        };
-                        info!(
-                            "Closest puzzle (score={:.3}): paths={}/{} olap={:.2}/{:.2} olap_avg={:.2}/{:.2} ediv={:.2}/{:.2} dir={}/{} amb={:.1}/{:.1} loc={:.2}/({:.2}-{:.2}) (opt_paths={}) traps=[{}]",
-                            closeness, paths, paths_t, olap, olap_t, olap_avg, olap_avg_t, ediv, ediv_t, dir, dir_t, amb, amb_t, loc, loc_min_t, loc_max_t, opt_count, traps_str
-                        );
-                    }
-                }
+            let fail_rates = ctx.format_fail_rates(&prefilter_thresholds);
+            info!("[{}] batch {} │ {}", run_id, batch, fail_rates);
+            
+            // Log closest puzzle metrics
+            if let Some(closest_str) = ctx.format_closest(&prefilter_thresholds) {
+                info!("[{}]   └─ closest: {}", run_id, closest_str);
             }
         }
 
-        // Only log batch progress every 10 batches to reduce noise
-        if batch % 10 == 0 {
-            info!("No puzzle met target in batch {}. Continuing...", batch);
-        }
         batch += 1;
     }
 }

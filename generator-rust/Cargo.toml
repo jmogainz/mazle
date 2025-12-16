@@ -43,6 +43,9 @@ tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.5", features = ["cors"] }
 # Logging backend for native
 env_logger = "0.11"
+# Timezone handling for scheduler
+chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # WASM-only dependencies (browser)

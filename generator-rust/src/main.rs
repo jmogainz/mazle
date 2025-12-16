@@ -6,23 +6,31 @@ use axum::{
 };
 use log::info;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tower_http::cors::{Any, CorsLayer};
 
 // Import from library
-use mazle_generator::{generate_ground_puzzle, generate_ice_puzzle, GenerationConfig, PuzzleData};
+use mazle_generator::{
+    cache::PuzzleCache, generate_ground_puzzle, generate_ice_puzzle, scheduler, GenerationConfig,
+    PuzzleData,
+};
 
 /// Application state
+#[derive(Clone)]
 struct AppState {
     start_time: Instant,
+    cache: Arc<PuzzleCache>,
 }
 
 /// Health check response
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct HealthResponse {
     status: &'static str,
     uptime_secs: u64,
+    cache_entries: usize,
 }
 
 /// Generation request body
@@ -53,7 +61,9 @@ fn generate_by_type(seed: &str, config: &GenerationConfig, map_type: &str) -> Pu
 #[serde(rename_all = "camelCase")]
 struct GenerateResponse {
     puzzle: PuzzleData,
-    generation_time_ms: u128,
+    generation_time_ms: u64,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    cached: bool,
 }
 
 /// Query parameters for GET endpoint
@@ -65,23 +75,59 @@ struct GenerateQuery {
     map_type: String,
     #[serde(default)]
     start_batch: usize,
+    #[serde(default)]
+    no_cache: bool,
 }
 
 /// Health check endpoint
-async fn health(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
+async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "ok",
         uptime_secs: state.start_time.elapsed().as_secs(),
+        cache_entries: state.cache.len(),
     })
+}
+
+/// Cache status endpoint
+async fn cache_status(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let seeds = state.cache.keys();
+    Json(json!({
+        "cachedSeeds": seeds,
+        "count": seeds.len(),
+        "maxEntries": 100,
+        "ttlHours": 48,
+    }))
 }
 
 /// Generate puzzle by seed (GET)
 async fn generate_by_seed(
     Path(seed): Path<String>,
     Query(query): Query<GenerateQuery>,
+    State(state): State<AppState>,
 ) -> Json<GenerateResponse> {
-    let start = Instant::now();
+    let request_start = Instant::now();
 
+    // 1. Check cache first (unless bypassed)
+    if query.no_cache {
+        info!("⏭️ Cache bypass for '{}' (no_cache=true)", seed);
+    } else if let Some(cached) = state.cache.get(&seed) {
+        let request_time = request_start.elapsed().as_millis() as u64;
+        info!(
+            "✓ Cache HIT for '{}' (generated in {}ms, served in {}ms)",
+            seed, cached.generation_time_ms, request_time
+        );
+
+        return Json(GenerateResponse {
+            puzzle: cached.puzzle,
+            generation_time_ms: cached.generation_time_ms,
+            cached: true,
+        });
+    } else {
+        info!("✗ Cache MISS for '{}', generating on-demand...", seed);
+    }
+
+    // 2. Generate on-demand
+    let gen_start = Instant::now();
     let config = GenerationConfig {
         parallel: query.parallel,
         start_batch: query.start_batch,
@@ -89,20 +135,39 @@ async fn generate_by_seed(
     };
 
     let map_type = query.map_type.clone();
+    let seed_clone = seed.clone();
 
     // Spawn CPU-intensive work on blocking thread pool to avoid starving async runtime
-    let puzzle = tokio::task::spawn_blocking(move || generate_by_type(&seed, &config, &map_type))
-        .await
-        .expect("Blocking task panicked");
+    let puzzle =
+        tokio::task::spawn_blocking(move || generate_by_type(&seed_clone, &config, &map_type))
+            .await
+            .expect("Blocking task panicked");
+
+    let generation_time = gen_start.elapsed().as_millis() as u64;
+
+    // 3. Cache the result for future requests
+    state
+        .cache
+        .insert(seed.clone(), puzzle.clone(), generation_time);
+
+    let total_time = request_start.elapsed().as_millis() as u64;
+    info!(
+        "✓ Generated '{}' in {}ms (total request: {}ms)",
+        seed, generation_time, total_time
+    );
 
     Json(GenerateResponse {
         puzzle,
-        generation_time_ms: start.elapsed().as_millis(),
+        generation_time_ms: generation_time,
+        cached: false,
     })
 }
 
 /// Generate puzzle (POST with full config)
-async fn generate_post(Json(request): Json<GenerateRequest>) -> Json<GenerateResponse> {
+async fn generate_post(
+    State(state): State<AppState>,
+    Json(request): Json<GenerateRequest>,
+) -> Json<GenerateResponse> {
     let start = Instant::now();
 
     let seed = request.seed.clone();
@@ -114,9 +179,17 @@ async fn generate_post(Json(request): Json<GenerateRequest>) -> Json<GenerateRes
         .await
         .expect("Blocking task panicked");
 
+    let generation_time = start.elapsed().as_millis() as u64;
+
+    // Cache the result
+    state
+        .cache
+        .insert(request.seed.clone(), puzzle.clone(), generation_time);
+
     Json(GenerateResponse {
         puzzle,
-        generation_time_ms: start.elapsed().as_millis(),
+        generation_time_ms: generation_time,
+        cached: false,
     })
 }
 
@@ -168,10 +241,11 @@ async fn generate_batch(Json(request): Json<BatchRequest>) -> Json<BatchResponse
 }
 
 /// Build the application router
-fn build_router() -> Router {
-    let state = Arc::new(AppState {
+fn build_router(cache: Arc<PuzzleCache>) -> Router {
+    let state = AppState {
         start_time: Instant::now(),
-    });
+        cache,
+    };
 
     // Configure CORS
     let cors = CorsLayer::new()
@@ -185,6 +259,7 @@ fn build_router() -> Router {
         .route("/api/generate/:seed", get(generate_by_seed))
         .route("/api/generate", post(generate_post))
         .route("/api/generate/batch", post(generate_batch))
+        .route("/api/cache/status", get(cache_status))
         .layer(cors)
         .with_state(state)
 }
@@ -197,7 +272,27 @@ async fn main() {
 
     info!("🧊 Mazle Generator Server starting...");
 
-    let app = build_router();
+    // Initialize puzzle cache: 100 max entries, 48 hour TTL
+    let cache = Arc::new(PuzzleCache::new(100, Duration::from_secs(48 * 3600)));
+    info!("💾 Initialized puzzle cache (max: 100 entries, TTL: 48h)");
+
+    // Spawn background pre-generation task (only in production)
+    let env_mode = std::env::var("ENV").unwrap_or_else(|_| "dev".to_string());
+    if std::env::var("DISABLE_PRE_GENERATION").is_ok() {
+        info!("⚠️ Pre-generation disabled via DISABLE_PRE_GENERATION env var");
+    } else if env_mode != "prod" {
+        info!(
+            "⏸️ Pre-generation scheduler disabled (ENV={}, only runs in prod)",
+            env_mode
+        );
+    } else {
+        let cache_clone = cache.clone();
+        tokio::spawn(async move {
+            scheduler::pre_generation_loop(cache_clone).await;
+        });
+    }
+
+    let app = build_router(cache);
 
     // Start server
     let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
@@ -205,10 +300,11 @@ async fn main() {
 
     info!("🚀 Server running at http://{}", addr);
     info!("Endpoints:");
-    info!("  GET  /health                  - Health check");
-    info!("  GET  /api/generate/:seed      - Generate puzzle by seed");
+    info!("  GET  /health                  - Health check with cache stats");
+    info!("  GET  /api/generate/:seed      - Generate puzzle by seed (cached)");
     info!("  POST /api/generate            - Generate with config");
     info!("  POST /api/generate/batch      - Generate multiple puzzles");
+    info!("  GET  /api/cache/status        - View cached seeds");
 
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();

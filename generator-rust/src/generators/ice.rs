@@ -4242,7 +4242,7 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                 // Higher score = closer to passing all thresholds
                 // For "min X" thresholds: ratio = actual / threshold (capped at 1.0)
                 // For "max X" thresholds: ratio = threshold / actual (capped at 1.0)
-                if pass_unique_opt {
+                let closeness = if pass_unique_opt {
                     let paths_ratio = (psych_metrics.near_optimal_paths as f64 / prefilter_thresholds_clone.min_near_optimal_paths as f64).min(1.0);
                     let olap_best_ratio = if psych_metrics.path_overlap > 0.0 {
                         (prefilter_thresholds_clone.max_path_overlap_best / psych_metrics.path_overlap).min(1.0)
@@ -4265,11 +4265,11 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                     };
                     
                     // Geometric mean gives equal weight and penalizes any single bad metric
-                    let closeness = (paths_ratio * olap_best_ratio * olap_avg_ratio * ediv_ratio * dir_ratio * amb_ratio * loc_ratio).powf(1.0 / 7.0);
+                    let score = (paths_ratio * olap_best_ratio * olap_avg_ratio * ediv_ratio * dir_ratio * amb_ratio * loc_ratio).powf(1.0 / 7.0);
                     
                     // Update closest puzzle in context
                     ctx_clone.update_closest(ClosestPuzzleInfo {
-                        closeness,
+                        closeness: score,
                         paths: psych_metrics.near_optimal_paths,
                         paths_thresh: prefilter_thresholds_clone.min_near_optimal_paths,
                         olap_best: psych_metrics.path_overlap,
@@ -4288,9 +4288,19 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                         opt_count: psych_metrics.optimal_path_count,
                         traps: applied_traps.clone(),
                     });
-                }
+                    
+                    score
+                } else {
+                    0.0 // No closeness score without unique optimal path
+                };
 
-                pass_unique_opt && pass_ci && pass_dec && pass_gate && pass_fp && pass_loc && pass_dir && pass_bt && pass_amb && pass_paths && pass_olap_best && pass_olap_avg && pass_ediv
+                // Accept puzzle if either:
+                // 1. All thresholds pass, OR
+                // 2. Closeness score is >= 0.995 (closest-match escape hatch)
+                let passes_all_thresholds = pass_unique_opt && pass_ci && pass_dec && pass_gate && pass_fp && pass_loc && pass_dir && pass_bt && pass_amb && pass_paths && pass_olap_best && pass_olap_avg && pass_ediv;
+                let passes_closeness_threshold = pass_unique_opt && closeness >= 0.995;
+                
+                passes_all_thresholds || passes_closeness_threshold
             };
             
             if !passed {

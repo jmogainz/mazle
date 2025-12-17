@@ -68,9 +68,9 @@ default = []
 
 [profile.release]
 opt-level = 3
-lto = "thin"
-codegen-units = 1
-panic = "abort"
+lto = "fat"           # Full LTO for maximum optimization (slower compile, faster runtime)
+codegen-units = 1     # Single codegen unit for best optimization
+panic = "abort"       # No unwinding = smaller/faster
 incremental = false
 
 [profile.dev]

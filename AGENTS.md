@@ -114,8 +114,10 @@ print(f\"score={p.get('difficultyScore',0)} paths={p.get('nearOptimalPaths',0)} 
 
 ### Batch Testing (Multiple Puzzles)
 
+**⚠️ IMPORTANT: Run puzzles SEQUENTIALLY, not in parallel!** Parallel generation requests compete for CPU and skew timing results. Always wait for one puzzle to complete before starting the next.
+
 ```bash
-# Generate 10 puzzles and show metrics
+# Generate 10 puzzles SEQUENTIALLY and show metrics
 for i in $(seq 1 10); do
   curl -s "http://10.0.0.240:8080/api/generate/batch-$i" | python3 -c "
 import sys,json

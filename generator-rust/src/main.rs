@@ -317,9 +317,13 @@ fn build_router(cache: Arc<PuzzleCache>) -> Router {
 
 #[tokio::main]
 async fn main() {
-    // Initialize env_logger - defaults to info level, configurable via RUST_LOG env var
-    // Examples: RUST_LOG=debug, RUST_LOG=mazle_generator=trace, RUST_LOG=warn
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    // Initialize env_logger - uses LOG_LEVEL env var (consistent with devops-toolkit pattern)
+    // Falls back to RUST_LOG if set, otherwise defaults to "info"
+    // Examples: LOG_LEVEL=debug, LOG_LEVEL=trace, LOG_LEVEL=warn
+    let log_level = std::env::var("LOG_LEVEL")
+        .or_else(|_| std::env::var("RUST_LOG"))
+        .unwrap_or_else(|_| "info".to_string());
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(&log_level)).init();
 
     info!("🧊 Mazle Generator Server starting...");
 

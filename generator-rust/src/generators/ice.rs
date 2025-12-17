@@ -256,14 +256,6 @@ const TARGET_PSYCHOLOGY_SCORE: f64 = 800.0;
 const BATCH_SIZE: usize = 10000;  // Attempts per batch
 
 const SIZE_OPTIONS: [(usize, usize); 1] = [(15, 15)];
-const EARLY_BRANCH_DEPTH_LIMIT: i32 = 3;
-const MAX_START_GOAL_ATTEMPTS: usize = 8;
-const MIN_BRANCHING_CHOICES: i32 = 2;
-const MIN_BRANCH_UNIQUE_FIRST_MOVES: i32 = 2;
-const MIN_BRANCH_DEPTH_SCORE: f64 = 6.0;
-const MIN_BRANCH_OFF_AXIS_CELLS: i32 = 10;
-const MAX_BRANCHING_BOOST_PASSES: usize = 3;
-const BRANCH_LOG_INTERVAL_ATTEMPTS: usize = 5000;
 
 // =============================================================================
 // PSYCHOLOGY SCORING WEIGHTS - Tuned for binary lives game mechanic
@@ -505,113 +497,8 @@ fn new_pos_map<V>(capacity: usize) -> HashMap<Position, V> {
     map
 }
 
-fn protect_radius(
-    center: &Position,
-    radius: i32,
-    width: usize,
-    height: usize,
-    protected: &mut HashSet<Position>,
-) {
-    if radius <= 0 {
-        return;
-    }
-    for dy in -radius..=radius {
-        for dx in -radius..=radius {
-            if dx.abs() + dy.abs() > radius {
-                continue;
-            }
-            let x = center.x + dx;
-            let y = center.y + dy;
-            if is_inner(x, y, width, height) {
-                protected.insert(Position { x, y });
-            }
-        }
-    }
-}
 
-fn protect_shadow_corridor_regions(
-    tiles: &Vec<Vec<TileType>>,
-    start: &Position,
-    goal: &Position,
-    width: usize,
-    height: usize,
-    exits: &[Position],
-    protected: &mut HashSet<Position>,
-) -> usize {
-    if exits.is_empty() {
-        return 0;
-    }
-    let mut added = 0usize;
-    let depth_limit = scale_value_for_map(8, width, height, 4);
-    for exit_pos in exits {
-        let mut queue: Vec<(Position, i32)> = vec![(*exit_pos, 0)];
-        let mut head = 0;
-        let mut visited = new_pos_set(width * height);
-        visited.insert(*exit_pos);
-        while head < queue.len() {
-            let (pos, depth) = queue[head];
-            head += 1;
-            if pos_eq(&pos, start) || pos_eq(&pos, goal) {
-                continue;
-            }
-            let before = protected.len();
-            protected.insert(pos);
-            protect_radius(&pos, 1, width, height, protected);
-            added += protected.len().saturating_sub(before);
-            if depth >= depth_limit {
-                continue;
-            }
-            for dir in get_all_dirs() {
-                let result = simulate_move(tiles, &pos, dir, width, height);
-                if !result.valid || pos_eq(&result.pos, &pos) {
-                    continue;
-                }
-                if visited.insert(result.pos) {
-                    queue.push((result.pos, depth + 1));
-                }
-            }
-        }
-    }
-    added
-}
 
-fn try_promote_branch_stop(
-    tiles: &mut Vec<Vec<TileType>>,
-    candidate: &Position,
-    start: &Position,
-    goal: &Position,
-    width: usize,
-    height: usize,
-    optimal_len: usize,
-    protected: &mut HashSet<Position>,
-) -> bool {
-    if protected.contains(candidate) {
-        return false;
-    }
-    if !is_inner(candidate.x, candidate.y, width, height) {
-        return false;
-    }
-
-    let tile = tiles[candidate.y as usize][candidate.x as usize];
-    if tile != TileType::Ice {
-        return false;
-    }
-
-    tiles[candidate.y as usize][candidate.x as usize] = TileType::Ground;
-    let still_optimal = match find_optimal_path(tiles, start, goal, width, height) {
-        Some(path) => path.len() == optimal_len,
-        None => false,
-    };
-
-    if still_optimal {
-        protected.insert(*candidate);
-        protect_radius(candidate, 1, width, height, protected);
-        true
-    } else {
-        tiles[candidate.y as usize][candidate.x as usize] = tile;
-        false
-    }
-}
 
 fn pos_eq(a: &Position, b: &Position) -> bool {
     a.x == b.x && a.y == b.y
@@ -807,60 +694,6 @@ fn select_placement_strategy(rng: &mut SeededRandom) -> PlacementStrategy {
 
 /// Try multiple placement strategies and pick the candidate most likely to hit target moves
 /// while providing multiple early goal-directed branches.
-fn select_branch_friendly_start_goal(
-    tiles: &Vec<Vec<TileType>>,
-    ice_tiles: &[Position],
-    width: usize,
-    height: usize,
-    required_moves: i32,
-    rng: &mut SeededRandom,
-) -> Option<(Position, Position, PlacementStrategy)> {
-    let mut best: Option<(Position, Position, PlacementStrategy, f64)> = None;
-
-    for _ in 0..MAX_START_GOAL_ATTEMPTS {
-        let strategy = select_placement_strategy(rng);
-        let candidate = select_start_goal(ice_tiles, width, height, strategy, rng);
-        let (start, goal) = match candidate {
-            Some(pair) => pair,
-            None => continue,
-        };
-
-        let optimal_moves = match find_path(tiles, &start, &goal, width, height) {
-            Some(moves) => moves,
-            None => continue,
-        };
-
-        let can_reach_goal = get_can_reach_goal(tiles, &goal, width, height);
-        let branch_snapshot =
-            compute_branching_snapshot_with_map(tiles, &start, &goal, width, height, &can_reach_goal);
-        let branch_choices = branch_snapshot.immediate_choices;
-        let branch_depth = branch_snapshot.depth_score;
-
-        let length_penalty = (required_moves - optimal_moves).abs() as f64;
-        let length_score = if optimal_moves == required_moves {
-            1.0
-        } else {
-            1.0 / (1.0 + length_penalty)
-        };
-
-        let heuristic_score = length_score * 1000.0 + branch_depth * 25.0 + branch_choices as f64 * 30.0;
-
-        let should_update = match &best {
-            None => true,
-            Some((_, _, _, best_score)) => heuristic_score > *best_score,
-        };
-
-        if should_update {
-            best = Some((start, goal, strategy, heuristic_score));
-        }
-
-        if optimal_moves == required_moves && branch_choices >= 2 {
-            return Some((start, goal, strategy));
-        }
-    }
-
-    best.map(|(start, goal, strategy, _)| (start, goal, strategy))
-}
 
 /// Calculate diversity bonus for a placement strategy
 fn get_strategy_bonus(strategy: PlacementStrategy) -> f64 {
@@ -1090,277 +923,6 @@ fn get_can_reach_goal(
     }
 
     can_reach_goal
-}
-
-fn count_goal_directed_choices_with_map(
-    tiles: &Vec<Vec<TileType>>,
-    start: &Position,
-    width: usize,
-    height: usize,
-    can_reach_goal: &HashSet<Position>,
-) -> i32 {
-    let mut choices = 0;
-
-    for dir in get_all_dirs() {
-        let result = simulate_move(tiles, start, dir, width, height);
-        if result.valid && !pos_eq(&result.pos, start) && can_reach_goal.contains(&result.pos) {
-            choices += 1;
-        }
-    }
-
-    choices
-}
-
-#[derive(Clone, Copy, Default)]
-struct BranchingSnapshot {
-    immediate_choices: i32,
-    depth_score: f64,
-    unique_first_moves: i32,
-    off_axis_cells: i32,
-}
-
-fn compute_branching_snapshot_with_map(
-    tiles: &Vec<Vec<TileType>>,
-    start: &Position,
-    goal: &Position,
-    width: usize,
-    height: usize,
-    can_reach_goal: &HashSet<Position>,
-) -> BranchingSnapshot {
-    let immediate_choices =
-        count_goal_directed_choices_with_map(tiles, start, width, height, can_reach_goal);
-
-    let mut first_dirs = HashSet::default();
-    for dir in get_all_dirs() {
-        let result = simulate_move(tiles, start, dir, width, height);
-        if result.valid && !pos_eq(&result.pos, start) && can_reach_goal.contains(&result.pos) {
-            first_dirs.insert(dir);
-        }
-    }
-
-    if EARLY_BRANCH_DEPTH_LIMIT <= 0 {
-        return BranchingSnapshot {
-            immediate_choices,
-            depth_score: 0.0,
-            unique_first_moves: first_dirs.len() as i32,
-            off_axis_cells: 0,
-        };
-    }
-
-    let direct_zone = get_direct_path_zone(start, goal, width, height, 1);
-    let mut queue: Vec<(Position, i32)> = vec![(*start, 0)];
-    let mut visited = new_pos_set(width * height);
-    visited.insert(*start);
-    let mut head = 0;
-    let mut score = 0.0;
-    let mut off_axis_positions = HashSet::default();
-
-    while head < queue.len() {
-        let (pos, depth) = queue[head];
-        head += 1;
-
-        if depth >= EARLY_BRANCH_DEPTH_LIMIT {
-            continue;
-        }
-
-        let mut local_choices = 0;
-        for dir in get_all_dirs() {
-            let result = simulate_move(tiles, &pos, dir, width, height);
-            if result.valid && !pos_eq(&result.pos, &pos) && can_reach_goal.contains(&result.pos) {
-                local_choices += 1;
-                if visited.insert(result.pos) {
-                    if !direct_zone.contains(&result.pos) {
-                        off_axis_positions.insert(result.pos);
-                    }
-                    queue.push((result.pos, depth + 1));
-                }
-            }
-        }
-
-        if local_choices >= 2 {
-            score += (EARLY_BRANCH_DEPTH_LIMIT - depth) as f64;
-        }
-    }
-
-    BranchingSnapshot {
-        immediate_choices,
-        depth_score: score,
-        unique_first_moves: first_dirs.len() as i32,
-        off_axis_cells: off_axis_positions.len() as i32,
-    }
-}
-
-fn capture_branching_snapshot(
-    tiles: &Vec<Vec<TileType>>,
-    start: &Position,
-    goal: &Position,
-    width: usize,
-    height: usize,
-) -> BranchingSnapshot {
-    let can_reach_goal = get_can_reach_goal(tiles, goal, width, height);
-    compute_branching_snapshot_with_map(tiles, start, goal, width, height, &can_reach_goal)
-}
-
-fn log_branching_snapshot(
-    run_id: &str,
-    stage: &str,
-    attempt: usize,
-    snapshot: &BranchingSnapshot,
-) {
-    if attempt % BRANCH_LOG_INTERVAL_ATTEMPTS != 0 {
-        return;
-    }
-    debug!(
-        "[{}] branch {} attempt {} │ choices={} unique={} depth={:.2} off_axis={}",
-        run_id,
-        stage,
-        attempt,
-        snapshot.immediate_choices,
-        snapshot.unique_first_moves,
-        snapshot.depth_score,
-        snapshot.off_axis_cells
-    );
-}
-
-fn passes_branching_gate(snapshot: &BranchingSnapshot) -> bool {
-    snapshot.immediate_choices >= MIN_BRANCHING_CHOICES
-        && snapshot.unique_first_moves >= MIN_BRANCH_UNIQUE_FIRST_MOVES
-        && snapshot.depth_score >= MIN_BRANCH_DEPTH_SCORE
-        && snapshot.off_axis_cells >= MIN_BRANCH_OFF_AXIS_CELLS
-}
-
-fn branch_deficit_score(snapshot: &BranchingSnapshot) -> i32 {
-    let mut deficit = 0;
-    if snapshot.immediate_choices < MIN_BRANCHING_CHOICES {
-        deficit += MIN_BRANCHING_CHOICES - snapshot.immediate_choices;
-    }
-    if snapshot.unique_first_moves < MIN_BRANCH_UNIQUE_FIRST_MOVES {
-        deficit += MIN_BRANCH_UNIQUE_FIRST_MOVES - snapshot.unique_first_moves;
-    }
-    if snapshot.off_axis_cells < MIN_BRANCH_OFF_AXIS_CELLS {
-        deficit += MIN_BRANCH_OFF_AXIS_CELLS - snapshot.off_axis_cells;
-    }
-    if snapshot.depth_score < MIN_BRANCH_DEPTH_SCORE {
-        deficit += (MIN_BRANCH_DEPTH_SCORE - snapshot.depth_score).ceil() as i32;
-    }
-    deficit
-}
-
-fn reinforce_shadow_routes(
-    tiles: &mut Vec<Vec<TileType>>,
-    start: &Position,
-    goal: &Position,
-    width: usize,
-    height: usize,
-    rng: &mut SeededRandom,
-    severity: i32,
-    protected: &mut HashSet<Position>,
-) {
-    if severity <= 0 {
-        return;
-    }
-    let extra_divergence = (severity * 2).max(3).min(24);
-    create_path_divergence(
-        tiles,
-        start,
-        goal,
-        width,
-        height,
-        rng,
-        extra_divergence,
-        protected,
-        None,
-    );
-    let corridor_push = ((extra_divergence as f64) * 0.75).ceil() as i32;
-    create_divergent_corridors(
-        tiles,
-        start,
-        goal,
-        width,
-        height,
-        rng,
-        corridor_push.max(2),
-        protected,
-        None,
-    );
-}
-
-fn boost_branching(
-    tiles: &mut Vec<Vec<TileType>>,
-    start: &Position,
-    goal: &Position,
-    width: usize,
-    height: usize,
-    rng: &mut SeededRandom,
-    snapshot: &BranchingSnapshot,
-    protected: &mut HashSet<Position>,
-) {
-    let branch_deficit = (MIN_BRANCHING_CHOICES - snapshot.immediate_choices).max(0)
-        + (MIN_BRANCH_UNIQUE_FIRST_MOVES - snapshot.unique_first_moves).max(0);
-    if branch_deficit > 0 {
-        let boost_count = (branch_deficit * 2).max(2);
-        create_path_divergence(
-            tiles,
-            start,
-            goal,
-            width,
-            height,
-            rng,
-            boost_count,
-            protected,
-            None,
-        );
-    }
-
-    let depth_deficit = if snapshot.depth_score < MIN_BRANCH_DEPTH_SCORE {
-        (MIN_BRANCH_DEPTH_SCORE - snapshot.depth_score).ceil() as i32
-    } else {
-        0
-    };
-    let off_axis_deficit = (MIN_BRANCH_OFF_AXIS_CELLS - snapshot.off_axis_cells).max(0);
-    let corridor_boost = (depth_deficit + off_axis_deficit).max(0);
-    if corridor_boost > 0 {
-        create_divergent_corridors(
-            tiles,
-            start,
-            goal,
-            width,
-            height,
-            rng,
-            corridor_boost.max(3),
-            protected,
-            None,
-        );
-    }
-}
-
-fn enforce_branching_targets(
-    tiles: &mut Vec<Vec<TileType>>,
-    start: &Position,
-    goal: &Position,
-    width: usize,
-    height: usize,
-    rng: &mut SeededRandom,
-    protected: &mut HashSet<Position>,
-) -> BranchingSnapshot {
-    let mut snapshot = capture_branching_snapshot(tiles, start, goal, width, height);
-    for _ in 0..MAX_BRANCHING_BOOST_PASSES {
-        if passes_branching_gate(&snapshot) {
-            return snapshot;
-        }
-        boost_branching(
-            tiles,
-            start,
-            goal,
-            width,
-            height,
-            rng,
-            &snapshot,
-            protected,
-        );
-        snapshot = capture_branching_snapshot(tiles, start, goal, width, height);
-    }
-    snapshot
 }
 
 fn has_no_stuck_states(
@@ -2739,20 +2301,28 @@ fn calculate_path_overlap(
     }
 
     let optimal_set: HashSet<Position> = optimal_path.iter().cloned().collect();
-    let tolerance = 2; // Look at paths within optimal+2
+    let tolerance = 2;
     let max_moves = optimal_moves + tolerance;
 
-    // Find alternative paths using BFS with path tracking
-    // Limit exploration to control performance
-    const MAX_PATHS: usize = 30;
-    const MAX_QUEUE_SIZE: usize = 10000;
+    // Use parent pointers instead of cloning paths - much faster
+    const MAX_PATHS: usize = 20;
+    const MAX_STATES: usize = 5000;
 
-    let mut paths_found: Vec<Vec<Position>> = Vec::new();
-    let mut queue: Vec<(Position, i32, Vec<Position>)> = vec![(*start, 0, vec![*start])];
+    // Each state: (position, moves, parent_index, overlap_count)
+    // parent_index points to previous state, or usize::MAX for start
+    let mut states: Vec<(Position, i32, usize, usize)> = Vec::with_capacity(MAX_STATES);
+    let start_overlap = if optimal_set.contains(start) { 1 } else { 0 };
+    states.push((*start, 0, usize::MAX, start_overlap));
+    
     let mut head = 0;
+    let mut paths_found = 0;
+    let mut min_overlap = 1.0;
+    let mut total_overlap = 0.0;
+    let mut alt_count = 0;
+    let mut found_optimal = false;
 
-    while head < queue.len() && paths_found.len() < MAX_PATHS && queue.len() < MAX_QUEUE_SIZE {
-        let (pos, moves, path) = queue[head].clone();
+    while head < states.len() && paths_found < MAX_PATHS && states.len() < MAX_STATES {
+        let (pos, moves, _parent, overlap_count) = states[head];
         head += 1;
 
         if moves > max_moves {
@@ -2760,46 +2330,32 @@ fn calculate_path_overlap(
         }
 
         if pos_eq(&pos, goal) {
-            paths_found.push(path);
+            paths_found += 1;
+            let path_len = (moves + 1) as usize; // +1 for start position
+            let overlap_ratio = overlap_count as f64 / path_len as f64;
+            
+            // Skip the first path that matches optimal length with perfect overlap
+            // (this is likely THE optimal path)
+            if !found_optimal && path_len == optimal_path.len() && overlap_count == optimal_path.len() {
+                found_optimal = true;
+                continue;
+            }
+            
+            if overlap_ratio < min_overlap {
+                min_overlap = overlap_ratio;
+            }
+            total_overlap += overlap_ratio;
+            alt_count += 1;
             continue;
         }
 
         for dir in get_all_dirs() {
             let result = simulate_move(tiles, &pos, dir, width, height);
             if result.valid && !pos_eq(&result.pos, &pos) {
-                let mut new_path = path.clone();
-                new_path.push(result.pos);
-                queue.push((result.pos, moves + 1, new_path));
+                let new_overlap = overlap_count + if optimal_set.contains(&result.pos) { 1 } else { 0 };
+                states.push((result.pos, moves + 1, head - 1, new_overlap));
             }
         }
-    }
-
-    if paths_found.len() <= 1 {
-        return (1.0, 1.0); // Only one path, maximum "overlap" with itself
-    }
-
-    // Calculate overlap for each non-optimal path
-    let mut min_overlap = 1.0;
-    let mut total_overlap = 0.0;
-    let mut alt_count = 0;
-
-    for path in &paths_found {
-        // Check if this is the exact optimal path
-        let is_optimal = path.len() == optimal_path.len()
-            && path.iter().zip(optimal_path.iter()).all(|(a, b)| pos_eq(a, b));
-
-        if is_optimal {
-            continue;
-        }
-
-        let overlap_count = path.iter().filter(|p| optimal_set.contains(p)).count();
-        let overlap_ratio = overlap_count as f64 / path.len() as f64;
-        
-        if overlap_ratio < min_overlap {
-            min_overlap = overlap_ratio;
-        }
-        total_overlap += overlap_ratio;
-        alt_count += 1;
     }
 
     if alt_count == 0 {
@@ -2964,6 +2520,117 @@ fn calculate_psychology_score(
         early_divergence,
         psychology_score,
     }
+}
+
+/// Timing data for psychology score calculation
+struct PsychTiming {
+    find_path_us: u64,
+    count_paths_us: u64,
+    overlap_us: u64,
+}
+
+/// Calculate psychology score with timing instrumentation
+fn calculate_psychology_score_timed(
+    tiles: &Vec<Vec<TileType>>,
+    start: &Position,
+    goal: &Position,
+    width: usize,
+    height: usize,
+) -> (PsychMetrics, PsychTiming) {
+    use std::time::Instant;
+    
+    let t0 = Instant::now();
+    let optimal_path = find_optimal_path(tiles, start, goal, width, height);
+    let find_path_us = t0.elapsed().as_micros() as u64;
+    
+    if optimal_path.is_none() || optimal_path.as_ref().unwrap().len() < 2 {
+        return (PsychMetrics {
+            counter_intuitive_moves: 0,
+            attractive_decoys: 0,
+            commitment_gates: 0,
+            false_progress_paths: 0,
+            path_locality: 1.0,
+            direction_changes: 0,
+            backtrack_depth: 0,
+            decision_ambiguity: 0.0,
+            near_optimal_paths: 0,
+            optimal_path_count: 0,
+            path_overlap: 1.0,
+            path_overlap_avg: 1.0,
+            early_divergence: 0.0,
+            psychology_score: 0.0,
+        }, PsychTiming { find_path_us, count_paths_us: 0, overlap_us: 0 });
+    }
+    let optimal_path = optimal_path.unwrap();
+    let optimal_moves = (optimal_path.len() - 1) as i32;
+    let distance_to_goal = compute_distance_to_goal(tiles, goal, width, height);
+
+    // Original metrics (Phase 0)
+    let counter_intuitive_moves = count_counter_intuitive_moves(goal, &optimal_path);
+    let attractive_decoys = count_attractive_decoys(tiles, goal, width, height, &optimal_path);
+    let commitment_gates =
+        count_commitment_gates(tiles, goal, width, height, &optimal_path, &distance_to_goal);
+    let false_progress_paths = count_false_progress_paths(
+        tiles,
+        start,
+        goal,
+        width,
+        height,
+        optimal_moves,
+        &distance_to_goal,
+    );
+
+    // Path structure metrics (Phase 1)
+    let path_locality = calculate_path_locality(&optimal_path, width, height);
+    let direction_changes = count_direction_changes(&optimal_path);
+    let backtrack_depth = calculate_backtrack_depth(start, goal, &optimal_path);
+    let decision_ambiguity = calculate_decision_ambiguity(tiles, &optimal_path, width, height);
+
+    // Path diversity metrics (Phase 2 - NEW) - TIMED
+    let tolerance = 2;
+    let t1 = Instant::now();
+    let (near_optimal_paths, optimal_path_count) =
+        count_near_optimal_paths(tiles, start, goal, width, height, optimal_moves, tolerance);
+    let count_paths_us = t1.elapsed().as_micros() as u64;
+    
+    let t2 = Instant::now();
+    let (path_overlap, path_overlap_avg) = calculate_path_overlap(
+        tiles, start, goal, &optimal_path, width, height, optimal_moves
+    );
+    let overlap_us = t2.elapsed().as_micros() as u64;
+    
+    let early_divergence = calculate_early_divergence(tiles, &optimal_path, width, height);
+
+    // Calculate final psychology score
+    let psychology_score =
+        (counter_intuitive_moves as f64 * WEIGHT_COUNTER_INTUITIVE)
+        + (attractive_decoys as f64 * WEIGHT_ATTRACTIVE_DECOYS)
+        + (commitment_gates as f64 * WEIGHT_COMMITMENT_GATES)
+        + (false_progress_paths as f64 * WEIGHT_FALSE_PROGRESS)
+        + ((1.0 - path_locality) * WEIGHT_PATH_LOCALITY)
+        + (direction_changes as f64 * WEIGHT_DIRECTION_CHANGES)
+        + (backtrack_depth as f64 * WEIGHT_BACKTRACK_DEPTH)
+        + (decision_ambiguity * WEIGHT_DECISION_AMBIGUITY)
+        + (near_optimal_paths as f64 * WEIGHT_NEAR_OPTIMAL_PATHS)
+        + (overlap_score(path_overlap) * WEIGHT_PATH_OVERLAP)
+        + (early_divergence * WEIGHT_EARLY_DIVERGENCE);
+
+    (PsychMetrics {
+        counter_intuitive_moves,
+        attractive_decoys,
+        commitment_gates,
+        false_progress_paths,
+        path_locality,
+        direction_changes,
+        backtrack_depth,
+        decision_ambiguity,
+        near_optimal_paths,
+        optimal_path_count,
+        path_overlap,
+        path_overlap_avg,
+        early_divergence,
+        psychology_score,
+    }, PsychTiming { find_path_us, count_paths_us, overlap_us })
 }
 
 /// Prefilter thresholds scaled to map size
@@ -4125,1007 +3792,9 @@ fn add_dead_end_magnets(
 /// - More near-optimal paths
 /// - Lower path overlap (different routes don't share cells)
 /// - Earlier divergence
-fn create_path_divergence(
-    tiles: &mut Vec<Vec<TileType>>,
-    start: &Position,
-    goal: &Position,
-    width: usize,
-    height: usize,
-    rng: &mut SeededRandom,
-    count: i32,
-    protected: &mut HashSet<Position>,
-    cached_optimal: Option<&Vec<Position>>, // PERFORMANCE: Use cached optimal if available
-) {
-    // Use cached optimal path or compute once
-    let owned_optimal: Vec<Position>;
-    let optimal_path: &Vec<Position> = match cached_optimal {
-        Some(p) => p,
-        None => {
-            owned_optimal = match find_optimal_path(tiles, start, goal, width, height) {
-                Some(p) if p.len() >= 4 => p,
-                _ => return,
-            };
-            &owned_optimal
-        }
-    };
-    
-    let optimal_len = optimal_path.len();
-    let optimal_set: HashSet<Position> = optimal_path.iter().cloned().collect();
-    
-    // Target early positions on the optimal path (first 25%) as divergence anchor points
-    let early_count = (optimal_len as f64 * 0.25).ceil() as usize;
-    let early_positions: Vec<&Position> = optimal_path.iter().skip(1).take(early_count).collect();
-    
-    for _ in 0..count {
-        if early_positions.is_empty() {
-            break;
-        }
-        
-        let anchor = rng.random_choice(&early_positions);
-        
-        // Carve perpendicular corridor away from optimal
-        let perp_dirs = if rng.random() < 0.5 {
-            vec![Direction::Up, Direction::Down]
-        } else {
-            vec![Direction::Left, Direction::Right]
-        };
-        
-        for perp_dir in rng.shuffle(&perp_dirs) {
-            let (dx, dy) = get_delta(perp_dir);
-            let outward_dist = rng.random_int(3, 6);
-            let parallel_len = rng.random_int(4, 8);
-            
-            let mut backup: Vec<(Position, TileType)> = Vec::new();
-            let mut carved_cells: Vec<Position> = Vec::new();
-            let mut ok = true;
-            
-            // Phase 1: Carve outward perpendicular to optimal
-            let mut cx = anchor.x;
-            let mut cy = anchor.y;
-            for _ in 0..outward_dist {
-                cx += dx;
-                cy += dy;
-                if !is_inner(cx, cy, width, height) {
-                    ok = false;
-                    break;
-                }
-                let pos = Position { x: cx, y: cy };
-                if pos_eq(&pos, start) || pos_eq(&pos, goal) || protected.contains(&pos) {
-                    ok = false;
-                    break;
-                }
-                if optimal_set.contains(&pos) {
-                    ok = false;
-                    break;
-                }
-                backup.push((pos, tiles[cy as usize][cx as usize]));
-                tiles[cy as usize][cx as usize] = TileType::Ice;
-                carved_cells.push(pos);
-            }
-            
-            if !ok {
-                for (pos, tile) in backup.into_iter().rev() {
-                    tiles[pos.y as usize][pos.x as usize] = tile;
-                }
-                continue;
-            }
-            
-            // Phase 2: Carve parallel toward goal direction
-            let goal_dx = if goal.x > start.x { 1 } else { -1 };
-            let goal_dy = if goal.y > start.y { 1 } else { -1 };
-            let parallel_dir = if dx != 0 { (0, goal_dy) } else { (goal_dx, 0) };
-            
-            for _ in 0..parallel_len {
-                cx += parallel_dir.0;
-                cy += parallel_dir.1;
-                if !is_inner(cx, cy, width, height) {
-                    break;
-                }
-                let pos = Position { x: cx, y: cy };
-                if pos_eq(&pos, start) || pos_eq(&pos, goal) || protected.contains(&pos) {
-                    break;
-                }
-                if optimal_set.contains(&pos) {
-                    break;
-                }
-                backup.push((pos, tiles[cy as usize][cx as usize]));
-                tiles[cy as usize][cx as usize] = TileType::Ice;
-                carved_cells.push(pos);
-            }
-            
-            // Validate carve maintains optimal length
-            if let Some(new_path) = find_optimal_path(tiles, start, goal, width, height) {
-                if new_path.len() == optimal_len {
-                    for pos in carved_cells {
-                        protected.insert(pos);
-                    }
-                    break;
-                }
-            }
-            
-            // Revert if it changed optimal length
-            for (pos, tile) in backup.into_iter().rev() {
-                tiles[pos.y as usize][pos.x as usize] = tile;
-            }
-        }
-    }
-}
 
 /// Create multiple independent corridors that reach the goal area.
 /// Create multiple independent corridors that reach the goal area.
-fn create_divergent_corridors(
-    tiles: &mut Vec<Vec<TileType>>,
-    start: &Position,
-    goal: &Position,
-    width: usize,
-    height: usize,
-    rng: &mut SeededRandom,
-    count: i32,
-    protected: &mut HashSet<Position>,
-    cached_optimal: Option<&Vec<Position>>,
-) {
-    // Use cached optimal path or compute once
-    let owned_optimal: Vec<Position>;
-    let optimal_path: &Vec<Position> = match cached_optimal {
-        Some(p) => p,
-        None => {
-            owned_optimal = match find_optimal_path(tiles, start, goal, width, height) {
-                Some(p) => p,
-                None => return,
-            };
-            &owned_optimal
-        }
-    };
-    let optimal_len = optimal_path.len();
-    let optimal_set: HashSet<Position> = optimal_path.iter().cloned().collect();
-    
-    for _ in 0..count {
-        // Pick a random position away from start/goal and optimal
-        let sx = rng.random_int(2, width as i32 - 2);
-        let sy = rng.random_int(2, height as i32 - 2);
-        
-        let pos = Position { x: sx, y: sy };
-        if protected.contains(&pos) || pos_eq(&pos, start) || pos_eq(&pos, goal) {
-            continue;
-        }
-        if optimal_set.contains(&pos) {
-            continue;
-        }
-        
-        // Carve corridor toward goal direction
-        let goal_dx = if goal.x > sx { 1 } else if goal.x < sx { -1 } else { 0 };
-        let goal_dy = if goal.y > sy { 1 } else if goal.y < sy { -1 } else { 0 };
-        
-        let (dx, dy) = if goal_dx != 0 && goal_dy != 0 {
-            if rng.random() < 0.5 { (goal_dx, 0) } else { (0, goal_dy) }
-        } else if goal_dx != 0 {
-            (goal_dx, 0)
-        } else if goal_dy != 0 {
-            (0, goal_dy)
-        } else {
-            continue;
-        };
-        
-        let length = rng.random_int(5, 9);
-        let mut backup: Vec<(Position, TileType)> = Vec::new();
-        let mut carved_cells: Vec<Position> = Vec::new();
-        
-        let mut cx = sx;
-        let mut cy = sy;
-        for _ in 0..length {
-            if !is_inner(cx, cy, width, height) {
-                break;
-            }
-            let pos = Position { x: cx, y: cy };
-            if pos_eq(&pos, start) || pos_eq(&pos, goal) || protected.contains(&pos) {
-                break;
-            }
-            if optimal_set.contains(&pos) {
-                break;
-            }
-            
-            backup.push((pos, tiles[cy as usize][cx as usize]));
-            tiles[cy as usize][cx as usize] = TileType::Ice;
-            carved_cells.push(pos);
-            
-            cx += dx;
-            cy += dy;
-        }
-        
-        if carved_cells.len() < 3 {
-            for (pos, tile) in backup.into_iter().rev() {
-                tiles[pos.y as usize][pos.x as usize] = tile;
-            }
-            continue;
-        }
-        
-        // Validate carve maintains optimal length
-        if let Some(new_path) = find_optimal_path(tiles, start, goal, width, height) {
-            if new_path.len() == optimal_len {
-                for pos in carved_cells {
-                    protected.insert(pos);
-                }
-                continue;
-            }
-        }
-        
-        // Revert if it changed optimal length
-        for (pos, tile) in backup.into_iter().rev() {
-            tiles[pos.y as usize][pos.x as usize] = tile;
-        }
-    }
-}
-
-/// Break ties when multiple optimal paths exist by strategically blocking one.
-/// Uses a fast heuristic approach instead of enumerating all paths.
-fn break_optimal_path_ties(
-    tiles: &mut Vec<Vec<TileType>>,
-    start: &Position,
-    goal: &Position,
-    width: usize,
-    height: usize,
-    rng: &mut SeededRandom,
-    protected: &HashSet<Position>,
-) -> bool {
-    let optimal_path = match find_optimal_path(tiles, start, goal, width, height) {
-        Some(p) => p,
-        None => return false,
-    };
-    let optimal_len = optimal_path.len();
-    let optimal_moves = (optimal_len - 1) as i32;
-    
-    // Check if we have multiple optimal paths (quick check)
-    let (_, opt_count) = count_near_optimal_paths(tiles, start, goal, width, height, optimal_moves, 0);
-    if opt_count <= 1 {
-        return true; // Already unique
-    }
-    
-    // Too many optimal paths - skip expensive enumeration
-    if opt_count > 10 {
-        return false;
-    }
-    
-    // Find optimal paths with strict limits to avoid explosion
-    let mut all_optimal_paths: Vec<Vec<Position>> = Vec::new();
-    let mut queue: Vec<(Position, i32, Vec<Position>)> = vec![(*start, 0, vec![*start])];
-    let mut head = 0;
-    const MAX_QUEUE: usize = 5000; // Hard limit
-    const MAX_PATHS: usize = 10;
-    
-    while head < queue.len() && all_optimal_paths.len() < MAX_PATHS && queue.len() < MAX_QUEUE {
-        let (pos, moves, path) = queue[head].clone();
-        head += 1;
-        
-        if moves > optimal_moves {
-            continue;
-        }
-        
-        if pos_eq(&pos, goal) && moves == optimal_moves {
-            all_optimal_paths.push(path);
-            continue;
-        }
-        
-        // Stop exploring if queue is getting too large
-        if queue.len() > MAX_QUEUE / 2 {
-            break;
-        }
-        
-        for dir in get_all_dirs() {
-            let result = simulate_move(tiles, &pos, dir, width, height);
-            if result.valid && !pos_eq(&result.pos, &pos) {
-                let mut new_path = path.clone();
-                new_path.push(result.pos);
-                queue.push((result.pos, moves + 1, new_path));
-            }
-        }
-    }
-    
-    if all_optimal_paths.len() <= 1 {
-        return true;
-    }
-    
-    // Find cells that are on SOME but not ALL optimal paths - blocking these breaks ties
-    let all_cells: HashSet<Position> = all_optimal_paths.iter()
-        .flat_map(|p| p.iter().cloned())
-        .collect();
-    
-    let common_cells: HashSet<Position> = all_cells.iter()
-        .filter(|cell| all_optimal_paths.iter().all(|p| p.contains(cell)))
-        .cloned()
-        .collect();
-    
-    // Candidate cells: on some paths but not all, and not protected
-    let mut candidates: Vec<Position> = all_cells.iter()
-        .filter(|cell| !common_cells.contains(cell))
-        .filter(|cell| !protected.contains(cell))
-        .filter(|cell| !pos_eq(cell, start) && !pos_eq(cell, goal))
-        .filter(|cell| tiles[cell.y as usize][cell.x as usize] == TileType::Ice)
-        .cloned()
-        .collect();
-    
-    if candidates.is_empty() {
-        return false; // Can't break tie
-    }
-    
-    // Shuffle and try blocking candidates
-    let shuffled = rng.shuffle(&candidates);
-    for candidate in shuffled.into_iter().take(10) {
-        let original = tiles[candidate.y as usize][candidate.x as usize];
-        tiles[candidate.y as usize][candidate.x as usize] = TileType::Wall;
-        
-        // Check result
-        if let Some(new_path) = find_optimal_path(tiles, start, goal, width, height) {
-            if new_path.len() == optimal_len {
-                let (_, new_opt_count) = count_near_optimal_paths(
-                    tiles, start, goal, width, height, optimal_moves, 0
-                );
-                if new_opt_count == 1 {
-                    return true; // Successfully broke tie
-                }
-            }
-        }
-        
-        // Revert
-        tiles[candidate.y as usize][candidate.x as usize] = original;
-    }
-    
-    false
-}
-
-/// Open controlled "shadow" doorways from the main route into regions that already reach the goal.
-/// This produces alternative paths that diverge early while preserving optimal length.
-fn open_shadow_bridges(
-    tiles: &mut Vec<Vec<TileType>>,
-    start: &Position,
-    goal: &Position,
-    width: usize,
-    height: usize,
-    rng: &mut SeededRandom,
-    attempts: i32,
-    protected: &mut HashSet<Position>,
-) -> Vec<Position> {
-    let mut created_exits: Vec<Position> = Vec::new();
-    let optimal_path = match find_optimal_path(tiles, start, goal, width, height) {
-        Some(path) if path.len() > 3 => path,
-        _ => return created_exits,
-    };
-    let optimal_len = optimal_path.len();
-    let optimal_set: HashSet<Position> = optimal_path.iter().cloned().collect();
-    let can_reach_goal = get_can_reach_goal(tiles, goal, width, height);
-    let direct_zone = get_direct_path_zone(start, goal, width, height, 1);
-    let mut early_limit = ((optimal_len as f64) * 0.45).ceil() as usize;
-    if early_limit > optimal_len.saturating_sub(2) {
-        early_limit = optimal_len.saturating_sub(2);
-    }
-    let max_span = scale_value_for_map(10, width, height, 4);
-
-    for _ in 0..attempts {
-        if early_limit <= 2 {
-            break;
-        }
-        let bias = rng.random();
-        let weighted = (bias * bias * (early_limit as f64 - 1.0)).round() as usize;
-        let idx = 1 + weighted.min(early_limit.saturating_sub(1));
-        let anchor = optimal_path[idx];
-        let mut dirs = get_all_dirs();
-        let shuffled_dirs = rng.shuffle(&dirs);
-
-        for dir in shuffled_dirs {
-            let (dx, dy) = get_delta(dir);
-            let mut carved: Vec<(Position, TileType)> = Vec::new();
-            let mut carved_cells: Vec<Position> = Vec::new();
-            let mut target_cell: Option<Position> = None;
-
-            for step in 1..=max_span {
-                let cell = Position {
-                    x: anchor.x + dx * step,
-                    y: anchor.y + dy * step,
-                };
-                if !is_inner(cell.x, cell.y, width, height) {
-                    break;
-                }
-                if pos_eq(&cell, start) || pos_eq(&cell, goal) {
-                    break;
-                }
-                let tile = tiles[cell.y as usize][cell.x as usize];
-                if tile == TileType::Wall {
-                    if protected.contains(&cell) {
-                        carved.clear();
-                        carved_cells.clear();
-                        break;
-                    }
-                    tiles[cell.y as usize][cell.x as usize] = TileType::Ice;
-                    carved.push((cell, tile));
-                    carved_cells.push(cell);
-                    continue;
-                }
-                if step < 2 {
-                    carved.clear();
-                    carved_cells.clear();
-                    break;
-                }
-                if tile == TileType::Ice
-                    && !optimal_set.contains(&cell)
-                    && !direct_zone.contains(&cell)
-                    && can_reach_goal.contains(&cell)
-                {
-                    target_cell = Some(cell);
-                }
-                break;
-            }
-
-            let target_pos = match target_cell {
-                Some(pos) => pos,
-                None => {
-                    for (pos, original) in carved.into_iter().rev() {
-                        tiles[pos.y as usize][pos.x as usize] = original;
-                    }
-                    continue;
-                }
-            };
-
-            let separation =
-                (target_pos.x - anchor.x).abs() + (target_pos.y - anchor.y).abs();
-            if separation < 4 {
-                for (pos, original) in carved.into_iter().rev() {
-                    tiles[pos.y as usize][pos.x as usize] = original;
-                }
-                continue;
-            }
-
-            if let Some(new_path) = find_optimal_path(tiles, start, goal, width, height) {
-                if new_path.len() == optimal_len {
-                    for (pos, _) in carved.iter() {
-                        protected.insert(*pos);
-                        protect_radius(pos, 1, width, height, protected);
-                    }
-                    protect_radius(&target_pos, 2, width, height, protected);
-                    protected.insert(target_pos);
-                    let _ = try_promote_branch_stop(
-                        tiles,
-                        &anchor,
-                        start,
-                        goal,
-                        width,
-                        height,
-                        optimal_len,
-                        protected,
-                    );
-                    let _ = try_promote_branch_stop(
-                        tiles,
-                        &target_pos,
-                        start,
-                        goal,
-                        width,
-                        height,
-                        optimal_len,
-                        protected,
-                    );
-                    created_exits.push(target_pos);
-                    break;
-                }
-            }
-            for (pos, original) in carved.into_iter().rev() {
-                tiles[pos.y as usize][pos.x as usize] = original;
-            }
-        }
-    }
-
-    created_exits
-}
-
-/// After bridges are carved, weave small perpendicular corridors so alternatives stay off-axis.
-fn weave_shadow_corridors(
-    tiles: &mut Vec<Vec<TileType>>,
-    start: &Position,
-    goal: &Position,
-    width: usize,
-    height: usize,
-    rng: &mut SeededRandom,
-    exits: &[Position],
-    protected: &mut HashSet<Position>,
-) -> usize {
-    if exits.is_empty() {
-        return 0;
-    }
-    let mut total_cells = 0usize;
-    let baseline_len = match find_optimal_path(tiles, start, goal, width, height) {
-        Some(path) => path.len(),
-        None => return 0,
-    };
-
-    for exit_pos in exits {
-        let passes = rng.random_int(1, 4);
-        for _ in 0..passes {
-            let mut candidate_dirs: Vec<Direction> = get_all_dirs().to_vec();
-            let intuitive = get_intuitive_direction(exit_pos, goal);
-            candidate_dirs.retain(|d| !intuitive.contains(d));
-            if candidate_dirs.is_empty() {
-                candidate_dirs = get_all_dirs().to_vec();
-            }
-            let shuffled_dirs = rng.shuffle(&candidate_dirs);
-            let mut carved_any = false;
-
-            for dir in shuffled_dirs {
-                let (dx, dy) = get_delta(dir);
-                let length = rng.random_int(3, 6);
-                let mut backup: Vec<(Position, TileType)> = Vec::new();
-                let mut carved_cells: Vec<Position> = Vec::new();
-                let mut cx = exit_pos.x;
-                let mut cy = exit_pos.y;
-                let mut ok = true;
-
-                for _ in 0..length {
-                    cx += dx;
-                    cy += dy;
-                    if !is_inner(cx, cy, width, height) {
-                        ok = false;
-                        break;
-                    }
-                    let pos = Position { x: cx, y: cy };
-                    if pos_eq(&pos, start) || pos_eq(&pos, goal) || protected.contains(&pos) {
-                        ok = false;
-                        break;
-                    }
-                    backup.push((pos, tiles[pos.y as usize][pos.x as usize]));
-                    tiles[pos.y as usize][pos.x as usize] = TileType::Ice;
-                    carved_cells.push(pos);
-                }
-
-                if !ok {
-                    for (pos, tile) in backup.into_iter().rev() {
-                        tiles[pos.y as usize][pos.x as usize] = tile;
-                    }
-                    continue;
-                }
-
-                // Optional perpendicular pocket to create a loop
-                if rng.random() < 0.8 && !carved_cells.is_empty() {
-                    let pivot = carved_cells[carved_cells.len() / 2];
-                    let lateral_dirs = if dir == Direction::Up || dir == Direction::Down {
-                        vec![Direction::Left, Direction::Right]
-                    } else {
-                        vec![Direction::Up, Direction::Down]
-                    };
-                    if !lateral_dirs.is_empty() {
-                        let branch_dir = rng.random_choice(&lateral_dirs);
-                        let (bdx, bdy) = get_delta(branch_dir);
-                        let branch_len = rng.random_int(2, 4);
-                        let mut branch_backup: Vec<(Position, TileType)> = Vec::new();
-                        let mut bx = pivot.x;
-                        let mut by = pivot.y;
-                        let mut branch_ok = true;
-
-                        for _ in 0..branch_len {
-                            bx += bdx;
-                            by += bdy;
-                            if !is_inner(bx, by, width, height) {
-                                branch_ok = false;
-                                break;
-                            }
-                            let pos = Position { x: bx, y: by };
-                            if pos_eq(&pos, start)
-                                || pos_eq(&pos, goal)
-                                || protected.contains(&pos)
-                            {
-                                branch_ok = false;
-                                break;
-                            }
-                            branch_backup.push((pos, tiles[pos.y as usize][pos.x as usize]));
-                            tiles[pos.y as usize][pos.x as usize] = TileType::Ice;
-                            carved_cells.push(pos);
-                        }
-
-                        if !branch_ok {
-                            for (pos, tile) in branch_backup.into_iter().rev() {
-                                tiles[pos.y as usize][pos.x as usize] = tile;
-                                if let Some(idx) = carved_cells.iter().position(|p| p == &pos) {
-                                    carved_cells.remove(idx);
-                                }
-                            }
-                        } else {
-                            backup.extend(branch_backup);
-                        }
-                    }
-                }
-
-                if let Some(new_path) = find_optimal_path(tiles, start, goal, width, height) {
-                    if new_path.len() == baseline_len {
-                        for pos in carved_cells {
-                            protected.insert(pos);
-                            protect_radius(&pos, 1, width, height, protected);
-                            total_cells += 1;
-                        }
-                        carved_any = true;
-                        break;
-                    }
-                }
-
-                for (pos, tile) in backup.into_iter().rev() {
-                    tiles[pos.y as usize][pos.x as usize] = tile;
-                }
-            }
-
-            if carved_any {
-                break;
-            }
-        }
-    }
-
-    total_cells
-}
-
-fn graft_shadow_loops(
-    tiles: &mut Vec<Vec<TileType>>,
-    start: &Position,
-    goal: &Position,
-    width: usize,
-    height: usize,
-    rng: &mut SeededRandom,
-    exits: &[Position],
-    protected: &mut HashSet<Position>,
-) -> usize {
-    if exits.is_empty() {
-        return 0;
-    }
-    let baseline_len = match find_optimal_path(tiles, start, goal, width, height) {
-        Some(path) => path.len(),
-        None => return 0,
-    };
-    let max_loops = exits.len().min(8).max(2);
-    let shuffled = rng.shuffle(exits);
-    let mut loops_built = 0usize;
-    for exit_pos in shuffled.into_iter().take(max_loops) {
-        let radius = rng.random_int(2, 4);
-        let mut backup: Vec<(Position, TileType)> = Vec::new();
-        let mut carved_cells: Vec<Position> = Vec::new();
-        let mut carved = false;
-        for dx in -radius..=radius {
-            for dy in -radius..=radius {
-                let dist = dx.abs() + dy.abs();
-                if dist == 0 || dist < radius - 1 || dist > radius {
-                    continue;
-                }
-                let x = exit_pos.x + dx;
-                let y = exit_pos.y + dy;
-                if !is_inner(x, y, width, height) {
-                    continue;
-                }
-                let pos = Position { x, y };
-                if pos_eq(&pos, start) || pos_eq(&pos, goal) {
-                    continue;
-                }
-                let tile = tiles[y as usize][x as usize];
-                if tile == TileType::Wall {
-                    backup.push((pos, tile));
-                    tiles[y as usize][x as usize] = TileType::Ice;
-                    carved_cells.push(pos);
-                    carved = true;
-                } else if tile == TileType::Ice {
-                    carved_cells.push(pos);
-                }
-            }
-        }
-        if !carved {
-            continue;
-        }
-        if !is_solvable(tiles, start, goal, width, height) {
-            for (pos, tile) in backup.into_iter().rev() {
-                tiles[pos.y as usize][pos.x as usize] = tile;
-            }
-            continue;
-        }
-        if let Some(new_path) = find_optimal_path(tiles, start, goal, width, height) {
-            if new_path.len() != baseline_len {
-                for (pos, tile) in backup.into_iter().rev() {
-                    tiles[pos.y as usize][pos.x as usize] = tile;
-                }
-                continue;
-            }
-        }
-        for pos in carved_cells {
-            if pos_eq(&pos, start) || pos_eq(&pos, goal) {
-                continue;
-            }
-            protected.insert(pos);
-            protect_radius(&pos, 1, width, height, protected);
-            loops_built += 1;
-        }
-    }
-
-    loops_built
-}
-
-fn try_build_parallel_lane(
-    tiles: &mut Vec<Vec<TileType>>,
-    start: &Position,
-    goal: &Position,
-    width: usize,
-    height: usize,
-    optimal_path: &[Position],
-    entry_idx: usize,
-    exit_idx: usize,
-    perp_dx: i32,
-    perp_dy: i32,
-    offset: i32,
-    optimal_len: usize,
-    protected: &mut HashSet<Position>,
-) -> Option<usize> {
-    if offset <= 1 {
-        return None;
-    }
-    let entry = optimal_path[entry_idx];
-    let exit = optimal_path[exit_idx];
-    let offset_steps = offset as usize;
-
-    let mut entry_connectors: Vec<Position> = Vec::new();
-    for step in 1..offset_steps {
-        let pos = Position {
-            x: entry.x + perp_dx * step as i32,
-            y: entry.y + perp_dy * step as i32,
-        };
-        if !is_inner(pos.x, pos.y, width, height)
-            || pos_eq(&pos, start)
-            || pos_eq(&pos, goal)
-            || protected.contains(&pos)
-            || matches!(
-                tiles[pos.y as usize][pos.x as usize],
-                TileType::Start
-                    | TileType::Goal
-                    | TileType::LedgeUp
-                    | TileType::LedgeDown
-                    | TileType::LedgeLeft
-                    | TileType::LedgeRight
-            )
-        {
-            return None;
-        }
-        entry_connectors.push(pos);
-    }
-
-    let mut exit_connectors: Vec<Position> = Vec::new();
-    for step in 1..offset_steps {
-        let pos = Position {
-            x: exit.x + perp_dx * step as i32,
-            y: exit.y + perp_dy * step as i32,
-        };
-        if !is_inner(pos.x, pos.y, width, height)
-            || pos_eq(&pos, start)
-            || pos_eq(&pos, goal)
-            || protected.contains(&pos)
-            || matches!(
-                tiles[pos.y as usize][pos.x as usize],
-                TileType::Start
-                    | TileType::Goal
-                    | TileType::LedgeUp
-                    | TileType::LedgeDown
-                    | TileType::LedgeLeft
-                    | TileType::LedgeRight
-            )
-        {
-            return None;
-        }
-        exit_connectors.push(pos);
-    }
-
-    let mut corridor_cells: Vec<(Position, TileType)> = Vec::new();
-    for idx in entry_idx..=exit_idx {
-        let base = optimal_path[idx];
-        let shadow = Position {
-            x: base.x + perp_dx * offset,
-            y: base.y + perp_dy * offset,
-        };
-        if !is_inner(shadow.x, shadow.y, width, height)
-            || pos_eq(&shadow, start)
-            || pos_eq(&shadow, goal)
-            || protected.contains(&shadow)
-            || optimal_path.iter().any(|p| pos_eq(p, &shadow))
-        {
-            return None;
-        }
-        let current_tile = tiles[shadow.y as usize][shadow.x as usize];
-        match current_tile {
-            TileType::Wall | TileType::Ground | TileType::Ice => {}
-            _ => return None,
-        }
-        let base_tile = tiles[base.y as usize][base.x as usize];
-        match base_tile {
-            TileType::Ice | TileType::Ground => {}
-            _ => return None,
-        }
-        let new_tile = if base_tile == TileType::Ground {
-            TileType::Ground
-        } else {
-            TileType::Ice
-        };
-        corridor_cells.push((shadow, new_tile));
-    }
-
-    let mut backup: Vec<(Position, TileType)> = Vec::new();
-    for pos in entry_connectors
-        .iter()
-        .chain(exit_connectors.iter())
-    {
-        backup.push((*pos, tiles[pos.y as usize][pos.x as usize]));
-        tiles[pos.y as usize][pos.x as usize] = TileType::Ground;
-    }
-    for (pos, new_tile) in &corridor_cells {
-        backup.push((*pos, tiles[pos.y as usize][pos.x as usize]));
-        tiles[pos.y as usize][pos.x as usize] = *new_tile;
-    }
-
-    if !is_solvable(tiles, start, goal, width, height) {
-        for (pos, tile) in backup.into_iter().rev() {
-            tiles[pos.y as usize][pos.x as usize] = tile;
-        }
-        return None;
-    }
-    if let Some(new_path) = find_optimal_path(tiles, start, goal, width, height) {
-        if new_path.len() != optimal_len {
-            for (pos, tile) in backup.into_iter().rev() {
-                tiles[pos.y as usize][pos.x as usize] = tile;
-            }
-            return None;
-        }
-    } else {
-        for (pos, tile) in backup.into_iter().rev() {
-            tiles[pos.y as usize][pos.x as usize] = tile;
-        }
-        return None;
-    }
-
-    let total_cells =
-        entry_connectors.len() + exit_connectors.len() + corridor_cells.len();
-    for pos in entry_connectors
-        .into_iter()
-        .chain(exit_connectors.into_iter())
-    {
-        protected.insert(pos);
-        protect_radius(&pos, 1, width, height, protected);
-    }
-    for (pos, _) in corridor_cells {
-        protected.insert(pos);
-        protect_radius(&pos, 1, width, height, protected);
-    }
-    let entry = optimal_path[entry_idx];
-    let exit = optimal_path[exit_idx];
-    let _ = try_promote_branch_stop(
-        tiles,
-        &entry,
-        start,
-        goal,
-        width,
-        height,
-        optimal_len,
-        protected,
-    );
-    let _ = try_promote_branch_stop(
-        tiles,
-        &exit,
-        start,
-        goal,
-        width,
-        height,
-        optimal_len,
-        protected,
-    );
-    Some(total_cells)
-}
-
-fn braid_parallel_tracks(
-    tiles: &mut Vec<Vec<TileType>>,
-    start: &Position,
-    goal: &Position,
-    width: usize,
-    height: usize,
-    rng: &mut SeededRandom,
-    attempts: i32,
-    protected: &mut HashSet<Position>,
-) -> usize {
-    let mut optimal_path = match find_optimal_path(tiles, start, goal, width, height) {
-        Some(path) if path.len() > 7 => path,
-        _ => return 0,
-    };
-    let mut optimal_len = optimal_path.len();
-    let mut total_cells = 0usize;
-
-    for _ in 0..attempts {
-        if optimal_len < 8 {
-            break;
-        }
-        // CRITICAL FOR LOW OVERLAP: Entry must be VERY early (first 20% of path)
-        // and exit should be LATE (last 30% of path) to maximize lane coverage.
-        let early_cap = ((optimal_len as f64) * 0.20).ceil() as usize;
-        if early_cap < 1 {
-            break;
-        }
-        let capped_entry = early_cap.min(optimal_len.saturating_sub(5)).max(1);
-        if capped_entry < 1 {
-            break;
-        }
-        let entry_idx = rng.random_int(1, (capped_entry + 1) as i32).max(1) as usize;
-        // Minimum lane length of 50% of remaining path for meaningful separation
-        let min_lane_length = ((optimal_len - entry_idx) as f64 * 0.50).ceil() as usize;
-        let min_exit_idx = (entry_idx + min_lane_length).max(entry_idx + 3);
-        if min_exit_idx >= optimal_len - 1 {
-            continue;
-        }
-        // Allow exit anywhere from min_exit_idx to near the end (last 2 cells reserved)
-        let max_exit_idx = optimal_len.saturating_sub(2);
-        if max_exit_idx <= min_exit_idx {
-            continue;
-        }
-        let exit_idx =
-            rng.random_int(min_exit_idx as i32, (max_exit_idx + 1) as i32) as usize;
-        let entry = optimal_path[entry_idx];
-        let exit = optimal_path[exit_idx];
-        if protected.contains(&entry) || protected.contains(&exit) {
-            continue;
-        }
-
-        let mut horizontal = 0;
-        let mut vertical = 0;
-        for idx in entry_idx..exit_idx {
-            let a = optimal_path[idx];
-            let b = optimal_path[idx + 1];
-            if a.x != b.x {
-                horizontal += 1;
-            }
-            if a.y != b.y {
-                vertical += 1;
-            }
-        }
-        let orientation_dirs = if horizontal >= vertical {
-            vec![Direction::Up, Direction::Down]
-        } else {
-            vec![Direction::Left, Direction::Right]
-        };
-        if orientation_dirs.is_empty() {
-            continue;
-        }
-        let max_offset = scale_value_for_map(4, width, height, 2).min(5);
-        if max_offset < 2 {
-            break;
-        }
-
-        let mut built_lane = false;
-        for perp_dir in rng.shuffle(&orientation_dirs) {
-            let (perp_dx, perp_dy) = get_delta(perp_dir);
-            let offset = rng.random_int(2, max_offset + 1).max(2);
-            if let Some(new_cells) = try_build_parallel_lane(
-                tiles,
-                start,
-                goal,
-                width,
-                height,
-                &optimal_path,
-                entry_idx,
-                exit_idx,
-                perp_dx,
-                perp_dy,
-                offset,
-                optimal_len,
-                protected,
-            ) {
-                total_cells += new_cells;
-                built_lane = true;
-                if let Some(updated) =
-                    find_optimal_path(tiles, start, goal, width, height)
-                {
-                    optimal_path = updated;
-                    optimal_len = optimal_path.len();
-                }
-                break;
-            }
-        }
-
-        if !built_lane {
-            continue;
-        }
-    }
-
-    total_cells
-}
 
 /// Compute required optimal moves based on map size.
 /// Reference: 10 moves for a 15x15 map, scales linearly with smaller dimension.
@@ -5157,8 +3826,6 @@ enum TrapFunction {
     TrapAlcoves,
     DeceptivePaths,
     DeadEndMagnets,
-    PathDivergence,      // NEW: Creates early path forks for low overlap
-    DivergentCorridors,  // NEW: Creates independent corridors for path diversity
 }
 
 impl TrapFunction {
@@ -5178,14 +3845,12 @@ impl TrapFunction {
             TrapFunction::TrapAlcoves => "alcove",
             TrapFunction::DeceptivePaths => "deceptive",
             TrapFunction::DeadEndMagnets => "deadend",
-            TrapFunction::PathDivergence => "diverge",
-            TrapFunction::DivergentCorridors => "corridor",
         }
     }
 }
 
 /// All available trap functions
-const ALL_TRAPS: [TrapFunction; 16] = [
+const ALL_TRAPS: [TrapFunction; 14] = [
     TrapFunction::AlmostThere,
     TrapFunction::DecoyOpenAreas,
     TrapFunction::HiddenChokePoints,
@@ -5200,26 +3865,12 @@ const ALL_TRAPS: [TrapFunction; 16] = [
     TrapFunction::TrapAlcoves,
     TrapFunction::DeceptivePaths,
     TrapFunction::DeadEndMagnets,
-    TrapFunction::PathDivergence,      // NEW
-    TrapFunction::DivergentCorridors,  // NEW
-];
-
-const BRANCH_FRIENDLY_TRAPS: [TrapFunction; 9] = [
-    TrapFunction::DecoyOpenAreas,
-    TrapFunction::MomentumTraps,
-    TrapFunction::AntiGradientZones,
-    TrapFunction::ParallelPathIllusion,
-    TrapFunction::LedgeMisdirection,
-    TrapFunction::PathDivergence,
-    TrapFunction::DivergentCorridors,
-    TrapFunction::AlmostThere,
-    TrapFunction::GoalProximityDeadEnds,
 ];
 
 /// Apply trap functions with randomization for increased diversity
-/// - Randomly skips some traps (40-80% of traps run)
+/// - Randomly skips some traps (50-100% of traps run)
 /// - Randomizes order of trap execution
-/// - Varies count ranges by ±30%
+/// - Varies count ranges by ±50%
 /// Returns list of applied trap short names
 fn apply_chaos_traps(
     tiles: &mut Vec<Vec<TileType>>,
@@ -5229,29 +3880,21 @@ fn apply_chaos_traps(
     height: usize,
     rng: &mut SeededRandom,
     scale_range: impl Fn(i32, i32) -> (i32, i32),
-    branch_hungry: bool,
     protected: &mut HashSet<Position>,
 ) -> Vec<String> {
     let mut applied_traps: Vec<String> = Vec::new();
-    // CHAOS MODE v2: More randomization for puzzle diversity
     
-    let trap_pool: Vec<TrapFunction> = if branch_hungry {
-        BRANCH_FRIENDLY_TRAPS.to_vec()
-    } else {
-        ALL_TRAPS.to_vec()
-    };
+    let trap_pool: Vec<TrapFunction> = ALL_TRAPS.to_vec();
 
     // Shuffle trap order for variety
     let shuffled_traps = rng.shuffle(&trap_pool);
     
     // Randomly determine how many traps to run (50-100% of all traps)
-    // INCREASED from 40-80% to get more trap interactions
     let min_traps = (trap_pool.len() as f64 * 0.5).ceil() as usize;
     let max_traps = trap_pool.len();
     let num_traps = rng.random_int(min_traps as i32, max_traps as i32 + 1) as usize;
     
-    // Apply random count variance (±50% instead of ±30%)
-    // INCREASED variance for more diversity
+    // Apply random count variance (±50%)
     let vary_count = |rng: &mut SeededRandom, min: i32, max: i32| -> i32 {
         let base = rng.random_int(min, max);
         let variance = (base as f64 * 0.5) as i32;
@@ -5264,209 +3907,143 @@ fn apply_chaos_traps(
         applied_traps.push(trap.short_name().to_string());
         match trap {
             TrapFunction::AlmostThere => {
-                let (min, max) = scale_range(5, 10);
+                let (min, max) = scale_range(2, 5);
                 let count = vary_count(rng, min, max);
                 create_almost_there_traps(tiles, start, goal, width, height, rng, count);
             }
             TrapFunction::DecoyOpenAreas => {
-                let (min, max) = scale_range(6, 12);
+                let (min, max) = scale_range(3, 6);
                 let count = vary_count(rng, min, max);
                 create_decoy_open_areas(tiles, start, goal, width, height, rng, count);
             }
             TrapFunction::HiddenChokePoints => {
-                let (min, max) = scale_range(5, 10);
+                let (min, max) = scale_range(2, 5);
                 let count = vary_count(rng, min, max);
                 create_hidden_choke_points(tiles, start, goal, width, height, rng, count);
             }
             TrapFunction::MomentumTraps => {
-                let (min, max) = scale_range(8, 16);
+                let (min, max) = scale_range(4, 8);
                 let count = vary_count(rng, min, max);
                 create_momentum_traps(tiles, start, goal, width, height, rng, count);
             }
             TrapFunction::AntiGradientZones => {
-                let (min, max) = scale_range(5, 10);
+                let (min, max) = scale_range(2, 5);
                 let count = vary_count(rng, min, max);
                 create_anti_gradient_zones(tiles, start, goal, width, height, rng, count);
             }
             TrapFunction::ParallelPathIllusion => {
-                let (min, max) = scale_range(6, 12);
+                let (min, max) = scale_range(3, 6);
                 let count = vary_count(rng, min, max);
                 create_parallel_path_illusion(tiles, start, goal, width, height, rng, count);
             }
             TrapFunction::LedgeMisdirection => {
-                let (min, max) = scale_range(10, 18);
+                let (min, max) = scale_range(5, 9);
                 let count = vary_count(rng, min, max);
                 create_ledge_misdirection(tiles, start, goal, width, height, rng, count);
             }
             TrapFunction::GoalProximityDeadEnds => {
-                let (min, max) = scale_range(6, 12);
+                let (min, max) = scale_range(3, 6);
                 let count = vary_count(rng, min, max);
                 create_goal_proximity_dead_ends(tiles, start, goal, width, height, rng, count);
             }
             TrapFunction::CommitmentTraps => {
-                let (min, max) = scale_range(6, 12);
+                let (min, max) = scale_range(3, 6);
                 let count = vary_count(rng, min, max);
                 create_commitment_traps(tiles, start, goal, width, height, rng, count);
             }
             TrapFunction::PrecisionGates => {
-                let (min, max) = scale_range(8, 16);
+                let (min, max) = scale_range(4, 8);
                 let count = vary_count(rng, min, max);
                 add_precision_gates(tiles, start, goal, width, height, rng, count);
             }
             TrapFunction::FunnelPatterns => {
-                let (min, max) = scale_range(6, 12);
+                let (min, max) = scale_range(3, 6);
                 let count = vary_count(rng, min, max);
                 add_funnel_patterns(tiles, start, goal, width, height, rng, count);
             }
             TrapFunction::TrapAlcoves => {
-                let (min, max) = scale_range(10, 18);
+                let (min, max) = scale_range(5, 9);
                 let count = vary_count(rng, min, max);
                 add_trap_alcoves(tiles, start, goal, width, height, rng, count);
             }
             TrapFunction::DeceptivePaths => {
-                let (min, max) = scale_range(25, 45);
+                let (min, max) = scale_range(8, 15);
                 let count = vary_count(rng, min, max);
                 add_deceptive_paths(tiles, start, goal, width, height, rng, count);
             }
             TrapFunction::DeadEndMagnets => {
-                let (min, max) = scale_range(6, 12);
+                let (min, max) = scale_range(3, 6);
                 let count = vary_count(rng, min, max);
                 add_dead_end_magnets(tiles, start, goal, width, height, rng, count);
-            }
-            TrapFunction::PathDivergence => {
-                let (min, max) = scale_range(8, 16);
-                let count = vary_count(rng, min, max);
-                create_path_divergence(tiles, start, goal, width, height, rng, count, protected, None);
-            }
-            TrapFunction::DivergentCorridors => {
-                let (min, max) = scale_range(6, 12);
-                let count = vary_count(rng, min, max);
-                create_divergent_corridors(
-                    tiles,
-                    start,
-                    goal,
-                    width,
-                    height,
-                    rng,
-                    count,
-                    protected,
-                    None,
-                );
             }
         }
     }
     
-    // WILD CARD PASS: 50% chance to apply 2-4 additional random traps
+    // WILD CARD PASS: 50% chance to apply 1-2 additional random traps
     // This creates more complex interactions between trap types
     if rng.random() < 0.5 {
-        let wild_card_count = rng.random_int(2, 5);
+        let wild_card_count = rng.random_int(1, 3);
         for _ in 0..wild_card_count {
             let wild_trap = rng.random_choice(&trap_pool);
             applied_traps.push(format!("{}*", wild_trap.short_name())); // * marks wild card
             match wild_trap {
                 TrapFunction::AlmostThere => {
-                    let count = vary_count(rng, 2, 6);
+                    let count = vary_count(rng, 1, 3);
                     create_almost_there_traps(tiles, start, goal, width, height, rng, count);
                 }
                 TrapFunction::DecoyOpenAreas => {
-                    let count = vary_count(rng, 3, 8);
+                    let count = vary_count(rng, 2, 4);
                     create_decoy_open_areas(tiles, start, goal, width, height, rng, count);
                 }
                 TrapFunction::HiddenChokePoints => {
-                    let count = vary_count(rng, 2, 6);
+                    let count = vary_count(rng, 1, 3);
                     create_hidden_choke_points(tiles, start, goal, width, height, rng, count);
                 }
                 TrapFunction::MomentumTraps => {
-                    let count = vary_count(rng, 4, 10);
+                    let count = vary_count(rng, 2, 5);
                     create_momentum_traps(tiles, start, goal, width, height, rng, count);
                 }
                 TrapFunction::AntiGradientZones => {
-                    let count = vary_count(rng, 2, 6);
+                    let count = vary_count(rng, 1, 3);
                     create_anti_gradient_zones(tiles, start, goal, width, height, rng, count);
                 }
                 TrapFunction::ParallelPathIllusion => {
-                    let count = vary_count(rng, 3, 8);
+                    let count = vary_count(rng, 2, 4);
                     create_parallel_path_illusion(tiles, start, goal, width, height, rng, count);
                 }
                 TrapFunction::LedgeMisdirection => {
-                    let count = vary_count(rng, 5, 12);
+                    let count = vary_count(rng, 3, 6);
                     create_ledge_misdirection(tiles, start, goal, width, height, rng, count);
                 }
                 TrapFunction::GoalProximityDeadEnds => {
-                    let count = vary_count(rng, 3, 8);
+                    let count = vary_count(rng, 2, 4);
                     create_goal_proximity_dead_ends(tiles, start, goal, width, height, rng, count);
                 }
                 TrapFunction::CommitmentTraps => {
-                    let count = vary_count(rng, 3, 8);
+                    let count = vary_count(rng, 2, 4);
                     create_commitment_traps(tiles, start, goal, width, height, rng, count);
                 }
                 TrapFunction::PrecisionGates => {
-                    let count = vary_count(rng, 4, 10);
+                    let count = vary_count(rng, 2, 5);
                     add_precision_gates(tiles, start, goal, width, height, rng, count);
                 }
                 TrapFunction::FunnelPatterns => {
-                    let count = vary_count(rng, 3, 8);
+                    let count = vary_count(rng, 2, 4);
                     add_funnel_patterns(tiles, start, goal, width, height, rng, count);
                 }
                 TrapFunction::TrapAlcoves => {
-                    let count = vary_count(rng, 5, 12);
+                    let count = vary_count(rng, 3, 6);
                     add_trap_alcoves(tiles, start, goal, width, height, rng, count);
                 }
                 TrapFunction::DeceptivePaths => {
-                    let count = vary_count(rng, 10, 25);
+                    let count = vary_count(rng, 4, 8);
                     add_deceptive_paths(tiles, start, goal, width, height, rng, count);
                 }
                 TrapFunction::DeadEndMagnets => {
-                    let count = vary_count(rng, 3, 8);
+                    let count = vary_count(rng, 2, 4);
                     add_dead_end_magnets(tiles, start, goal, width, height, rng, count);
                 }
-                TrapFunction::PathDivergence => {
-                    let count = vary_count(rng, 4, 10);
-                    create_path_divergence(tiles, start, goal, width, height, rng, count, protected, None);
-                }
-                TrapFunction::DivergentCorridors => {
-                    let count = vary_count(rng, 3, 8);
-                    create_divergent_corridors(
-                        tiles,
-                        start,
-                        goal,
-                        width,
-                        height,
-                        rng,
-                        count,
-                        protected,
-                        None,
-                    );
-                }
             }
-        }
-    }
-    
-    // Ensure at least one divergence-focused trap fires so branching survives later passes.
-    let ensured_diverge = applied_traps.iter().any(|name| name.starts_with("diverge"));
-    if !ensured_diverge {
-        let (min, max) = scale_range(4, 10);
-        let count = vary_count(rng, min, max);
-        create_path_divergence(tiles, start, goal, width, height, rng, count.max(2), protected, None);
-        applied_traps.push("diverge+".to_string());
-    }
-    let ensured_corridor = applied_traps.iter().any(|name| name.starts_with("corridor"));
-    if branch_hungry || !ensured_corridor {
-        let (min, max) = scale_range(3, 8);
-        let count = vary_count(rng, min, max);
-        create_divergent_corridors(
-            tiles,
-            start,
-            goal,
-            width,
-            height,
-            rng,
-            count.max(2),
-            protected,
-            None,
-        );
-        if !ensured_corridor {
-            applied_traps.push("corridor+".to_string());
         }
     }
     
@@ -5561,17 +4138,14 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
             }
 
             // Select placement strategy and start/goal positions
-            let (start, goal, strategy) =
-                match select_branch_friendly_start_goal(&tiles, &ice_tiles, width, height, required_optimal_moves, &mut attempt_rng) {
-                    Some(result) => result,
-                    None => {
-                        let fallback_strategy = select_placement_strategy(&mut attempt_rng);
-                        match select_start_goal(&ice_tiles, width, height, fallback_strategy, &mut attempt_rng) {
-                            Some((start, goal)) => (start, goal, fallback_strategy),
-                            None => return None,
-                        }
-                    }
-                };
+            // ========== SIMPLIFIED: Skip branch-friendly selection, use random placement ==========
+            let (start, goal, strategy) = {
+                let fallback_strategy = select_placement_strategy(&mut attempt_rng);
+                match select_start_goal(&ice_tiles, width, height, fallback_strategy, &mut attempt_rng) {
+                    Some((start, goal)) => (start, goal, fallback_strategy),
+                    None => return None,
+                }
+            };
 
             // CHAOS: Randomize passage widening intensity (10-35% instead of fixed 20%)
             let widen_intensity = 0.10 + attempt_rng.random() * 0.25;
@@ -5634,24 +4208,9 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                 &mut attempt_rng,
             );
 
-            let pre_trap_branch = enforce_branching_targets(
-                &mut tiles,
-                &start,
-                &goal,
-                width,
-                height,
-                &mut attempt_rng,
-                &mut protected_cells,
-            );
-            log_branching_snapshot(run_id, "pre-trap", attempt, &pre_trap_branch);
-            
             let t_pre_traps = Instant::now();
             
-            // Apply trap functions with randomized selection and ordering (CHAOS MODE)
-            let branch_hungry = pre_trap_branch.immediate_choices < MIN_BRANCHING_CHOICES
-                || pre_trap_branch.unique_first_moves < MIN_BRANCH_UNIQUE_FIRST_MOVES
-                || pre_trap_branch.depth_score < MIN_BRANCH_DEPTH_SCORE
-                || pre_trap_branch.off_axis_cells < MIN_BRANCH_OFF_AXIS_CELLS;
+            // Apply trap functions with randomized selection and ordering
             let applied_traps = apply_chaos_traps(
                 &mut tiles,
                 &start,
@@ -5660,132 +4219,13 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                 height,
                 &mut attempt_rng,
                 scale_range,
-                branch_hungry,
                 &mut protected_cells,
             );
-            let mut post_trap_branch =
-                enforce_branching_targets(
-                    &mut tiles,
-                    &start,
-                    &goal,
-                    width,
-                    height,
-                    &mut attempt_rng,
-                    &mut protected_cells,
-                );
-            log_branching_snapshot(run_id, "post-trap", attempt, &post_trap_branch);
-            let severity = branch_deficit_score(&post_trap_branch);
-            if severity > 0 {
-                reinforce_shadow_routes(
-                    &mut tiles,
-                    &start,
-                    &goal,
-                    width,
-                    height,
-                    &mut attempt_rng,
-                    severity,
-                    &mut protected_cells,
-                );
-                post_trap_branch = enforce_branching_targets(
-                    &mut tiles,
-                    &start,
-                    &goal,
-                    width,
-                    height,
-                    &mut attempt_rng,
-                    &mut protected_cells,
-                );
-                log_branching_snapshot(run_id, "post-shadow", attempt, &post_trap_branch);
-            }
-            let (bridge_min, bridge_max) = scale_range(4, 8);
-            let bridge_attempts = attempt_rng.random_int(bridge_min, bridge_max);
-            let bridge_exits = open_shadow_bridges(
-                &mut tiles,
-                &start,
-                &goal,
-                width,
-                height,
-                &mut attempt_rng,
-                bridge_attempts,
-                &mut protected_cells,
-            );
-            if !bridge_exits.is_empty() {
-                let weave_cells = weave_shadow_corridors(
-                    &mut tiles,
-                    &start,
-                    &goal,
-                    width,
-                    height,
-                    &mut attempt_rng,
-                    &bridge_exits,
-                    &mut protected_cells,
-                );
-                let corridor_cells = protect_shadow_corridor_regions(
-                    &tiles,
-                    &start,
-                    &goal,
-                    width,
-                    height,
-                    &bridge_exits,
-                    &mut protected_cells,
-                );
-                let loop_cells = graft_shadow_loops(
-                    &mut tiles,
-                    &start,
-                    &goal,
-                    width,
-                    height,
-                    &mut attempt_rng,
-                    &bridge_exits,
-                    &mut protected_cells,
-                );
-                if attempt % BRANCH_LOG_INTERVAL_ATTEMPTS == 0 {
-                    debug!(
-                        "[{}] shadow exits attempt {} │ exits={} weave_cells={} loop_cells={} protect_fill={}",
-                        run_id,
-                        attempt,
-                        bridge_exits.len(),
-                        weave_cells,
-                        loop_cells,
-                        corridor_cells
-                    );
-                }
-            }
-            // More attempts for longer parallel lanes (harder to place)
-            let detour_attempts = attempt_rng.random_int(8, 16);
-            let detour_cells = braid_parallel_tracks(
-                &mut tiles,
-                &start,
-                &goal,
-                width,
-                height,
-                &mut attempt_rng,
-                detour_attempts,
-                &mut protected_cells,
-            );
-            if detour_cells > 0 && attempt % BRANCH_LOG_INTERVAL_ATTEMPTS == 0 {
-                debug!(
-                    "[{}] shadow detours attempt {} │ detour_cells={}",
-                    run_id, attempt, detour_cells
-                );
-            }
-            let depth_target = if pre_trap_branch.depth_score > 0.0 {
-                pre_trap_branch.depth_score * 0.85
-            } else {
-                0.0
-            };
-            let choices_target = if pre_trap_branch.immediate_choices > 1 {
-                pre_trap_branch.immediate_choices
-            } else {
-                0
-            };
-            let depth_ok = post_trap_branch.depth_score >= depth_target;
-            let choices_ok = choices_target == 0
-                || post_trap_branch.immediate_choices >= (choices_target - 1).max(1);
+
             if late_stop_blocks < 0 {
                 late_stop_blocks = 0;
             }
-            if late_stop_blocks > 0 && depth_ok && choices_ok {
+            if late_stop_blocks > 0 {
                 add_stop_blocks(
                     &mut tiles,
                     &start,
@@ -5796,8 +4236,6 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                     late_stop_blocks,
                     &protected_cells,
                 );
-                post_trap_branch =
-                    capture_branching_snapshot(&tiles, &start, &goal, width, height);
             }
             
             // Always apply these structural elements (not randomized)
@@ -5835,18 +4273,6 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                 &protected_cells,
             );
 
-            let final_branch_snapshot =
-                enforce_branching_targets(
-                    &mut tiles,
-                    &start,
-                    &goal,
-                    width,
-                    height,
-                    &mut attempt_rng,
-                    &mut protected_cells,
-                );
-            log_branching_snapshot(run_id, "final", attempt, &final_branch_snapshot);
-
             let t_traps = t_pre_traps.elapsed();
 
             tiles[start.y as usize][start.x as usize] = TileType::Start;
@@ -5870,13 +4296,16 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
             }
 
             let t_pre_psych = Instant::now();
-            let psych_metrics = calculate_psychology_score(&tiles, &start, &goal, width, height);
+            let (psych_metrics, psych_timing) = calculate_psychology_score_timed(&tiles, &start, &goal, width, height);
             let t_psych = t_pre_psych.elapsed();
             
             // Record timing stats
             ctx_clone.time_base_maze_us.fetch_add(t_base.as_micros() as u64, Ordering::Relaxed);
             ctx_clone.time_traps_us.fetch_add(t_traps.as_micros() as u64, Ordering::Relaxed);
             ctx_clone.time_psych_score_us.fetch_add(t_psych.as_micros() as u64, Ordering::Relaxed);
+            ctx_clone.time_find_path_us.fetch_add(psych_timing.find_path_us, Ordering::Relaxed);
+            ctx_clone.time_count_paths_us.fetch_add(psych_timing.count_paths_us, Ordering::Relaxed);
+            ctx_clone.time_overlap_us.fetch_add(psych_timing.overlap_us, Ordering::Relaxed);
             
             // Track which prefilters fail (using per-run context)
             ctx_clone.total_checked.fetch_add(1, Ordering::Relaxed);

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
-import { Header, GameUI, ShareCard, StatsModal, HelpModal, MobileControls, ErrorBoundary, Loader } from '@/components';
+import { Header, GameUI, ShareCard, StatsModal, HelpModal, ErrorBoundary, Loader } from '@/components';
 import {
   getPuzzleNumber,
   onGameEvent,
@@ -95,6 +95,8 @@ export default function Home() {
   const cheatBufferRef = useRef('');
   const cheatTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const gameFrameRef = useRef<HTMLDivElement | null>(null);
+  const gameStageRef = useRef<HTMLDivElement | null>(null);
+  const [gameFrameSizePx, setGameFrameSizePx] = useState<{ width: number; height: number } | null>(null);
   const tapTimestampsRef = useRef<number[]>([]);
   const lastDevToolsTouchTsRef = useRef<number>(0);
   const devToolsTapTargetRef = useRef<HTMLDivElement | null>(null);
@@ -117,6 +119,63 @@ export default function Home() {
       window.removeEventListener('resize', setVH);
     };
   }, []);
+
+  const puzzleWidth = puzzle?.width ?? 10;
+  const puzzleHeight = puzzle?.height ?? 10;
+  // Add a small buffer so tiles aren't right up against the edge
+  const BUFFER = 16;
+  const baseWidth = puzzleWidth * TILE_SIZE + BUFFER * 2;
+  const baseHeight = puzzleHeight * TILE_SIZE + BUFFER * 2;
+
+  // Size the maze frame to the *actual available* game area so it can't expand underneath
+  // the header/footer when the viewport is short or zoomed.
+  useEffect(() => {
+    const stage = gameStageRef.current;
+    if (!stage) return;
+
+    let rafId: number | null = null;
+    const update = () => {
+      const computedStyle = window.getComputedStyle(stage);
+      const paddingX =
+        parseFloat(computedStyle.paddingLeft || '0') + parseFloat(computedStyle.paddingRight || '0');
+      const paddingY =
+        parseFloat(computedStyle.paddingTop || '0') + parseFloat(computedStyle.paddingBottom || '0');
+
+      const availableWidth = stage.clientWidth - paddingX;
+      const availableHeight = stage.clientHeight - paddingY;
+      if (availableWidth <= 0 || availableHeight <= 0) return;
+
+      const scale = Math.min(1, availableWidth / baseWidth, availableHeight / baseHeight);
+      const width = Math.max(1, Math.floor(baseWidth * scale));
+      const height = Math.max(1, Math.floor(baseHeight * scale));
+
+      setGameFrameSizePx((prev) => {
+        if (prev && prev.width === width && prev.height === height) return prev;
+        return { width, height };
+      });
+    };
+
+    const scheduleUpdate = () => {
+      if (rafId != null) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        update();
+      });
+    };
+
+    scheduleUpdate();
+    const resizeObserver = new ResizeObserver(scheduleUpdate);
+    resizeObserver.observe(stage);
+    window.visualViewport?.addEventListener('resize', scheduleUpdate);
+    window.addEventListener('resize', scheduleUpdate);
+
+    return () => {
+      if (rafId != null) cancelAnimationFrame(rafId);
+      resizeObserver.disconnect();
+      window.visualViewport?.removeEventListener('resize', scheduleUpdate);
+      window.removeEventListener('resize', scheduleUpdate);
+    };
+  }, [baseWidth, baseHeight]);
 
   // Secret cheat code listener (hash-based, code not in plain text)
   useEffect(() => {
@@ -164,15 +223,15 @@ export default function Home() {
   // Mobile tap-to-open dev tools (10 taps in 2 seconds on the scoreboard)
   const handleDevToolsTap = useCallback(() => {
     const now = Date.now();
-    
+
     // Filter out taps older than the window
     tapTimestampsRef.current = tapTimestampsRef.current.filter(
       (ts) => now - ts < TAP_WINDOW_MS
     );
-    
+
     // Add current tap
     tapTimestampsRef.current.push(now);
-    
+
     // Check if threshold reached
     if (tapTimestampsRef.current.length >= TAP_COUNT_THRESHOLD) {
       tapTimestampsRef.current = []; // Reset
@@ -239,8 +298,8 @@ export default function Home() {
     setIsPlaying(false);
 
     if (existingResult?.completed) {
-      setGameResult({ 
-        moveCount: existingResult.moveCount, 
+      setGameResult({
+        moveCount: existingResult.moveCount,
         timeMs: existingResult.timeMs,
         attempts: existingResult.attempts,
         failed: existingResult.failed,
@@ -264,17 +323,17 @@ export default function Home() {
     // Fetch daily puzzle: KV (pre-generated) → Rust → WASM fallback
     setIsGenerating(true);
     setGenerationProgress(null);
-    
+
     try {
       const { puzzle: todayPuzzle, source } = await fetchDailyPuzzle(todaySeed, (progress) => {
         setGenerationProgress(progress);
         setLastUsedBackend(progress.phase === 'kv' ? null : progress.phase);
       });
-      
+
       console.log(`[Daily] Loaded puzzle from ${source}`);
       setPuzzle(todayPuzzle);
       setRenderKey((prev) => prev + 1);
-      
+
       // Cache in localStorage for same-day revisits
       cachePuzzle(todaySeed, todayPuzzle);
     } finally {
@@ -285,16 +344,16 @@ export default function Home() {
 
   // Track if we've already initiated loading (prevent React Strict Mode double-call)
   const loadInitiatedRef = useRef(false);
-  
+
   // Initialize puzzle and stats - use requestAnimationFrame to ensure first paint
   useEffect(() => {
     // Prevent duplicate calls from React Strict Mode
     if (loadInitiatedRef.current) return;
     loadInitiatedRef.current = true;
-    
+
     // Preload WASM early for faster fallback if needed
     preloadWasm();
-    
+
     // Ensure the loading UI renders before starting heavy computation
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -377,10 +436,10 @@ export default function Home() {
       if (isDateSeed) {
         setIsGenerating(true);
         setGenerationProgress(null);
-        
+
         const targetDate = new Date(trimmed);
         const dailySeed = getDailySeed(targetDate);
-        
+
         try {
           const datedPuzzle = await generatePuzzleParallel(dailySeed, progressHandler, forceMapType, selectedBackend, startBatch);
           debugModeRef.current = true;
@@ -409,7 +468,7 @@ export default function Home() {
 
       setIsGenerating(true);
       setGenerationProgress(null);
-      
+
       try {
         const newPuzzle = await generatePuzzleParallel(newSeed, progressHandler, forceMapType, selectedBackend, startBatch);
         debugModeRef.current = true;
@@ -445,7 +504,7 @@ export default function Home() {
   const handleGameReady = useCallback((controls: GameControls) => {
     gameControlsRef.current = controls;
     setIsGameReady(true);
-    
+
     // Show help on first visit
     const hasSeenHelp = localStorage.getItem('mazle_seen_help');
     if (!hasSeenHelp) {
@@ -483,25 +542,20 @@ export default function Home() {
   }, [showAnalysis]);
 
   // Calculate progress percentage (works for both loading screen and dev tools)
-  const progressPercent = generationProgress 
+  const progressPercent = generationProgress
     ? Math.round((generationProgress.workersComplete / generationProgress.totalWorkers) * 100)
     : 0;
 
   if (!puzzle) {
     return (
       <main className={`${styles.main} bg-pattern`} style={{ justifyContent: 'center' }}>
-        <Loader 
-          text={isGenerating ? 'Generating daily puzzle...' : 'Loading puzzle...'} 
+        <Loader
+          text={isGenerating ? 'Generating daily puzzle...' : 'Loading puzzle...'}
           progress={isGenerating ? progressPercent : undefined}
         />
       </main>
     );
   }
-
-  const puzzleWidth = puzzle?.width ?? 10;
-  const puzzleHeight = puzzle?.height ?? 10;
-  const baseWidth = puzzleWidth * TILE_SIZE;
-  const baseHeight = puzzleHeight * TILE_SIZE;
 
   const isPostGame = !isPlaying && (!!gameResult || !!previousResult);
   const shouldBlur = showShareCard || (!isPlaying && isGameReady && !showInlineResult);
@@ -509,309 +563,314 @@ export default function Home() {
 
   return (
     <ErrorBoundary>
-    <main className={`${styles.main} bg-pattern`}>
-      <Header
-        streak={stats?.currentStreak || 0}
-        onHelpClick={() => setShowHelp(true)}
-        onStatsClick={() => setShowStats(true)}
-        logoRef={devToolsTapTargetRef}
-        logoClassName={styles.devToolsTapTarget}
-      />
+      <main className={`${styles.main} bg-pattern`}>
+        <Header
+          streak={stats?.currentStreak || 0}
+          onHelpClick={() => setShowHelp(true)}
+          onStatsClick={() => setShowStats(true)}
+          logoRef={devToolsTapTargetRef}
+          logoClassName={styles.devToolsTapTarget}
+        />
 
-      <div className={styles.gameWrapper}>
-        {showDevTools && (
-          <div
-            className={styles.devOverlay}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Dev Tools"
-          >
-            <div className={styles.devPanel} onClick={(e) => e.stopPropagation()}>
-              <div className={styles.devPanelHeader}>
-                <span className={styles.devPanelTitle}>🛠 Dev Tools</span>
-                <button 
-                  className={styles.devCloseButton}
-                  onClick={() => setShowDevTools(false)}
-                  title="Close"
-                >
-                  ✕
-                </button>
-              </div>
+        <div className={styles.gameWrapper}>
+          {showDevTools && (
+            <div
+              className={styles.devOverlay}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Dev Tools"
+            >
+              <div className={styles.devPanel} onClick={(e) => e.stopPropagation()}>
+                <div className={styles.devPanelHeader}>
+                  <span className={styles.devPanelTitle}>🛠 Dev Tools</span>
+                  <button
+                    className={styles.devCloseButton}
+                    onClick={() => setShowDevTools(false)}
+                    title="Close"
+                  >
+                    ✕
+                  </button>
+                </div>
 
-            {/* Seed Info */}
-            <div className={styles.devSeedInfo}>
-              <span className={styles.devSeedLabel}>
-                {puzzleLabel ?? `Daily #${puzzleNumber}`}
-              </span>
-              <span className={styles.devSeedValue}>{activeSeed || 'daily'}</span>
-            </div>
-            
-            {/* Core Stats - 3x2 grid */}
-            <div className={styles.devStatsGrid6}>
-              <div className={styles.devStatItem}>
-                <span className={styles.devStatValue} style={{ textTransform: 'uppercase' }}>
-                  {puzzle.mapType ?? 'ice'}
-                </span>
-                <span className={styles.devStatLabel}>Map</span>
-              </div>
-              <div className={styles.devStatItem}>
-                <span className={styles.devStatValue}>{puzzle.width}×{puzzle.height}</span>
-                <span className={styles.devStatLabel}>Size</span>
-              </div>
-              <div className={styles.devStatItem}>
-                <span className={styles.devStatValue}>{puzzle.optimalMoves}</span>
-                <span className={styles.devStatLabel}>Moves</span>
-              </div>
-              <div className={styles.devStatItem}>
-                <span className={styles.devStatValue}>{puzzle.difficultyScore ?? '—'}</span>
-                <span className={styles.devStatLabel}>Score</span>
-              </div>
-              <div className={styles.devStatItem}>
-                <span className={styles.devStatValue}>{puzzle.selectedBatch ?? '—'}</span>
-                <span className={styles.devStatLabel}>Batch</span>
-              </div>
-              <div className={styles.devStatItem}>
-                <span className={styles.devStatValue}>{puzzle.nearOptimalPaths ?? '—'}</span>
-                <span className={styles.devStatLabel}>Paths</span>
-              </div>
-            </div>
+                {/* Seed Info */}
+                <div className={styles.devSeedInfo}>
+                  <span className={styles.devSeedLabel}>
+                    {puzzleLabel ?? `Daily #${puzzleNumber}`}
+                  </span>
+                  <span className={styles.devSeedValue}>{activeSeed || 'daily'}</span>
+                </div>
 
-            {/* Key Metrics - 2x2 grid */}
-            <div className={styles.devMetricsSection}>
-              <div className={styles.devMetricsHeader}>
-                <span className={styles.devMetricsTitle}>Key Metrics</span>
-              </div>
-              <div className={styles.devMetricsGrid2x2}>
-                <div className={styles.devMetricItemPrimary}>
-                  <span className={styles.devMetricValue}>
-                    {puzzle.pathOverlap != null ? puzzle.pathOverlap.toFixed(2) : '—'}
-                  </span>
-                  <span className={styles.devMetricLabel}>Overlap Min</span>
+                {/* Core Stats - 3x2 grid */}
+                <div className={styles.devStatsGrid6}>
+                  <div className={styles.devStatItem}>
+                    <span className={styles.devStatValue} style={{ textTransform: 'uppercase' }}>
+                      {puzzle.mapType ?? 'ice'}
+                    </span>
+                    <span className={styles.devStatLabel}>Map</span>
+                  </div>
+                  <div className={styles.devStatItem}>
+                    <span className={styles.devStatValue}>{puzzle.width}×{puzzle.height}</span>
+                    <span className={styles.devStatLabel}>Size</span>
+                  </div>
+                  <div className={styles.devStatItem}>
+                    <span className={styles.devStatValue}>{puzzle.optimalMoves}</span>
+                    <span className={styles.devStatLabel}>Moves</span>
+                  </div>
+                  <div className={styles.devStatItem}>
+                    <span className={styles.devStatValue}>{puzzle.difficultyScore ?? '—'}</span>
+                    <span className={styles.devStatLabel}>Score</span>
+                  </div>
+                  <div className={styles.devStatItem}>
+                    <span className={styles.devStatValue}>{puzzle.selectedBatch ?? '—'}</span>
+                    <span className={styles.devStatLabel}>Batch</span>
+                  </div>
+                  <div className={styles.devStatItem}>
+                    <span className={styles.devStatValue}>{puzzle.nearOptimalPaths ?? '—'}</span>
+                    <span className={styles.devStatLabel}>Paths</span>
+                  </div>
                 </div>
-                <div className={styles.devMetricItemPrimary}>
-                  <span className={styles.devMetricValue}>
-                    {puzzle.pathOverlapAvg != null ? puzzle.pathOverlapAvg.toFixed(2) : '—'}
-                  </span>
-                  <span className={styles.devMetricLabel}>Overlap Avg</span>
-                </div>
-                <div className={styles.devMetricItemPrimary}>
-                  <span className={styles.devMetricValue}>
-                    {puzzle.earlyDivergence != null ? puzzle.earlyDivergence.toFixed(2) : '—'}
-                  </span>
-                  <span className={styles.devMetricLabel}>Early Div</span>
-                </div>
-                <div className={styles.devMetricItemPrimary}>
-                  <span className={styles.devMetricValue}>
-                    {puzzle.pathLocality != null ? puzzle.pathLocality.toFixed(2) : '—'}
-                  </span>
-                  <span className={styles.devMetricLabel}>Locality</span>
-                </div>
-              </div>
-            </div>
 
-            {/* Secondary Metrics - 2 column */}
-            <div className={styles.devMetricsSection}>
-              <div className={styles.devMetricsHeader}>
-                <span className={styles.devMetricsTitle}>Per-Move</span>
-              </div>
-              <div className={styles.devMetricsGrid2}>
-                <div className={styles.devMetricItemSecondary}>
-                  <span className={styles.devMetricValue}>{puzzle.directionChanges ?? '—'}</span>
-                  <span className={styles.devMetricLabel}>Dir Changes</span>
+                {/* Key Metrics - 2x2 grid */}
+                <div className={styles.devMetricsSection}>
+                  <div className={styles.devMetricsHeader}>
+                    <span className={styles.devMetricsTitle}>Key Metrics</span>
+                  </div>
+                  <div className={styles.devMetricsGrid2x2}>
+                    <div className={styles.devMetricItemPrimary}>
+                      <span className={styles.devMetricValue}>
+                        {puzzle.pathOverlap != null ? puzzle.pathOverlap.toFixed(2) : '—'}
+                      </span>
+                      <span className={styles.devMetricLabel}>Overlap Min</span>
+                    </div>
+                    <div className={styles.devMetricItemPrimary}>
+                      <span className={styles.devMetricValue}>
+                        {puzzle.pathOverlapAvg != null ? puzzle.pathOverlapAvg.toFixed(2) : '—'}
+                      </span>
+                      <span className={styles.devMetricLabel}>Overlap Avg</span>
+                    </div>
+                    <div className={styles.devMetricItemPrimary}>
+                      <span className={styles.devMetricValue}>
+                        {puzzle.earlyDivergence != null ? puzzle.earlyDivergence.toFixed(2) : '—'}
+                      </span>
+                      <span className={styles.devMetricLabel}>Early Div</span>
+                    </div>
+                    <div className={styles.devMetricItemPrimary}>
+                      <span className={styles.devMetricValue}>
+                        {puzzle.pathLocality != null ? puzzle.pathLocality.toFixed(2) : '—'}
+                      </span>
+                      <span className={styles.devMetricLabel}>Locality</span>
+                    </div>
+                  </div>
                 </div>
-                <div className={styles.devMetricItemSecondary}>
-                  <span className={styles.devMetricValue}>
-                    {puzzle.decisionAmbiguity != null ? puzzle.decisionAmbiguity.toFixed(1) : '—'}
-                  </span>
-                  <span className={styles.devMetricLabel}>Ambiguity</span>
-                </div>
-              </div>
-            </div>
 
-            {/* Legacy Metrics (Collapsed) */}
-            <details className={styles.devMetricsCollapsible}>
-              <summary className={styles.devMetricsSummary}>
-                <span className={styles.devMetricsTitle}>Legacy Metrics</span>
-              </summary>
-              <div className={styles.devMetricsGrid3}>
-                <div className={styles.devMetricItemTertiary}>
-                  <span className={styles.devMetricValue}>{puzzle.counterIntuitiveMoves ?? '—'}</span>
-                  <span className={styles.devMetricLabel}>CI</span>
+                {/* Secondary Metrics - 2 column */}
+                <div className={styles.devMetricsSection}>
+                  <div className={styles.devMetricsHeader}>
+                    <span className={styles.devMetricsTitle}>Per-Move</span>
+                  </div>
+                  <div className={styles.devMetricsGrid2}>
+                    <div className={styles.devMetricItemSecondary}>
+                      <span className={styles.devMetricValue}>{puzzle.directionChanges ?? '—'}</span>
+                      <span className={styles.devMetricLabel}>Dir Changes</span>
+                    </div>
+                    <div className={styles.devMetricItemSecondary}>
+                      <span className={styles.devMetricValue}>
+                        {puzzle.decisionAmbiguity != null ? puzzle.decisionAmbiguity.toFixed(1) : '—'}
+                      </span>
+                      <span className={styles.devMetricLabel}>Ambiguity</span>
+                    </div>
+                  </div>
                 </div>
-                <div className={styles.devMetricItemTertiary}>
-                  <span className={styles.devMetricValue}>{puzzle.attractiveDecoys ?? '—'}</span>
-                  <span className={styles.devMetricLabel}>Decoys</span>
-                </div>
-                <div className={styles.devMetricItemTertiary}>
-                  <span className={styles.devMetricValue}>{puzzle.commitmentGates ?? '—'}</span>
-                  <span className={styles.devMetricLabel}>Gates</span>
-                </div>
-                <div className={styles.devMetricItemTertiary}>
-                  <span className={styles.devMetricValue}>{puzzle.falseProgressPaths ?? '—'}</span>
-                  <span className={styles.devMetricLabel}>False Prog</span>
-                </div>
-                <div className={styles.devMetricItemTertiary}>
-                  <span className={styles.devMetricValue}>{puzzle.backtrackDepth ?? '—'}</span>
-                  <span className={styles.devMetricLabel}>Backtrack</span>
-                </div>
-              </div>
-            </details>
 
-            {/* Maze Engine Selector */}
-            <div className={styles.devBackendSection}>
-              <div className={styles.devBackendHeader}>
-                Maze Engine
-                {lastUsedBackend && (
-                  <span className={styles.devBackendStatus}>
-                    {lastUsedBackend === 'rust-backend' ? '🦀 Rust' : 'WASM'}
-                  </span>
+                {/* Legacy Metrics (Collapsed) */}
+                <details className={styles.devMetricsCollapsible}>
+                  <summary className={styles.devMetricsSummary}>
+                    <span className={styles.devMetricsTitle}>Legacy Metrics</span>
+                  </summary>
+                  <div className={styles.devMetricsGrid3}>
+                    <div className={styles.devMetricItemTertiary}>
+                      <span className={styles.devMetricValue}>{puzzle.counterIntuitiveMoves ?? '—'}</span>
+                      <span className={styles.devMetricLabel}>CI</span>
+                    </div>
+                    <div className={styles.devMetricItemTertiary}>
+                      <span className={styles.devMetricValue}>{puzzle.attractiveDecoys ?? '—'}</span>
+                      <span className={styles.devMetricLabel}>Decoys</span>
+                    </div>
+                    <div className={styles.devMetricItemTertiary}>
+                      <span className={styles.devMetricValue}>{puzzle.commitmentGates ?? '—'}</span>
+                      <span className={styles.devMetricLabel}>Gates</span>
+                    </div>
+                    <div className={styles.devMetricItemTertiary}>
+                      <span className={styles.devMetricValue}>{puzzle.falseProgressPaths ?? '—'}</span>
+                      <span className={styles.devMetricLabel}>False Prog</span>
+                    </div>
+                    <div className={styles.devMetricItemTertiary}>
+                      <span className={styles.devMetricValue}>{puzzle.backtrackDepth ?? '—'}</span>
+                      <span className={styles.devMetricLabel}>Backtrack</span>
+                    </div>
+                  </div>
+                </details>
+
+                {/* Maze Engine Selector */}
+                <div className={styles.devBackendSection}>
+                  <div className={styles.devBackendHeader}>
+                    Maze Engine
+                    {lastUsedBackend && (
+                      <span className={styles.devBackendStatus}>
+                        {lastUsedBackend === 'rust-backend' ? '🦀 Rust' : 'WASM'}
+                      </span>
+                    )}
+                  </div>
+                  <div className={styles.devBackendOptions}>
+                    <label className={styles.devBackendOption}>
+                      <input
+                        type="radio"
+                        name="engine"
+                        value="auto"
+                        checked={selectedBackend === 'auto'}
+                        onChange={() => setSelectedBackend('auto')}
+                        disabled={isGenerating}
+                      />
+                      <span>Auto</span>
+                    </label>
+                    <label
+                      className={`${styles.devBackendOption} ${!isRustBackendConfigured() ? styles.devBackendDisabled : ''}`}
+                      title={isRustBackendConfigured() ? 'Rust server (fastest, parallel)' : 'Not configured (set NEXT_PUBLIC_GENERATOR_URL)'}
+                    >
+                      <input
+                        type="radio"
+                        name="engine"
+                        value="rust"
+                        checked={selectedBackend === 'rust'}
+                        onChange={() => setSelectedBackend('rust')}
+                        disabled={isGenerating || !isRustBackendConfigured()}
+                      />
+                      <span>🦀 Rust</span>
+                    </label>
+                    <label
+                      className={styles.devBackendOption}
+                      title="Browser WASM (parallel via Web Workers)"
+                    >
+                      <input
+                        type="radio"
+                        name="engine"
+                        value="wasm"
+                        checked={selectedBackend === 'wasm'}
+                        onChange={() => setSelectedBackend('wasm')}
+                        disabled={isGenerating}
+                      />
+                      <span>WASM</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Controls */}
+                <div className={styles.devControls}>
+                  <input
+                    value={seedInput}
+                    onChange={(e) => setSeedInput(e.target.value)}
+                    placeholder="Custom seed or YYYY-MM-DD"
+                    className={styles.devInput}
+                    disabled={isGenerating}
+                  />
+                  <div className={styles.devInputRow}>
+                    <select
+                      value={selectedMapType}
+                      onChange={(e) => setSelectedMapType(e.target.value as MapType | 'random')}
+                      className={styles.devSelect}
+                      disabled={isGenerating}
+                    >
+                      <option value="random">Random Map</option>
+                      <option value={MapType.ICE}>Ice Map</option>
+                      <option value={MapType.GROUND}>Ground Map</option>
+                    </select>
+                    <input
+                      value={startBatchInput}
+                      onChange={(e) => setStartBatchInput(e.target.value.replace(/\D/g, ''))}
+                      placeholder="Start batch #"
+                      className={styles.devInputSmall}
+                      disabled={isGenerating}
+                      title="Start generation at a specific batch number (deterministic)"
+                    />
+                  </div>
+                  <div className={styles.devButtonRow}>
+                    <button
+                      type="button"
+                      className={styles.devButton}
+                      onClick={() => handleDevSeedGenerate(seedInput)}
+                      disabled={isGenerating}
+                    >
+                      Load
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.devButtonSecondary}
+                      onClick={() => handleDevSeedGenerate()}
+                      disabled={isGenerating}
+                    >
+                      {isGenerating ? (
+                        <span className={styles.buttonSpinner} />
+                      ) : (
+                        '🎲 Random'
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.devButtonGhost}
+                      onClick={handleLoadDaily}
+                      disabled={isGenerating}
+                    >
+                      ↩ Daily
+                    </button>
+                  </div>
+                </div>
+
+                {/* Generation Progress */}
+                {isGenerating && generationProgress && (
+                  <div className={styles.devProgress}>
+                    <div className={styles.devProgressHeader}>
+                      {generationProgress.phase === 'rust-backend'
+                        ? `🦀 Generating... ${progressPercent}%`
+                        : `⚡ Generating... ${progressPercent}%`}
+                    </div>
+                    <div className={styles.progressBar}>
+                      <div
+                        className={styles.progressFill}
+                        style={{ width: `${progressPercent}%` }}
+                      />
+                    </div>
+                  </div>
                 )}
-              </div>
-              <div className={styles.devBackendOptions}>
-                <label className={styles.devBackendOption}>
-                  <input
-                    type="radio"
-                    name="engine"
-                    value="auto"
-                    checked={selectedBackend === 'auto'}
-                    onChange={() => setSelectedBackend('auto')}
-                    disabled={isGenerating}
-                  />
-                  <span>Auto</span>
-                </label>
-                <label 
-                  className={`${styles.devBackendOption} ${!isRustBackendConfigured() ? styles.devBackendDisabled : ''}`}
-                  title={isRustBackendConfigured() ? 'Rust server (fastest, parallel)' : 'Not configured (set NEXT_PUBLIC_GENERATOR_URL)'}
-                >
-                  <input
-                    type="radio"
-                    name="engine"
-                    value="rust"
-                    checked={selectedBackend === 'rust'}
-                    onChange={() => setSelectedBackend('rust')}
-                    disabled={isGenerating || !isRustBackendConfigured()}
-                  />
-                  <span>🦀 Rust</span>
-                </label>
-                <label 
-                  className={styles.devBackendOption}
-                  title="Browser WASM (parallel via Web Workers)"
-                >
-                  <input
-                    type="radio"
-                    name="engine"
-                    value="wasm"
-                    checked={selectedBackend === 'wasm'}
-                    onChange={() => setSelectedBackend('wasm')}
-                    disabled={isGenerating}
-                  />
-                  <span>WASM</span>
-                </label>
-              </div>
-            </div>
 
-            {/* Controls */}
-            <div className={styles.devControls}>
-              <input
-                value={seedInput}
-                onChange={(e) => setSeedInput(e.target.value)}
-                placeholder="Custom seed or YYYY-MM-DD"
-                className={styles.devInput}
-                disabled={isGenerating}
-              />
-              <div className={styles.devInputRow}>
-                <select
-                  value={selectedMapType}
-                  onChange={(e) => setSelectedMapType(e.target.value as MapType | 'random')}
-                  className={styles.devSelect}
-                  disabled={isGenerating}
-                >
-                  <option value="random">Random Map</option>
-                  <option value={MapType.ICE}>Ice Map</option>
-                  <option value={MapType.GROUND}>Ground Map</option>
-                </select>
-                <input
-                  value={startBatchInput}
-                  onChange={(e) => setStartBatchInput(e.target.value.replace(/\D/g, ''))}
-                  placeholder="Start batch #"
-                  className={styles.devInputSmall}
-                  disabled={isGenerating}
-                  title="Start generation at a specific batch number (deterministic)"
-                />
-              </div>
-              <div className={styles.devButtonRow}>
-                <button
-                  type="button"
-                  className={styles.devButton}
-                  onClick={() => handleDevSeedGenerate(seedInput)}
-                  disabled={isGenerating}
-                >
-                  Load
-                </button>
-                <button
-                  type="button"
-                  className={styles.devButtonSecondary}
-                  onClick={() => handleDevSeedGenerate()}
-                  disabled={isGenerating}
-                >
-                  {isGenerating ? (
-                    <span className={styles.buttonSpinner} />
-                  ) : (
-                    '🎲 Random'
-                  )}
-                </button>
-                <button 
-                  type="button" 
-                  className={styles.devButtonGhost} 
-                  onClick={handleLoadDaily}
-                  disabled={isGenerating}
-                >
-                  ↩ Daily
-                </button>
+                <p className={styles.devHint}>Dev runs are not saved to stats</p>
               </div>
             </div>
-            
-            {/* Generation Progress */}
-            {isGenerating && generationProgress && (
-              <div className={styles.devProgress}>
-                <div className={styles.devProgressHeader}>
-                  {generationProgress.phase === 'rust-backend' 
-                    ? `🦀 Generating... ${progressPercent}%` 
-                    : `⚡ Generating... ${progressPercent}%`}
-                </div>
-                <div className={styles.progressBar}>
-                  <div 
-                    className={styles.progressFill} 
-                    style={{ width: `${progressPercent}%` }} 
-                  />
-                </div>
-              </div>
-            )}
-            
-            <p className={styles.devHint}>Dev runs are not saved to stats</p>
-            </div>
+          )}
+
+          {/* Puzzle Number - separate from stats for better spacing */}
+          <div className={styles.puzzleNumberBanner}>
+            <span className={styles.puzzleNumberText}>
+              {puzzleLabel ?? `#${puzzleNumber}`}
+            </span>
           </div>
-        )}
 
-        <div>
           <GameUI
             puzzleNumber={puzzleNumber}
             puzzleLabel={puzzleLabel ?? undefined}
             optimalMoves={puzzle.optimalMoves}
             variant="header"
+            hidePuzzleNumber={true}
           />
-        </div>
-        
-        <div
-          ref={gameFrameRef}
-          className={styles.gameFrame}
-          style={{
-            maxWidth: `${baseWidth}px`,
-            aspectRatio: `${baseWidth} / ${baseHeight}`,
-          }}
-        >
-            <div className={styles.gameContainer}>
-            <div className={`${styles.gameContent} ${shouldBlur ? styles.blurred : ''}`}>
+
+          <div ref={gameStageRef} className={styles.gameArea}>
+            <div
+              ref={gameFrameRef}
+              className={styles.gameFrame}
+              style={{
+                width: gameFrameSizePx ? `${gameFrameSizePx.width}px` : undefined,
+                height: gameFrameSizePx ? `${gameFrameSizePx.height}px` : undefined,
+              }}
+            >
               <PhaserGame
                 key={renderKey}
                 puzzle={puzzle}
@@ -819,64 +878,60 @@ export default function Home() {
                 viewportHeight={baseHeight}
                 onReady={handleGameReady}
               />
-            </div>
-            {lifeFlash && <div className={styles.lifeFlash} />}
-          </div>
-          {!isPlaying && isGameReady && !showInlineResult && !showShareCard && (
-            <div className={styles.startOverlay}>
-              {previousResult ? (
-                <div className={styles.previousResult}>
-                  <p>You already completed today&apos;s puzzle!</p>
-                  <button onClick={handleViewResult} className={styles.viewResultButton}>
-                    View Result
-                  </button>
+              {shouldBlur && <div className={styles.blurOverlay} />}
+              {lifeFlash && <div className={styles.lifeFlash} />}
+              {!isPlaying && isGameReady && !showInlineResult && !showShareCard && (
+                <div className={styles.startOverlay}>
+                  {previousResult ? (
+                    <div className={styles.previousResult}>
+                      <p>You already completed today&apos;s puzzle!</p>
+                      <button onClick={handleViewResult} className={styles.viewResultButton}>
+                        View Result
+                      </button>
+                    </div>
+                  ) : (
+                    <button className={styles.startButton} onClick={handleBegin}>
+                      Begin
+                    </button>
+                  )}
                 </div>
-              ) : (
-                <button className={styles.startButton} onClick={handleBegin}>
-                  Begin
-                </button>
               )}
             </div>
-          )}
+          </div>
+
+          <div className={styles.controlsArea}>
+            {showResultsButton && (
+              <button className={styles.shareButton} onClick={handleShowShareCard}>
+                Share Score
+              </button>
+            )}
+          </div>
         </div>
 
-        <MobileControls
-          showResults={showResultsButton}
-          onShowResults={handleShowShareCard}
-        />
-        <div className={styles.desktopShareSlot}>
-          {showInlineResult && gameResult && !showShareCard && (
-            <button className={styles.desktopShareButton} onClick={handleShowShareCard}>
-              Share Score
-            </button>
-          )}
-        </div>
-      </div>
+        <footer className={styles.footer}>
+          <p>Use arrow keys or swipe to move</p>
+        </footer>
 
-      <footer className={styles.footer}>
-        <p>Use arrow keys or swipe to move</p>
-      </footer>
+        {/* Modals */}
+        {showShareCard && gameResult && (
+          <ShareCard
+            puzzleNumber={puzzleNumber}
+            puzzleLabel={puzzleLabel ?? undefined}
+            moveCount={gameResult.moveCount}
+            timeMs={gameResult.timeMs}
+            optimalMoves={puzzle.optimalMoves}
+            failed={gameResult.failed}
+            attempts={gameResult.attempts}
+            onClose={handleCloseShareCard}
+          />
+        )}
 
-      {/* Modals */}
-      {showShareCard && gameResult && (
-        <ShareCard
-          puzzleNumber={puzzleNumber}
-          puzzleLabel={puzzleLabel ?? undefined}
-          moveCount={gameResult.moveCount}
-          timeMs={gameResult.timeMs}
-          optimalMoves={puzzle.optimalMoves}
-          failed={gameResult.failed}
-          attempts={gameResult.attempts}
-          onClose={handleCloseShareCard}
-        />
-      )}
+        {showStats && stats && (
+          <StatsModal stats={stats} onClose={() => setShowStats(false)} />
+        )}
 
-      {showStats && stats && (
-        <StatsModal stats={stats} onClose={() => setShowStats(false)} />
-      )}
-
-      {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
-    </main>
+        {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
+      </main>
     </ErrorBoundary>
   );
 }

@@ -11,9 +11,10 @@ interface GameUIProps {
   puzzleLabel?: string;
   optimalMoves: number;
   variant?: 'header' | 'footer';
+  hidePuzzleNumber?: boolean;
 }
 
-export default function GameUI({ puzzleNumber, puzzleLabel, optimalMoves, variant = 'header' }: GameUIProps) {
+export default function GameUI({ puzzleNumber, puzzleLabel, optimalMoves, variant = 'header', hidePuzzleNumber = false }: GameUIProps) {
   const [currentAttemptMoves, setCurrentAttemptMoves] = useState(0);
   const [lives, setLives] = useState(3);
   const [elapsedTime, setElapsedTime] = useState(0);
@@ -32,12 +33,12 @@ export default function GameUI({ puzzleNumber, puzzleLabel, optimalMoves, varian
       setStartTime(state.startTime);
       setPenaltyTimeMs(state.penaltyTimeMs);
       setIsComplete(state.isComplete);
-      
+
       if (state.startTime === 0) {
         setElapsedTime(0);
       }
     });
-    
+
     const unsubscribeComplete = onGameEvent('gameComplete', () => {
       setIsComplete(true);
     });
@@ -48,9 +49,9 @@ export default function GameUI({ puzzleNumber, puzzleLabel, optimalMoves, varian
     });
 
     return () => {
-        unsubscribeState();
-        unsubscribeComplete();
-        unsubscribeLifeLost();
+      unsubscribeState();
+      unsubscribeComplete();
+      unsubscribeLifeLost();
     };
   }, []);
 
@@ -84,22 +85,24 @@ export default function GameUI({ puzzleNumber, puzzleLabel, optimalMoves, varian
   // Header Variant (Lives, Time, Puzzle Info)
   return (
     <div className={styles.headerContainer}>
-      <div className={styles.puzzleInfo}>
-        <span className={styles.puzzleNumber}>{displayLabel}</span>
-      </div>
-      
+      {!hidePuzzleNumber && (
+        <div className={styles.puzzleInfo}>
+          <span className={styles.puzzleNumber}>{displayLabel}</span>
+        </div>
+      )}
+
       <div className={styles.statsRow}>
         {/* Lives */}
         <div className={styles.statGroup}>
-            <div className={styles.livesContainer}>
-                {Array.from({ length: 3 }).map((_, i) => (
-                    <div 
-                        key={i} 
-                        className={`${styles.lifeNode} ${i < lives ? styles.lifeActive : styles.lifeLost}`}
-                    />
-                ))}
-            </div>
-            <span className={styles.statLabel}>LIVES</span>
+          <div className={styles.livesContainer}>
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div
+                key={i}
+                className={`${styles.lifeNode} ${i < lives ? styles.lifeActive : styles.lifeLost}`}
+              />
+            ))}
+          </div>
+          <span className={styles.statLabel}>LIVES</span>
         </div>
 
         {/* Divider */}
@@ -118,9 +121,9 @@ export default function GameUI({ puzzleNumber, puzzleLabel, optimalMoves, varian
         <div className={styles.statGroup}>
           <span className={`${styles.statValue} ${penaltyFlash ? styles.penaltyFlash : ''}`}>{formatTime(totalDisplayTime)}</span>
           <span className={styles.statLabel}>TIME</span>
-          
+
           {/* Penalty Tooltip */}
-          <span 
+          <span
             className={styles.infoIcon}
             onMouseEnter={() => setShowTooltip(true)}
             onMouseLeave={() => setShowTooltip(false)}

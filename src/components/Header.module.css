@@ -73,3 +73,29 @@
     height: 20px;
   }
 }
+
+/* Compact mode for 1024×768-class viewports (e.g., iPad landscape / smaller windows) */
+@media (max-height: 820px) and (min-height: 741px) {
+  .header {
+    padding: 0.5rem 0.75rem;
+  }
+
+  .logoText {
+    font-size: 1.6rem;
+  }
+
+  .iconButton {
+    padding: 0.35rem;
+  }
+}
+
+/* Mobile - bigger logo */
+@media (max-width: 768px) {
+  .header {
+    padding: 1rem 1rem 0.5rem;
+  }
+
+  .logoText {
+    font-size: 2.4rem;
+  }
+}

@@ -9,7 +9,7 @@
   min-height: 90px;
 }
 
-@media (max-width: 768px), (pointer: coarse) {
+@media (max-width: 768px) {
   .container {
     display: flex;
   }

@@ -2,7 +2,8 @@
   height: var(--vh);
   min-height: var(--vh);
   position: relative;
-  overflow: hidden; /* Prevent scrolling on mobile */
+  overflow: hidden;
+  /* Prevent scrolling on mobile */
   display: flex;
   flex-direction: column;
   touch-action: none;
@@ -14,8 +15,8 @@
   flex-direction: column;
   align-items: center;
   min-height: 0;
-  padding: 1rem;
-  gap: 0.1rem;
+  padding: 0.5rem;
+  gap: 0.25rem;
 }
 
 .devToolsTapTarget {
@@ -41,8 +42,13 @@
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 .devPanel {
@@ -69,6 +75,7 @@
     opacity: 0;
     transform: translateY(-10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -558,33 +565,59 @@
   transform: none;
 }
 
+/* Game Area - centers the game frame, takes remaining space */
+.gameArea {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  padding: 0.25rem;
+  overflow: hidden;
+  /* This is key - establish a containing block with explicit dimensions */
+  position: relative;
+}
+
+/* Game Frame - shrink-wraps the canvas */
 .gameFrame {
   position: relative;
-  width: 100%;
-  margin: 0 auto;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.gameContainer {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  justify-content: center;
   border-radius: 10px;
   overflow: hidden;
-  /* Removed border for floating effect */
-  /* Removed background for floating effect (Phaser canvas handles its own background) */
-  position: relative;
+  /* Don't set explicit width/height - let it shrink-wrap the canvas */
+  max-width: 100%;
+  max-height: 100%;
+  /* inline-flex makes it shrink to content size */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
+/* Canvas styling - fill the frame, constrained by frame's max dimensions */
+.gameFrame :global(canvas) {
+  display: block;
+  border-radius: 10px;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+/* Blur overlay - separate element, not on container */
+.blurOverlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 10px;
+  z-index: 5;
+  pointer-events: none;
+}
+
+/* Life flash overlay */
 .lifeFlash {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  inset: 0;
   background: #ef476f;
   pointer-events: none;
   z-index: 15;
@@ -593,37 +626,74 @@
 }
 
 @keyframes flashFade {
-  0%, 100% { opacity: 0; }
-  50% { opacity: 0.3; }
+
+  0%,
+  100% {
+    opacity: 0;
+  }
+
+  50% {
+    opacity: 0.3;
+  }
 }
 
-.gameContent {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  transition: filter 0.15s cubic-bezier(0.4, 0, 0.2, 1);
-  border-radius: 10px;
-}
-
-.blurred {
-  filter: blur(20px) brightness(0.6) grayscale(0.2);
-  transition: filter 0.15s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: inset 0 0 30px 20px var(--color-background);
-}
-
+/* Start/Result overlay - sits above blur */
 .startOverlay {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 10;
   border-radius: 10px;
+}
+
+/* Controls area - fixed height slot for share button */
+.controlsArea {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: 48px;
+  padding: 0.25rem 0;
+}
+
+/* Unified share button (works on all devices) */
+.shareButton {
+  background: var(--color-primary);
+  color: var(--color-background);
+  border: 2px solid var(--color-primary);
+  border-radius: 10px;
+  padding: 0.65rem 1.25rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  font-family: var(--font-main);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  box-shadow: 0 3px 10px rgba(99, 102, 241, 0.25);
+  transition: all 0.2s;
+  animation: popIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.shareButton:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.4);
+}
+
+.shareButton:active {
+  transform: translateY(0);
+}
+
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .startButton {
@@ -636,7 +706,7 @@
   border: 2px solid var(--color-border);
   border-radius: 14px;
   cursor: pointer;
-  box-shadow: 0 10px 24px rgba(0,0,0,0.12);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -645,7 +715,7 @@
 
 .startButton:hover {
   transform: translateY(-2px) scale(1.02);
-  box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
   background: var(--color-primary);
   color: var(--color-background);
   border-color: var(--color-primary);
@@ -653,7 +723,7 @@
 
 .startButton:active {
   transform: translateY(0) scale(0.98);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
 }
 
 .loading {
@@ -709,8 +779,13 @@
 }
 
 @keyframes indeterminate {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(350%); }
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(350%);
+  }
 }
 
 .previousResult {
@@ -720,7 +795,7 @@
   border-radius: 14px;
   border: 2px solid var(--color-border);
   backdrop-filter: blur(4px);
-  box-shadow: 0 16px 40px rgba(0,0,0,0.3);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
   width: 80%;
   max-width: 300px;
   font-family: var(--font-main);
@@ -750,45 +825,12 @@
 
 .viewResultButton:hover {
   transform: translateY(-2px) scale(1.02);
-  box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
   background: var(--color-primary);
   color: var(--color-background);
   border-color: var(--color-primary);
 }
 
-.desktopShareButton {
-  margin-top: 0.75rem;
-  padding: 0.7rem 1.2rem;
-  background: var(--color-primary);
-  color: var(--color-background);
-  border: 1px solid var(--color-primary);
-  border-radius: 10px;
-  font-family: var(--font-main);
-  font-weight: 800;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  cursor: pointer;
-  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.25);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-  align-self: center;
-}
-
-.desktopShareButton:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 10px 24px rgba(99, 102, 241, 0.35);
-}
-
-.desktopShareButton:active {
-  transform: translateY(0);
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
-}
-
-.desktopShareSlot {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 56px;
-}
 
 .inlineResultContainer {
   width: 100%;
@@ -803,20 +845,15 @@
     opacity: 0;
     transform: translateY(-100px) scale(0.95);
   }
+
   70% {
     transform: translateY(10px) scale(1.02);
   }
+
   100% {
     opacity: 1;
     transform: translateY(0) scale(1);
   }
-}
-
-.footer {
-  text-align: center;
-  padding: 1rem;
-  color: var(--color-secondary);
-  font-size: 0.75rem;
 }
 
 @keyframes slideIn {
@@ -824,109 +861,118 @@
     transform: translateY(-10px);
     opacity: 0;
   }
+
   to {
     transform: translateY(0);
     opacity: 1;
   }
 }
 
-/* Desktop layout */
+/* ===========================================
+   RESPONSIVE LAYOUT - Mobile First
+   =========================================== */
+
+/* Footer - hidden on mobile by default */
+.footer {
+  display: none;
+  text-align: center;
+  padding: 0.5rem 1rem;
+  color: var(--color-secondary);
+  font-size: 0.75rem;
+}
+
+/* Desktop (769px+) - show footer, more padding */
 @media (min-width: 769px) {
   .gameWrapper {
-    padding: 1.5rem;
-    justify-content: center;
+    padding: 1rem;
+    gap: 0.5rem;
   }
 
-  .gameFrame {
-    flex: 0 1 auto;
-    height: auto;
-    width: auto;
-    max-width: 100%;
-    max-height: min(70vh, 600px);
-    /* Ensure it doesn't exceed its aspect ratio container */
-    aspect-ratio: auto; 
+  .gameArea {
+    padding: 0.5rem;
+  }
+
+  .footer {
+    display: block;
   }
 
   .devPanel {
     max-width: 480px;
   }
 
-  /* Hide footer on shorter desktop screens to prevent clipping */
-  @media (max-height: 850px) {
-    .footer {
-      display: none;
-    }
-  }
-
   .devStatsGrid {
-    grid-template-columns: repeat(4, 1fr);
-  }
-
-  .devPsychGrid {
     grid-template-columns: repeat(4, 1fr);
   }
 }
 
-/* Mobile layout */
+/* Mobile - better vertical spacing */
 @media (max-width: 768px) {
+  .gameWrapper {
+    gap: 0;
+    padding: 0.75rem 0.25rem 0.5rem;
+    justify-content: flex-start;
+  }
+
+  .gameArea {
+    flex: 0 0 auto;
+    padding: 0;
+  }
+
+  .controlsArea {
+    margin-top: 1.25rem;
+    min-height: 60px;
+    padding: 0.5rem 0;
+  }
+
+  .shareButton {
+    padding: 0.85rem 1.75rem;
+    font-size: 1rem;
+  }
+
+  .puzzleNumberBanner {
+    margin-bottom: 0.5rem;
+  }
+
+  .puzzleNumberText {
+    font-size: 1.6rem;
+  }
+}
+
+/* Puzzle Number Banner - sits between header and stats */
+.puzzleNumberBanner {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0.25rem 0;
+}
+
+.puzzleNumberText {
+  font-family: var(--font-main);
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--color-text);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* Short screens - reduce header impact */
+@media (max-height: 600px) {
   .gameWrapper {
     padding: 0.25rem;
     gap: 0;
   }
-  
-  .gameFrame {
-    /* Use flex-basis or allow it to grow to fill available space */
-    flex: 0 1 auto;
-    width: 100%;
-    max-width: 100%;
-    /* Remove strict max-height cap to let flexbox handle distribution */
-    max-height: none; 
-    min-height: 0; /* Important for nested flex scroll containers */
-  }
-  
-  .footer {
-    display: none;
-  }
-  
-  .desktopShareButton {
-    display: none;
-  }
-  
-  .desktopShareSlot {
-    display: none;
-  }
-}
 
-/* Height-based adjustments for short screens (iPhone SE, etc.) */
-@media (max-height: 740px) {
-  .gameWrapper {
-    padding: 0; /* Minimal padding */
-  }
-  
-  .gameFrame {
-    flex: 0 1 auto;
-    width: 100%;
-    max-width: 100%;
-  }
-}
-
-/* Landscape mode adjustments */
-@media (max-height: 500px) and (orientation: landscape) {
-  .gameWrapper {
-    flex-direction: row;
-    padding: 0.5rem;
-    gap: 1rem;
-  }
-  
-  .gameFrame {
-    height: 100%;
-    width: auto;
-    max-height: 100%;
-    aspect-ratio: auto; /* Let height drive width */
+  .gameArea {
+    padding: 0;
   }
 
-  .desktopShareButton,
-  .desktopShareSlot {
-    display: none;
+  .controlsArea {
+    min-height: 40px;
+    padding: 0.125rem 0;
+  }
+
+  .shareButton {
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
   }
 }

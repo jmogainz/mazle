@@ -10,6 +10,8 @@ export interface GameControls {
   movePlayer: (dir: Direction) => void;
   start: () => void;
   showAnalysis: (attempts: any[]) => void;
+  getSerializableState: () => ReturnType<GameScene['getSerializableState']> | null;
+  restoreState: (state: Parameters<GameScene['restoreState']>[0]) => void;
 }
 
 interface PhaserGameProps {
@@ -29,10 +31,10 @@ export interface PhaserGameRef {
 export default function PhaserGame({ puzzle, viewportWidth, viewportHeight, onReady }: PhaserGameProps) {
   const gameContainerRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
-  
+
   const baseWidth = viewportWidth ?? Math.max(420, puzzle.width * TILE_SIZE + 64);
   const baseHeight = viewportHeight ?? Math.max(520, puzzle.height * TILE_SIZE + 120);
-  
+
   const getControls = useCallback((): GameControls => ({
     restart: () => {
       const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;
@@ -50,11 +52,20 @@ export default function PhaserGame({ puzzle, viewportWidth, viewportHeight, onRe
       const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;
       scene?.showAnalysis(attempts);
     },
+    getSerializableState: () => {
+      const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;
+      return scene?.getSerializableState() ?? null;
+    },
+    restoreState: (state) => {
+      const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;
+      scene?.restoreState(state);
+    },
   }), []);
+
 
   useEffect(() => {
     if (!gameContainerRef.current) return;
-    
+
     // Avoid duplicate initialization
     if (gameRef.current) {
       const game = gameRef.current;
@@ -75,7 +86,7 @@ export default function PhaserGame({ puzzle, viewportWidth, viewportHeight, onRe
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
       navigator.userAgent
     ) || window.innerWidth <= 768;
-    
+
     const config: Phaser.Types.Core.GameConfig = {
       type: isMobile ? Phaser.CANVAS : Phaser.WEBGL, // Canvas on mobile for stability, WebGL on desktop for performance
       parent: gameContainerRef.current,
@@ -104,11 +115,11 @@ export default function PhaserGame({ puzzle, viewportWidth, viewportHeight, onRe
 
     const game = new Phaser.Game(config);
     gameRef.current = game;
-    
+
     // Add scene immediately after game creation, then start it
     game.scene.add('GameScene', GameScene, false);
     game.scene.start('GameScene', { puzzle });
-    
+
     // Notify when ready (use a small delay to ensure scene is initialized)
     setTimeout(() => {
       onReady?.(getControls());

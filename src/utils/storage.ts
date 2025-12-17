@@ -1,8 +1,39 @@
-import { PlayerStats, DailyStats, PuzzleData, TileType } from '@/game/types';
+import { PlayerStats, DailyStats, PuzzleData, TileType, Position } from '@/game/types';
 
 const STATS_KEY = 'mazle_stats';
 const DAILY_KEY = 'mazle_daily';
 const PUZZLE_CACHE_KEY = 'mazle_puzzle_cache_v1';
+const IN_PROGRESS_KEY = 'mazle_in_progress_v1';
+
+// In-progress game state for resume after refresh
+export interface InProgressState {
+  date: string;                    // For validating same-day
+  seed: string;                    // For validating same puzzle
+  playerPos: Position;
+  lives: number;
+  currentAttemptMoves: number;
+  currentAttemptCorrectMoves: number;
+  moveCount: number;
+  elapsedTimeMs: number;           // Frozen time at save
+  penaltyTimeMs: number;
+  attempts: {
+    moveCount: number;
+    correctMoves: number;
+    path: Position[];
+    failedAt?: Position;
+    deviationIndex?: number;
+  }[];
+  moveHistory: Position[];
+  boulderPositions?: string[];     // For ground maps with boulders
+  isPlaying: boolean;
+  // Hint state
+  unlockedHintTiles?: string[];
+  unlockedHintEdges?: string[];
+  // Per-life hint progress (used to merge into unlockedHint* on life loss)
+  unlockedThisLifeTiles?: string[];
+  unlockedThisLifeEdges?: string[];
+}
+
 
 // Get default player stats
 function getDefaultStats(): PlayerStats {
@@ -19,7 +50,7 @@ function getDefaultStats(): PlayerStats {
 // Get player stats from localStorage
 export function getPlayerStats(): PlayerStats {
   if (typeof window === 'undefined') return getDefaultStats();
-  
+
   try {
     const stored = localStorage.getItem(STATS_KEY);
     if (stored) {
@@ -28,14 +59,14 @@ export function getPlayerStats(): PlayerStats {
   } catch {
     console.error('Failed to load stats');
   }
-  
+
   return getDefaultStats();
 }
 
 // Save player stats to localStorage
 export function savePlayerStats(stats: PlayerStats): void {
   if (typeof window === 'undefined') return;
-  
+
   try {
     localStorage.setItem(STATS_KEY, JSON.stringify(stats));
   } catch {
@@ -52,7 +83,7 @@ function getTodayString(): string {
 // Check if player has played today
 export function hasPlayedToday(): boolean {
   if (typeof window === 'undefined') return false;
-  
+
   try {
     const stored = localStorage.getItem(DAILY_KEY);
     if (stored) {
@@ -62,14 +93,14 @@ export function hasPlayedToday(): boolean {
   } catch {
     console.error('Failed to check daily status');
   }
-  
+
   return false;
 }
 
 // Get today's result if already played
 export function getTodaysResult(): DailyStats | null {
   if (typeof window === 'undefined') return null;
-  
+
   try {
     const stored = localStorage.getItem(DAILY_KEY);
     if (stored) {
@@ -81,27 +112,27 @@ export function getTodaysResult(): DailyStats | null {
   } catch {
     console.error('Failed to get daily result');
   }
-  
+
   return null;
 }
 
 // Save today's result
 export function saveTodaysResult(result: DailyStats): void {
   if (typeof window === 'undefined') return;
-  
+
   try {
     localStorage.setItem(DAILY_KEY, JSON.stringify(result));
-    
+
     // Update overall stats
     const stats = getPlayerStats();
     const today = getTodayString();
     const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-    
+
     stats.totalGamesPlayed++;
-    
+
     if (result.completed) {
       stats.totalGamesWon++;
-      
+
       // Update streak
       if (stats.lastPlayedDate === yesterday || stats.lastPlayedDate === today) {
         if (stats.lastPlayedDate !== today) {
@@ -110,20 +141,20 @@ export function saveTodaysResult(result: DailyStats): void {
       } else {
         stats.currentStreak = 1;
       }
-      
+
       stats.maxStreak = Math.max(stats.maxStreak, stats.currentStreak);
     } else {
       stats.currentStreak = 0;
     }
-    
+
     stats.lastPlayedDate = today;
     stats.history.push(result);
-    
+
     // Keep only last 30 days of history
     if (stats.history.length > 30) {
       stats.history = stats.history.slice(-30);
     }
-    
+
     savePlayerStats(stats);
   } catch {
     console.error('Failed to save daily result');
@@ -211,5 +242,62 @@ export function cachePuzzle(seed: string, puzzle: PuzzleData): void {
     localStorage.setItem(PUZZLE_CACHE_KEY, JSON.stringify(cached));
   } catch (error) {
     console.error('Failed to cache puzzle', error);
+  }
+}
+
+// Save in-progress game state for resume after refresh
+export function saveInProgressState(seed: string, state: Omit<InProgressState, 'date' | 'seed'>): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const fullState: InProgressState = {
+      ...state,
+      date: getTodayString(),
+      seed,
+    };
+    localStorage.setItem(IN_PROGRESS_KEY, JSON.stringify(fullState));
+  } catch (error) {
+    console.error('Failed to save in-progress state', error);
+  }
+}
+
+// Get in-progress game state if it matches today's date and seed
+export function getInProgressState(seed: string): InProgressState | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const stored = localStorage.getItem(IN_PROGRESS_KEY);
+    if (!stored) return null;
+
+    const state = JSON.parse(stored) as InProgressState;
+
+    // Validate it's for today and the same puzzle
+    if (state.date !== getTodayString() || state.seed !== seed) {
+      // Stale state, clear it
+      localStorage.removeItem(IN_PROGRESS_KEY);
+      return null;
+    }
+
+    // Basic validation
+    if (typeof state.playerPos?.x !== 'number' || typeof state.playerPos?.y !== 'number') {
+      localStorage.removeItem(IN_PROGRESS_KEY);
+      return null;
+    }
+
+    return state;
+  } catch (error) {
+    console.error('Failed to get in-progress state', error);
+    return null;
+  }
+}
+
+// Clear in-progress state (called on game complete)
+export function clearInProgressState(): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    localStorage.removeItem(IN_PROGRESS_KEY);
+  } catch (error) {
+    console.error('Failed to clear in-progress state', error);
   }
 }

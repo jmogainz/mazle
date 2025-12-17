@@ -6,24 +6,33 @@ import { onGameEvent } from '@/game/events';
 import { formatTime } from '@/utils/storage';
 import styles from './GameUI.module.css';
 
+interface InitialGameState {
+  lives?: number;
+  currentAttemptMoves?: number;
+  elapsedTimeMs?: number;
+  penaltyTimeMs?: number;
+}
+
 interface GameUIProps {
   puzzleNumber: number;
   puzzleLabel?: string;
   optimalMoves: number;
   variant?: 'header' | 'footer';
   hidePuzzleNumber?: boolean;
+  initialState?: InitialGameState;
 }
 
-export default function GameUI({ puzzleNumber, puzzleLabel, optimalMoves, variant = 'header', hidePuzzleNumber = false }: GameUIProps) {
-  const [currentAttemptMoves, setCurrentAttemptMoves] = useState(0);
-  const [lives, setLives] = useState(3);
-  const [elapsedTime, setElapsedTime] = useState(0);
-  const [startTime, setStartTime] = useState<number | null>(null);
-  const [penaltyTimeMs, setPenaltyTimeMs] = useState(0);
+export default function GameUI({ puzzleNumber, puzzleLabel, optimalMoves, variant = 'header', hidePuzzleNumber = false, initialState }: GameUIProps) {
+  const [currentAttemptMoves, setCurrentAttemptMoves] = useState(initialState?.currentAttemptMoves ?? 0);
+  const [lives, setLives] = useState(initialState?.lives ?? 3);
+  const [elapsedTime, setElapsedTime] = useState(initialState?.elapsedTimeMs ?? 0);
+  const [startTime, setStartTime] = useState<number | null>(initialState?.elapsedTimeMs ? Date.now() - initialState.elapsedTimeMs : null);
+  const [penaltyTimeMs, setPenaltyTimeMs] = useState(initialState?.penaltyTimeMs ?? 0);
   const [isComplete, setIsComplete] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
   const [penaltyFlash, setPenaltyFlash] = useState(false);
   const displayLabel = puzzleLabel ?? `#${puzzleNumber}`;
+
 
   useEffect(() => {
     const unsubscribeState = onGameEvent('stateUpdate', (data) => {

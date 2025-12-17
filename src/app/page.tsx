@@ -17,7 +17,7 @@ import {
   preloadWasm,
   TILE_SIZE,
 } from '@/game';
-import { getPlayerStats, saveTodaysResult, getTodaysResult, getCachedPuzzle, cachePuzzle } from '@/utils/storage';
+import { getPlayerStats, saveTodaysResult, getTodaysResult, getCachedPuzzle, cachePuzzle, saveInProgressState, getInProgressState, clearInProgressState } from '@/utils/storage';
 import { PlayerStats, DailyStats } from '@/game/types';
 import type { GameControls } from '@/game/PhaserGame';
 import styles from './page.module.css';
@@ -89,6 +89,13 @@ export default function Home() {
   const [generationProgress, setGenerationProgress] = useState<GenerationProgress | null>(null);
   const [showInlineResult, setShowInlineResult] = useState(false);
   const [lifeFlash, setLifeFlash] = useState(false);
+  const [hasPendingRestore, setHasPendingRestore] = useState(false);
+  const [initialStats, setInitialStats] = useState<{
+    lives?: number;
+    currentAttemptMoves?: number;
+    elapsedTimeMs?: number;
+    penaltyTimeMs?: number;
+  } | null>(null);
   const [startBatchInput, setStartBatchInput] = useState('');
   const gameControlsRef = useRef<GameControls | null>(null);
   const debugModeRef = useRef(false);
@@ -100,6 +107,7 @@ export default function Home() {
   const tapTimestampsRef = useRef<number[]>([]);
   const lastDevToolsTouchTsRef = useRef<number>(0);
   const devToolsTapTargetRef = useRef<HTMLDivElement | null>(null);
+  const pendingRestoreRef = useRef<Parameters<GameControls['restoreState']>[0] | null>(null);
 
   // Sync CSS custom property to the real visual viewport height (iOS-safe)
   useEffect(() => {
@@ -310,6 +318,24 @@ export default function Home() {
       setIsPlaying(false);
     } else {
       setGameResult(null);
+
+      // Check for in-progress state (mid-game refresh resume)
+      const inProgressState = getInProgressState(todaySeed);
+      if (inProgressState) {
+        console.log('[RESUME] Found in-progress state, will restore after game ready');
+        pendingRestoreRef.current = inProgressState;
+        setHasPendingRestore(true);
+        setInitialStats({
+          lives: inProgressState.lives,
+          currentAttemptMoves: inProgressState.currentAttemptMoves,
+          elapsedTimeMs: inProgressState.elapsedTimeMs,
+          penaltyTimeMs: inProgressState.penaltyTimeMs,
+        });
+      } else {
+        pendingRestoreRef.current = null;
+        setHasPendingRestore(false);
+        setInitialStats(null);
+      }
     }
 
     // Check localStorage cache first for instant loading (same-day revisit)
@@ -370,6 +396,9 @@ export default function Home() {
       setShowShareCard(true);
       setIsPlaying(false); // Ensure game is marked as not playing to show blocked state
 
+      // Clear in-progress state since game is complete
+      clearInProgressState();
+
       if (debugModeRef.current) {
         return;
       }
@@ -404,11 +433,40 @@ export default function Home() {
       setTimeout(() => setLifeFlash(false), flashDuration);
     });
 
+    // Save in-progress state on each state update (for resume after refresh)
+    const persistInProgressState = () => {
+      // Only save if we're in the daily puzzle (not debug mode) and game hasn't completed
+      if (debugModeRef.current || previousResult) return;
+
+      const state = gameControlsRef.current?.getSerializableState();
+      if (state && state.isPlaying && activeSeed) {
+        saveInProgressState(activeSeed, state);
+      }
+    };
+    const unsubscribeStateUpdate = onGameEvent('stateUpdate', persistInProgressState);
+
+    // Also persist while idle and when backgrounding/unloading so elapsed time doesn't jump backwards.
+    const intervalId = window.setInterval(persistInProgressState, 5000);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        persistInProgressState();
+      }
+    };
+    const handlePageHide = () => {
+      persistInProgressState();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', handlePageHide);
+
     return () => {
       unsubscribeComplete();
       unsubscribeLifeLost();
+      unsubscribeStateUpdate();
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', handlePageHide);
     };
-  }, [puzzleNumber, previousResult]);
+  }, [puzzleNumber, previousResult, activeSeed]);
 
   const handleRestart = useCallback(() => {
     setIsPlaying(false);
@@ -510,6 +568,24 @@ export default function Home() {
     if (!hasSeenHelp) {
       setShowHelp(true);
       localStorage.setItem('mazle_seen_help', 'true');
+    }
+
+    // Restore in-progress state if we have one (mid-game refresh resume)
+    if (pendingRestoreRef.current) {
+      console.log('[RESUME] Restoring in-progress state');
+      try {
+        controls.restoreState(pendingRestoreRef.current);
+        setIsPlaying(pendingRestoreRef.current.isPlaying);
+        pendingRestoreRef.current = null;
+        setHasPendingRestore(false);
+        return;
+      } catch (error) {
+        console.warn('[RESUME] Failed to restore in-progress state, clearing it', error);
+        clearInProgressState();
+        pendingRestoreRef.current = null;
+        setHasPendingRestore(false);
+        setInitialStats(null);
+      }
     }
 
     // If inline results are already visible (e.g., post-game), re-sync analysis
@@ -854,13 +930,18 @@ export default function Home() {
             </span>
           </div>
 
-          <GameUI
-            puzzleNumber={puzzleNumber}
-            puzzleLabel={puzzleLabel ?? undefined}
-            optimalMoves={puzzle.optimalMoves}
-            variant="header"
-            hidePuzzleNumber={true}
-          />
+
+          {/* Only show stats when game is ready (avoids flash of default values during restore) */}
+          {(!hasPendingRestore || isGameReady) && (
+            <GameUI
+              puzzleNumber={puzzleNumber}
+              puzzleLabel={puzzleLabel ?? undefined}
+              optimalMoves={puzzle.optimalMoves}
+              variant="header"
+              hidePuzzleNumber={true}
+              initialState={initialStats ?? undefined}
+            />
+          )}
 
           <div ref={gameStageRef} className={styles.gameArea}>
             <div

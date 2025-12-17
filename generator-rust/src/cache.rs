@@ -2,9 +2,10 @@
 
 use crate::types::PuzzleData;
 use log::info;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::RwLock;
 use std::time::{Duration, Instant};
+use tokio::sync::broadcast;
 
 /// Cached puzzle with metadata
 #[derive(Clone)]
@@ -17,6 +18,10 @@ pub struct CachedPuzzle {
 /// Thread-safe puzzle cache with TTL and size limits
 pub struct PuzzleCache {
     entries: RwLock<HashMap<String, CachedPuzzle>>,
+    /// Seeds currently being generated (to prevent duplicate work)
+    in_progress: RwLock<HashSet<String>>,
+    /// Broadcast channels for waiting on in-progress generations
+    waiters: RwLock<HashMap<String, broadcast::Sender<()>>>,
     max_entries: usize,
     ttl: Duration,
 }
@@ -26,6 +31,8 @@ impl PuzzleCache {
     pub fn new(max_entries: usize, ttl: Duration) -> Self {
         Self {
             entries: RwLock::new(HashMap::new()),
+            in_progress: RwLock::new(HashSet::new()),
+            waiters: RwLock::new(HashMap::new()),
             max_entries,
             ttl,
         }
@@ -45,6 +52,70 @@ impl PuzzleCache {
 
         // Clone to avoid holding read lock
         Some(cached.clone())
+    }
+    
+    /// Check if a seed is currently being generated
+    pub fn is_generating(&self, seed: &str) -> bool {
+        self.in_progress.read().ok()
+            .map(|s| s.contains(seed))
+            .unwrap_or(false)
+    }
+    
+    /// Mark a seed as being generated. Returns false if already generating.
+    pub fn start_generating(&self, seed: &str) -> bool {
+        let mut in_progress = match self.in_progress.write() {
+            Ok(p) => p,
+            Err(_) => return false,
+        };
+        
+        if in_progress.contains(seed) {
+            return false; // Already generating
+        }
+        
+        in_progress.insert(seed.to_string());
+        
+        // Create broadcast channel for waiters
+        let (tx, _) = broadcast::channel(1);
+        if let Ok(mut waiters) = self.waiters.write() {
+            waiters.insert(seed.to_string(), tx);
+        }
+        
+        true
+    }
+    
+    /// Mark generation as complete and notify waiters
+    pub fn finish_generating(&self, seed: &str) {
+        if let Ok(mut in_progress) = self.in_progress.write() {
+            in_progress.remove(seed);
+        }
+        
+        // Notify waiters
+        if let Ok(mut waiters) = self.waiters.write() {
+            if let Some(tx) = waiters.remove(seed) {
+                let _ = tx.send(()); // Ignore error if no receivers
+            }
+        }
+    }
+    
+    /// Wait for an in-progress generation to complete, then return cached result
+    pub async fn wait_for_generation(&self, seed: &str) -> Option<CachedPuzzle> {
+        // Get a receiver for the broadcast
+        let mut rx = {
+            let waiters = self.waiters.read().ok()?;
+            let tx = waiters.get(seed)?;
+            tx.subscribe()
+        };
+        
+        // Wait for notification (with timeout)
+        let timeout = tokio::time::timeout(Duration::from_secs(600), rx.recv()).await;
+        
+        match timeout {
+            Ok(Ok(())) => {
+                // Generation complete, get from cache
+                self.get(seed)
+            }
+            _ => None, // Timeout or channel error
+        }
     }
 
     /// Insert puzzle into cache with metadata

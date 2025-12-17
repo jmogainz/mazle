@@ -123,10 +123,45 @@ async fn generate_by_seed(
             cached: true,
         });
     } else {
+        // Check if another request is already generating this seed
+        if state.cache.is_generating(&seed) {
+            info!("⏳ Waiting for in-progress generation of '{}'...", seed);
+            
+            if let Some(cached) = state.cache.wait_for_generation(&seed).await {
+                let request_time = request_start.elapsed().as_millis() as u64;
+                info!(
+                    "✓ Got '{}' from parallel request (generated in {}ms, waited {}ms)",
+                    seed, cached.generation_time_ms, request_time
+                );
+                
+                return Json(GenerateResponse {
+                    puzzle: cached.puzzle,
+                    generation_time_ms: cached.generation_time_ms,
+                    cached: true, // Treat as cached since we didn't generate it
+                });
+            }
+            // If wait failed, fall through to generate ourselves
+            info!("⚠️ Wait failed for '{}', generating ourselves...", seed);
+        }
+        
         info!("✗ Cache MISS for '{}', generating on-demand...", seed);
     }
 
-    // 2. Generate on-demand
+    // 2. Mark as generating (prevent duplicate work)
+    let we_are_generating = state.cache.start_generating(&seed);
+    if !we_are_generating {
+        // Another request started generating between our check and now - wait for it
+        info!("⏳ Race condition: waiting for '{}' generation...", seed);
+        if let Some(cached) = state.cache.wait_for_generation(&seed).await {
+            return Json(GenerateResponse {
+                puzzle: cached.puzzle,
+                generation_time_ms: cached.generation_time_ms,
+                cached: true,
+            });
+        }
+    }
+    
+    // 3. Spawn generation as a detached task so it completes even if client disconnects
     let gen_start = Instant::now();
     let config = GenerationConfig {
         parallel: query.parallel,
@@ -135,24 +170,40 @@ async fn generate_by_seed(
     };
 
     let map_type = query.map_type.clone();
-    let seed_clone = seed.clone();
-
-    // Spawn CPU-intensive work on blocking thread pool to avoid starving async runtime
-    let puzzle =
-        tokio::task::spawn_blocking(move || generate_by_type(&seed_clone, &config, &map_type))
+    let seed_for_task = seed.clone();
+    let cache_for_task = state.cache.clone();
+    
+    // Spawn a task that will complete even if this handler is cancelled
+    let generation_handle = tokio::spawn(async move {
+        let seed_clone = seed_for_task.clone();
+        let puzzle = tokio::task::spawn_blocking(move || generate_by_type(&seed_clone, &config, &map_type))
             .await
             .expect("Blocking task panicked");
+        
+        let generation_time = gen_start.elapsed().as_millis() as u64;
+        info!(
+            "[DEBUG] spawn_blocking returned for '{}' after {}ms",
+            seed_for_task, generation_time
+        );
 
-    let generation_time = gen_start.elapsed().as_millis() as u64;
-
-    // 3. Cache the result for future requests
-    state
-        .cache
-        .insert(seed.clone(), puzzle.clone(), generation_time);
+        // Cache the result and notify waiters
+        cache_for_task.insert(seed_for_task.clone(), puzzle.clone(), generation_time);
+        cache_for_task.finish_generating(&seed_for_task);
+        
+        info!(
+            "✓ Generated '{}' in {}ms",
+            seed_for_task, generation_time
+        );
+        
+        (puzzle, generation_time)
+    });
+    
+    // Wait for generation to complete
+    let (puzzle, generation_time) = generation_handle.await.expect("Generation task panicked");
 
     let total_time = request_start.elapsed().as_millis() as u64;
     info!(
-        "✓ Generated '{}' in {}ms (total request: {}ms)",
+        "✓ Returning '{}' (generated in {}ms, total request: {}ms)",
         seed, generation_time, total_time
     );
 

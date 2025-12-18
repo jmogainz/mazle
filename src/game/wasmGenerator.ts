@@ -465,6 +465,67 @@ async function generateFromRustBackend(
   }
 }
 
+// Shared retry wrapper used by both the general generator flow and daily flow
+interface RustRetryOptions {
+  seed: string;
+  mapType?: MapType;
+  onProgress?: (progress: GenerationProgress) => void;
+  startBatch?: number;
+  abortController?: AbortController;
+  logLabel: string; // e.g., '[Engine]' or '[Daily]'
+}
+
+async function generateFromRustWithRetries({
+  seed,
+  mapType,
+  onProgress,
+  startBatch,
+  abortController,
+  logLabel,
+}: RustRetryOptions): Promise<PuzzleData | null> {
+  // Quick health preflight (cached after first success/fail)
+  await testRustBackend(onProgress);
+
+  const TRANSIENT_TIME_BUDGET_MS = 10 * 60 * 1000; // 10 minutes
+  const TRANSIENT_MAX_ATTEMPTS = 8; // enough for multiple background resumes without spinning forever
+  const startTime = performance.now();
+  let attempt = 0;
+
+  while (true) {
+    try {
+      return await generateFromRustBackend(seed, mapType, onProgress, startBatch, abortController);
+    } catch (error) {
+      console.warn(`${logLabel} Rust backend failed:`, error);
+
+      // If the client explicitly cancelled, surface the error and don't fall back
+      if (
+        abortController?.signal.aborted ||
+        (error instanceof DOMException && error.name === 'AbortError')
+      ) {
+        throw error;
+      }
+
+      const transient = isTransientNetworkError(error);
+      const elapsed = performance.now() - startTime;
+      const attemptsExceeded = attempt >= TRANSIENT_MAX_ATTEMPTS;
+      const timeExceeded = elapsed >= TRANSIENT_TIME_BUDGET_MS;
+
+      if (transient && !attemptsExceeded && !timeExceeded) {
+        const backoff = computeBackoffMs(attempt);
+        attempt += 1;
+        console.log(
+          `${logLabel} Transient Rust failure, retry ${attempt}/${TRANSIENT_MAX_ATTEMPTS} after ${backoff}ms (elapsed ${(elapsed/1000).toFixed(1)}s)`
+        );
+        await new Promise((resolve) => setTimeout(resolve, backoff));
+        continue;
+      }
+
+      // Non-transient or retries exhausted: signal caller to fall back
+      return null;
+    }
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Public API
 // ─────────────────────────────────────────────────────────────────────────────
@@ -564,58 +625,32 @@ export async function generatePuzzleParallel(
   // Pre-check WASM availability for better error messages
   await initGenerationWorker();
 
-  // Quick preflight: mark Rust working or not; single attempt (3s)
-  await testRustBackend(onProgress);
-  
   if (RUST_BACKEND_URL) {
     console.log(`[Engine] Rust backend configured at ${RUST_BACKEND_URL}`);
+    const rustPuzzle = await generateFromRustWithRetries({
+      seed,
+      mapType: forceMapType,
+      onProgress,
+      startBatch,
+      abortController,
+      logLabel: '[Engine]',
+    });
 
-    // Retry Rust on transient errors until either:
-    // - we succeed
-    // - the request is aborted by the user
-    // - total retry time budget is exceeded
-    const TRANSIENT_TIME_BUDGET_MS = 10 * 60 * 1000; // 10 minutes
-    const TRANSIENT_MAX_ATTEMPTS = 8; // enough for multiple background resumes without spinning forever
-    const startTime = performance.now();
-    let attempt = 0;
-    while (true) {
-      try {
-        return await generateFromRustBackend(seed, forceMapType, onProgress, startBatch, abortController);
-      } catch (error) {
-        console.warn('[Engine] Rust backend failed:', error);
-        
-        // If the client explicitly cancelled, surface the error and don't fall back
-        if (abortController?.signal.aborted || (error instanceof DOMException && error.name === 'AbortError')) {
-          throw error;
-        }
-
-        const transient = isTransientNetworkError(error);
-        const elapsed = performance.now() - startTime;
-        const attemptsExceeded = attempt >= TRANSIENT_MAX_ATTEMPTS;
-        const timeExceeded = elapsed >= TRANSIENT_TIME_BUDGET_MS;
-
-        if (transient && !attemptsExceeded && !timeExceeded) {
-          const backoff = computeBackoffMs(attempt);
-          attempt += 1;
-          console.log(`[Engine] Transient Rust failure, retry ${attempt}/${TRANSIENT_MAX_ATTEMPTS} after ${backoff}ms (elapsed ${(elapsed/1000).toFixed(1)}s)`);
-          await new Promise((resolve) => setTimeout(resolve, backoff));
-          continue;
-        }
-
-        // Non-transient or retries exhausted: attempt WASM fallback if available
-        if (!workerReady) {
-          throw new Error(
-            'Rust backend failed and WASM fallback unavailable.\n\n' +
-            'Options:\n' +
-            '1. Start the Rust backend (make up-backend)\n' +
-            '2. Enable WASM: access via http://localhost:8080 or HTTPS'
-          );
-        }
-        
-        console.log('[Engine] Falling back to WASM...');
-        break;
-      }
+    if (rustPuzzle) {
+      return rustPuzzle;
     }
+
+    // Non-transient or retries exhausted: attempt WASM fallback if available
+    if (!workerReady) {
+      throw new Error(
+        'Rust backend failed and WASM fallback unavailable.\n\n' +
+        'Options:\n' +
+        '1. Start the Rust backend (make up-backend)\n' +
+        '2. Enable WASM: access via http://localhost:8080 or HTTPS'
+      );
+    }
+    
+    console.log('[Engine] Falling back to WASM...');
   }
 
   // Check if WASM is available
@@ -727,25 +762,24 @@ export async function fetchDailyPuzzle(
   // 2. Try Rust backend directly from client (if configured)
   // ─────────────────────────────────────────────────────────────────────────
   if (RUST_BACKEND_URL) {
-    try {
-      console.log('[Daily] Trying Rust backend directly from client...');
-      
-      const puzzle = await generateFromRustBackend(seed, undefined, onProgress);
-      
+    const rustPuzzle = await generateFromRustWithRetries({
+      seed,
+      onProgress,
+      logLabel: '[Daily]',
+    });
+
+    if (rustPuzzle) {
       console.log('[Daily] Generated via Rust backend');
-      
+
       // Backfill KV cache so other users get instant load
-      backfillKvCache(seed, puzzle, 'rust').catch((error) => {
+      backfillKvCache(seed, rustPuzzle, 'rust').catch((error) => {
         console.warn('[Daily] Failed to backfill KV cache:', error);
       });
-      
+
       return {
-        puzzle,
+        puzzle: rustPuzzle,
         source: 'rust',
       };
-    } catch (error) {
-      console.warn('[Daily] Rust backend failed:', error);
-      // Continue to WASM fallback
     }
   }
   

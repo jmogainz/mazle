@@ -21,6 +21,7 @@ import {
   createGroundState,
   GroundPuzzleState,
 } from './movement';
+import { getSwipeDirection, SWIPE_MIN_DISTANCE_PX } from './swipe';
 
 export class GameScene extends Phaser.Scene {
   private puzzle!: PuzzleData;
@@ -481,13 +482,10 @@ export class GameScene extends Phaser.Scene {
 
       const dx = pointer.x - this.swipeStartX;
       const dy = pointer.y - this.swipeStartY;
-      const minSwipe = 30;
 
-      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > minSwipe) {
-        this.handleMove(dx > 0 ? Direction.RIGHT : Direction.LEFT);
-        this.swipeConsumed = true;
-      } else if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > minSwipe) {
-        this.handleMove(dy > 0 ? Direction.DOWN : Direction.UP);
+      const dir = getSwipeDirection(dx, dy, SWIPE_MIN_DISTANCE_PX);
+      if (dir) {
+        this.handleMove(dir);
         this.swipeConsumed = true;
       }
     });
@@ -1320,6 +1318,10 @@ export class GameScene extends Phaser.Scene {
   // Public method to trigger a move from external (React) calls
   public movePlayer(dir: Direction) {
     this.handleMove(dir);
+  }
+
+  public canAcceptMoveInput() {
+    return !(this.isAnimating || this.gameState.isComplete || !this.isPlaying);
   }
 
   public startGame() {

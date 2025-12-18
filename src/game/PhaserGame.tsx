@@ -8,6 +8,7 @@ import { PuzzleData, COLORS, Direction, TILE_SIZE } from './types';
 export interface GameControls {
   restart: () => void;
   movePlayer: (dir: Direction) => void;
+  canAcceptMoveInput: () => boolean;
   start: () => void;
   showAnalysis: (attempts: any[]) => void;
   getSerializableState: () => ReturnType<GameScene['getSerializableState']> | null;
@@ -43,6 +44,10 @@ export default function PhaserGame({ puzzle, viewportWidth, viewportHeight, onRe
     movePlayer: (dir: Direction) => {
       const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;
       scene?.movePlayer(dir);
+    },
+    canAcceptMoveInput: () => {
+      const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;
+      return scene?.canAcceptMoveInput() ?? false;
     },
     start: () => {
       const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;

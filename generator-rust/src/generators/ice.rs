@@ -252,18 +252,18 @@ const SIZE_OPTIONS: [(usize, usize); 1] = [(15, 15)];
 
 // TIER 1: Core difficulty (what actually makes puzzles hard)
 const WEIGHT_NEAR_OPTIMAL_PATHS: f64 = 40.0;  // RAISED - more paths = more confusion
-const WEIGHT_PATH_OVERLAP: f64 = 200.0;       // RAISED - low overlap = truly different routes
+const WEIGHT_PATH_OVERLAP: f64 = 150.0;       // ADJUSTED - balanced with new complexity weights
 const WEIGHT_EARLY_DIVERGENCE: f64 = 180.0;   // RAISED - early confusion is critical
 
 // TIER 2: Per-move confusion (secondary difficulty)
 const WEIGHT_DIRECTION_CHANGES: f64 = 80.0;   // RAISED - zigzags harder to visualize
-const WEIGHT_DECISION_AMBIGUITY: f64 = 100.0; // RAISED - more choices per move
+const WEIGHT_DECISION_AMBIGUITY: f64 = 140.0; // RAISED - more choices per move
 
 // TIER 3: Low priority (irrelevant with binary lives or overlaps with TIER 1)
-const WEIGHT_COUNTER_INTUITIVE: f64 = 20.0;   // LOWERED - overlaps with paths
-const WEIGHT_ATTRACTIVE_DECOYS: f64 = 20.0;   // LOWERED - overlaps with paths
+const WEIGHT_COUNTER_INTUITIVE: f64 = 150.0;  // RAISED - critical for complexity (winding/backtracking)
+const WEIGHT_ATTRACTIVE_DECOYS: f64 = 80.0;   // RAISED - need more visual confusion
 const WEIGHT_COMMITMENT_GATES: f64 = 0.0;     // DISABLED - backtrack cost irrelevant
-const WEIGHT_FALSE_PROGRESS: f64 = 20.0;      // LOWERED - overlaps with paths
+const WEIGHT_FALSE_PROGRESS: f64 = 80.0;      // RAISED - need more false leads
 const WEIGHT_PATH_LOCALITY: f64 = 0.0;        // DISABLED - irrelevant
 const WEIGHT_BACKTRACK_DEPTH: f64 = 0.0;      // DISABLED - backtrack cost irrelevant
 
@@ -278,21 +278,46 @@ const ADJACENT_BONUS: f64 = 300.0;
 
 // Original thresholds (RELAXED - let variety through, difficulty comes from Phase 2)
 // Base thresholds tuned for 15x15 map (REFERENCE_SIZE)
-const BASE_PREFILTER_MIN_COUNTER_INTUITIVE: i32 = 2;      // Moves away from goal (ENABLED)
+const BASE_PREFILTER_MIN_COUNTER_INTUITIVE: i32 = 4;      // Moves away from goal (RAISED to 4)
+const BASE_PREFILTER_MIN_PATH_LOCALITY: f64 = 0.45;       // Lower = more concentrated = harder
 const BASE_PREFILTER_MIN_ATTRACTIVE_DECOYS: i32 = 4;
 const BASE_PREFILTER_MIN_COMMITMENT_GATES: i32 = 1;
 const BASE_PREFILTER_MIN_FALSE_PROGRESS: i32 = 3;         // "I was so close!" paths (ENABLED)
 
 // Phase 1 thresholds (for 15x15)
-const BASE_PREFILTER_MAX_PATH_LOCALITY: f64 = 0.75;       // Tightened from 0.80
+const BASE_PREFILTER_MAX_PATH_LOCALITY: f64 = 0.85;       // RELAXED to 0.85 to allow winding snake paths
 const BASE_PREFILTER_MIN_DIRECTION_CHANGES: i32 = 7;      // Reasonable floor (LOWERED from 9)
 const BASE_PREFILTER_MIN_BACKTRACK_DEPTH: i32 = 2;
-const BASE_PREFILTER_MIN_DECISION_AMBIGUITY: f64 = 2.8;   // Choices per move (RAISED from 2.4)
+const BASE_PREFILTER_MIN_DECISION_AMBIGUITY: f64 = 3.0;   // RELAXED from 3.2 to increase success rate
 
 // Phase 2 thresholds (key difficulty metrics for 15x15)
-const BASE_PREFILTER_MIN_NEAR_OPTIMAL_PATHS: i32 = 50;    // Alternative paths within optimal+2 (RAISED from 40)
+const BASE_PREFILTER_MIN_NEAR_OPTIMAL_PATHS: i32 = 40;    // Alternative paths within optimal+2 (ADJUSTED per user request)
 const BASE_PREFILTER_MAX_PATH_OVERLAP: f64 = 0.50;        // Best alternative must differ by 50%+ (RAISED from 0.60)
+const BASE_PREFILTER_MAX_PATH_OVERLAP_AVG: f64 = 0.70;    // Average alternative overlap cap
 const BASE_PREFILTER_MIN_EARLY_DIVERGENCE: f64 = 0.55;    // Want early confusion (RAISED from 0.48)
+
+// Absolute minimum floors after scaling (safety nets)
+const PREFILTER_FLOOR_COUNTER_INTUITIVE: i32 = 2;
+const PREFILTER_FLOOR_ATTRACTIVE_DECOYS: i32 = 3;
+const PREFILTER_FLOOR_COMMITMENT_GATES: i32 = 1;
+const PREFILTER_FLOOR_FALSE_PROGRESS: i32 = 3;
+const PREFILTER_FLOOR_DIRECTION_CHANGES: i32 = 4;
+const PREFILTER_FLOOR_BACKTRACK_DEPTH: i32 = 2;
+const PREFILTER_FLOOR_NEAR_OPTIMAL_PATHS: i32 = 4;
+
+// Prefilter enable flags (base 15x15 configuration)
+const PREFILTER_ENABLE_CI: bool = true;
+const PREFILTER_ENABLE_DEC: bool = false;
+const PREFILTER_ENABLE_GATE: bool = false;
+const PREFILTER_ENABLE_FP: bool = false;
+const PREFILTER_ENABLE_LOC: bool = true;
+const PREFILTER_ENABLE_DIR: bool = true;
+const PREFILTER_ENABLE_BT: bool = false;
+const PREFILTER_ENABLE_AMB: bool = true;
+const PREFILTER_ENABLE_PATHS: bool = true;
+const PREFILTER_ENABLE_OLAP_BEST: bool = true;
+const PREFILTER_ENABLE_OLAP_AVG: bool = true;
+const PREFILTER_ENABLE_EDIV: bool = true;
 
 // Reference map size for scaling calculations
 const REFERENCE_SIZE: f64 = 15.0;
@@ -2729,19 +2754,25 @@ fn compute_prefilter_thresholds(width: usize, height: usize) -> PrefilterThresho
     let scale = min_dim / REFERENCE_SIZE; // Reference: 15x15 base map size
 
     // Original thresholds (scaled for larger maps)
-    let ci = ((BASE_PREFILTER_MIN_COUNTER_INTUITIVE as f64 * scale).round() as i32).max(2);
-    let decoys = ((BASE_PREFILTER_MIN_ATTRACTIVE_DECOYS as f64 * scale).round() as i32).max(3);
-    let gates = ((BASE_PREFILTER_MIN_COMMITMENT_GATES as f64 * scale).round() as i32).max(1);
-    let fp = ((BASE_PREFILTER_MIN_FALSE_PROGRESS as f64 * scale).round() as i32).max(3);
+    let ci = ((BASE_PREFILTER_MIN_COUNTER_INTUITIVE as f64 * scale).round() as i32)
+        .max(PREFILTER_FLOOR_COUNTER_INTUITIVE);
+    let decoys = ((BASE_PREFILTER_MIN_ATTRACTIVE_DECOYS as f64 * scale).round() as i32)
+        .max(PREFILTER_FLOOR_ATTRACTIVE_DECOYS);
+    let gates = ((BASE_PREFILTER_MIN_COMMITMENT_GATES as f64 * scale).round() as i32)
+        .max(PREFILTER_FLOOR_COMMITMENT_GATES);
+    let fp = ((BASE_PREFILTER_MIN_FALSE_PROGRESS as f64 * scale).round() as i32)
+        .max(PREFILTER_FLOOR_FALSE_PROGRESS);
 
     // Phase 1 thresholds
-    let max_locality = BASE_PREFILTER_MAX_PATH_LOCALITY;
-    let min_dir_changes = ((BASE_PREFILTER_MIN_DIRECTION_CHANGES as f64 * scale).round() as i32).max(4);
-    let min_backtrack = ((BASE_PREFILTER_MIN_BACKTRACK_DEPTH as f64 * scale).round() as i32).max(2);
+    let min_dir_changes = ((BASE_PREFILTER_MIN_DIRECTION_CHANGES as f64 * scale).round() as i32)
+        .max(PREFILTER_FLOOR_DIRECTION_CHANGES);
+    let min_backtrack = ((BASE_PREFILTER_MIN_BACKTRACK_DEPTH as f64 * scale).round() as i32)
+        .max(PREFILTER_FLOOR_BACKTRACK_DEPTH);
     let min_ambiguity = BASE_PREFILTER_MIN_DECISION_AMBIGUITY;
 
     // Phase 2 thresholds
-    let min_near_optimal = ((BASE_PREFILTER_MIN_NEAR_OPTIMAL_PATHS as f64 * scale).round() as i32).max(4);
+    let min_near_optimal = ((BASE_PREFILTER_MIN_NEAR_OPTIMAL_PATHS as f64 * scale).round() as i32)
+        .max(PREFILTER_FLOOR_NEAR_OPTIMAL_PATHS);
     let max_overlap_best = BASE_PREFILTER_MAX_PATH_OVERLAP;
     let min_early_div = BASE_PREFILTER_MIN_EARLY_DIVERGENCE;
 
@@ -2753,8 +2784,8 @@ fn compute_prefilter_thresholds(width: usize, height: usize) -> PrefilterThresho
         min_false_progress: fp,    // ENABLED - "I was so close!" frustration
 
         // Path locality - want paths that use moderate area of the map
-        min_path_locality: 0.55,   // Tightened from 0.50
-        max_path_locality: max_locality,
+        min_path_locality: BASE_PREFILTER_MIN_PATH_LOCALITY,
+        max_path_locality: BASE_PREFILTER_MAX_PATH_LOCALITY,
         min_direction_changes: min_dir_changes,
         min_backtrack_depth: 0,    // DISABLED - irrelevant with binary lives
         min_decision_ambiguity: min_ambiguity,
@@ -2762,22 +2793,22 @@ fn compute_prefilter_thresholds(width: usize, height: usize) -> PrefilterThresho
         // TIER 1 - Core difficulty
         min_near_optimal_paths: min_near_optimal,
         max_path_overlap_best: max_overlap_best,
-        max_path_overlap_avg: 0.65,  // Tightened from 0.70
+        max_path_overlap_avg: BASE_PREFILTER_MAX_PATH_OVERLAP_AVG,
         min_early_divergence: min_early_div,
 
         // Enabled flags
-        ci_enabled: true,         // ENABLED - counter-intuitive moves
-        dec_enabled: false,       // DISABLED
-        gate_enabled: false,      // DISABLED
-        fp_enabled: true,         // ENABLED - false progress paths
-        loc_enabled: true,        // ENABLED
-        dir_enabled: true,        // ENABLED
-        bt_enabled: false,        // DISABLED
-        amb_enabled: true,        // ENABLED
-        paths_enabled: true,      // ENABLED
-        olap_best_enabled: true,  // ENABLED
-        olap_avg_enabled: true,   // ENABLED
-        ediv_enabled: true,       // ENABLED
+        ci_enabled: PREFILTER_ENABLE_CI,         // ENABLED - counter-intuitive moves
+        dec_enabled: PREFILTER_ENABLE_DEC,       // DISABLED
+        gate_enabled: PREFILTER_ENABLE_GATE,     // DISABLED
+        fp_enabled: PREFILTER_ENABLE_FP,         // DISABLED per user request
+        loc_enabled: PREFILTER_ENABLE_LOC,       // ENABLED
+        dir_enabled: PREFILTER_ENABLE_DIR,       // ENABLED
+        bt_enabled: PREFILTER_ENABLE_BT,         // DISABLED
+        amb_enabled: PREFILTER_ENABLE_AMB,       // ENABLED
+        paths_enabled: PREFILTER_ENABLE_PATHS,   // ENABLED
+        olap_best_enabled: PREFILTER_ENABLE_OLAP_BEST,  // ENABLED
+        olap_avg_enabled: PREFILTER_ENABLE_OLAP_AVG,    // ENABLED
+        ediv_enabled: PREFILTER_ENABLE_EDIV,     // ENABLED
     }
 }
 

@@ -20,6 +20,7 @@ import {
 import { getPlayerStats, saveTodaysResult, getTodaysResult, getCachedPuzzle, cachePuzzle, saveInProgressState, getInProgressState, clearInProgressState } from '@/utils/storage';
 import { PlayerStats, DailyStats } from '@/game/types';
 import type { GameControls } from '@/game/PhaserGame';
+import { getSwipeDirection, SWIPE_MIN_DISTANCE_PX } from '@/game/swipe';
 import styles from './page.module.css';
 
 // Dynamic import for Phaser (client-side only)
@@ -284,6 +285,163 @@ export default function Home() {
       document.removeEventListener('click', onClickCapture, { capture: true } as any);
     };
   }, [handleDevToolsTap]);
+
+  // Mobile swipe anywhere (outside the Phaser canvas) to move.
+  // Keep the swipe feel identical to the in-canvas Phaser handler.
+  useEffect(() => {
+    const isTouchCapable =
+      'ontouchstart' in window ||
+      (typeof navigator !== 'undefined' && (navigator as any).maxTouchPoints > 0);
+
+    if (!isTouchCapable) return;
+    if (!isGameReady || !isPlaying) return;
+    if (showHelp || showStats || showShareCard || showDevTools) return;
+
+    let active: { kind: 'touch' | 'pointer'; id: number } | null = null;
+    let startX = 0;
+    let startY = 0;
+    let consumed = false;
+    let lastTouchTs = 0;
+
+    const startedInsideGameFrame = (eventTarget: EventTarget | null) => {
+      const node = eventTarget as Node | null;
+      return !!node && !!gameFrameRef.current && gameFrameRef.current.contains(node);
+    };
+
+    const canAcceptMove = () => gameControlsRef.current?.canAcceptMoveInput?.() ?? false;
+
+    const getScale = () => {
+      const rect = gameFrameRef.current?.getBoundingClientRect();
+      const scaleX = rect && rect.width > 0 ? rect.width / baseWidth : 1;
+      const scaleY = rect && rect.height > 0 ? rect.height / baseHeight : 1;
+      return {
+        scaleX: Math.max(scaleX, 1e-6),
+        scaleY: Math.max(scaleY, 1e-6),
+      };
+    };
+
+    const capture = { capture: true } as const;
+    const capturePassive = { capture: true, passive: true } as const;
+
+    const onTouchStartCapture = (e: TouchEvent) => {
+      lastTouchTs = Date.now();
+      if (active) return;
+      if (startedInsideGameFrame(e.target)) return;
+      if (!gameControlsRef.current) return;
+      const touch = e.changedTouches[0];
+      if (!touch) return;
+
+      active = { kind: 'touch', id: touch.identifier };
+      startX = touch.clientX;
+      startY = touch.clientY;
+      consumed = false;
+    };
+
+    const onTouchMoveCapture = (e: TouchEvent) => {
+      lastTouchTs = Date.now();
+      if (!active || active.kind !== 'touch') return;
+      if (consumed) return;
+      if (!gameControlsRef.current) return;
+
+      const t = Array.from(e.touches).find((touch) => touch.identifier === active!.id);
+      if (!t) return;
+
+      const { scaleX, scaleY } = getScale();
+      const dx = (t.clientX - startX) / scaleX;
+      const dy = (t.clientY - startY) / scaleY;
+      const dir = getSwipeDirection(dx, dy, SWIPE_MIN_DISTANCE_PX);
+      if (!dir) return;
+      if (!canAcceptMove()) return;
+
+      gameControlsRef.current.movePlayer(dir);
+      consumed = true;
+    };
+
+    const onTouchEndCapture = (e: TouchEvent) => {
+      lastTouchTs = Date.now();
+      if (!active || active.kind !== 'touch') return;
+      for (const touch of Array.from(e.changedTouches)) {
+        if (touch.identifier === active.id) {
+          active = null;
+          consumed = false;
+          return;
+        }
+      }
+    };
+
+    const onTouchCancelCapture = (e: TouchEvent) => {
+      lastTouchTs = Date.now();
+      if (!active || active.kind !== 'touch') return;
+      for (const touch of Array.from(e.changedTouches)) {
+        if (touch.identifier === active.id) {
+          active = null;
+          consumed = false;
+          return;
+        }
+      }
+    };
+
+    // Pointer events fallback (some browsers / WebViews)
+    const onPointerDownCapture = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch') return;
+      if (Date.now() - lastTouchTs < 700) return;
+      if (active) return;
+      if (startedInsideGameFrame(e.target)) return;
+      if (!gameControlsRef.current) return;
+
+      active = { kind: 'pointer', id: e.pointerId };
+      startX = e.clientX;
+      startY = e.clientY;
+      consumed = false;
+    };
+
+    const onPointerMoveCapture = (e: PointerEvent) => {
+      if (!active || active.kind !== 'pointer' || active.id !== e.pointerId) return;
+      if (consumed) return;
+      if (!gameControlsRef.current) return;
+
+      const { scaleX, scaleY } = getScale();
+      const dx = (e.clientX - startX) / scaleX;
+      const dy = (e.clientY - startY) / scaleY;
+      const dir = getSwipeDirection(dx, dy, SWIPE_MIN_DISTANCE_PX);
+      if (!dir) return;
+      if (!canAcceptMove()) return;
+
+      gameControlsRef.current.movePlayer(dir);
+      consumed = true;
+    };
+
+    const onPointerUpCapture = (e: PointerEvent) => {
+      if (!active || active.kind !== 'pointer' || active.id !== e.pointerId) return;
+      active = null;
+      consumed = false;
+    };
+
+    const onPointerCancelCapture = (e: PointerEvent) => {
+      if (!active || active.kind !== 'pointer' || active.id !== e.pointerId) return;
+      active = null;
+      consumed = false;
+    };
+
+    document.addEventListener('touchstart', onTouchStartCapture, capturePassive);
+    document.addEventListener('touchmove', onTouchMoveCapture, capturePassive);
+    document.addEventListener('touchend', onTouchEndCapture, capture);
+    document.addEventListener('touchcancel', onTouchCancelCapture, capture);
+    document.addEventListener('pointerdown', onPointerDownCapture, capture);
+    document.addEventListener('pointermove', onPointerMoveCapture, capture);
+    document.addEventListener('pointerup', onPointerUpCapture, capture);
+    document.addEventListener('pointercancel', onPointerCancelCapture, capture);
+    return () => {
+      document.removeEventListener('touchstart', onTouchStartCapture, capturePassive as any);
+      document.removeEventListener('touchmove', onTouchMoveCapture, capturePassive as any);
+      document.removeEventListener('touchend', onTouchEndCapture, capture as any);
+      document.removeEventListener('touchcancel', onTouchCancelCapture, capture as any);
+      document.removeEventListener('pointerdown', onPointerDownCapture, capture as any);
+      document.removeEventListener('pointermove', onPointerMoveCapture, capture as any);
+      document.removeEventListener('pointerup', onPointerUpCapture, capture as any);
+      document.removeEventListener('pointercancel', onPointerCancelCapture, capture as any);
+    };
+  }, [isGameReady, isPlaying, showHelp, showStats, showShareCard, showDevTools, baseWidth, baseHeight]);
 
   const loadDailyPuzzle = useCallback(async () => {
     const today = new Date();

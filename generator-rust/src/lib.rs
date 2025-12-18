@@ -16,6 +16,7 @@ pub mod types;
 // Re-export main types for convenience
 pub use generators::ground::generate_puzzle as generate_ground_puzzle;
 pub use generators::ice::generate_puzzle as generate_ice_puzzle;
+pub use generators::ice::generate_puzzle_with_cancel as generate_ice_puzzle_with_cancel;
 pub use types::{GenerationConfig, MapType, Position, PuzzleData, TileType};
 
 // ─────────────────────────────────────────────────────────────────────────────

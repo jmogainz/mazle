@@ -1,9 +1,10 @@
 use axum::{
     extract::{Path, Query, State},
-    response::Json,
+    response::{IntoResponse, Json},
     routing::{get, post},
     Router,
 };
+use axum::http::StatusCode;
 use log::info;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -13,8 +14,8 @@ use tower_http::cors::{Any, CorsLayer};
 
 // Import from library
 use mazle_generator::{
-    cache::PuzzleCache, generate_ground_puzzle, generate_ice_puzzle, scheduler, GenerationConfig,
-    PuzzleData,
+    cache::PuzzleCache, generate_ground_puzzle, generate_ice_puzzle_with_cancel, scheduler,
+    GenerationConfig, PuzzleData,
 };
 
 /// Application state
@@ -49,10 +50,23 @@ fn default_map_type() -> String {
 }
 
 /// Helper to generate puzzle based on map type
-fn generate_by_type(seed: &str, config: &GenerationConfig, map_type: &str) -> PuzzleData {
+fn generate_by_type(
+    seed: &str,
+    config: &GenerationConfig,
+    map_type: &str,
+    cancel_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
+) -> Result<PuzzleData, ()> {
+    if cancel_flag
+        .as_ref()
+        .map(|f| f.load(std::sync::atomic::Ordering::Relaxed))
+        .unwrap_or(false)
+    {
+        return Err(());
+    }
+
     match map_type {
-        "ground" => generate_ground_puzzle(seed, config),
-        _ => generate_ice_puzzle(seed, config), // Default to ice
+        "ground" => Ok(generate_ground_puzzle(seed, config)),
+        _ => generate_ice_puzzle_with_cancel(seed, config, cancel_flag), // Default to ice
     }
 }
 
@@ -104,7 +118,7 @@ async fn generate_by_seed(
     Path(seed): Path<String>,
     Query(query): Query<GenerateQuery>,
     State(state): State<AppState>,
-) -> Json<GenerateResponse> {
+) -> impl IntoResponse {
     let request_start = Instant::now();
 
     // 1. Check cache first (unless bypassed)
@@ -117,11 +131,15 @@ async fn generate_by_seed(
             seed, cached.generation_time_ms, request_time
         );
 
-        return Json(GenerateResponse {
-            puzzle: cached.puzzle,
-            generation_time_ms: cached.generation_time_ms,
-            cached: true,
-        });
+        return (
+            StatusCode::OK,
+            Json(GenerateResponse {
+                puzzle: cached.puzzle,
+                generation_time_ms: cached.generation_time_ms,
+                cached: true,
+            }),
+        )
+            .into_response();
     } else {
         // Check if another request is already generating this seed
         if state.cache.is_generating(&seed) {
@@ -134,11 +152,15 @@ async fn generate_by_seed(
                     seed, cached.generation_time_ms, request_time
                 );
                 
-                return Json(GenerateResponse {
-                    puzzle: cached.puzzle,
-                    generation_time_ms: cached.generation_time_ms,
-                    cached: true, // Treat as cached since we didn't generate it
-                });
+                return (
+                    StatusCode::OK,
+                    Json(GenerateResponse {
+                        puzzle: cached.puzzle,
+                        generation_time_ms: cached.generation_time_ms,
+                        cached: true, // Treat as cached since we didn't generate it
+                    }),
+                )
+                    .into_response();
             }
             // If wait failed, fall through to generate ourselves
             info!("⚠️ Wait failed for '{}', generating ourselves...", seed);
@@ -153,11 +175,15 @@ async fn generate_by_seed(
         // Another request started generating between our check and now - wait for it
         info!("⏳ Race condition: waiting for '{}' generation...", seed);
         if let Some(cached) = state.cache.wait_for_generation(&seed).await {
-            return Json(GenerateResponse {
-                puzzle: cached.puzzle,
-                generation_time_ms: cached.generation_time_ms,
-                cached: true,
-            });
+            return (
+                StatusCode::OK,
+                Json(GenerateResponse {
+                    puzzle: cached.puzzle,
+                    generation_time_ms: cached.generation_time_ms,
+                    cached: true,
+                }),
+            )
+                .into_response();
         }
     }
     
@@ -172,46 +198,90 @@ async fn generate_by_seed(
     let map_type = query.map_type.clone();
     let seed_for_task = seed.clone();
     let cache_for_task = state.cache.clone();
+    let cancel_flag = state.cache.cancel_flag(&seed);
     
-    // Spawn a task that will complete even if this handler is cancelled
-    let generation_handle = tokio::spawn(async move {
+    // Spawn generation task and keep a handle for cancellation
+    let generation_handle = tokio::spawn({
         let seed_clone = seed_for_task.clone();
-        let puzzle = tokio::task::spawn_blocking(move || generate_by_type(&seed_clone, &config, &map_type))
-            .await
-            .expect("Blocking task panicked");
-        
-        let generation_time = gen_start.elapsed().as_millis() as u64;
-        info!(
-            "[DEBUG] spawn_blocking returned for '{}' after {}ms",
-            seed_for_task, generation_time
-        );
+        let map_type_clone = map_type.clone();
+        let cancel_clone = cancel_flag.clone();
+        async move {
+            let result = tokio::task::spawn_blocking(move || {
+                generate_by_type(&seed_clone, &config, &map_type_clone, Some(cancel_clone))
+            })
+            .await;
 
-        // Cache the result and notify waiters
-        cache_for_task.insert(seed_for_task.clone(), puzzle.clone(), generation_time);
-        cache_for_task.finish_generating(&seed_for_task);
-        
-        info!(
-            "✓ Generated '{}' in {}ms",
-            seed_for_task, generation_time
-        );
-        
-        (puzzle, generation_time)
+            let generation_time = gen_start.elapsed().as_millis() as u64;
+
+            let puzzle = match result {
+                Ok(Ok(p)) => Some(p),
+                Ok(Err(())) => {
+                    info!(
+                        "[DEBUG] spawn_blocking for '{}' noticed cancellation after {}ms",
+                        seed_for_task, generation_time
+                    );
+                    None
+                }
+                Err(join_err) => {
+                    info!(
+                        "[DEBUG] spawn_blocking for '{}' panicked/cancelled: {:?}",
+                        seed_for_task, join_err
+                    );
+                    None
+                }
+            };
+
+            if let Some(puzzle) = puzzle {
+                info!(
+                    "[DEBUG] spawn_blocking returned for '{}' after {}ms",
+                    seed_for_task, generation_time
+                );
+                // Cache the result and notify waiters
+                cache_for_task.insert(seed_for_task.clone(), puzzle.clone(), generation_time);
+                info!("✓ Generated '{}' in {}ms", seed_for_task, generation_time);
+            } else {
+                info!(
+                    "[DEBUG] generation for '{}' ended without puzzle (likely cancelled)",
+                    seed_for_task
+                );
+            }
+
+            cache_for_task.finish_generating(&seed_for_task);
+        }
     });
+
+    state.cache.set_handle(&seed, generation_handle);
     
-    // Wait for generation to complete
-    let (puzzle, generation_time) = generation_handle.await.expect("Generation task panicked");
+    // Wait for generation to complete (via cache notification)
+    if let Some(cached) = state.cache.wait_for_generation(&seed).await {
+        let total_time = request_start.elapsed().as_millis() as u64;
+        info!(
+            "✓ Returning '{}' (generated in {}ms, total request: {}ms)",
+            seed, cached.generation_time_ms, total_time
+        );
 
-    let total_time = request_start.elapsed().as_millis() as u64;
-    info!(
-        "✓ Returning '{}' (generated in {}ms, total request: {}ms)",
-        seed, generation_time, total_time
-    );
+        return (
+            StatusCode::OK,
+            Json(GenerateResponse {
+                puzzle: cached.puzzle,
+                generation_time_ms: cached.generation_time_ms,
+                cached: cached.generated_at.elapsed() == Duration::from_millis(0),
+            }),
+        )
+            .into_response();
+    } else {
+        // Cancelled or failed; ensure state cleanup
+        state.cache.finish_generating(&seed);
+        return (
+            StatusCode::REQUEST_TIMEOUT, // best available match for client-cancelled semantics
+            Json(json!({
+                "error": "generation_cancelled"
+            })),
+        )
+            .into_response();
+    }
 
-    Json(GenerateResponse {
-        puzzle,
-        generation_time_ms: generation_time,
-        cached: false,
-    })
+    // Unreachable
 }
 
 /// Generate puzzle (POST with full config)
@@ -226,9 +296,10 @@ async fn generate_post(
     let map_type = request.map_type.clone();
 
     // Spawn CPU-intensive work on blocking thread pool
-    let puzzle = tokio::task::spawn_blocking(move || generate_by_type(&seed, &config, &map_type))
+    let puzzle = tokio::task::spawn_blocking(move || generate_by_type(&seed, &config, &map_type, None))
         .await
-        .expect("Blocking task panicked");
+        .expect("Blocking task panicked")
+        .expect("generation should not cancel in POST");
 
     let generation_time = start.elapsed().as_millis() as u64;
 
@@ -263,6 +334,34 @@ struct BatchResponse {
     avg_time_ms: u128,
 }
 
+/// Cancel an in-flight generation if no other waiters are present
+async fn cancel_generation(
+    Path(seed): Path<String>,
+    State(state): State<AppState>,
+) -> Json<serde_json::Value> {
+    let (cancelled, receiver_count, was_in_progress, skipped_waiters) =
+        state.cache.cancel(&seed).await;
+
+    info!(
+        "🚫 Cancel request for '{}' (in_progress={}, receiver_count={}, cancelled={}, skipped_waiters={})",
+        seed, was_in_progress, receiver_count, cancelled, skipped_waiters
+    );
+
+    Json(json!({
+        "seed": seed,
+        "cancelled": cancelled,
+        "receiverCount": receiver_count,
+        "wasInProgress": was_in_progress,
+        "reason": if cancelled {
+            "aborted"
+        } else if skipped_waiters {
+            "waiters_present"
+        } else {
+            "not_found_or_already_done"
+        }
+    }))
+}
+
 async fn generate_batch(Json(request): Json<BatchRequest>) -> Json<BatchResponse> {
     let start = Instant::now();
 
@@ -275,7 +374,7 @@ async fn generate_batch(Json(request): Json<BatchRequest>) -> Json<BatchResponse
         use rayon::prelude::*;
         seeds
             .par_iter()
-            .map(|seed| generate_by_type(seed, &config, &map_type))
+            .map(|seed| generate_by_type(seed, &config, &map_type, None).expect("generation should not cancel in batch"))
             .collect::<Vec<PuzzleData>>()
     })
     .await
@@ -308,6 +407,7 @@ fn build_router(cache: Arc<PuzzleCache>) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/api/generate/:seed", get(generate_by_seed))
+        .route("/api/generate/:seed/cancel", post(cancel_generation))
         .route("/api/generate", post(generate_post))
         .route("/api/generate/batch", post(generate_batch))
         .route("/api/cache/status", get(cache_status))

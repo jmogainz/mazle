@@ -3,9 +3,12 @@
 use crate::types::PuzzleData;
 use log::info;
 use std::collections::{HashMap, HashSet};
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
+use tokio::task::JoinHandle;
+use chrono::NaiveDate;
+use chrono::Utc;
 
 /// Cached puzzle with metadata
 #[derive(Clone)]
@@ -22,17 +25,56 @@ pub struct PuzzleCache {
     in_progress: RwLock<HashSet<String>>,
     /// Broadcast channels for waiting on in-progress generations
     waiters: RwLock<HashMap<String, broadcast::Sender<()>>>,
+    /// Join handles for in-progress generations (for cancellation)
+    handles: RwLock<HashMap<String, JoinHandle<()>>>,
+    /// Cancellation flags per seed
+    cancel_flags: RwLock<HashMap<String, Arc<std::sync::atomic::AtomicBool>>>,
     max_entries: usize,
     ttl: Duration,
 }
 
 impl PuzzleCache {
+    /// Identify daily seeds (never evict these before non-dailies)
+    fn is_daily_seed(seed: &str) -> bool {
+        seed.starts_with("daily-")
+    }
+
+    /// Parse the date portion of a daily seed: daily-YYYY-MM-DD-...
+    fn daily_seed_date(seed: &str) -> Option<NaiveDate> {
+        if !Self::is_daily_seed(seed) {
+            return None;
+        }
+        // Expect at least "daily-YYYY-MM-DD"
+        let date_str = seed.get(6..16)?; // 6..16 gives 10 chars YYYY-MM-DD
+        NaiveDate::parse_from_str(date_str, "%Y-%m-%d").ok()
+    }
+
+    /// Whether the daily seed is strictly before today (UTC)
+    fn is_past_daily(seed: &str, today: NaiveDate) -> bool {
+        Self::daily_seed_date(seed)
+            .map(|d| d < today)
+            .unwrap_or(false)
+    }
+
+    fn oldest_key_matching<'a>(
+        entries: &'a HashMap<String, CachedPuzzle>,
+        predicate: impl Fn(&str) -> bool,
+    ) -> Option<String> {
+        entries
+            .iter()
+            .filter(|(k, _)| predicate(k))
+            .min_by_key(|(_, v)| v.generated_at)
+            .map(|(k, _)| k.clone())
+    }
+
     /// Create new cache with capacity and TTL
     pub fn new(max_entries: usize, ttl: Duration) -> Self {
         Self {
             entries: RwLock::new(HashMap::new()),
             in_progress: RwLock::new(HashSet::new()),
             waiters: RwLock::new(HashMap::new()),
+            handles: RwLock::new(HashMap::new()),
+            cancel_flags: RwLock::new(HashMap::new()),
             max_entries,
             ttl,
         }
@@ -82,6 +124,29 @@ impl PuzzleCache {
         
         true
     }
+
+    /// Register a join handle for the seed's generation task (for cancellation)
+    pub fn set_handle(&self, seed: &str, handle: JoinHandle<()>) {
+        if let Ok(mut handles) = self.handles.write() {
+            handles.insert(seed.to_string(), handle);
+        }
+    }
+
+    /// Get or create a cancellation notifier for a seed
+    pub fn cancel_flag(&self, seed: &str) -> Arc<std::sync::atomic::AtomicBool> {
+        let mut map = self.cancel_flags.write().expect("cancel_flags poisoned");
+        map.entry(seed.to_string())
+            .or_insert_with(|| Arc::new(std::sync::atomic::AtomicBool::new(false)))
+            .clone()
+    }
+    
+    /// Fetch cancellation flag if present (non-creating)
+    pub fn get_cancel_flag(&self, seed: &str) -> Option<Arc<std::sync::atomic::AtomicBool>> {
+        self.cancel_flags
+            .read()
+            .ok()
+            .and_then(|m| m.get(seed).cloned())
+    }
     
     /// Mark generation as complete and notify waiters
     pub fn finish_generating(&self, seed: &str) {
@@ -94,6 +159,12 @@ impl PuzzleCache {
             if let Some(tx) = waiters.remove(seed) {
                 let _ = tx.send(()); // Ignore error if no receivers
             }
+        }
+        if let Ok(mut handles) = self.handles.write() {
+            handles.remove(seed);
+        }
+        if let Ok(mut cancels) = self.cancel_flags.write() {
+            cancels.remove(seed);
         }
     }
     
@@ -118,6 +189,45 @@ impl PuzzleCache {
         }
     }
 
+    /// Attempt to cancel an in-progress generation for a seed.
+    /// Returns (cancelled, receiver_count_before_cancel, was_in_progress, skipped_due_to_waiters).
+    /// Only cancels if no other waiters are present (i.e., <=1 receiver, typically the caller); otherwise leaves generation running.
+    pub async fn cancel(&self, seed: &str) -> (bool, usize, bool, bool) {
+        // Check waiters receiver count
+        let receiver_count = {
+            let waiters = self.waiters.read().ok();
+            waiters
+                .and_then(|w| w.get(seed).map(|tx| tx.receiver_count()))
+                .unwrap_or(0)
+        };
+
+        let was_in_progress = self.is_generating(seed);
+        // Do not cancel if other waiters exist
+        if receiver_count > 1 {
+            return (false, receiver_count, was_in_progress, true);
+        }
+
+        let mut cancelled = false;
+
+        // Signal cancellation to any cooperative loops
+        if let Some(flag) = self.cancel_flags.read().ok().and_then(|m| m.get(seed).cloned()) {
+            flag.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+
+        // Abort the generation handle if present
+        if let Some(handle) = self.handles.write().ok().and_then(|mut h| h.remove(seed)) {
+            handle.abort();
+            cancelled = true;
+        }
+
+        // Cleanup state & notify any listeners so they can stop waiting
+        if was_in_progress {
+            self.finish_generating(seed);
+        }
+
+        (cancelled, receiver_count, was_in_progress, false)
+    }
+
     /// Insert puzzle into cache with metadata
     /// Evicts oldest entry if at max capacity
     pub fn insert(&self, seed: String, puzzle: PuzzleData, generation_time_ms: u64) {
@@ -126,9 +236,24 @@ impl PuzzleCache {
             Err(_) => return,
         };
 
-        // Evict oldest if at capacity and this is a new key
+        let today = Utc::now().date_naive();
+
+        // Evict with priority: non-dailies first, then past dailies only.
         if entries.len() >= self.max_entries && !entries.contains_key(&seed) {
-            Self::evict_oldest_from(&mut entries);
+            let victim = Self::oldest_key_matching(&entries, |k| !Self::is_daily_seed(k))
+                .or_else(|| Self::oldest_key_matching(&entries, |k| Self::is_past_daily(k, today)));
+
+            if let Some(victim_key) = victim {
+                entries.remove(&victim_key);
+                info!("Evicted cache entry: {} (to insert {})", victim_key, seed);
+            } else {
+                // All entries are current/future daily; protect them by skipping insert
+                info!(
+                    "Skipped caching '{}' to preserve current/future daily entries (cache full of protected dailies)",
+                    seed
+                );
+                return;
+            }
         }
 
         entries.insert(
@@ -176,15 +301,4 @@ impl PuzzleCache {
         }
     }
 
-    /// Evict oldest entry (LRU eviction)
-    fn evict_oldest_from(entries: &mut HashMap<String, CachedPuzzle>) {
-        if let Some(oldest_key) = entries
-            .iter()
-            .min_by_key(|(_, cached)| cached.generated_at)
-            .map(|(k, _)| k.clone())
-        {
-            entries.remove(&oldest_key);
-            info!("Evicted oldest cache entry: {}", oldest_key);
-        }
-    }
 }

@@ -13,6 +13,7 @@ export type { MapTypeDefinition, PsychologyMetrics } from './puzzleGenerator';
 // Puzzle generation (WASM/Rust)
 export {
   generatePuzzleParallel,
+  cancelRustRequest,
   fetchDailyPuzzle,
   isRustBackendConfigured,
   getRustBackendUrl,

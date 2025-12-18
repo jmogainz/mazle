@@ -9,6 +9,7 @@ import {
   PuzzleData,
   MapType,
   generatePuzzleParallel,
+  cancelRustRequest,
   fetchDailyPuzzle,
   getDailySeed,
   GenerationProgress,
@@ -99,6 +100,8 @@ export default function Home() {
   } | null>(null);
   const [startBatchInput, setStartBatchInput] = useState('');
   const gameControlsRef = useRef<GameControls | null>(null);
+  const generationAbortRef = useRef<AbortController | null>(null);
+  const inFlightSeedRef = useRef<string | null>(null);
   const debugModeRef = useRef(false);
   const cheatBufferRef = useRef('');
   const cheatTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -673,6 +676,22 @@ export default function Home() {
       const isDateSeed = /^\d{4}-\d{2}-\d{2}$/.test(trimmed);
       const forceMapType = selectedMapType === 'random' ? undefined : selectedMapType;
       const startBatch = startBatchInput ? parseInt(startBatchInput, 10) : undefined;
+      const abortController = new AbortController();
+
+      // Abort any previous in-flight generation to avoid duplicate work
+      if (generationAbortRef.current && !generationAbortRef.current.signal.aborted) {
+        generationAbortRef.current.abort();
+      }
+      generationAbortRef.current = abortController;
+
+      // Track which seed this request is for (used by Stop button)
+      const requestSeed = isDateSeed
+        ? getDailySeed(new Date(trimmed))
+        : (trimmed ||
+            `dev-${Date.now()}-${Math.floor(Math.random() * 10000)
+              .toString()
+              .padStart(4, '0')}`);
+      inFlightSeedRef.current = requestSeed;
 
       const progressHandler = (progress: GenerationProgress) => {
         setGenerationProgress(progress);
@@ -684,10 +703,17 @@ export default function Home() {
         setGenerationProgress(null);
 
         const targetDate = new Date(trimmed);
-        const dailySeed = getDailySeed(targetDate);
+        const dailySeed = requestSeed;
 
         try {
-          const datedPuzzle = await generatePuzzleParallel(dailySeed, progressHandler, forceMapType, selectedBackend, startBatch);
+          const datedPuzzle = await generatePuzzleParallel(
+            dailySeed,
+            progressHandler,
+            forceMapType,
+            selectedBackend,
+            startBatch,
+            abortController,
+          );
           debugModeRef.current = true;
           setPuzzle(datedPuzzle);
           setPuzzleNumber(getPuzzleNumber(targetDate));
@@ -700,9 +726,17 @@ export default function Home() {
           setPreviousResult(null);
           setInitialStats(null);
           setIsPlaying(false);
+        } catch (error) {
+          if (abortController.signal.aborted || (error instanceof DOMException && error.name === 'AbortError')) {
+            console.log('[Dev] Generation cancelled by user');
+            return;
+          }
+          throw error;
         } finally {
           setIsGenerating(false);
           setGenerationProgress(null);
+          generationAbortRef.current = null;
+          inFlightSeedRef.current = null;
         }
         return;
       }
@@ -717,12 +751,19 @@ export default function Home() {
       setGenerationProgress(null);
 
       try {
-        const newPuzzle = await generatePuzzleParallel(newSeed, progressHandler, forceMapType, selectedBackend, startBatch);
+        const newPuzzle = await generatePuzzleParallel(
+          requestSeed,
+          progressHandler,
+          forceMapType,
+          selectedBackend,
+          startBatch,
+          abortController,
+        );
         debugModeRef.current = true;
         setPuzzle(newPuzzle);
-        setPuzzleLabel(`DEV ${newSeed}`);
-        setActiveSeed(newSeed);
-        setSeedInput(newSeed);
+        setPuzzleLabel(`DEV ${requestSeed}`);
+        setActiveSeed(requestSeed);
+        setSeedInput(requestSeed);
         setRenderKey((prev) => prev + 1);
         setGameResult(null);
         setShowShareCard(false);
@@ -730,9 +771,17 @@ export default function Home() {
         setPreviousResult(null);
         setInitialStats(null);
         setIsPlaying(false);
+      } catch (error) {
+        if (abortController.signal.aborted || (error instanceof DOMException && error.name === 'AbortError')) {
+          console.log('[Dev] Generation cancelled by user');
+          return;
+        }
+        throw error;
       } finally {
         setIsGenerating(false);
         setGenerationProgress(null);
+        generationAbortRef.current = null;
+        inFlightSeedRef.current = null;
       }
     },
     [selectedMapType, selectedBackend, startBatchInput],
@@ -799,6 +848,30 @@ export default function Home() {
     setIsPlaying(false);
     setShowShareCard(true);
   }, [showAnalysis]);
+
+  const handleStopGeneration = useCallback(() => {
+    const controller = generationAbortRef.current;
+    const seedToCancel = inFlightSeedRef.current || activeSeed;
+    if (!controller || !seedToCancel) {
+      return;
+    }
+
+    // Only cancel if no other same-seed requests are in-flight (handled in wasmGenerator)
+    const didCancel = cancelRustRequest(seedToCancel);
+    if (didCancel) {
+      console.log('[Dev] Stopping generation request (client abort)');
+      controller.abort();
+      // Ask backend to cancel compute if we're the only waiter
+      fetch(`/api/generate/${encodeURIComponent(seedToCancel)}/cancel`, {
+        method: 'POST',
+      }).catch((err) => console.warn('[Dev] Backend cancel request failed', err));
+      setIsGenerating(false);
+      setGenerationProgress(null);
+      generationAbortRef.current = null;
+    } else {
+      console.log('[Dev] Cancel skipped; another request for this seed is in-flight');
+    }
+  }, []);
 
   const handleCloseShareCard = useCallback(() => {
     // Hide the share card but keep inline analysis visible
@@ -1104,6 +1177,16 @@ export default function Home() {
                         className={styles.progressFill}
                         style={{ width: `${progressPercent}%` }}
                       />
+                    </div>
+                    <div className={styles.devProgressActions}>
+                      <button
+                        type="button"
+                        className={styles.devButtonDanger}
+                        onClick={handleStopGeneration}
+                        disabled={!generationAbortRef.current}
+                      >
+                        ⏹ Stop
+                      </button>
                     </div>
                   </div>
                 )}

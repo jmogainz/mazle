@@ -5,7 +5,7 @@ use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use crate::types::{Direction, GenerationConfig, MapType, Position, PuzzleData, TileType};
 use log::{info, debug};
 use rayon::prelude::*;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -27,7 +27,6 @@ struct MetricInfo {
 struct ClosestPuzzleInfo {
     closeness: f64,
     metrics: Vec<MetricInfo>,
-    opt_count: i32,
     traps: Vec<String>,
 }
 
@@ -35,8 +34,6 @@ struct ClosestPuzzleInfo {
 struct GenerationContext {
     /// Short identifier for this run (first 8 chars of seed or truncated)
     run_id: String,
-    /// Full seed for reference
-    seed: String,
     /// Diagnostic counters
     fail_ci: AtomicU64,
     fail_dec: AtomicU64,
@@ -78,7 +75,6 @@ impl GenerationContext {
 
         Self {
             run_id,
-            seed: seed.to_string(),
             fail_ci: AtomicU64::new(0),
             fail_dec: AtomicU64::new(0),
             fail_gate: AtomicU64::new(0),
@@ -241,7 +237,6 @@ where
 // CONSTANTS (match src/game/maps/ice/generator.ts)
 // =============================================================================
 
-const TARGET_PSYCHOLOGY_SCORE: f64 = 800.0;
 const BATCH_SIZE: usize = 10000;  // Attempts per batch
 
 const SIZE_OPTIONS: [(usize, usize); 1] = [(15, 15)];
@@ -1764,6 +1759,7 @@ struct PsychMetrics {
 
     // Path diversity metrics (Phase 2)
     near_optimal_paths: i32,      // Count of paths within tolerance of optimal
+    #[allow(dead_code)]
     optimal_path_count: i32,      // Count of paths at exactly optimal length
     path_overlap: f64,            // MINIMUM overlap - best alternative's overlap with optimal
     path_overlap_avg: f64,        // AVERAGE overlap - how similar alternatives are on average
@@ -2338,7 +2334,7 @@ fn calculate_path_overlap(
     let mut paths_found = 0;
 
     while head < states.len() && paths_found < MAX_PATHS && states.len() < MAX_STATES {
-        let (pos, moves, parent_idx) = states[head];
+        let (pos, moves, _) = states[head];
         head += 1;
 
         if moves > max_moves {
@@ -2458,6 +2454,7 @@ fn overlap_score(overlap: f64) -> f64 {
     (1.0 - deviation * 1.8).max(0.0)
 }
 
+#[allow(dead_code)]
 fn calculate_psychology_score(
     tiles: &Vec<Vec<TileType>>,
     start: &Position,
@@ -2756,9 +2753,9 @@ fn compute_prefilter_thresholds(width: usize, height: usize) -> PrefilterThresho
     // Original thresholds (scaled for larger maps)
     let ci = ((BASE_PREFILTER_MIN_COUNTER_INTUITIVE as f64 * scale).round() as i32)
         .max(PREFILTER_FLOOR_COUNTER_INTUITIVE);
-    let decoys = ((BASE_PREFILTER_MIN_ATTRACTIVE_DECOYS as f64 * scale).round() as i32)
+    let _decoys = ((BASE_PREFILTER_MIN_ATTRACTIVE_DECOYS as f64 * scale).round() as i32)
         .max(PREFILTER_FLOOR_ATTRACTIVE_DECOYS);
-    let gates = ((BASE_PREFILTER_MIN_COMMITMENT_GATES as f64 * scale).round() as i32)
+    let _gates = ((BASE_PREFILTER_MIN_COMMITMENT_GATES as f64 * scale).round() as i32)
         .max(PREFILTER_FLOOR_COMMITMENT_GATES);
     let fp = ((BASE_PREFILTER_MIN_FALSE_PROGRESS as f64 * scale).round() as i32)
         .max(PREFILTER_FLOOR_FALSE_PROGRESS);
@@ -2766,7 +2763,7 @@ fn compute_prefilter_thresholds(width: usize, height: usize) -> PrefilterThresho
     // Phase 1 thresholds
     let min_dir_changes = ((BASE_PREFILTER_MIN_DIRECTION_CHANGES as f64 * scale).round() as i32)
         .max(PREFILTER_FLOOR_DIRECTION_CHANGES);
-    let min_backtrack = ((BASE_PREFILTER_MIN_BACKTRACK_DEPTH as f64 * scale).round() as i32)
+    let _min_backtrack = ((BASE_PREFILTER_MIN_BACKTRACK_DEPTH as f64 * scale).round() as i32)
         .max(PREFILTER_FLOOR_BACKTRACK_DEPTH);
     let min_ambiguity = BASE_PREFILTER_MIN_DECISION_AMBIGUITY;
 
@@ -2810,60 +2807,6 @@ fn compute_prefilter_thresholds(width: usize, height: usize) -> PrefilterThresho
         olap_avg_enabled: PREFILTER_ENABLE_OLAP_AVG,    // ENABLED
         ediv_enabled: PREFILTER_ENABLE_EDIV,     // ENABLED
     }
-}
-
-/// Track which prefilters are failing for diagnostics
-fn passes_prefilters_with_stats(
-    metrics: &PsychMetrics,
-    thresholds: &PrefilterThresholds,
-    fail_counts: &mut [u64; 11],
-) -> bool {
-    let checks = [
-        (metrics.counter_intuitive_moves >= thresholds.min_counter_intuitive, 0),
-        (metrics.attractive_decoys >= thresholds.min_attractive_decoys, 1),
-        (metrics.commitment_gates >= thresholds.min_commitment_gates, 2),
-        (metrics.false_progress_paths >= thresholds.min_false_progress, 3),
-        (metrics.path_locality >= thresholds.min_path_locality && metrics.path_locality <= thresholds.max_path_locality, 4),
-        (metrics.direction_changes >= thresholds.min_direction_changes, 5),
-        (metrics.backtrack_depth >= thresholds.min_backtrack_depth, 6),
-        (metrics.decision_ambiguity >= thresholds.min_decision_ambiguity, 7),
-        (metrics.near_optimal_paths >= thresholds.min_near_optimal_paths, 8),
-        (metrics.path_overlap <= thresholds.max_path_overlap_best, 9),
-        (metrics.early_divergence >= thresholds.min_early_divergence, 10),
-    ];
-
-    let mut all_passed = true;
-    for (passed, idx) in checks {
-        if !passed {
-            fail_counts[idx] += 1;
-            all_passed = false;
-        }
-    }
-    all_passed
-}
-
-fn passes_prefilters(metrics: &PsychMetrics, thresholds: &PrefilterThresholds) -> bool {
-    // CRITICAL: Must have exactly ONE optimal path - this is core to puzzle design
-    if metrics.optimal_path_count != 1 {
-        return false;
-    }
-    
-    // Original checks
-    metrics.counter_intuitive_moves >= thresholds.min_counter_intuitive
-        && metrics.attractive_decoys >= thresholds.min_attractive_decoys
-        && metrics.commitment_gates >= thresholds.min_commitment_gates
-        && metrics.false_progress_paths >= thresholds.min_false_progress
-        // Phase 1 checks
-        && metrics.path_locality >= thresholds.min_path_locality
-        && metrics.path_locality <= thresholds.max_path_locality
-        && metrics.direction_changes >= thresholds.min_direction_changes
-        && metrics.backtrack_depth >= thresholds.min_backtrack_depth
-        && metrics.decision_ambiguity >= thresholds.min_decision_ambiguity
-        // Phase 2 checks
-        && metrics.near_optimal_paths >= thresholds.min_near_optimal_paths
-        && metrics.path_overlap <= thresholds.max_path_overlap_best
-        && metrics.path_overlap_avg <= thresholds.max_path_overlap_avg
-        && metrics.early_divergence >= thresholds.min_early_divergence
 }
 
 // =============================================================================
@@ -3902,7 +3845,7 @@ fn apply_chaos_traps(
     height: usize,
     rng: &mut SeededRandom,
     scale_range: impl Fn(i32, i32) -> (i32, i32),
-    protected: &mut HashSet<Position>,
+    _protected: &mut HashSet<Position>,
 ) -> Vec<String> {
     let mut applied_traps: Vec<String> = Vec::new();
     
@@ -4082,6 +4025,14 @@ fn pick_size(rng: &mut SeededRandom) -> (usize, usize) {
 
 #[allow(unused_variables)]
 pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
+    generate_puzzle_with_cancel(seed, config, None).expect("uncancelable generation should not fail")
+}
+
+pub fn generate_puzzle_with_cancel(
+    seed: &str,
+    config: &GenerationConfig,
+    cancel_flag: Option<Arc<AtomicBool>>,
+) -> Result<PuzzleData, ()> {
     // Create per-run context for isolated tracking
     let ctx = Arc::new(GenerationContext::new(seed));
     let run_id = &ctx.run_id;
@@ -4114,7 +4065,18 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
     if batch > 0 {
         info!("[{}] Resuming from batch {}", run_id, batch);
     }
+    let is_cancelled = |flag: &Option<Arc<AtomicBool>>| -> bool {
+        flag.as_ref()
+            .map(|f| f.load(Ordering::Relaxed))
+            .unwrap_or(false)
+    };
+
     loop {
+        if is_cancelled(&cancel_flag) {
+            info!("[{}] ✋ Cancelled before batch {}", run_id, batch);
+            return Err(());
+        }
+
         let batch_start = batch * BATCH_SIZE;
         let batch_end = batch_start + BATCH_SIZE;
 
@@ -4131,7 +4093,12 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
         let prefilter_thresholds_clone = prefilter_thresholds.clone();
 
         // Generate puzzles in parallel (native) or sequential (WASM)
+        let cancel_flag_inner = cancel_flag.clone();
         let batch_best = find_best_in_range("batch", batch_start..batch_end, |attempt| {
+            if is_cancelled(&cancel_flag_inner) {
+                return None;
+            }
+
             let t_start = Instant::now();
             
             let mut attempt_rng = SeededRandom::new(&format!("{}-{}", seed, attempt));
@@ -4540,7 +4507,6 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                     ctx_clone.update_closest(ClosestPuzzleInfo {
                         closeness: score,
                         metrics,
-                        opt_count: psych_metrics.optimal_path_count,
                         traps: applied_traps.clone(),
                     });
                     
@@ -4621,7 +4587,7 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                     prefilter_thresholds.format_puzzle(&puzzle, &traps),
                 );
                 info!("[{}] ━━━ Generation complete ━━━", run_id);
-                return puzzle;
+                return Ok(puzzle);
             }
         }
 
@@ -4635,7 +4601,7 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                 prefilter_thresholds.format_puzzle(&puzzle, &traps),
             );
             info!("[{}] ━━━ Generation complete ━━━", run_id);
-            return puzzle;
+            return Ok(puzzle);
         }
 
         // Log progress every 10 batches

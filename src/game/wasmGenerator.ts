@@ -32,6 +32,26 @@ export interface GeneratorStatus {
   wasmVersion: string | null;
 }
 
+function isTransientNetworkError(error: unknown): boolean {
+  if (error instanceof BackendConnectionError) {
+    return !error.fatal;
+  }
+  if (error instanceof TypeError) {
+    return true; // Most fetch network errors surface as TypeError
+  }
+  if (error instanceof DOMException && (error.name === 'AbortError' || error.name === 'NetworkError')) {
+    return true;
+  }
+  return false;
+}
+
+function computeBackoffMs(attempt: number): number {
+  // Exponential backoff with cap
+  const base = 200; // ms
+  const max = 15000; // 15s
+  return Math.min(max, base * Math.pow(2, attempt));
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Configuration
 // ─────────────────────────────────────────────────────────────────────────────
@@ -233,19 +253,78 @@ async function generateFromWasm(
 
 let rustBackendTested = false;
 let rustBackendWorking = false;
+const rustInFlight = new Map<string, Set<AbortController>>();
 
-async function testRustBackend(): Promise<boolean> {
+function registerRustRequest(seed: string, controller: AbortController) {
+  const existing = rustInFlight.get(seed) ?? new Set<AbortController>();
+  existing.add(controller);
+  rustInFlight.set(seed, existing);
+}
+
+function unregisterRustRequest(seed: string, controller: AbortController) {
+  const existing = rustInFlight.get(seed);
+  if (!existing) return;
+  existing.delete(controller);
+  if (existing.size === 0) {
+    rustInFlight.delete(seed);
+  } else {
+    rustInFlight.set(seed, existing);
+  }
+}
+
+export function cancelRustRequest(seed: string): boolean {
+  const controllers = rustInFlight.get(seed);
+  if (!controllers || controllers.size === 0) {
+    console.log('[Rust] No in-flight request to cancel for seed', seed);
+    return false;
+  }
+
+  // If multiple requests are waiting on the same seed, do not cancel to avoid
+  // aborting other listeners.
+  if (controllers.size > 1) {
+    console.log('[Rust] Skipping cancel; another in-flight request for seed', seed);
+    return false;
+  }
+
+  let cancelled = false;
+  controllers.forEach((controller) => {
+    if (!controller.signal.aborted) {
+      controller.abort();
+      cancelled = true;
+    }
+  });
+  return cancelled;
+}
+
+async function testRustBackend(onProgress?: (progress: GenerationProgress) => void): Promise<boolean> {
   if (!RUST_BACKEND_URL) return false;
   if (rustBackendTested) return rustBackendWorking;
   
-  try {
-    const response = await fetch(`${RUST_BACKEND_URL}/health`, {
-      method: 'GET',
-      signal: AbortSignal.timeout(5000),
-    });
-    rustBackendWorking = response.ok;
-  } catch {
-    rustBackendWorking = false;
+  const maxAttempts = 2;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      const response = await fetch(`${RUST_BACKEND_URL}/health`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(3000),
+      });
+      rustBackendWorking = response.ok;
+      if (rustBackendWorking) break;
+    } catch {
+      rustBackendWorking = false;
+    }
+
+    if (!rustBackendWorking && attempt + 1 < maxAttempts) {
+      if (onProgress) {
+        onProgress({
+          phase: 'rust-backend',
+          workersComplete: Math.min(2, attempt + 1), // tiny bump to show activity
+          totalWorkers: 100,
+          bestScore: 0,
+        });
+      }
+      const backoff = 300; // ms
+      await new Promise((resolve) => setTimeout(resolve, backoff));
+    }
   }
   
   rustBackendTested = true;
@@ -254,7 +333,11 @@ async function testRustBackend(): Promise<boolean> {
 
 // Custom error class for backend connection issues
 export class BackendConnectionError extends Error {
-  constructor(message: string, public readonly isTimeout: boolean = false) {
+  constructor(
+    message: string,
+    public readonly fatal: boolean = false,
+    public readonly isTimeout: boolean = false
+  ) {
     super(message);
     this.name = 'BackendConnectionError';
   }
@@ -264,7 +347,8 @@ async function generateFromRustBackend(
   seed: string,
   mapType?: MapType,
   onProgress?: (progress: GenerationProgress) => void,
-  startBatch?: number
+  startBatch?: number,
+  abortController?: AbortController,
 ): Promise<PuzzleData> {
   if (!RUST_BACKEND_URL) {
     throw new Error('Rust backend URL not configured');
@@ -305,20 +389,25 @@ async function generateFromRustBackend(
     }, 50); // Faster updates for shorter duration
   }
   
+  const controller = abortController ?? new AbortController();
+  registerRustRequest(seed, controller);
+
   try {
     const response = await fetch(url, {
       method: 'GET',
       headers: { 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(600000), // 10 min timeout for server generation
+      signal: controller.signal,
     });
 
     if (!response.ok) {
       if (response.status >= 500) {
         throw new BackendConnectionError(
-          `Server error (${response.status}). The puzzle generator is experiencing issues. Please try again.`
+          `Server error (${response.status}). The puzzle generator is experiencing issues. Please try again.`,
+          true
         );
       }
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      // Other HTTP errors are treated as fatal (e.g., 4xx/edge cases)
+      throw new BackendConnectionError(`HTTP ${response.status}: ${response.statusText}`, true);
     }
 
     const data = await response.json();
@@ -349,18 +438,16 @@ async function generateFromRustBackend(
     }
     
     if (error instanceof TypeError && error.message.includes('fetch')) {
-      // Network error - backend is down or unreachable
+      // Network error - backend temporarily unreachable (treat as transient)
       rustBackendWorking = false;
       throw new BackendConnectionError(
-        'Unable to connect to puzzle server. The server may be temporarily unavailable.'
+        'Unable to connect to puzzle server. The server may be temporarily unavailable.',
+        false
       );
     }
     
     if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new BackendConnectionError(
-        'Request timed out. The puzzle server is taking too long to respond.',
-        true
-      );
+      throw new BackendConnectionError('Generation cancelled by client.', false);
     }
     
     if (error instanceof DOMException && error.name === 'TimeoutError') {
@@ -374,6 +461,7 @@ async function generateFromRustBackend(
     throw error;
   } finally {
     if (progressInterval) clearInterval(progressInterval);
+    unregisterRustRequest(seed, controller);
   }
 }
 
@@ -433,7 +521,8 @@ export async function generatePuzzleParallel(
   onProgress?: (progress: GenerationProgress) => void,
   forceMapType?: MapType,
   forceBackend: GeneratorBackend = 'auto',
-  startBatch?: number
+  startBatch?: number,
+  abortController?: AbortController
 ): Promise<PuzzleData> {
   
   // ─────────────────────────────────────────────────────────────────────────
@@ -444,7 +533,9 @@ export async function generatePuzzleParallel(
       throw new Error('Rust backend not configured');
     }
     
-    return await generateFromRustBackend(seed, forceMapType, onProgress, startBatch);
+    // One quick health check; if it fails, surface error (no fallback in force mode)
+    await testRustBackend(onProgress);
+    return await generateFromRustBackend(seed, forceMapType, onProgress, startBatch, abortController);
   }
   
   // ─────────────────────────────────────────────────────────────────────────
@@ -472,26 +563,58 @@ export async function generatePuzzleParallel(
   
   // Pre-check WASM availability for better error messages
   await initGenerationWorker();
+
+  // Quick preflight: mark Rust working or not; single attempt (3s)
+  await testRustBackend(onProgress);
   
   if (RUST_BACKEND_URL) {
     console.log(`[Engine] Rust backend configured at ${RUST_BACKEND_URL}`);
 
-    try {
-      return await generateFromRustBackend(seed, forceMapType, onProgress, startBatch);
-    } catch (error) {
-      console.warn('[Engine] Rust backend failed:', error);
-      
-      // Check if WASM fallback is available
-      if (!workerReady) {
-        throw new Error(
-          'Rust backend failed and WASM fallback unavailable.\n\n' +
-          'Options:\n' +
-          '1. Start the Rust backend (make up-backend)\n' +
-          '2. Enable WASM: access via http://localhost:8080 or HTTPS'
-        );
+    // Retry Rust on transient errors until either:
+    // - we succeed
+    // - the request is aborted by the user
+    // - total retry time budget is exceeded
+    const TRANSIENT_TIME_BUDGET_MS = 10 * 60 * 1000; // 10 minutes
+    const TRANSIENT_MAX_ATTEMPTS = 8; // enough for multiple background resumes without spinning forever
+    const startTime = performance.now();
+    let attempt = 0;
+    while (true) {
+      try {
+        return await generateFromRustBackend(seed, forceMapType, onProgress, startBatch, abortController);
+      } catch (error) {
+        console.warn('[Engine] Rust backend failed:', error);
+        
+        // If the client explicitly cancelled, surface the error and don't fall back
+        if (abortController?.signal.aborted || (error instanceof DOMException && error.name === 'AbortError')) {
+          throw error;
+        }
+
+        const transient = isTransientNetworkError(error);
+        const elapsed = performance.now() - startTime;
+        const attemptsExceeded = attempt >= TRANSIENT_MAX_ATTEMPTS;
+        const timeExceeded = elapsed >= TRANSIENT_TIME_BUDGET_MS;
+
+        if (transient && !attemptsExceeded && !timeExceeded) {
+          const backoff = computeBackoffMs(attempt);
+          attempt += 1;
+          console.log(`[Engine] Transient Rust failure, retry ${attempt}/${TRANSIENT_MAX_ATTEMPTS} after ${backoff}ms (elapsed ${(elapsed/1000).toFixed(1)}s)`);
+          await new Promise((resolve) => setTimeout(resolve, backoff));
+          continue;
+        }
+
+        // Non-transient or retries exhausted: attempt WASM fallback if available
+        if (!workerReady) {
+          throw new Error(
+            'Rust backend failed and WASM fallback unavailable.\n\n' +
+            'Options:\n' +
+            '1. Start the Rust backend (make up-backend)\n' +
+            '2. Enable WASM: access via http://localhost:8080 or HTTPS'
+          );
+        }
+        
+        console.log('[Engine] Falling back to WASM...');
+        break;
       }
-      
-      console.log('[Engine] Falling back to WASM...');
     }
   }
 

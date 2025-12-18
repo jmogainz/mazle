@@ -21,7 +21,6 @@ import {
   createGroundState,
   GroundPuzzleState,
 } from './movement';
-import { getSwipeDirection, SWIPE_MIN_DISTANCE_PX } from './swipe';
 
 export class GameScene extends Phaser.Scene {
   private puzzle!: PuzzleData;
@@ -36,10 +35,6 @@ export class GameScene extends Phaser.Scene {
   private isAnimating = false;
   private cursors: Phaser.Types.Input.Keyboard.CursorKeys | null = null;
   private wasd: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key } | null = null;
-  private swipeStartX = 0;
-  private swipeStartY = 0;
-  private swipeConsumed = false;
-  private activeSwipePointerId: number | null = null;
   private offsetX = 0;
   private offsetY = 0;
   private readonly tileFaceLift = 3 * (TILE_SIZE / 32); // lift sprites to sit on the top face of 3D tiles
@@ -464,37 +459,6 @@ export class GameScene extends Phaser.Scene {
         D: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
       };
     }
-
-    // Touch/swipe input - trigger on move for responsiveness (1 swipe => 1 move)
-    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      this.swipeStartX = pointer.x;
-      this.swipeStartY = pointer.y;
-      this.swipeConsumed = false;
-      this.activeSwipePointerId = pointer.id;
-    });
-
-    this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
-      // Only process if pointer is down (actively swiping)
-      if (!pointer.isDown) return;
-      if (this.activeSwipePointerId !== pointer.id) return;
-      if (this.swipeConsumed) return;
-      if (this.isAnimating || this.gameState.isComplete || !this.isPlaying) return;
-
-      const dx = pointer.x - this.swipeStartX;
-      const dy = pointer.y - this.swipeStartY;
-
-      const dir = getSwipeDirection(dx, dy, SWIPE_MIN_DISTANCE_PX);
-      if (dir) {
-        this.handleMove(dir);
-        this.swipeConsumed = true;
-      }
-    });
-
-    this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
-      if (this.activeSwipePointerId !== pointer.id) return;
-      this.activeSwipePointerId = null;
-      this.swipeConsumed = false;
-    });
   }
   update() {
     if (this.isAnimating || this.gameState.isComplete) return;

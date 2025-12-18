@@ -306,11 +306,6 @@ export default function Home() {
     let consumed = false;
     let lastTouchTs = 0;
 
-    const startedInsideGameFrame = (eventTarget: EventTarget | null) => {
-      const node = eventTarget as Node | null;
-      return !!node && !!gameFrameRef.current && gameFrameRef.current.contains(node);
-    };
-
     const canAcceptMove = () => gameControlsRef.current?.canAcceptMoveInput?.() ?? false;
 
     const getScale = () => {
@@ -329,7 +324,6 @@ export default function Home() {
     const onTouchStartCapture = (e: TouchEvent) => {
       lastTouchTs = Date.now();
       if (active) return;
-      if (startedInsideGameFrame(e.target)) return;
       if (!gameControlsRef.current) return;
       const touch = e.changedTouches[0];
       if (!touch) return;
@@ -389,7 +383,6 @@ export default function Home() {
       if (e.pointerType !== 'touch') return;
       if (Date.now() - lastTouchTs < 700) return;
       if (active) return;
-      if (startedInsideGameFrame(e.target)) return;
       if (!gameControlsRef.current) return;
 
       active = { kind: 'pointer', id: e.pointerId };

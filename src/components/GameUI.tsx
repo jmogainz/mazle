@@ -20,21 +20,32 @@ interface GameUIProps {
   variant?: 'header' | 'footer';
   hidePuzzleNumber?: boolean;
   initialState?: InitialGameState;
+  frozen?: boolean; // When true, ignore game events (for completed game display)
 }
 
-export default function GameUI({ puzzleNumber, puzzleLabel, optimalMoves, variant = 'header', hidePuzzleNumber = false, initialState }: GameUIProps) {
+export default function GameUI({ puzzleNumber, puzzleLabel, optimalMoves, variant = 'header', hidePuzzleNumber = false, initialState, frozen = false }: GameUIProps) {
   const [currentAttemptMoves, setCurrentAttemptMoves] = useState(initialState?.currentAttemptMoves ?? 0);
   const [lives, setLives] = useState(initialState?.lives ?? 3);
   const [elapsedTime, setElapsedTime] = useState(initialState?.elapsedTimeMs ?? 0);
-  const [startTime, setStartTime] = useState<number | null>(initialState?.elapsedTimeMs ? Date.now() - initialState.elapsedTimeMs : null);
+  const [startTime, setStartTime] = useState<number | null>(null);
   const [penaltyTimeMs, setPenaltyTimeMs] = useState(initialState?.penaltyTimeMs ?? 0);
-  const [isComplete, setIsComplete] = useState(false);
+  const [isComplete, setIsComplete] = useState(frozen);
   const [showTooltip, setShowTooltip] = useState(false);
   const [penaltyFlash, setPenaltyFlash] = useState(false);
   const displayLabel = puzzleLabel ?? `#${puzzleNumber}`;
 
+  // Initialize startTime on client only to avoid hydration mismatch
+  useEffect(() => {
+    if (initialState?.elapsedTimeMs) {
+      setStartTime(Date.now() - initialState.elapsedTimeMs);
+    }
+  }, [initialState?.elapsedTimeMs]);
+
 
   useEffect(() => {
+    // When frozen, don't subscribe to game events - scoreboard stays static
+    if (frozen) return;
+
     const unsubscribeState = onGameEvent('stateUpdate', (data) => {
       const state = data as GameState;
       setCurrentAttemptMoves(state.currentAttemptMoves);
@@ -62,7 +73,7 @@ export default function GameUI({ puzzleNumber, puzzleLabel, optimalMoves, varian
       unsubscribeComplete();
       unsubscribeLifeLost();
     };
-  }, []);
+  }, [frozen]);
 
   // Timer
   useEffect(() => {

@@ -305,6 +305,19 @@ export default function Home() {
     setShowInlineResult(false);
     setIsPlaying(false);
 
+    // Helper to set scoreboard stats for completed game once we have puzzle
+    const setCompletedStats = (optimalMoves: number) => {
+      if (!existingResult?.completed) return;
+      const attemptsCount = existingResult.attempts?.length ?? 1;
+      const livesRemaining = existingResult.failed ? 0 : 3 - (attemptsCount - 1);
+      setInitialStats({
+        lives: livesRemaining,
+        currentAttemptMoves: optimalMoves, // Shows 0 moves remaining
+        elapsedTimeMs: existingResult.timeMs,
+        penaltyTimeMs: 0, // Already included in timeMs
+      });
+    };
+
     if (existingResult?.completed) {
       setGameResult({
         moveCount: existingResult.moveCount,
@@ -312,6 +325,7 @@ export default function Home() {
         attempts: existingResult.attempts,
         failed: existingResult.failed,
       });
+      // initialStats will be set after puzzle loads (need optimalMoves)
       // Keep overlay prompt; let user choose to view results
       setShowShareCard(false);
       setShowInlineResult(false);
@@ -342,22 +356,28 @@ export default function Home() {
     const cachedPuzzle = getCachedPuzzle(todaySeed);
     if (cachedPuzzle) {
       setPuzzle(cachedPuzzle);
+      setCompletedStats(cachedPuzzle.optimalMoves);
       setRenderKey((prev) => prev + 1);
       return;
     }
 
     // Fetch daily puzzle: KV (pre-generated) → Rust → WASM fallback
-    setIsGenerating(true);
+    // setIsGenerating(true); // Don't show progress bar for initial KV check
     setGenerationProgress(null);
 
     try {
       const { puzzle: todayPuzzle, source } = await fetchDailyPuzzle(todaySeed, (progress) => {
+        // Only show generating state if we are actually generating (not checking cache)
+        if (progress.phase !== 'kv') {
+          setIsGenerating(true);
+        }
         setGenerationProgress(progress);
         setLastUsedBackend(progress.phase === 'kv' ? null : progress.phase);
       });
 
       console.log(`[Daily] Loaded puzzle from ${source}`);
       setPuzzle(todayPuzzle);
+      setCompletedStats(todayPuzzle.optimalMoves);
       setRenderKey((prev) => prev + 1);
 
       // Cache in localStorage for same-day revisits
@@ -395,6 +415,16 @@ export default function Home() {
       setGameResult(result);
       setShowShareCard(true);
       setIsPlaying(false); // Ensure game is marked as not playing to show blocked state
+
+      // Set initialStats so scoreboard stays frozen at completion state
+      const attemptsCount = result.attempts?.length ?? 1;
+      const livesRemaining = result.failed ? 0 : 3 - (attemptsCount - 1);
+      setInitialStats({
+        lives: livesRemaining,
+        currentAttemptMoves: result.optimalMoves, // 0 moves remaining
+        elapsedTimeMs: result.timeMs,
+        penaltyTimeMs: 0, // Already included in timeMs
+      });
 
       // Clear in-progress state since game is complete
       clearInProgressState();
@@ -510,6 +540,7 @@ export default function Home() {
           setShowShareCard(false);
           setShowInlineResult(false);
           setPreviousResult(null);
+          setInitialStats(null);
           setIsPlaying(false);
         } finally {
           setIsGenerating(false);
@@ -539,6 +570,7 @@ export default function Home() {
         setShowShareCard(false);
         setShowInlineResult(false);
         setPreviousResult(null);
+        setInitialStats(null);
         setIsPlaying(false);
       } finally {
         setIsGenerating(false);
@@ -626,7 +658,7 @@ export default function Home() {
     return (
       <main className={`${styles.main} bg-pattern`} style={{ justifyContent: 'center' }}>
         <Loader
-          text={isGenerating ? 'Generating daily puzzle...' : 'Loading puzzle...'}
+          text={isGenerating ? 'Generating daily puzzle...' : 'Loading Mazle...'}
           progress={isGenerating ? progressPercent : undefined}
         />
       </main>
@@ -940,6 +972,7 @@ export default function Home() {
               variant="header"
               hidePuzzleNumber={true}
               initialState={initialStats ?? undefined}
+              frozen={isPostGame}
             />
           )}
 

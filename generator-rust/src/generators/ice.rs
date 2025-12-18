@@ -14,24 +14,19 @@ use std::time::Instant;
 // =============================================================================
 
 /// Tracks the closest puzzle to passing all thresholds
-#[derive(Clone, Default)]
+/// Stores a single metric's value and threshold for closest puzzle tracking
+#[derive(Clone)]
+struct MetricInfo {
+    name: String,
+    value: f64,
+    threshold: f64,
+    threshold_max: Option<f64>,  // For range thresholds like locality
+    is_max_threshold: bool,      // true if threshold is a maximum (value should be <=)
+}
+
 struct ClosestPuzzleInfo {
     closeness: f64,
-    paths: i32,
-    paths_thresh: i32,
-    olap_best: f64,
-    olap_best_thresh: f64,
-    olap_avg: f64,
-    olap_avg_thresh: f64,
-    ediv: f64,
-    ediv_thresh: f64,
-    dir: i32,
-    dir_thresh: i32,
-    amb: f64,
-    amb_thresh: f64,
-    loc: f64,
-    loc_min_thresh: f64,
-    loc_max_thresh: f64,
+    metrics: Vec<MetricInfo>,
     opt_count: i32,
     traps: Vec<String>,
 }
@@ -155,33 +150,27 @@ impl GenerationContext {
     }
 
     /// Get closest puzzle info as formatted string (only enabled filters)
-    fn format_closest(&self, thresholds: &PrefilterThresholds) -> Option<String> {
+    fn format_closest(&self, _thresholds: &PrefilterThresholds) -> Option<String> {
         if let Ok(closest) = self.closest.lock() {
             if let Some(info) = &*closest {
                 let mut parts = Vec::new();
                 
                 parts.push(format!("score={:.4}", info.closeness));
                 
-                if thresholds.paths_enabled { 
-                    parts.push(format!("paths={}/{}", info.paths, info.paths_thresh)); 
-                }
-                if thresholds.olap_best_enabled { 
-                    parts.push(format!("olap_best={:.2}/{:.2}", info.olap_best, info.olap_best_thresh)); 
-                }
-                if thresholds.olap_avg_enabled { 
-                    parts.push(format!("olap_avg={:.2}/{:.2}", info.olap_avg, info.olap_avg_thresh)); 
-                }
-                if thresholds.ediv_enabled { 
-                    parts.push(format!("ediv={:.2}/{:.2}", info.ediv, info.ediv_thresh)); 
-                }
-                if thresholds.dir_enabled { 
-                    parts.push(format!("dir={}/{}", info.dir, info.dir_thresh)); 
-                }
-                if thresholds.amb_enabled { 
-                    parts.push(format!("amb={:.1}/{:.1}", info.amb, info.amb_thresh)); 
-                }
-                if thresholds.loc_enabled { 
-                    parts.push(format!("loc={:.2}/({:.2}-{:.2})", info.loc, info.loc_min_thresh, info.loc_max_thresh)); 
+                for m in &info.metrics {
+                    if let Some(max_thresh) = m.threshold_max {
+                        // Range threshold (like locality)
+                        parts.push(format!("{}={:.2}/({:.2}-{:.2})", m.name, m.value, m.threshold, max_thresh));
+                    } else if m.is_max_threshold {
+                        // Max threshold (value should be <=)
+                        parts.push(format!("{}={:.2}/{:.2}", m.name, m.value, m.threshold));
+                    } else if m.value.fract() == 0.0 && m.threshold.fract() == 0.0 {
+                        // Integer values
+                        parts.push(format!("{}={}/{}", m.name, m.value as i32, m.threshold as i32));
+                    } else {
+                        // Float values
+                        parts.push(format!("{}={:.2}/{:.2}", m.name, m.value, m.threshold));
+                    }
                 }
                 
                 let traps_str = if info.traps.is_empty() {
@@ -288,24 +277,25 @@ const ADJACENT_BONUS: f64 = 300.0;
 // =============================================================================
 
 // Original thresholds (RELAXED - let variety through, difficulty comes from Phase 2)
-const BASE_PREFILTER_MIN_COUNTER_INTUITIVE: i32 = 8;
-const BASE_PREFILTER_MIN_ATTRACTIVE_DECOYS: i32 = 10;
-const BASE_PREFILTER_MIN_COMMITMENT_GATES: i32 = 3;
-const BASE_PREFILTER_MIN_FALSE_PROGRESS: i32 = 10;
+// Base thresholds tuned for 15x15 map (REFERENCE_SIZE)
+const BASE_PREFILTER_MIN_COUNTER_INTUITIVE: i32 = 2;      // Moves away from goal (ENABLED)
+const BASE_PREFILTER_MIN_ATTRACTIVE_DECOYS: i32 = 4;
+const BASE_PREFILTER_MIN_COMMITMENT_GATES: i32 = 1;
+const BASE_PREFILTER_MIN_FALSE_PROGRESS: i32 = 3;         // "I was so close!" paths (ENABLED)
 
-// Phase 1 thresholds (rebalanced for ~50% fail rates)
-const BASE_PREFILTER_MAX_PATH_LOCALITY: f64 = 0.70;
-const BASE_PREFILTER_MIN_DIRECTION_CHANGES: i32 = 16;     // RAISED - was too easy (0% fail)
-const BASE_PREFILTER_MIN_BACKTRACK_DEPTH: i32 = 4;
-const BASE_PREFILTER_MIN_DECISION_AMBIGUITY: f64 = 2.6;   // RAISED - was too easy (3% fail)
+// Phase 1 thresholds (for 15x15)
+const BASE_PREFILTER_MAX_PATH_LOCALITY: f64 = 0.75;       // Tightened from 0.80
+const BASE_PREFILTER_MIN_DIRECTION_CHANGES: i32 = 7;      // Reasonable floor (LOWERED from 9)
+const BASE_PREFILTER_MIN_BACKTRACK_DEPTH: i32 = 2;
+const BASE_PREFILTER_MIN_DECISION_AMBIGUITY: f64 = 2.8;   // Choices per move (RAISED from 2.4)
 
-// Phase 2 thresholds (key difficulty metrics)
-const BASE_PREFILTER_MIN_NEAR_OPTIMAL_PATHS: i32 = 60;    // Back to moderate level
-const BASE_PREFILTER_MAX_PATH_OVERLAP: f64 = 0.98;        // Maximum overlap for best alternative - need at least one different path
-const BASE_PREFILTER_MIN_EARLY_DIVERGENCE: f64 = 0.58;    // Want early confusion
+// Phase 2 thresholds (key difficulty metrics for 15x15)
+const BASE_PREFILTER_MIN_NEAR_OPTIMAL_PATHS: i32 = 50;    // Alternative paths within optimal+2 (RAISED from 40)
+const BASE_PREFILTER_MAX_PATH_OVERLAP: f64 = 0.50;        // Best alternative must differ by 50%+ (RAISED from 0.60)
+const BASE_PREFILTER_MIN_EARLY_DIVERGENCE: f64 = 0.55;    // Want early confusion (RAISED from 0.48)
 
 // Reference map size for scaling calculations
-const REFERENCE_SIZE: f64 = 35.0;
+const REFERENCE_SIZE: f64 = 15.0;
 
 // =============================================================================
 // START/GOAL PLACEMENT STRATEGIES
@@ -2736,65 +2726,50 @@ impl PrefilterThresholds {
 
 fn compute_prefilter_thresholds(width: usize, height: usize) -> PrefilterThresholds {
     let min_dim = width.min(height) as f64;
-    let scale = min_dim / 35.0; // Reference: 35x35 base map size
+    let scale = min_dim / REFERENCE_SIZE; // Reference: 15x15 base map size
 
-    let is_small_map = min_dim <= 18.0;
-
-    // Original thresholds (scaled)
+    // Original thresholds (scaled for larger maps)
     let ci = ((BASE_PREFILTER_MIN_COUNTER_INTUITIVE as f64 * scale).round() as i32).max(2);
     let decoys = ((BASE_PREFILTER_MIN_ATTRACTIVE_DECOYS as f64 * scale).round() as i32).max(3);
     let gates = ((BASE_PREFILTER_MIN_COMMITMENT_GATES as f64 * scale).round() as i32).max(1);
     let fp = ((BASE_PREFILTER_MIN_FALSE_PROGRESS as f64 * scale).round() as i32).max(3);
 
-    // Phase 1 thresholds (RELAXED - allow more variety through filter)
-    let max_locality = if is_small_map {
-        BASE_PREFILTER_MAX_PATH_LOCALITY + 0.05  // Allow up to 0.70 for small maps
-    } else {
-        BASE_PREFILTER_MAX_PATH_LOCALITY
-    };
+    // Phase 1 thresholds
+    let max_locality = BASE_PREFILTER_MAX_PATH_LOCALITY;
     let min_dir_changes = ((BASE_PREFILTER_MIN_DIRECTION_CHANGES as f64 * scale).round() as i32).max(4);
     let min_backtrack = ((BASE_PREFILTER_MIN_BACKTRACK_DEPTH as f64 * scale).round() as i32).max(2);
-    let min_ambiguity = if is_small_map {
-        (BASE_PREFILTER_MIN_DECISION_AMBIGUITY - 0.2).max(2.0)  // Relaxed floor
-    } else {
-        BASE_PREFILTER_MIN_DECISION_AMBIGUITY
-    };
+    let min_ambiguity = BASE_PREFILTER_MIN_DECISION_AMBIGUITY;
 
-    // Phase 2 thresholds (TIGHTENED - these are the key psychological metrics)
-    let min_near_optimal = ((BASE_PREFILTER_MIN_NEAR_OPTIMAL_PATHS as f64 * scale * scale).round() as i32).max(4);
-    let max_overlap_best = BASE_PREFILTER_MAX_PATH_OVERLAP; // Not scaled
-    let min_early_div = if is_small_map {
-        (BASE_PREFILTER_MIN_EARLY_DIVERGENCE - 0.03).max(0.55)  // Slightly lenient for small maps
-    } else {
-        BASE_PREFILTER_MIN_EARLY_DIVERGENCE
-    };
+    // Phase 2 thresholds
+    let min_near_optimal = ((BASE_PREFILTER_MIN_NEAR_OPTIMAL_PATHS as f64 * scale).round() as i32).max(4);
+    let max_overlap_best = BASE_PREFILTER_MAX_PATH_OVERLAP;
+    let min_early_div = BASE_PREFILTER_MIN_EARLY_DIVERGENCE;
 
     PrefilterThresholds {
-        // DISABLED - these overlap heavily with paths/olap metrics
-        min_counter_intuitive: 0,  // DISABLED - overlaps with paths
+        // Counter-intuitive moves - ENABLED
+        min_counter_intuitive: ci,
         min_attractive_decoys: 0,  // DISABLED - overlaps with paths/olap
         min_commitment_gates: 0,   // DISABLED - irrelevant with binary lives
-        min_false_progress: 0,     // DISABLED - overlaps with paths
+        min_false_progress: fp,    // ENABLED - "I was so close!" frustration
 
-        // Path locality - want paths that use moderate area of the map (0.50-0.80)
-        // Too low (< 0.5) = path too concentrated = easy, too high (> 0.8) = scattered mess
-        min_path_locality: if is_small_map { 0.50 } else { 0.40 },
-        max_path_locality: if is_small_map { 0.80 } else { max_locality },
-        min_direction_changes: if is_small_map { min_dir_changes.max(8) } else { min_dir_changes },
+        // Path locality - want paths that use moderate area of the map
+        min_path_locality: 0.55,   // Tightened from 0.50
+        max_path_locality: max_locality,
+        min_direction_changes: min_dir_changes,
         min_backtrack_depth: 0,    // DISABLED - irrelevant with binary lives
-        min_decision_ambiguity: if is_small_map { min_ambiguity.max(2.4) } else { min_ambiguity },
+        min_decision_ambiguity: min_ambiguity,
 
         // TIER 1 - Core difficulty
-        min_near_optimal_paths: if is_small_map { min_near_optimal.max(40) } else { min_near_optimal },
-        max_path_overlap_best: if is_small_map { 0.60 } else { max_overlap_best },  // 0.60 - best alternative must share <=60% with optimal
-        max_path_overlap_avg: if is_small_map { 0.70 } else { 0.75 },     // 0.70 - alternatives can't ALL be nearly identical
-        min_early_divergence: if is_small_map { 0.48 } else { min_early_div },
+        min_near_optimal_paths: min_near_optimal,
+        max_path_overlap_best: max_overlap_best,
+        max_path_overlap_avg: 0.65,  // Tightened from 0.70
+        min_early_divergence: min_early_div,
 
         // Enabled flags
-        ci_enabled: false,        // DISABLED
+        ci_enabled: true,         // ENABLED - counter-intuitive moves
         dec_enabled: false,       // DISABLED
         gate_enabled: false,      // DISABLED
-        fp_enabled: false,        // DISABLED
+        fp_enabled: true,         // ENABLED - false progress paths
         loc_enabled: true,        // ENABLED
         dir_enabled: true,        // ENABLED
         bt_enabled: false,        // DISABLED
@@ -4361,49 +4336,179 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
                 // Higher score = closer to passing all thresholds
                 // For "min X" thresholds: ratio = actual / threshold (capped at 1.0)
                 // For "max X" thresholds: ratio = threshold / actual (capped at 1.0)
+                // Only include ENABLED metrics in the calculation
                 let closeness = if pass_unique_opt {
-                    let paths_ratio = (psych_metrics.near_optimal_paths as f64 / prefilter_thresholds_clone.min_near_optimal_paths as f64).min(1.0);
-                    let olap_best_ratio = if psych_metrics.path_overlap > 0.0 {
-                        (prefilter_thresholds_clone.max_path_overlap_best / psych_metrics.path_overlap).min(1.0)
-                    } else { 1.0 };
-                    let olap_avg_ratio = if psych_metrics.path_overlap_avg > 0.0 {
-                        (prefilter_thresholds_clone.max_path_overlap_avg / psych_metrics.path_overlap_avg).min(1.0)
-                    } else { 1.0 };
-                    let ediv_ratio = if prefilter_thresholds_clone.min_early_divergence > 0.0 {
-                        (psych_metrics.early_divergence / prefilter_thresholds_clone.min_early_divergence).min(1.0)
-                    } else { 1.0 };
-                    let dir_ratio = (psych_metrics.direction_changes as f64 / prefilter_thresholds_clone.min_direction_changes as f64).min(1.0);
-                    let amb_ratio = (psych_metrics.decision_ambiguity / prefilter_thresholds_clone.min_decision_ambiguity).min(1.0);
-                    // Locality must be in range [min, max] - calculate how close we are to that range
-                    let loc_ratio = if psych_metrics.path_locality < prefilter_thresholds_clone.min_path_locality {
-                        psych_metrics.path_locality / prefilter_thresholds_clone.min_path_locality
-                    } else if psych_metrics.path_locality > prefilter_thresholds_clone.max_path_locality {
-                        prefilter_thresholds_clone.max_path_locality / psych_metrics.path_locality
+                    let mut ratios: Vec<f64> = Vec::new();
+                    
+                    // Add ratios only for enabled metrics
+                    if prefilter_thresholds_clone.ci_enabled && prefilter_thresholds_clone.min_counter_intuitive > 0 {
+                        ratios.push((psych_metrics.counter_intuitive_moves as f64 / prefilter_thresholds_clone.min_counter_intuitive as f64).min(1.0));
+                    }
+                    if prefilter_thresholds_clone.dec_enabled && prefilter_thresholds_clone.min_attractive_decoys > 0 {
+                        ratios.push((psych_metrics.attractive_decoys as f64 / prefilter_thresholds_clone.min_attractive_decoys as f64).min(1.0));
+                    }
+                    if prefilter_thresholds_clone.gate_enabled && prefilter_thresholds_clone.min_commitment_gates > 0 {
+                        ratios.push((psych_metrics.commitment_gates as f64 / prefilter_thresholds_clone.min_commitment_gates as f64).min(1.0));
+                    }
+                    if prefilter_thresholds_clone.fp_enabled && prefilter_thresholds_clone.min_false_progress > 0 {
+                        ratios.push((psych_metrics.false_progress_paths as f64 / prefilter_thresholds_clone.min_false_progress as f64).min(1.0));
+                    }
+                    if prefilter_thresholds_clone.loc_enabled {
+                        let loc_ratio = if psych_metrics.path_locality < prefilter_thresholds_clone.min_path_locality {
+                            psych_metrics.path_locality / prefilter_thresholds_clone.min_path_locality
+                        } else if psych_metrics.path_locality > prefilter_thresholds_clone.max_path_locality {
+                            prefilter_thresholds_clone.max_path_locality / psych_metrics.path_locality
+                        } else {
+                            1.0  // In range = perfect
+                        };
+                        ratios.push(loc_ratio);
+                    }
+                    if prefilter_thresholds_clone.dir_enabled && prefilter_thresholds_clone.min_direction_changes > 0 {
+                        ratios.push((psych_metrics.direction_changes as f64 / prefilter_thresholds_clone.min_direction_changes as f64).min(1.0));
+                    }
+                    if prefilter_thresholds_clone.bt_enabled && prefilter_thresholds_clone.min_backtrack_depth > 0 {
+                        ratios.push((psych_metrics.backtrack_depth as f64 / prefilter_thresholds_clone.min_backtrack_depth as f64).min(1.0));
+                    }
+                    if prefilter_thresholds_clone.amb_enabled && prefilter_thresholds_clone.min_decision_ambiguity > 0.0 {
+                        ratios.push((psych_metrics.decision_ambiguity / prefilter_thresholds_clone.min_decision_ambiguity).min(1.0));
+                    }
+                    if prefilter_thresholds_clone.paths_enabled && prefilter_thresholds_clone.min_near_optimal_paths > 0 {
+                        ratios.push((psych_metrics.near_optimal_paths as f64 / prefilter_thresholds_clone.min_near_optimal_paths as f64).min(1.0));
+                    }
+                    if prefilter_thresholds_clone.olap_best_enabled && psych_metrics.path_overlap > 0.0 {
+                        ratios.push((prefilter_thresholds_clone.max_path_overlap_best / psych_metrics.path_overlap).min(1.0));
+                    }
+                    if prefilter_thresholds_clone.olap_avg_enabled && psych_metrics.path_overlap_avg > 0.0 {
+                        ratios.push((prefilter_thresholds_clone.max_path_overlap_avg / psych_metrics.path_overlap_avg).min(1.0));
+                    }
+                    if prefilter_thresholds_clone.ediv_enabled && prefilter_thresholds_clone.min_early_divergence > 0.0 {
+                        ratios.push((psych_metrics.early_divergence / prefilter_thresholds_clone.min_early_divergence).min(1.0));
+                    }
+                    
+                    // Geometric mean of all enabled ratios
+                    let score = if ratios.is_empty() {
+                        1.0
                     } else {
-                        1.0  // In range = perfect
+                        let product: f64 = ratios.iter().product();
+                        product.powf(1.0 / ratios.len() as f64)
                     };
                     
-                    // Geometric mean gives equal weight and penalizes any single bad metric
-                    let score = (paths_ratio * olap_best_ratio * olap_avg_ratio * ediv_ratio * dir_ratio * amb_ratio * loc_ratio).powf(1.0 / 7.0);
+                    // Build metrics list dynamically based on enabled filters
+                    let mut metrics: Vec<MetricInfo> = Vec::new();
+                    
+                    if prefilter_thresholds_clone.ci_enabled {
+                        metrics.push(MetricInfo {
+                            name: "ci".to_string(),
+                            value: psych_metrics.counter_intuitive_moves as f64,
+                            threshold: prefilter_thresholds_clone.min_counter_intuitive as f64,
+                            threshold_max: None,
+                            is_max_threshold: false,
+                        });
+                    }
+                    if prefilter_thresholds_clone.dec_enabled {
+                        metrics.push(MetricInfo {
+                            name: "dec".to_string(),
+                            value: psych_metrics.attractive_decoys as f64,
+                            threshold: prefilter_thresholds_clone.min_attractive_decoys as f64,
+                            threshold_max: None,
+                            is_max_threshold: false,
+                        });
+                    }
+                    if prefilter_thresholds_clone.gate_enabled {
+                        metrics.push(MetricInfo {
+                            name: "gate".to_string(),
+                            value: psych_metrics.commitment_gates as f64,
+                            threshold: prefilter_thresholds_clone.min_commitment_gates as f64,
+                            threshold_max: None,
+                            is_max_threshold: false,
+                        });
+                    }
+                    if prefilter_thresholds_clone.fp_enabled {
+                        metrics.push(MetricInfo {
+                            name: "fp".to_string(),
+                            value: psych_metrics.false_progress_paths as f64,
+                            threshold: prefilter_thresholds_clone.min_false_progress as f64,
+                            threshold_max: None,
+                            is_max_threshold: false,
+                        });
+                    }
+                    if prefilter_thresholds_clone.loc_enabled {
+                        metrics.push(MetricInfo {
+                            name: "loc".to_string(),
+                            value: psych_metrics.path_locality,
+                            threshold: prefilter_thresholds_clone.min_path_locality,
+                            threshold_max: Some(prefilter_thresholds_clone.max_path_locality),
+                            is_max_threshold: false,
+                        });
+                    }
+                    if prefilter_thresholds_clone.dir_enabled {
+                        metrics.push(MetricInfo {
+                            name: "dir".to_string(),
+                            value: psych_metrics.direction_changes as f64,
+                            threshold: prefilter_thresholds_clone.min_direction_changes as f64,
+                            threshold_max: None,
+                            is_max_threshold: false,
+                        });
+                    }
+                    if prefilter_thresholds_clone.bt_enabled {
+                        metrics.push(MetricInfo {
+                            name: "bt".to_string(),
+                            value: psych_metrics.backtrack_depth as f64,
+                            threshold: prefilter_thresholds_clone.min_backtrack_depth as f64,
+                            threshold_max: None,
+                            is_max_threshold: false,
+                        });
+                    }
+                    if prefilter_thresholds_clone.amb_enabled {
+                        metrics.push(MetricInfo {
+                            name: "amb".to_string(),
+                            value: psych_metrics.decision_ambiguity,
+                            threshold: prefilter_thresholds_clone.min_decision_ambiguity,
+                            threshold_max: None,
+                            is_max_threshold: false,
+                        });
+                    }
+                    if prefilter_thresholds_clone.paths_enabled {
+                        metrics.push(MetricInfo {
+                            name: "paths".to_string(),
+                            value: psych_metrics.near_optimal_paths as f64,
+                            threshold: prefilter_thresholds_clone.min_near_optimal_paths as f64,
+                            threshold_max: None,
+                            is_max_threshold: false,
+                        });
+                    }
+                    if prefilter_thresholds_clone.olap_best_enabled {
+                        metrics.push(MetricInfo {
+                            name: "olap_best".to_string(),
+                            value: psych_metrics.path_overlap,
+                            threshold: prefilter_thresholds_clone.max_path_overlap_best,
+                            threshold_max: None,
+                            is_max_threshold: true,
+                        });
+                    }
+                    if prefilter_thresholds_clone.olap_avg_enabled {
+                        metrics.push(MetricInfo {
+                            name: "olap_avg".to_string(),
+                            value: psych_metrics.path_overlap_avg,
+                            threshold: prefilter_thresholds_clone.max_path_overlap_avg,
+                            threshold_max: None,
+                            is_max_threshold: true,
+                        });
+                    }
+                    if prefilter_thresholds_clone.ediv_enabled {
+                        metrics.push(MetricInfo {
+                            name: "ediv".to_string(),
+                            value: psych_metrics.early_divergence,
+                            threshold: prefilter_thresholds_clone.min_early_divergence,
+                            threshold_max: None,
+                            is_max_threshold: false,
+                        });
+                    }
                     
                     // Update closest puzzle in context
                     ctx_clone.update_closest(ClosestPuzzleInfo {
                         closeness: score,
-                        paths: psych_metrics.near_optimal_paths,
-                        paths_thresh: prefilter_thresholds_clone.min_near_optimal_paths,
-                        olap_best: psych_metrics.path_overlap,
-                        olap_best_thresh: prefilter_thresholds_clone.max_path_overlap_best,
-                        olap_avg: psych_metrics.path_overlap_avg,
-                        olap_avg_thresh: prefilter_thresholds_clone.max_path_overlap_avg,
-                        ediv: psych_metrics.early_divergence,
-                        ediv_thresh: prefilter_thresholds_clone.min_early_divergence,
-                        dir: psych_metrics.direction_changes,
-                        dir_thresh: prefilter_thresholds_clone.min_direction_changes,
-                        amb: psych_metrics.decision_ambiguity,
-                        amb_thresh: prefilter_thresholds_clone.min_decision_ambiguity,
-                        loc: psych_metrics.path_locality,
-                        loc_min_thresh: prefilter_thresholds_clone.min_path_locality,
-                        loc_max_thresh: prefilter_thresholds_clone.max_path_locality,
+                        metrics,
                         opt_count: psych_metrics.optimal_path_count,
                         traps: applied_traps.clone(),
                     });
@@ -4415,9 +4520,9 @@ pub fn generate_puzzle(seed: &str, config: &GenerationConfig) -> PuzzleData {
 
                 // Accept puzzle if either:
                 // 1. All thresholds pass, OR
-                // 2. Closeness score is >= 0.995 (closest-match escape hatch)
+                // 2. Closeness score is >= 1.0 (perfect match only)
                 let passes_all_thresholds = pass_unique_opt && pass_ci && pass_dec && pass_gate && pass_fp && pass_loc && pass_dir && pass_bt && pass_amb && pass_paths && pass_olap_best && pass_olap_avg && pass_ediv;
-                let passes_closeness_threshold = pass_unique_opt && closeness >= 0.995;
+                let passes_closeness_threshold = pass_unique_opt && closeness >= 1.0;
                 
                 passes_all_thresholds || passes_closeness_threshold
             };

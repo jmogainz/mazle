@@ -281,7 +281,7 @@ const BASE_PREFILTER_MIN_FALSE_PROGRESS: i32 = 3;         // "I was so close!" p
 
 // Phase 1 thresholds (for 15x15)
 const BASE_PREFILTER_MAX_PATH_LOCALITY: f64 = 0.85;       // RELAXED to 0.85 to allow winding snake paths
-const BASE_PREFILTER_MIN_DIRECTION_CHANGES: i32 = 7;      // Reasonable floor (LOWERED from 9)
+const BASE_PREFILTER_MIN_DIRECTION_CHANGES: i32 = 8;      // Reasonable floor (LOWERED from 9)
 const BASE_PREFILTER_MIN_BACKTRACK_DEPTH: i32 = 2;
 const BASE_PREFILTER_MIN_DECISION_AMBIGUITY: f64 = 3.0;   // RELAXED from 3.2 to increase success rate
 

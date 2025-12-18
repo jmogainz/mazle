@@ -2304,25 +2304,26 @@ fn calculate_path_overlap(
     let tolerance = 2;
     let max_moves = optimal_moves + tolerance;
 
-    // Use parent pointers instead of cloning paths - much faster
-    const MAX_PATHS: usize = 20;
-    const MAX_STATES: usize = 5000;
+    // Use parent pointers for path reconstruction - much faster than cloning
+    const MAX_PATHS: usize = 30;
+    const MAX_STATES: usize = 10000;
 
-    // Each state: (position, moves, parent_index, overlap_count)
-    // parent_index points to previous state, or usize::MAX for start
-    let mut states: Vec<(Position, i32, usize, usize)> = Vec::with_capacity(MAX_STATES);
-    let start_overlap = if optimal_set.contains(start) { 1 } else { 0 };
-    states.push((*start, 0, usize::MAX, start_overlap));
+    // Each state: (position, moves, parent_index)
+    let mut states: Vec<(Position, i32, usize)> = Vec::with_capacity(MAX_STATES);
+    states.push((*start, 0, usize::MAX));
+    
+    // Track visited (position, moves) to avoid duplicate explorations
+    let mut visited: HashSet<(Position, i32)> = HashSet::default();
+    visited.insert((*start, 0));
     
     let mut head = 0;
-    let mut paths_found = 0;
     let mut min_overlap = 1.0;
     let mut total_overlap = 0.0;
     let mut alt_count = 0;
-    let mut found_optimal = false;
+    let mut paths_found = 0;
 
     while head < states.len() && paths_found < MAX_PATHS && states.len() < MAX_STATES {
-        let (pos, moves, _parent, overlap_count) = states[head];
+        let (pos, moves, parent_idx) = states[head];
         head += 1;
 
         if moves > max_moves {
@@ -2331,15 +2332,27 @@ fn calculate_path_overlap(
 
         if pos_eq(&pos, goal) {
             paths_found += 1;
-            let path_len = (moves + 1) as usize; // +1 for start position
-            let overlap_ratio = overlap_count as f64 / path_len as f64;
             
-            // Skip the first path that matches optimal length with perfect overlap
-            // (this is likely THE optimal path)
-            if !found_optimal && path_len == optimal_path.len() && overlap_count == optimal_path.len() {
-                found_optimal = true;
+            // Reconstruct path to check if it's the optimal path
+            let mut path: Vec<Position> = Vec::new();
+            let mut idx = head - 1; // Current state index
+            while idx != usize::MAX {
+                path.push(states[idx].0);
+                idx = states[idx].2;
+            }
+            path.reverse();
+            
+            // Check if this is exactly the optimal path
+            let is_optimal = path.len() == optimal_path.len()
+                && path.iter().zip(optimal_path.iter()).all(|(a, b)| pos_eq(a, b));
+            
+            if is_optimal {
                 continue;
             }
+            
+            // Calculate overlap for this alternative path
+            let overlap_count = path.iter().filter(|p| optimal_set.contains(p)).count();
+            let overlap_ratio = overlap_count as f64 / path.len() as f64;
             
             if overlap_ratio < min_overlap {
                 min_overlap = overlap_ratio;
@@ -2352,8 +2365,11 @@ fn calculate_path_overlap(
         for dir in get_all_dirs() {
             let result = simulate_move(tiles, &pos, dir, width, height);
             if result.valid && !pos_eq(&result.pos, &pos) {
-                let new_overlap = overlap_count + if optimal_set.contains(&result.pos) { 1 } else { 0 };
-                states.push((result.pos, moves + 1, head - 1, new_overlap));
+                let state_key = (result.pos, moves + 1);
+                if !visited.contains(&state_key) {
+                    visited.insert(state_key);
+                    states.push((result.pos, moves + 1, head - 1));
+                }
             }
         }
     }

@@ -1226,7 +1226,7 @@ export default function Home() {
                 viewportHeight={baseHeight}
                 onReady={handleGameReady}
               />
-              {shouldBlur && <div className={styles.blurOverlay} />}
+              <div className={`${styles.blurOverlay} ${!shouldBlur ? styles.blurOverlayHidden : ''}`} />
               {lifeFlash && <div className={styles.lifeFlash} />}
               {!isPlaying && isGameReady && !showInlineResult && !showShareCard && (
                 <div className={styles.startOverlay}>

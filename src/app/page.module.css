@@ -627,6 +627,11 @@
   border-radius: 10px;
   z-index: 5;
   pointer-events: none;
+  transition: opacity 0.15s ease-out;
+}
+
+.blurOverlayHidden {
+  opacity: 0;
 }
 
 /* Life flash overlay */

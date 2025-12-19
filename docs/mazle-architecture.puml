@@ -19,6 +19,7 @@ rectangle "Vercel" as VERCEL {
   component "Stripe Webhook\nHandler" as STRIPE_WEBHOOK
   component "Leaderboard API\n(Read/Write)" as LB_API
   component "Archive API\n(Calendar)" as ARCHIVE_API
+  component "Daily Puzzle Cron\n(Vercel)" as VERCEL_CRON
 }
 
 rectangle "External Identity" as OIDC {
@@ -29,6 +30,7 @@ rectangle "External Identity" as OIDC {
 rectangle "Data Stores" as DATA {
   database "Neon Postgres" as DB
   database "Upstash Redis\n(Global)" as REDIS
+  database "Vercel KV\n(Daily Puzzle Cache)" as KV
 }
 
 rectangle "Payments" as PAY {
@@ -38,10 +40,11 @@ rectangle "Payments" as PAY {
 
 rectangle "Generator" as GEN {
   component "Rust Generator\n(Fly.io)" as RUST_GEN
+  component "Backend Cache" as GEN_CACHE
+  component "Daily Puzzle Cron\n(Fly.io, early)" as GEN_CRON
 }
 
 rectangle "Ops/Jobs" as JOBS {
-  component "Daily Puzzle\nCron" as CRON
   component "Leaderboard\nSnapshot Job" as SNAPSHOT
 }
 
@@ -49,6 +52,7 @@ P --> UI
 UI --> API : gameplay, scores
 UI --> AUTH : sign-in / claim
 UI --> STRIPE_CHECKOUT : purchase archive
+UI --> API : daily puzzle load
 UI --> RUST_GEN : puzzle generate (HTTP)
 UI --> WASM : fallback generation
 
@@ -56,6 +60,8 @@ AUTH --> GOOGLE
 AUTH --> APPLE
 
 API --> DB : users, puzzles, entitlements
+API --> KV : daily puzzle cache
+API --> RUST_GEN : daily puzzle fetch (miss or cron)
 LB_API --> REDIS : zadd/zrange
 LB_API --> DB : snapshot reads
 ARCHIVE_API --> DB : historical puzzles
@@ -64,9 +70,23 @@ STRIPE_CHECKOUT --> STRIPE_EVENTS
 STRIPE_EVENTS --> STRIPE_WEBHOOK
 STRIPE_WEBHOOK --> DB : entitlements, purchases
 
-CRON --> DB : daily puzzle seed
 SNAPSHOT --> DB : leaderboard snapshot
 SNAPSHOT --> REDIS : read top N
+
+GEN_CRON --> RUST_GEN : precompute daily puzzle
+RUST_GEN --> GEN_CACHE : read/write cached puzzle
+VERCEL_CRON --> API : fetch daily puzzle
+API --> KV : store daily puzzle
+
+note right of KV
+Vercel cron pulls from backend cache
+and writes daily puzzle into KV
+end note
+
+note right of GEN_CACHE
+Fly.io cron runs slightly before
+Vercel cron to warm cache
+end note
 
 note right of REDIS
 Primary writes + global replicas
@@ -80,4 +100,3 @@ HttpOnly cookie
 end note
 
 @enduml
-

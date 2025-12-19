@@ -2,12 +2,19 @@
   "name": "Mazle",
   "short_name": "Mazle",
   "description": "A daily Pokémon-inspired puzzle game",
+  "id": "/",
+  "scope": "/",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0f0f1a",
-  "theme_color": "#ffd166",
+  "theme_color": "#0f0f1a",
   "orientation": "portrait",
   "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
     {
       "src": "/icon-192.png",
       "sizes": "192x192",
@@ -16,7 +23,8 @@
     {
       "src": "/icon-512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }

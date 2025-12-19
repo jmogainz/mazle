@@ -72,6 +72,27 @@ async fn generate_daily_puzzles(cache: &PuzzleCache, config: &GenerationConfig) 
             continue;
         }
 
+        // If another request is already generating this seed, wait for it
+        if cache.is_generating(&seed) {
+            info!("⏳ Pre-gen waiting for in-progress generation of '{}'...", seed);
+            if let Some(_) = cache.wait_for_generation(&seed).await {
+                info!("✓ Pre-gen got '{}' from in-progress generation", seed);
+                continue;
+            }
+            info!("⚠️ Pre-gen wait failed for '{}', will attempt to generate", seed);
+        }
+
+        // Mark as generating to prevent duplicate work
+        let we_are_generating = cache.start_generating(&seed);
+        if !we_are_generating {
+            info!("⏳ Pre-gen race: waiting for '{}' generation...", seed);
+            if let Some(_) = cache.wait_for_generation(&seed).await {
+                info!("✓ Pre-gen got '{}' from parallel generation", seed);
+                continue;
+            }
+            info!("⚠️ Pre-gen wait failed for '{}', proceeding to generate", seed);
+        }
+
         info!(
             "Pre-generating puzzle for {} (offset: {} days)",
             seed, offset
@@ -81,20 +102,34 @@ async fn generate_daily_puzzles(cache: &PuzzleCache, config: &GenerationConfig) 
         // Generate puzzle - spawn on blocking thread pool to avoid starving async runtime
         let seed_clone = seed.clone();
         let config_clone = config.clone();
-        let puzzle = tokio::task::spawn_blocking(move || ice::generate_puzzle(&seed_clone, &config_clone))
-            .await
-            .expect("Blocking task panicked");
+        let puzzle_result = tokio::task::spawn_blocking(move || {
+            ice::generate_puzzle(&seed_clone, &config_clone)
+        })
+        .await;
 
         let elapsed = start.elapsed().as_millis() as u64;
 
-        // Cache result
-        cache.insert(seed.clone(), puzzle, elapsed);
+        match puzzle_result {
+            Ok(puzzle) => {
+                // Cache result
+                cache.insert(seed.clone(), puzzle, elapsed);
 
-        info!(
-            "✓ Pre-generated {} in {:.2}s",
-            seed,
-            elapsed as f64 / 1000.0
-        );
+                info!(
+                    "✓ Pre-generated {} in {:.2}s",
+                    seed,
+                    elapsed as f64 / 1000.0
+                );
+            }
+            Err(join_err) => {
+                info!(
+                    "⚠️ Pre-generation task panicked/cancelled for '{}': {:?}",
+                    seed, join_err
+                );
+            }
+        }
+
+        // Ensure in-progress state is cleared and waiters are notified
+        cache.finish_generating(&seed);
     }
 
     info!(

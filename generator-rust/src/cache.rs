@@ -178,7 +178,7 @@ impl PuzzleCache {
         };
         
         // Wait for notification (with timeout)
-        let timeout = tokio::time::timeout(Duration::from_secs(600), rx.recv()).await;
+        let timeout = tokio::time::timeout(Duration::from_secs(30 * 60), rx.recv()).await;
         
         match timeout {
             Ok(Ok(())) => {

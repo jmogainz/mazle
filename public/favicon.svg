@@ -1,39 +1,32 @@
 <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <!-- Reduced stroke-opacity from 0.12 to 0.08 for a subtler outline -->
-    <rect id="floor" width="14" height="14" rx="2" fill="#f3f3f3" stroke="#000000" stroke-opacity="0.08" stroke-width="1" />
-  </defs>
-  
   <!-- Row 1 -->
-  <use href="#floor" x="4" y="4" />
-  <use href="#floor" x="21" y="4" />
-  <use href="#floor" x="38" y="4" />
+  <!-- Top Left: Player (3D Effect) -->
+  <!-- Shadow (Offset y+3) -->
+  <rect x="4" y="7" width="22" height="22" rx="4" fill="#cc0000" />
+  <!-- Body (Main position) -->
+  <rect x="4" y="4" width="22" height="22" rx="4" fill="#ff4d4d" />
+  <!-- Eyes -->
+  <circle cx="11" cy="13" r="2.5" fill="white" stroke="black" stroke-opacity="0.1" stroke-width="0.5" />
+  <circle cx="19" cy="13" r="2.5" fill="white" stroke="black" stroke-opacity="0.1" stroke-width="0.5" />
 
-  <!-- Row 2 -->
-  <use href="#floor" x="4" y="21" />
-  <use href="#floor" x="21" y="21" />
-  <use href="#floor" x="38" y="21" />
-
-  <!-- Row 3 -->
-  <use href="#floor" x="4" y="38" />
-  <use href="#floor" x="21" y="38" />
+  <!-- Top Right: Floor (Flat) -->
+  <rect x="30" y="4" width="22" height="22" rx="4" fill="#f3f3f3" stroke="#000000" stroke-opacity="0.2" stroke-width="1" />
   
-  <!-- Goal at (2,2) -> 38,38 -->
-  <!-- Goal Shadow -->
-  <rect x="38" y="40" width="14" height="14" rx="2" fill="#538d4e" />
-  <!-- Goal Face -->
-  <rect x="38" y="38" width="14" height="14" rx="2" fill="#6aaa64" />
-  <!-- Star -->
-  <g transform="translate(41, 41)">
+  <!-- Row 2 -->
+  <!-- Bottom Left: Floor (Flat) -->
+  <rect x="4" y="30" width="22" height="22" rx="4" fill="#f3f3f3" stroke="#000000" stroke-opacity="0.2" stroke-width="1" />
+  
+  <!-- Bottom Right: Goal (3D Effect) -->
+  <!-- Shadow (Offset y+3) -->
+  <rect x="30" y="33" width="22" height="22" rx="4" fill="#538d4e" />
+  <!-- Face (Main position) -->
+  <rect x="30" y="30" width="22" height="22" rx="4" fill="#6aaa64" />
+  <!-- Star (Centered on Face, slightly higher) -->
+  <!-- Reverting to 1.6 scale and original centering logic relative to new position -->
+  <!-- Center of face is 41,41. Polygon center approx 4,3.6 -->
+  <!-- Target: 41,41. Translate: (41 - 4*1.6) = 34.6. (41 - 3.6*1.6) = 35.24 -->
+  <!-- Moved slightly up to respect 3D face: y=34.0? -->
+  <g transform="translate(34.6, 35.2) scale(1.6)">
     <polygon points="4,0 4.88,2.8 7.84,2.8 5.44,4.56 6.32,7.28 4,5.6 1.68,7.28 2.56,4.56 0.16,2.8 3.12,2.8" fill="#ffd700" />
   </g>
-
-  <!-- Player at (0,0) -> 4,4 -->
-  <!-- Player Shadow -->
-  <rect x="4" y="6" width="14" height="14" rx="3" fill="#cc0000" />
-  <!-- Player Body -->
-  <rect x="4" y="4" width="14" height="14" rx="3" fill="#ff4d4d" />
-  <!-- Eyes -->
-  <circle cx="8.5" cy="9.5" r="1.5" fill="white" stroke="black" stroke-opacity="0.1" stroke-width="0.5" />
-  <circle cx="13.5" cy="9.5" r="1.5" fill="white" stroke="black" stroke-opacity="0.1" stroke-width="0.5" />
 </svg>

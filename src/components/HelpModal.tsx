@@ -22,8 +22,8 @@ export default function HelpModal({ onClose, mapType = MapType.ICE }: HelpModalP
           <div className={styles.tileGoalLarge}></div>
           <div className={styles.goalTextWrapper}>
             <p className={styles.goalText}>Reach the star in 10 moves.</p>
-            <p className={styles.goalSubtext}>Solve as fast as you can!</p>
             <p className={styles.goalSubtext}>3 Lives. Losing a life adds a time penalty!</p>
+            <p className={styles.goalSubtext}>Solve as fast as you can!</p>
           </div>
         </div>
 

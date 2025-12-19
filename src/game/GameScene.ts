@@ -45,6 +45,8 @@ export class GameScene extends Phaser.Scene {
   private boulderPositions: Set<string> = new Set();
   private boulderSprites: Map<string, Phaser.GameObjects.Container> = new Map();
   private analysisObjects: Phaser.GameObjects.GameObject[] = [];
+  private analysisTimers: Phaser.Time.TimerEvent[] = [];
+  private analysisTweens: Phaser.Tweens.Tween[] = [];
 
   private solutionIndexByKey: Map<string, number> | null = null;
   private solutionNextByKey: Map<string, string> | null = null;
@@ -706,12 +708,13 @@ export class GameScene extends Phaser.Scene {
       }
 
       // Fade in the tile
-      this.tweens.add({
+      const tween = this.tweens.add({
         targets: container,
         alpha: 1,
         duration: 200,
         ease: 'Quad.easeOut',
       });
+      this.analysisTweens.push(tween);
     };
 
     // Reveal intermediate tiles between two points
@@ -739,12 +742,13 @@ export class GameScene extends Phaser.Scene {
           this.drawAnalysisTileGraphics(tileG, tile, true); // lighter green for intermediate
           container.add(tileG);
 
-          this.tweens.add({
+          const tween = this.tweens.add({
             targets: container,
             alpha: 1,
             duration: 150,
             ease: 'Quad.easeOut',
           });
+          this.analysisTweens.push(tween);
         }
         cx += dx;
         cy += dy;
@@ -754,12 +758,27 @@ export class GameScene extends Phaser.Scene {
     // Reveal start tile immediately
     revealTile(path[0], 0);
 
-    // Animate ghost along the path
-    let totalDelay = 0;
+    // Chain ghost movements using tween callbacks instead of pre-scheduled timers
+    // This ensures each animation waits for the previous one to complete
+    const animateStep = (stepIndex: number) => {
+      if (stepIndex >= path.length) {
+        // All moves complete - fade out ghost and show attempt paths
+        const timer = this.time.delayedCall(300, () => {
+          const fadeOutTween = this.tweens.add({
+            targets: ghost,
+            alpha: 0,
+            duration: 300,
+            ease: 'Quad.easeOut',
+          });
+          this.analysisTweens.push(fadeOutTween);
+          this.drawUserAttemptPaths();
+        });
+        this.analysisTimers.push(timer);
+        return;
+      }
 
-    for (let i = 1; i < path.length; i++) {
-      const from = path[i - 1];
-      const to = path[i];
+      const from = path[stepIndex - 1];
+      const to = path[stepIndex];
       const targetX = this.offsetX + to.x * TILE_SIZE + TILE_SIZE / 2;
       const targetY = this.offsetY + to.y * TILE_SIZE + TILE_SIZE / 2 - this.tileFaceLift;
 
@@ -767,42 +786,31 @@ export class GameScene extends Phaser.Scene {
       const dist = Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y));
       const duration = moveDelay * Math.max(dist, 1);
 
-      // Schedule ghost movement
-      this.time.delayedCall(totalDelay, () => {
-        // Reveal intermediate tiles as ghost starts moving
-        revealIntermediateTiles(from, to);
+      // Reveal intermediate tiles as ghost starts moving
+      revealIntermediateTiles(from, to);
 
-        this.tweens.add({
-          targets: ghost,
-          x: targetX,
-          y: targetY,
-          duration,
-          ease: dist > 1 ? 'Quad.easeOut' : 'Quad.easeInOut',
-          onComplete: () => {
-            // Reveal stopping tile when ghost arrives
-            revealTile(to, i);
-          },
-        });
-      });
-
-      totalDelay += duration + 50; // Small gap between moves
-    }
-
-    // After ghost completes, fade in user attempt lines
-    const totalGhostTime = totalDelay + 300;
-
-    this.time.delayedCall(totalGhostTime, () => {
-      // Fade out ghost
-      this.tweens.add({
+      const moveTween = this.tweens.add({
         targets: ghost,
-        alpha: 0,
-        duration: 300,
-        ease: 'Quad.easeOut',
-      });
+        x: targetX,
+        y: targetY,
+        duration,
+        ease: dist > 1 ? 'Quad.easeOut' : 'Quad.easeInOut',
+        onComplete: () => {
+          // Reveal stopping tile when ghost arrives
+          revealTile(to, stepIndex);
 
-      // Draw user attempt paths as thin red lines
-      this.drawUserAttemptPaths();
-    });
+          // Small gap before next move, then continue chain
+          const gapTimer = this.time.delayedCall(50, () => {
+            animateStep(stepIndex + 1);
+          });
+          this.analysisTimers.push(gapTimer);
+        },
+      });
+      this.analysisTweens.push(moveTween);
+    };
+
+    // Start the animation chain from step 1 (step 0 is the start tile, already revealed)
+    animateStep(1);
   }
 
   // Draw a tile for analysis overlay (similar to hint tiles but no shake)
@@ -979,12 +987,13 @@ export class GameScene extends Phaser.Scene {
         container.add(numText);
 
         // Fade in
-        this.tweens.add({
+        const fadeInTween = this.tweens.add({
           targets: container,
           alpha: 1,
           duration: 400,
           ease: 'Quad.easeOut',
         });
+        this.analysisTweens.push(fadeInTween);
       }
     });
   }
@@ -1764,6 +1773,15 @@ export class GameScene extends Phaser.Scene {
   }
 
   private clearAnalysis() {
+    // Cancel all scheduled timers (delayedCalls) for analysis animations
+    this.analysisTimers.forEach(timer => timer.destroy());
+    this.analysisTimers = [];
+
+    // Stop all running tweens for analysis objects
+    this.analysisTweens.forEach(tween => tween.stop());
+    this.analysisTweens = [];
+
+    // Destroy all analysis game objects
     this.analysisObjects.forEach(obj => obj.destroy());
     this.analysisObjects = [];
   }

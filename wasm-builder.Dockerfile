@@ -11,8 +11,6 @@
 ARG RUST_VERSION=1.83
 ARG WASM_PACK_VERSION=0.13.1
 ARG RUST_TOOLCHAIN=nightly-2025-11-15
-# Build-time environment indicator (used to optionally skip wasm build when artifacts already exist)
-ARG BUILD_ENV=dev-test
 
 #######################################
 # Stage 1: Base with wasm-pack & toolchain
@@ -21,7 +19,6 @@ FROM rust:${RUST_VERSION}-slim-bookworm AS base
 
 ARG WASM_PACK_VERSION
 ARG RUST_TOOLCHAIN
-ARG BUILD_ENV
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
@@ -44,9 +41,13 @@ WORKDIR /app
 #######################################
 # Stage 2: Builder (compile WASM)
 #######################################
+SHELL ["/bin/bash", "-c"]
 FROM base AS builder
 
-ARG BUILD_ENV
+SHELL ["/bin/bash","-c"]
+
+# Build-time environment indicator (used to optionally skip wasm build when artifacts already exist)
+ARG BUILD_ENV=dev-test
 
 # Copy any pre-built artifacts from the workspace so we can reuse them in non-prod builds
 COPY src/wasm/generator ./prebuilt-wasm
@@ -70,6 +71,7 @@ RUN --mount=type=cache,id=wasm-cargo-registry,target=/usr/local/cargo/registry \
     --mount=type=cache,id=wasm-cargo-git,target=/usr/local/cargo/git \
     --mount=type=cache,id=wasm-target,target=/app/target \
     --mount=type=cache,id=wasm-hash,target=/wasm-hash \
+    set -euo pipefail; \
     PREBUILT_WASM="/app/prebuilt-wasm/mazle_generator_bg.wasm"; \
     mkdir -p /wasm-output; \
     # Calculate source hash for change detection \
@@ -92,6 +94,11 @@ RUN --mount=type=cache,id=wasm-cargo-registry,target=/usr/local/cargo/registry \
         echo "[WASM] Sources changed or no cache; building WASM for BUILD_ENV=$BUILD_ENV"; \
       fi; \
       wasm-pack build --target web --out-dir /wasm-output --out-name mazle_generator; \
+      # Verify wasm-pack produced output \
+      if [ ! -f /wasm-output/mazle_generator_bg.wasm ]; then \
+        echo "[ERROR] wasm-pack build failed - no output produced"; \
+        exit 1; \
+      fi; \
       # Cache artifacts and hash for future builds \
       if [ "$BUILD_ENV" = "prod" ]; then \
         echo "$NEW_HASH" > /wasm-hash/.build-hash; \

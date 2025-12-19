@@ -6,10 +6,10 @@ const nextConfig = {
   // Disable source maps in production for better performance
   productionBrowserSourceMaps: false,
   
-  // Configure webpack for WASM with threads (SharedArrayBuffer)
+  // Configure webpack for WASM
   webpack: (config, { isServer }) => {
     // Don't process WASM files through webpack - they need to be loaded
-    // manually to preserve SharedArrayBuffer support for threading
+    // manually to preserve shared memory features
     config.module.rules.push({
       test: /\.wasm$/,
       type: 'asset/resource',
@@ -23,7 +23,7 @@ const nextConfig = {
     return config;
   },
   
-  // Headers for WASM threads (SharedArrayBuffer requires cross-origin isolation)
+  // Headers for WASM (cross-origin isolation required for shared memory features)
   // Using 'require-corp' for maximum browser compatibility
   // Note: External resources need CORS headers or crossorigin attribute
   async headers() {

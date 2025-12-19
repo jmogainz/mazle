@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 /**
- * Middleware to add COOP/COEP headers for SharedArrayBuffer support.
- * Required for WASM threading via wasm-bindgen-rayon.
+ * Middleware to add COOP/COEP headers for WASM support.
+ * Required for WASM modules compiled with shared memory features.
  */
 export function middleware(request: NextRequest) {
   // Log to verify middleware is running (check terminal, not browser)

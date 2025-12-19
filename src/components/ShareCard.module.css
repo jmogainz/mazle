@@ -29,6 +29,11 @@
   padding: 1.5rem;
   max-width: 380px;
   width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   position: relative;
   animation: slideUp 0.3s ease-out;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.08);
@@ -326,15 +331,15 @@
 }
 
 .shareButton.copied {
-  background: #22c55e;
-  border-color: #22c55e;
-  color: white;
+  background: var(--color-text);
+  border-color: var(--color-text);
+  color: var(--color-background);
 }
 
 .shareButton.failed {
-  background: #ef4444;
-  border-color: #ef4444;
-  color: white;
+  background: var(--color-error);
+  border-color: var(--color-error);
+  color: var(--color-background);
 }
 
 .copyButton {
@@ -349,15 +354,15 @@
 }
 
 .copyButton.copied {
-  background: #22c55e;
-  border-color: #22c55e;
-  color: white;
+  background: var(--color-text);
+  border-color: var(--color-text);
+  color: var(--color-background);
 }
 
 .copyButton.failed {
-  background: #ef4444;
-  border-color: #ef4444;
-  color: white;
+  background: var(--color-error);
+  border-color: var(--color-error);
+  color: var(--color-background);
 }
 
 .playAgainButton {

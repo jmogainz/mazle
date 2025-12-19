@@ -56,6 +56,9 @@ pub struct PuzzleData {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub difficulty_score: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub selected_batch: Option<usize>,
+    // Original metrics (Phase 0)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub counter_intuitive_moves: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attractive_decoys: Option<i32>,
@@ -63,39 +66,48 @@ pub struct PuzzleData {
     pub commitment_gates: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub false_progress_paths: Option<i32>,
+    // Path structure metrics (Phase 1)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path_locality: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub direction_changes: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub backtrack_depth: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub decision_ambiguity: Option<f64>,
+    // Path diversity metrics (Phase 2)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub near_optimal_paths: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path_overlap: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path_overlap_avg: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub early_divergence: Option<f64>,
 }
 
 /// Generation configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GenerationConfig {
-    #[serde(default = "default_traditional_attempts")]
-    pub traditional_attempts: usize,
     #[serde(default = "default_target_score")]
     pub target_psychology_score: i32,
-    #[serde(default = "default_max_attempts")]
-    pub max_attempts: usize,
     #[serde(default)]
     pub parallel: bool,
+    #[serde(default)]
+    pub start_batch: usize,
 }
 
-fn default_traditional_attempts() -> usize {
-    400
-}
 fn default_target_score() -> i32 {
     2000
-}
-fn default_max_attempts() -> usize {
-    400
 }
 
 impl Default for GenerationConfig {
     fn default() -> Self {
         Self {
-            traditional_attempts: default_traditional_attempts(),
             target_psychology_score: default_target_score(),
-            max_attempts: default_max_attempts(),
             parallel: true,
+            start_batch: 0,
         }
     }
 }

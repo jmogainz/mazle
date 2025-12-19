@@ -4,14 +4,10 @@
  * Manages puzzle generation via two backends (both produce identical puzzles):
  * 
  * 1. 🦀 Rust HTTP Server - Runs on server with rayon parallelism (port 8080)
- * 2. 🔷 WASM - Runs in a dedicated web worker with rayon via wasm-bindgen-rayon
+ * 2. 🔷 WASM - Runs in a dedicated web worker (single-threaded)
  * 
- * The WASM backend runs in a single dedicated worker (generationWorker.ts) to:
- * - Keep the main thread responsive during generation (~200-500ms)
- * - Provide SharedArrayBuffer context for rayon thread pool
- * - Enable progress reporting back to UI
- * 
- * Parallelism happens inside Rust/WASM via rayon, NOT via multiple JS workers.
+ * The WASM backend runs in a dedicated worker (generationWorker.ts) to
+ * keep the main thread responsive during generation (~200-500ms).
  */
 
 import type { PuzzleData, MapType } from './types';
@@ -34,9 +30,26 @@ export interface GeneratorStatus {
   rustUrl: string | null;
   wasmLoaded: boolean;
   wasmVersion: string | null;
-  wasmThreadsInitialized: boolean;
-  wasmThreadsAvailable: boolean;
-  sharedArrayBufferAvailable: boolean;
+}
+
+function isTransientNetworkError(error: unknown): boolean {
+  if (error instanceof BackendConnectionError) {
+    return !error.fatal;
+  }
+  if (error instanceof TypeError) {
+    return true; // Most fetch network errors surface as TypeError
+  }
+  if (error instanceof DOMException && (error.name === 'AbortError' || error.name === 'NetworkError')) {
+    return true;
+  }
+  return false;
+}
+
+function computeBackoffMs(attempt: number): number {
+  // Exponential backoff with cap
+  const base = 200; // ms
+  const max = 15000; // 15s
+  return Math.min(max, base * Math.pow(2, attempt));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -50,17 +63,11 @@ const RUST_BACKEND_URL = process.env.NEXT_PUBLIC_DEV_GENERATOR_URL || process.en
 // ─────────────────────────────────────────────────────────────────────────────
 // WASM Generator with Dedicated Worker
 // ─────────────────────────────────────────────────────────────────────────────
-// 
-// IMPORTANT: WASM generation runs in a dedicated web worker to prevent UI freezing.
-// The worker initializes its own WASM instance and rayon thread pool.
-// ─────────────────────────────────────────────────────────────────────────────
 
 let generationWorker: Worker | null = null;
 let workerReady = false;
 let workerReadyPromise: Promise<void> | null = null;
 let wasmVersion: string | null = null;
-let wasmThreadCount = 0;
-let wasmThreadsAvailable = false;
 let requestId = 0;
 
 interface PendingRequest {
@@ -71,36 +78,11 @@ interface PendingRequest {
 const pendingRequests = new Map<number, PendingRequest>();
 
 /**
- * Check if SharedArrayBuffer is available (required for WASM threads)
- */
-function isSharedArrayBufferAvailable(): boolean {
-  try {
-    if (typeof SharedArrayBuffer === 'undefined') {
-      return false;
-    }
-    if (typeof crossOriginIsolated !== 'undefined' && !crossOriginIsolated) {
-      console.warn('[WASM] Page is not cross-origin isolated. COOP/COEP headers may be missing.');
-      return false;
-    }
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Initialize the generation worker
  */
 async function initGenerationWorker(): Promise<void> {
   if (workerReady) return;
   if (workerReadyPromise) return workerReadyPromise;
-  
-  // Check prerequisites
-  if (!isSharedArrayBufferAvailable()) {
-    console.error('[WASM] SharedArrayBuffer not available - WASM threading disabled');
-    wasmThreadsAvailable = false;
-    return;
-  }
   
   workerReadyPromise = new Promise((resolve, reject) => {
     try {
@@ -118,10 +100,8 @@ async function initGenerationWorker(): Promise<void> {
         switch (data.type) {
           case 'ready':
             wasmVersion = data.version;
-            wasmThreadCount = data.threads;
-            wasmThreadsAvailable = true;
             workerReady = true;
-            console.log(`[WASM] Worker ready (v${data.version}, ${data.threads} threads)`);
+            console.log(`[WASM] Worker ready (v${data.version})`);
             resolve();
             break;
             
@@ -138,7 +118,6 @@ async function initGenerationWorker(): Promise<void> {
           case 'error': {
             if (data.id === -1) {
               // Initialization error
-              wasmThreadsAvailable = false;
               workerReady = false;
               reject(new Error(data.error));
             } else {
@@ -155,7 +134,6 @@ async function initGenerationWorker(): Promise<void> {
       
       generationWorker.onerror = (error) => {
         console.error('[WASM] Worker error:', error);
-        wasmThreadsAvailable = false;
         workerReady = false;
         reject(new Error(`Worker error: ${error.message}`));
       };
@@ -163,7 +141,6 @@ async function initGenerationWorker(): Promise<void> {
       // Worker auto-initializes, just wait for ready message
     } catch (error) {
       console.error('[WASM] Failed to create worker:', error);
-      wasmThreadsAvailable = false;
       reject(error);
     }
   });
@@ -179,9 +156,6 @@ async function initGenerationWorker(): Promise<void> {
  * - BUT: wasm.generate() blocks the worker thread, preventing real-time polling
  * - SO: We simulate progress based on typical generation time (~300-600ms)
  * - The simulation uses an ease-out curve for natural-feeling feedback
- * 
- * Future improvement: Use SharedArrayBuffer to share progress counter between
- * Rust and main thread, allowing real-time polling without blocking.
  */
 async function generateFromWasm(
   seed: string,
@@ -195,8 +169,8 @@ async function generateFromWasm(
     throw new Error('WASM worker not available');
   }
   
-  if (!wasmThreadsAvailable) {
-    throw new Error('WASM threads not available. SharedArrayBuffer requires COOP/COEP headers.');
+  if (!workerReady) {
+    throw new Error('WASM worker not initialized.');
   }
   
   const id = ++requestId;
@@ -273,30 +247,84 @@ async function generateFromWasm(
   });
 }
 
-// For backwards compatibility
-async function initWasmThreadPool(): Promise<void> {
-  return initGenerationWorker();
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Rust Backend Generator
 // ─────────────────────────────────────────────────────────────────────────────
 
 let rustBackendTested = false;
 let rustBackendWorking = false;
+const rustInFlight = new Map<string, Set<AbortController>>();
 
-async function testRustBackend(): Promise<boolean> {
+function registerRustRequest(seed: string, controller: AbortController) {
+  const existing = rustInFlight.get(seed) ?? new Set<AbortController>();
+  existing.add(controller);
+  rustInFlight.set(seed, existing);
+}
+
+function unregisterRustRequest(seed: string, controller: AbortController) {
+  const existing = rustInFlight.get(seed);
+  if (!existing) return;
+  existing.delete(controller);
+  if (existing.size === 0) {
+    rustInFlight.delete(seed);
+  } else {
+    rustInFlight.set(seed, existing);
+  }
+}
+
+export function cancelRustRequest(seed: string): boolean {
+  const controllers = rustInFlight.get(seed);
+  if (!controllers || controllers.size === 0) {
+    console.log('[Rust] No in-flight request to cancel for seed', seed);
+    return false;
+  }
+
+  // If multiple requests are waiting on the same seed, do not cancel to avoid
+  // aborting other listeners.
+  if (controllers.size > 1) {
+    console.log('[Rust] Skipping cancel; another in-flight request for seed', seed);
+    return false;
+  }
+
+  let cancelled = false;
+  controllers.forEach((controller) => {
+    if (!controller.signal.aborted) {
+      controller.abort();
+      cancelled = true;
+    }
+  });
+  return cancelled;
+}
+
+async function testRustBackend(onProgress?: (progress: GenerationProgress) => void): Promise<boolean> {
   if (!RUST_BACKEND_URL) return false;
   if (rustBackendTested) return rustBackendWorking;
   
-  try {
-    const response = await fetch(`${RUST_BACKEND_URL}/health`, {
-      method: 'GET',
-      signal: AbortSignal.timeout(5000),
-    });
-    rustBackendWorking = response.ok;
-  } catch {
-    rustBackendWorking = false;
+  const maxAttempts = 2;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      const response = await fetch(`${RUST_BACKEND_URL}/health`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(3000),
+      });
+      rustBackendWorking = response.ok;
+      if (rustBackendWorking) break;
+    } catch {
+      rustBackendWorking = false;
+    }
+
+    if (!rustBackendWorking && attempt + 1 < maxAttempts) {
+      if (onProgress) {
+        onProgress({
+          phase: 'rust-backend',
+          workersComplete: Math.min(2, attempt + 1), // tiny bump to show activity
+          totalWorkers: 100,
+          bestScore: 0,
+        });
+      }
+      const backoff = 300; // ms
+      await new Promise((resolve) => setTimeout(resolve, backoff));
+    }
   }
   
   rustBackendTested = true;
@@ -305,7 +333,11 @@ async function testRustBackend(): Promise<boolean> {
 
 // Custom error class for backend connection issues
 export class BackendConnectionError extends Error {
-  constructor(message: string, public readonly isTimeout: boolean = false) {
+  constructor(
+    message: string,
+    public readonly fatal: boolean = false,
+    public readonly isTimeout: boolean = false
+  ) {
     super(message);
     this.name = 'BackendConnectionError';
   }
@@ -314,14 +346,19 @@ export class BackendConnectionError extends Error {
 async function generateFromRustBackend(
   seed: string,
   mapType?: MapType,
-  onProgress?: (progress: GenerationProgress) => void
+  onProgress?: (progress: GenerationProgress) => void,
+  startBatch?: number,
+  abortController?: AbortController,
 ): Promise<PuzzleData> {
   if (!RUST_BACKEND_URL) {
     throw new Error('Rust backend URL not configured');
   }
 
   const type = mapType || 'ice';
-  const url = `${RUST_BACKEND_URL}/api/generate/${encodeURIComponent(seed)}?map_type=${type}&parallel=true`;
+  let url = `${RUST_BACKEND_URL}/api/generate/${encodeURIComponent(seed)}?map_type=${type}&parallel=true`;
+  if (startBatch !== undefined && startBatch > 0) {
+    url += `&start_batch=${startBatch}`;
+  }
   
   console.log(`[Rust] Fetching puzzle from ${url}`);
   
@@ -352,20 +389,25 @@ async function generateFromRustBackend(
     }, 50); // Faster updates for shorter duration
   }
   
+  const controller = abortController ?? new AbortController();
+  registerRustRequest(seed, controller);
+
   try {
     const response = await fetch(url, {
       method: 'GET',
       headers: { 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(600000), // 10 min timeout for server generation
+      signal: controller.signal,
     });
 
     if (!response.ok) {
       if (response.status >= 500) {
         throw new BackendConnectionError(
-          `Server error (${response.status}). The puzzle generator is experiencing issues. Please try again.`
+          `Server error (${response.status}). The puzzle generator is experiencing issues. Please try again.`,
+          true
         );
       }
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      // Other HTTP errors are treated as fatal (e.g., 4xx/edge cases)
+      throw new BackendConnectionError(`HTTP ${response.status}: ${response.statusText}`, true);
     }
 
     const data = await response.json();
@@ -396,18 +438,16 @@ async function generateFromRustBackend(
     }
     
     if (error instanceof TypeError && error.message.includes('fetch')) {
-      // Network error - backend is down or unreachable
+      // Network error - backend temporarily unreachable (treat as transient)
       rustBackendWorking = false;
       throw new BackendConnectionError(
-        'Unable to connect to puzzle server. The server may be temporarily unavailable.'
+        'Unable to connect to puzzle server. The server may be temporarily unavailable.',
+        false
       );
     }
     
     if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new BackendConnectionError(
-        'Request timed out. The puzzle server is taking too long to respond.',
-        true
-      );
+      throw new BackendConnectionError('Generation cancelled by client.', false);
     }
     
     if (error instanceof DOMException && error.name === 'TimeoutError') {
@@ -421,6 +461,68 @@ async function generateFromRustBackend(
     throw error;
   } finally {
     if (progressInterval) clearInterval(progressInterval);
+    unregisterRustRequest(seed, controller);
+  }
+}
+
+// Shared retry wrapper used by both the general generator flow and daily flow
+interface RustRetryOptions {
+  seed: string;
+  mapType?: MapType;
+  onProgress?: (progress: GenerationProgress) => void;
+  startBatch?: number;
+  abortController?: AbortController;
+  logLabel: string; // e.g., '[Engine]' or '[Daily]'
+}
+
+async function generateFromRustWithRetries({
+  seed,
+  mapType,
+  onProgress,
+  startBatch,
+  abortController,
+  logLabel,
+}: RustRetryOptions): Promise<PuzzleData | null> {
+  // Quick health preflight (cached after first success/fail)
+  await testRustBackend(onProgress);
+
+  const TRANSIENT_TIME_BUDGET_MS = 10 * 60 * 1000; // 10 minutes
+  const TRANSIENT_MAX_ATTEMPTS = 8; // enough for multiple background resumes without spinning forever
+  const startTime = performance.now();
+  let attempt = 0;
+
+  while (true) {
+    try {
+      return await generateFromRustBackend(seed, mapType, onProgress, startBatch, abortController);
+    } catch (error) {
+      console.warn(`${logLabel} Rust backend failed:`, error);
+
+      // If the client explicitly cancelled, surface the error and don't fall back
+      if (
+        abortController?.signal.aborted ||
+        (error instanceof DOMException && error.name === 'AbortError')
+      ) {
+        throw error;
+      }
+
+      const transient = isTransientNetworkError(error);
+      const elapsed = performance.now() - startTime;
+      const attemptsExceeded = attempt >= TRANSIENT_MAX_ATTEMPTS;
+      const timeExceeded = elapsed >= TRANSIENT_TIME_BUDGET_MS;
+
+      if (transient && !attemptsExceeded && !timeExceeded) {
+        const backoff = computeBackoffMs(attempt);
+        attempt += 1;
+        console.log(
+          `${logLabel} Transient Rust failure, retry ${attempt}/${TRANSIENT_MAX_ATTEMPTS} after ${backoff}ms (elapsed ${(elapsed/1000).toFixed(1)}s)`
+        );
+        await new Promise((resolve) => setTimeout(resolve, backoff));
+        continue;
+      }
+
+      // Non-transient or retries exhausted: signal caller to fall back
+      return null;
+    }
   }
 }
 
@@ -449,9 +551,6 @@ export async function getGeneratorStatus(): Promise<GeneratorStatus> {
     rustUrl: RUST_BACKEND_URL,
     wasmLoaded: workerReady,
     wasmVersion: wasmVersion,
-    wasmThreadsInitialized: workerReady,
-    wasmThreadsAvailable,
-    sharedArrayBufferAvailable: isSharedArrayBufferAvailable(),
   };
 }
 
@@ -461,7 +560,7 @@ export async function getGeneratorStatus(): Promise<GeneratorStatus> {
  */
 export async function preloadWasm(): Promise<void> {
   try {
-    await initWasmThreadPool();
+    await initGenerationWorker();
   } catch {
     // Ignore errors - will be handled during generation
   }
@@ -476,12 +575,15 @@ export async function preloadWasm(): Promise<void> {
  * @param onProgress - Progress callback
  * @param forceMapType - Force a specific map type
  * @param forceBackend - Force a specific engine ('auto' uses priority: rust > wasm)
+ * @param startBatch - Start generation at a specific batch number (for deterministic replay)
  */
 export async function generatePuzzleParallel(
   seed: string,
   onProgress?: (progress: GenerationProgress) => void,
   forceMapType?: MapType,
-  forceBackend: GeneratorBackend = 'auto'
+  forceBackend: GeneratorBackend = 'auto',
+  startBatch?: number,
+  abortController?: AbortController
 ): Promise<PuzzleData> {
   
   // ─────────────────────────────────────────────────────────────────────────
@@ -492,28 +594,25 @@ export async function generatePuzzleParallel(
       throw new Error('Rust backend not configured');
     }
     
-    return await generateFromRustBackend(seed, forceMapType, onProgress);
+    // One quick health check; if it fails, surface error (no fallback in force mode)
+    await testRustBackend(onProgress);
+    return await generateFromRustBackend(seed, forceMapType, onProgress, startBatch, abortController);
   }
   
   // ─────────────────────────────────────────────────────────────────────────
   // Force WASM
   // ─────────────────────────────────────────────────────────────────────────
   if (forceBackend === 'wasm') {
-    // Check if WASM threads are available first
-    await initWasmThreadPool();
-    if (!wasmThreadsAvailable) {
+    // Initialize WASM worker if not already done
+    await initGenerationWorker();
+    if (!workerReady) {
       throw new Error(
-        'WASM engine unavailable: SharedArrayBuffer requires cross-origin isolation.\n\n' +
-        'To fix in development:\n' +
-        '1. Access via http://localhost:8080 (NOT an IP address like 10.x.x.x or 127.0.0.1)\n' +
-        '2. Browsers only allow SharedArrayBuffer on localhost or HTTPS origins\n' +
-        '3. Ensure server.js is running (npm run dev)\n\n' +
-        'For LAN access, you need HTTPS (use mkcert to generate local certs).\n' +
-        'Or use the Rust backend instead.'
+        'WASM worker failed to initialize. Check browser console for details.'
       );
     }
     
     // Progress is now tracked via worker messages
+    // Note: WASM doesn't support startBatch yet
     const puzzle = await generateFromWasm(seed, forceMapType, onProgress);
     
     return puzzle;
@@ -524,39 +623,43 @@ export async function generatePuzzleParallel(
   // ─────────────────────────────────────────────────────────────────────────
   
   // Pre-check WASM availability for better error messages
-  await initWasmThreadPool();
-  
+  await initGenerationWorker();
+
   if (RUST_BACKEND_URL) {
     console.log(`[Engine] Rust backend configured at ${RUST_BACKEND_URL}`);
+    const rustPuzzle = await generateFromRustWithRetries({
+      seed,
+      mapType: forceMapType,
+      onProgress,
+      startBatch,
+      abortController,
+      logLabel: '[Engine]',
+    });
 
-    try {
-      return await generateFromRustBackend(seed, forceMapType, onProgress);
-    } catch (error) {
-      console.warn('[Engine] Rust backend failed:', error);
-      
-      // Check if WASM fallback is available
-      if (!wasmThreadsAvailable) {
-        throw new Error(
-          'Rust backend failed and WASM fallback unavailable.\n\n' +
-          'Options:\n' +
-          '1. Start the Rust backend (make up-backend)\n' +
-          '2. Enable WASM: access via http://localhost:8080 (NOT an IP address)\n' +
-          '   Browsers only allow SharedArrayBuffer on localhost or HTTPS'
-        );
-      }
-      
-      console.log('[Engine] Falling back to WASM...');
+    if (rustPuzzle) {
+      return rustPuzzle;
     }
+
+    // Non-transient or retries exhausted: attempt WASM fallback if available
+    if (!workerReady) {
+      throw new Error(
+        'Rust backend failed and WASM fallback unavailable.\n\n' +
+        'Options:\n' +
+        '1. Start the Rust backend (make up-backend)\n' +
+        '2. Enable WASM: access via http://localhost:8080 or HTTPS'
+      );
+    }
+    
+    console.log('[Engine] Falling back to WASM...');
   }
 
   // Check if WASM is available
-  if (!wasmThreadsAvailable) {
+  if (!workerReady) {
     throw new Error(
       'No puzzle engine available.\n\n' +
       'Options:\n' +
       '1. Configure Rust backend (NEXT_PUBLIC_GENERATOR_URL)\n' +
-      '2. Enable WASM: access via http://localhost:8080 (NOT an IP address)\n' +
-      '   Browsers only allow SharedArrayBuffer on localhost or HTTPS'
+      '2. Enable WASM: access via http://localhost:8080 or HTTPS'
     );
   }
 
@@ -564,6 +667,7 @@ export async function generatePuzzleParallel(
   console.log('[Engine] Using WASM engine...');
   
   // Progress is now tracked via worker messages
+  // Note: WASM doesn't support startBatch yet
   const puzzle = await generateFromWasm(seed, forceMapType, onProgress);
   
   return puzzle;
@@ -658,25 +762,24 @@ export async function fetchDailyPuzzle(
   // 2. Try Rust backend directly from client (if configured)
   // ─────────────────────────────────────────────────────────────────────────
   if (RUST_BACKEND_URL) {
-    try {
-      console.log('[Daily] Trying Rust backend directly from client...');
-      
-      const puzzle = await generateFromRustBackend(seed, undefined, onProgress);
-      
+    const rustPuzzle = await generateFromRustWithRetries({
+      seed,
+      onProgress,
+      logLabel: '[Daily]',
+    });
+
+    if (rustPuzzle) {
       console.log('[Daily] Generated via Rust backend');
-      
+
       // Backfill KV cache so other users get instant load
-      backfillKvCache(seed, puzzle, 'rust').catch((error) => {
+      backfillKvCache(seed, rustPuzzle, 'rust').catch((error) => {
         console.warn('[Daily] Failed to backfill KV cache:', error);
       });
-      
+
       return {
-        puzzle,
+        puzzle: rustPuzzle,
         source: 'rust',
       };
-    } catch (error) {
-      console.warn('[Daily] Rust backend failed:', error);
-      // Continue to WASM fallback
     }
   }
   
@@ -686,9 +789,9 @@ export async function fetchDailyPuzzle(
   console.log('[Daily] Falling back to WASM generation...');
   
   // Pre-initialize WASM
-  await initWasmThreadPool();
+  await initGenerationWorker();
   
-  if (!wasmThreadsAvailable) {
+  if (!workerReady) {
     throw new Error(
       'Unable to load daily puzzle.\n\n' +
       'The puzzle server is temporarily unavailable and WASM fallback is not supported in this browser.\n\n' +
@@ -742,13 +845,4 @@ async function backfillKvCache(seed: string, puzzle: PuzzleData, source: 'rust' 
     // Don't throw - this is best-effort
     console.warn('[Daily] Backfill error:', error);
   }
-}
-
-// Legacy export for compatibility
-export function getWorkerPool() {
-  return {
-    terminate: () => {
-      // No-op: WASM threads are managed by the runtime
-    }
-  };
 }

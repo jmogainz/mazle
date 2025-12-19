@@ -1,5 +1,6 @@
 /* Shared Fonts */
-.headerContainer, .footerContainer {
+.headerContainer,
+.footerContainer {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -29,7 +30,8 @@
 }
 
 .statsRow {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto auto auto 1fr;
   align-items: center;
   justify-content: center;
   gap: 1.25rem;
@@ -42,6 +44,19 @@
   gap: 0.3rem;
   position: relative;
   min-width: 70px;
+  flex-shrink: 0;
+}
+
+.statsRow > .statGroup:first-of-type {
+  justify-self: end;
+}
+
+.statsRow > .statGroup:nth-of-type(2) {
+  justify-self: center;
+}
+
+.statsRow > .statGroup:last-of-type {
+  justify-self: start;
 }
 
 .statValue {
@@ -49,7 +64,10 @@
   font-weight: 700;
   color: var(--color-text);
   font-variant-numeric: tabular-nums;
-  line-height: 1;
+  line-height: 1.2;
+  /* Increased from 1 to prevent vertical clipping */
+  padding: 0 4px;
+  /* Added horizontal padding to prevent glyph clipping */
 }
 
 .statValue.danger {
@@ -65,6 +83,7 @@
   text-transform: uppercase;
 }
 
+
 .statDivider {
   width: 1px;
   height: 32px;
@@ -73,28 +92,28 @@
 
 /* Lives Styling */
 .livesContainer {
-    display: flex;
-    gap: 6px;
-    align-items: center;
-    height: 1.4rem;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  height: 1.8rem;
 }
 
 .lifeNode {
-    width: 16px;
-    height: 16px;
-    border-radius: 3px;
-    transition: all 0.3s ease;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  transition: all 0.3s ease;
 }
 
 .lifeActive {
-    background: var(--color-warning); 
-    transform: scale(1);
+  background: var(--color-warning);
+  transform: scale(1);
 }
 
 .lifeLost {
-    background: var(--color-border);
-    transform: scale(0.8);
-    opacity: 0.5;
+  background: var(--color-border);
+  transform: scale(0.8);
+  opacity: 0.5;
 }
 
 /* --- FOOTER VARIANT (Moves Remaining) --- */
@@ -109,7 +128,8 @@
 }
 
 .movesValue {
-  font-size: 3.5rem; /* Huge Waffle Style */
+  font-size: 3.5rem;
+  /* Huge Waffle Style */
   font-weight: 700;
   color: var(--color-text);
   line-height: 1;
@@ -133,17 +153,31 @@
 
 /* Animations & Tooltips */
 .statValue.penaltyFlash {
-    animation: penaltyFlash 0.5s ease-in-out 2;
+  animation: penaltyFlash 0.5s ease-in-out 2;
 }
 
 @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.7; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.7;
+  }
 }
 
 @keyframes penaltyFlash {
-    0%, 100% { color: var(--color-text); }
-    50% { color: var(--color-error); }
+
+  0%,
+  100% {
+    color: var(--color-text);
+  }
+
+  50% {
+    color: var(--color-error);
+  }
 }
 
 .infoIcon {
@@ -192,12 +226,92 @@
   .infoIcon {
     right: -16px;
   }
-  
+
   .tooltip {
     top: auto;
     bottom: calc(100% + 8px);
     left: 50%;
     right: auto;
     transform: translateX(-50%);
+  }
+
+  .statValue {
+    font-size: 1.75rem;
+    padding: 0 4px;
+    overflow: visible;
+    text-align: center;
+    letter-spacing: 0.02em;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .statGroup {
+    min-width: 72px;
+    overflow: visible;
+  }
+
+  .statsRow {
+    overflow: visible;
+    gap: 1rem;
+  }
+}
+
+/* Mobile - stats row styling */
+@media (max-width: 768px) {
+  .headerContainer {
+    padding: 0.25rem 0;
+    gap: 0.4rem;
+    margin-bottom: 0.4rem;
+  }
+
+  .statsRow {
+    gap: 1.5rem;
+  }
+
+  .statGroup {
+    min-width: 72px;
+  }
+
+  .statValue {
+    font-size: 1.65rem;
+  }
+
+  .statLabel {
+    font-size: 0.7rem;
+  }
+
+}
+
+/* Compact vertical layout - desktop/tablet only (not mobile) */
+@media (max-height: 820px) and (min-width: 769px) {
+
+  .headerContainer,
+  .footerContainer {
+    padding: 0.2rem 0;
+  }
+
+  .headerContainer {
+    gap: 0.25rem;
+    margin-bottom: 0;
+  }
+
+  .puzzleNumber {
+    font-size: 1.25rem;
+  }
+
+  .statsRow {
+    gap: 0.9rem;
+  }
+
+  .statGroup {
+    min-width: 60px;
+    gap: 0.2rem;
+  }
+
+  .statValue {
+    font-size: 1.35rem;
+  }
+
+  .statLabel {
+    font-size: 0.7rem;
   }
 }

@@ -32,6 +32,8 @@
   max-height: 90vh;
   overflow-y: auto;
   overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   position: relative;
   animation: slideUp 0.3s ease-out;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.08);
@@ -108,8 +110,68 @@
   text-transform: uppercase;
 }
 
-.section {
+.goalSection {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
   margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--color-border);
+  padding-right: 0.5rem;
+}
+
+.tileGoalLarge {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  background: #538d4e; /* edge color */
+  position: relative;
+  flex-shrink: 0;
+}
+
+.tileGoalLarge::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 6px;
+  border-radius: 8px;
+  background: #6aaa64; /* face color */
+}
+
+.tileGoalLarge::after {
+  content: '★';
+  position: absolute;
+  top: 40%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 34px;
+  line-height: 1;
+  color: #ffd700;
+  z-index: 1;
+}
+
+.goalTextWrapper {
+  text-align: left;
+}
+
+.goalText {
+  font-size: 1.1rem;
+  color: var(--color-text);
+  margin: 0 0 0.25rem 0;
+  font-weight: 600;
+}
+
+.goalSubtext {
+  font-size: 0.9rem;
+  color: var(--color-secondary);
+  margin: 0;
+}
+
+.section {
+  margin-bottom: 1rem;
 }
 
 .section:last-child {
@@ -117,12 +179,22 @@
 }
 
 .sectionTitle {
-  font-size: 0.9rem;
-  color: var(--color-text);
-  margin: 0 0 0.5rem 0;
+  font-size: 0.75rem;
+  color: var(--color-secondary);
+  margin: 0 0 0.4rem 0;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-weight: 800;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+}
+
+.sectionTitleCentered {
+  font-size: 0.75rem;
+  color: var(--color-secondary);
+  margin: 0 0 0.6rem 0;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+  text-align: center;
 }
 
 .text {
@@ -130,6 +202,117 @@
   color: var(--color-text);
   line-height: 1.5;
   margin: 0;
+}
+
+.controlsText {
+  font-size: 0.9rem;
+  color: var(--color-text);
+  margin: 0;
+  font-weight: 500;
+}
+
+.controlsRow {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+}
+
+.controlOption {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  width: 66px;
+}
+
+.controlIcon {
+  font-size: 1.5rem;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.controlKeys {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  height: 40px;
+  justify-content: center;
+}
+
+.keyRow {
+  display: flex;
+  gap: 2px;
+}
+
+.keySmall {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.arrowUp,
+.arrowDown,
+.arrowLeft,
+.arrowRight {
+  display: block;
+  width: 0;
+  height: 0;
+  border-style: solid;
+}
+
+.arrowUp {
+  border-width: 0 4px 5px 4px;
+  border-color: transparent transparent var(--color-text) transparent;
+}
+
+.arrowDown {
+  border-width: 5px 4px 0 4px;
+  border-color: var(--color-text) transparent transparent transparent;
+}
+
+.arrowLeft {
+  border-width: 4px 5px 4px 0;
+  border-color: transparent var(--color-text) transparent transparent;
+}
+
+.arrowRight {
+  border-width: 4px 0 4px 5px;
+  border-color: transparent transparent transparent var(--color-text);
+}
+
+.controlLabel {
+  font-size: 0.7rem;
+  color: var(--color-secondary);
+}
+
+.controlLabelKeys {
+  font-size: 0.7rem;
+  color: var(--color-secondary);
+  text-align: center;
+}
+
+.hintText {
+  font-size: 0.875rem;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.hintSubtext {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--color-secondary);
+  margin: 0 0 0.5rem 0;
 }
 
 .tileStart,
@@ -145,23 +328,45 @@
 }
 
 .tileStart {
-  background: linear-gradient(135deg, #d7b74a 50%, #bd9e3c 50%);
-  border: 1px solid #b0892f;
+  background: #bd9e3c; /* edge */
+}
+
+.tileStart::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 3px;
+  border-radius: 4px;
+  background: #d7b74a; /* face */
 }
 
 .tileGoal {
-  background: linear-gradient(135deg, #6aaa64 50%, #538d4e 50%);
-  border: 1px solid #3f703c;
+  background: #538d4e; /* edge */
+}
+
+.tileGoal::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 3px;
+  border-radius: 4px;
+  background: #6aaa64; /* face */
 }
 
 .tileGoal::after {
   content: '★';
   position: absolute;
-  top: 50%;
+  top: 42%;
   left: 50%;
-  transform: translate(-50%, -52%);
-  font-size: 12px;
+  transform: translate(-50%, -50%);
+  font-size: 14px;
+  line-height: 1;
   color: #ffd700;
+  z-index: 1;
 }
 
 .controls {
@@ -195,17 +400,305 @@
   text-align: center;
 }
 
-.dpad {
-  font-size: 1.5rem;
-  min-width: 80px;
-  text-align: center;
-  color: var(--color-text);
-  font-weight: 700;
-}
-
 .controlLabel {
   font-size: 0.875rem;
   color: var(--color-text);
+}
+
+.animationGrid {
+  display: flex;
+  justify-content: space-around;
+  gap: 0.5rem;
+}
+
+.animationGridTwoRows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.animationRow {
+  display: flex;
+  justify-content: space-around;
+  gap: 1rem;
+}
+
+.animationDemo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  width: 50%;
+}
+
+.demoRow {
+  display: flex;
+  gap: 3px;
+}
+
+.demoTile {
+  position: relative;
+  width: 28px;
+  height: 28px;
+}
+
+.demoRow {
+  position: relative;
+}
+
+.demoLabel {
+  font-size: 0.7rem;
+  color: var(--color-secondary);
+}
+
+.exampleRow {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-bottom: 0.5rem;
+}
+
+.exampleTile {
+  position: relative;
+  width: 32px;
+  height: 32px;
+}
+
+.tileFloorEx,
+.tileWallEx,
+.tileIceEx,
+.tileHintDark,
+.tileHintLight,
+.tileLedgeEx {
+  width: 100%;
+  height: 100%;
+  border-radius: 6px;
+  position: relative;
+}
+
+/* 3D tile effect using pseudo-element for edge/shadow */
+.tileFloorEx::before,
+.tileWallEx::before,
+.tileIceEx::before,
+.tileHintDark::before,
+.tileHintLight::before,
+.tileLedgeEx::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 6px;
+}
+
+/* Floor tile */
+.tileFloorEx {
+  background: #9f8451; /* edge color */
+}
+.tileFloorEx::before {
+  background: #bfa46b; /* face color */
+  bottom: 4px;
+}
+
+/* Wall tile */
+.tileWallEx {
+  background: #0a0a0a; /* edge color */
+}
+.tileWallEx::before {
+  background: #202124; /* face color */
+  bottom: 4px;
+}
+
+/* Ice tile */
+.tileIceEx {
+  background: #7eb5ed; /* edge color */
+}
+.tileIceEx::before {
+  background: #a6d8ff; /* face color */
+  bottom: 4px;
+}
+
+/* Hint dark (stopping point) */
+.tileHintDark {
+  background: #538d4e; /* edge color */
+  box-shadow: 0 0 6px rgba(106, 170, 100, 0.4);
+}
+.tileHintDark::before {
+  background: #6aaa64; /* face color */
+  bottom: 4px;
+}
+
+/* Hint light (intermediate) */
+.tileHintLight {
+  background: #8fc98a; /* edge color */
+  box-shadow: 0 0 4px rgba(106, 170, 100, 0.25);
+}
+.tileHintLight::before {
+  background: #a8d8a8; /* face color */
+  bottom: 4px;
+}
+
+/* Ledge tile */
+.tileLedgeEx {
+  background: #c0c0c0; /* edge color */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tileLedgeEx::before {
+  background: #e8e8e8; /* face color */
+  bottom: 4px;
+}
+
+.ledgeArrowRight,
+.ledgeArrowDown {
+  position: absolute;
+  width: 0;
+  height: 0;
+  border-style: solid;
+}
+
+.ledgeArrowRight {
+  border-width: 5px 0 5px 7px;
+  border-color: transparent transparent transparent #3a3d41;
+  animation: arrowRight 5s ease-in-out infinite;
+}
+
+.ledgeArrowDown {
+  border-width: 7px 5px 0 5px;
+  border-color: #3a3d41 transparent transparent transparent;
+  animation: arrowDown 5s ease-in-out infinite;
+}
+
+@keyframes arrowRight {
+  /* Visible during phase 1 (slide through), hidden for phase 2 (wall bounce) */
+  0%, 48% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+@keyframes arrowDown {
+  /* Hidden during phase 1 (slide through), visible for phase 2 (wall bounce) */
+  0%, 48% { opacity: 0; }
+  50%, 97% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* Animated player icons */
+.playerStops,
+.playerSlides,
+.playerBumps,
+.playerLedge {
+  position: absolute;
+  width: 12px;
+  height: 14px;
+  background: #ff4d4d;
+  border-radius: 2px;
+  border: 1px solid #cc0000;
+  top: 50%;
+  transform: translateY(-55%);
+  left: 8px;
+  z-index: 10;
+}
+
+.playerStops::before,
+.playerStops::after,
+.playerSlides::before,
+.playerSlides::after,
+.playerBumps::before,
+.playerBumps::after,
+.playerLedge::before,
+.playerLedge::after {
+  content: '';
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  background: white;
+  border-radius: 50%;
+  top: 3px;
+}
+
+.playerStops::before,
+.playerSlides::before,
+.playerBumps::before,
+.playerLedge::before {
+  left: 1px;
+}
+
+.playerStops::after,
+.playerSlides::after,
+.playerBumps::after,
+.playerLedge::after {
+  right: 1px;
+}
+
+/* Ice slides animation - starts left, slides through all 3 and disappears */
+.playerSlides {
+  animation: slideAnim 2.5s linear infinite;
+}
+
+@keyframes slideAnim {
+  0%, 5% { left: 8px; opacity: 1; }
+  50% { left: 75px; opacity: 1; }
+  65% { left: 105px; opacity: 0; }
+  95%, 100% { left: 8px; opacity: 0; }
+}
+
+/* Ground stops animation - starts left, slides to ground (3rd tile) and stops */
+.playerStops {
+  animation: stopAnim 2.5s linear infinite;
+}
+
+@keyframes stopAnim {
+  0%, 5% { left: 8px; opacity: 1; }
+  50%, 85% { left: 70px; opacity: 1; }
+  90% { left: 70px; opacity: 0; }
+  95%, 100% { left: 8px; opacity: 0; }
+}
+
+/* Wall bumps animation - starts left, slides to middle tile, stopped by wall */
+.playerBumps {
+  animation: bumpAnim 2.5s ease-in-out infinite;
+}
+
+@keyframes bumpAnim {
+  0%, 5% { left: 8px; opacity: 1; }
+  35% { left: 45px; opacity: 1; }
+  45%, 85% { left: 39px; opacity: 1; }
+  90% { left: 39px; opacity: 0; }
+  95%, 100% { left: 8px; opacity: 0; }
+}
+
+/* Ledge animation - 5s total (syncs with other 2.5s animations):
+   1) Phase 1 (0-50%): EXACT copy of stopAnim timing (percentages halved), then return to start
+   2) Phase 2 (50-100%): EXACT copy of bumpAnim (percentages halved + 50) */
+.playerLedge {
+  animation: ledgeAnim 5s linear infinite;
+}
+
+@keyframes ledgeAnim {
+  /* Phase 1: stopAnim forward (0-25%), hold briefly, return to start (35-47.5%) */
+  /* stopAnim: 0%,5% start → 50% arrive */
+  /* halved:   0%,2.5% start → 25% arrive */
+  0%, 2.5% { left: 8px; opacity: 1; }
+  25%, 30% { left: 70px; opacity: 1; }
+  /* Return to start tile (same speed as forward) */
+  47.5%, 50% { left: 8px; opacity: 1; }
+  /* Phase 2: bumpAnim percentages / 2 + 50 */
+  /* bumpAnim: 0%,5% → 35% → 45%,85% → 90% → 95%,100% */
+  /* shifted:  50%,52.5% → 67.5% → 72.5%,92.5% → 95% → 97.5%,100% */
+  52.5% { left: 8px; opacity: 1; }
+  67.5% { left: 45px; opacity: 1; }
+  72.5%, 92.5% { left: 39px; opacity: 1; }
+  95% { left: 39px; opacity: 0; }
+  97.5%, 100% { left: 8px; opacity: 0; }
+}
+
+.exampleCaption {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--color-secondary);
+  margin: 0;
 }
 
 .tiles {
@@ -251,9 +744,202 @@
 
 .tileLedge {
   background: #e8e8e8;
-  color: #6aaa64;
+  color: #3a3d41;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 0.75rem;
+}
+
+.gotItButton {
+  display: block;
+  width: 100%;
+  margin-top: 1rem;
+  padding: 0.75rem;
+  background: #6aaa64;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 700;
+  font-family: var(--font-main);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.gotItButton:hover {
+  background: #538d4e;
+}
+
+/* iPhone SE and small height screens - scale down to avoid scroll */
+@media (max-height: 700px) {
+  .card {
+    padding: 1rem;
+  }
+  
+  .title {
+    font-size: 1.3rem;
+    margin-bottom: 0.75rem;
+  }
+  
+  .goalSection {
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.75rem;
+  }
+  
+  .tileGoalLarge {
+    width: 40px;
+    height: 40px;
+  }
+  
+  .tileGoalLarge::after {
+    font-size: 28px;
+  }
+  
+  .goalText {
+    font-size: 1rem;
+  }
+  
+  .goalSubtext {
+    font-size: 0.8rem;
+  }
+  
+  .section {
+    margin-bottom: 0.75rem;
+  }
+  
+  .sectionTitleCentered {
+    margin-bottom: 0.4rem;
+  }
+  
+  .controlsRow {
+    gap: 1rem;
+  }
+  
+  .controlOption {
+    width: 58px;
+    gap: 0.25rem;
+  }
+  
+  .controlIcon {
+    font-size: 1.25rem;
+    height: 32px;
+  }
+  
+  .controlKeys {
+    height: 32px;
+  }
+  
+  .keySmall {
+    width: 18px;
+    height: 18px;
+    font-size: 0.6rem;
+  }
+  
+  .animationGridTwoRows {
+    gap: 0.5rem;
+  }
+  
+  .animationRow {
+    gap: 0.5rem;
+  }
+  
+  .animationDemo {
+    gap: 0.25rem;
+  }
+  
+  .demoTile {
+    width: 24px;
+    height: 24px;
+  }
+  
+  .demoLabel {
+    font-size: 0.6rem;
+  }
+  
+  .playerStops,
+  .playerSlides,
+  .playerBumps,
+  .playerLedge {
+    width: 10px;
+    height: 12px;
+  }
+  
+  .hintSubtext {
+    font-size: 0.7rem;
+    margin-bottom: 0.35rem;
+  }
+  
+  .exampleRow {
+    gap: 3px;
+    margin-bottom: 0.35rem;
+  }
+  
+  .exampleTile {
+    width: 26px;
+    height: 26px;
+  }
+  
+  .exampleCaption {
+    font-size: 0.65rem;
+  }
+  
+  .gotItButton {
+    margin-top: 0.75rem;
+    padding: 0.6rem;
+    font-size: 0.9rem;
+  }
+  
+  /* Scaled animations for smaller tiles (24px + 3px gap = 27px per tile) */
+  .playerSlides {
+    animation: slideAnimSmall 2.5s linear infinite;
+  }
+  
+  .playerStops {
+    animation: stopAnimSmall 2.5s ease-out infinite;
+  }
+  
+  .playerBumps {
+    animation: bumpAnimSmall 2.5s ease-in-out infinite;
+  }
+  
+  .playerLedge {
+    animation: ledgeAnimSmall 5s linear infinite;
+  }
+  
+  @keyframes slideAnimSmall {
+    0%, 5% { left: 7px; opacity: 1; }
+    50% { left: 64px; opacity: 1; }
+    65% { left: 91px; opacity: 0; }
+    95%, 100% { left: 7px; opacity: 0; }
+  }
+  
+  @keyframes stopAnimSmall {
+    0%, 5% { left: 7px; opacity: 1; }
+    50%, 85% { left: 61px; opacity: 1; }
+    90% { left: 61px; opacity: 0; }
+    95%, 100% { left: 7px; opacity: 0; }
+  }
+  
+  @keyframes bumpAnimSmall {
+    0%, 5% { left: 7px; opacity: 1; }
+    35% { left: 39px; opacity: 1; }
+    45%, 85% { left: 34px; opacity: 1; }
+    90% { left: 34px; opacity: 0; }
+    95%, 100% { left: 7px; opacity: 0; }
+  }
+  
+  @keyframes ledgeAnimSmall {
+    /* Phase 1: stopAnimSmall forward (0-25%), hold briefly, return to start (35-47.5%) */
+    0%, 2.5% { left: 7px; opacity: 1; }
+    25%, 30% { left: 61px; opacity: 1; }
+    47.5%, 50% { left: 7px; opacity: 1; }
+    /* Phase 2: bumpAnimSmall percentages / 2 + 50 */
+    52.5% { left: 7px; opacity: 1; }
+    67.5% { left: 39px; opacity: 1; }
+    72.5%, 92.5% { left: 34px; opacity: 1; }
+    95% { left: 34px; opacity: 0; }
+    97.5%, 100% { left: 7px; opacity: 0; }
+  }
 }

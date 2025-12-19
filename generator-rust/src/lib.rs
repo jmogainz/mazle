@@ -7,12 +7,17 @@
 //!
 //! Both targets produce **identical puzzles** for the same seed and config.
 
+#[cfg(not(target_arch = "wasm32"))]
+pub mod cache;
 pub mod generators;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod scheduler;
 pub mod types;
 
 // Re-export main types for convenience
 pub use generators::ground::generate_puzzle as generate_ground_puzzle;
 pub use generators::ice::generate_puzzle as generate_ice_puzzle;
+pub use generators::ice::generate_puzzle_with_cancel as generate_ice_puzzle_with_cancel;
 pub use types::{GenerationConfig, MapType, Position, PuzzleData, TileType};
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -30,11 +35,14 @@ use serde_wasm_bindgen;
 #[cfg(target_arch = "wasm32")]
 pub use wasm_bindgen_rayon::init_thread_pool;
 
-/// Initialize WASM module (sets up panic hook for better error messages)
+/// Initialize WASM module (sets up panic hook and logger for better error messages)
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(start)]
 pub fn wasm_init() {
     console_error_panic_hook::set_once();
+    // Initialize console_log with default level (info)
+    // Can be adjusted in browser devtools
+    console_log::init_with_level(log::Level::Info).ok();
 }
 
 /// Generate an ice puzzle with default configuration (same as Rust server).

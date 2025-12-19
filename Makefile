@@ -48,8 +48,9 @@ endif
 DEPS := DEP_GENERATOR_RUST:$(BACKEND_GATEWAY_PATH):8080
 
 # Ngrok Configuration (Managed by DevOps Toolkit)
-# Set to 1 to enable Ngrok tunnel
+# Set to 1 to enable Ngrok tunnel (same default for all envs).
 ENABLE_NGROK_FOR_DEV ?= 1
+export ENABLE_NGROK_FOR_DEV
 
 ifndef INCLUDED_COMPOSE_PROJECT_CONFIGURATION
   include $(DEVOPS_TOOLKIT_PATH)/backend/make/compose/compose-project-configurations/compose_project_configuration.mk
@@ -72,7 +73,41 @@ NEXT_PUBLIC_DEVTOOLS_ENABLED := 0
 ifneq (,$(filter $(ENV),$(DEV_TEST_ENV)))
   NEXT_PUBLIC_DEVTOOLS_ENABLED := 1
 endif
+
+# Nginx: in dev-test the Rust backend isn't running, so allow the upstream
+# host to be unresolved at startup. These vars are substituted into
+# nginx/nginx.conf.template.
+NGINX_RESOLVER_DIRECTIVE ?=
+NGINX_BACKEND_RESOLVE_SUFFIX ?=
+NGINX_BACKEND_ZONE_DIRECTIVE ?=
+ifeq ($(ENV),$(DEV_TEST_ENV))
+  NGINX_RESOLVER_DIRECTIVE := resolver 127.0.0.11 ipv6=off valid=30s;
+  NGINX_BACKEND_RESOLVE_SUFFIX := resolve
+  NGINX_BACKEND_ZONE_DIRECTIVE := zone backend 64k;
+endif
+export NGINX_RESOLVER_DIRECTIVE
+export NGINX_BACKEND_RESOLVE_SUFFIX
+export NGINX_BACKEND_ZONE_DIRECTIVE
+
+# Toggle for running the frontend as a production-style build locally
+FRONTEND_RELEASE_MODE ?= 0
+
+FRONTEND_NODE_ENV := development
+FRONTEND_CHOKIDAR_USEPOLLING := 1
+FRONTEND_WATCHPACK_POLLING := 1
+
+ifeq ($(FRONTEND_RELEASE_MODE),1)
+  NEXT_PUBLIC_DEVTOOLS_ENABLED := 0
+  FRONTEND_NODE_ENV := production
+  FRONTEND_CHOKIDAR_USEPOLLING := 0
+  FRONTEND_WATCHPACK_POLLING := 0
+endif
+
 export NEXT_PUBLIC_DEVTOOLS_ENABLED
+export FRONTEND_RELEASE_MODE
+export FRONTEND_NODE_ENV
+export FRONTEND_CHOKIDAR_USEPOLLING
+export FRONTEND_WATCHPACK_POLLING
 
 ifndef INCLUDED_COMPOSE_APP_CONFIGURATION
   include $(DEVOPS_TOOLKIT_PATH)/backend/make/compose/compose-project-configurations/compose-file-configurations/app/compose_app_configuration.mk
@@ -100,9 +135,11 @@ export HOST_GID
 # Next.js App Configuration (for backend URL resolution)
 # --------------------------------
 
-# Tell the toolkit which env var to set with the backend URL
-# This will be passed to Vercel via --build-env during deployment
-NEXTJS_BACKEND_ENV_VAR := NEXT_PUBLIC_GENERATOR_URL
+ifneq ($(ENV),$(DEV_TEST_ENV))
+  # Tell the toolkit which env var to set with the backend URL
+  # This will be passed to Vercel via --build-env during deployment
+  NEXTJS_BACKEND_ENV_VAR := NEXT_PUBLIC_GENERATOR_URL
+endif
 
 ifndef INCLUDED_NEXTJS_APP_CONFIGURATION
   include $(DEVOPS_TOOLKIT_PATH)/frontend/make/utils/nextjs_app_configuration.mk

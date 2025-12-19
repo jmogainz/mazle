@@ -27,6 +27,9 @@ rand_chacha = "0.3"
 rayon = "1.8"
 rustc-hash = "1"
 
+# Logging facade (works everywhere)
+log = "0.4"
+
 # Utilities
 thiserror = "1"
 
@@ -38,6 +41,11 @@ thiserror = "1"
 axum = "0.7"
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.5", features = ["cors"] }
+# Logging backend for native
+env_logger = "0.11"
+# Timezone handling for scheduler
+chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # WASM-only dependencies (browser)
@@ -52,15 +60,17 @@ getrandom = { version = "0.2", features = ["js"] }
 console_error_panic_hook = "0.1"
 # Rayon thread pool for WASM (enables parallel generation in browser)
 wasm-bindgen-rayon = "1.3"
+# Logging backend for WASM (logs to browser console)
+console_log = "1"
 
 [features]
 default = []
 
 [profile.release]
 opt-level = 3
-lto = "thin"
-codegen-units = 1
-panic = "abort"
+lto = "fat"           # Full LTO for maximum optimization (slower compile, faster runtime)
+codegen-units = 1     # Single codegen unit for best optimization
+panic = "abort"       # No unwinding = smaller/faster
 incremental = false
 
 [profile.dev]

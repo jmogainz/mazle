@@ -1,3 +1,6 @@
+// Feature flags
+export const HINTS_ENABLED = true;
+
 // Map types for different puzzle variants
 export enum MapType {
   ICE = 'ice',
@@ -39,22 +42,40 @@ export interface PuzzleData {
   optimalMoves: number;
   solutionPath?: Position[];
   mapType: MapType;  // Type of map/puzzle variant
+  
   // Psychology-based difficulty metrics (for dev mode display)
   difficultyScore?: number;           // Overall psychology score
+  selectedBatch?: number;             // Batch number where puzzle was selected
+  
+  // TIER 1: Core difficulty metrics (what actually makes puzzles hard)
+  nearOptimalPaths?: number;          // Count of paths within optimal+2 moves
+  pathOverlap?: number;               // 0-1, min overlap (best alternative's overlap with optimal)
+  pathOverlapAvg?: number;            // 0-1, avg overlap across all alternatives
+  earlyDivergence?: number;           // 0-1, when alternatives diverge (higher = earlier = harder)
+  
+  // TIER 2: Per-move confusion
+  directionChanges?: number;          // How many times optimal path changes direction
+  decisionAmbiguity?: number;         // Avg valid moves at each position on optimal path
+  
+  // TIER 3: Legacy metrics (less relevant for binary lives game mechanic)
   counterIntuitiveMoves?: number;     // Moves that go away from goal
   attractiveDecoys?: number;          // Wrong moves that look better than optimal
   commitmentGates?: number;           // Points where wrong choice is very costly
   falseProgressPaths?: number;        // Paths that look good but waste moves
+  pathLocality?: number;              // How spread out the optimal path is
+  backtrackDepth?: number;            // Max distance traveled in wrong direction
 }
 
 export interface GameState {
   playerPos: Position;
   moveCount: number;
   currentAttemptMoves: number;
+  currentAttemptCorrectMoves: number;
   lives: number;
   penaltyTimeMs: number;
   attempts: {
     moveCount: number;
+    correctMoves: number;
     path: Position[];
     failedAt?: Position;
     deviationIndex?: number;
@@ -76,6 +97,7 @@ export interface DailyStats {
   failed?: boolean;  // Track if player ran out of lives
   attempts?: {
     moveCount: number;
+    correctMoves?: number;
     path: Position[];
     failedAt?: Position;
     deviationIndex?: number;
@@ -150,6 +172,13 @@ export const COLORS = {
   BOULDER_HIGHLIGHT: 0x9aa0a3,
   BOULDER_FACE: 0x787c7e,
   BOULDER_EDGE: 0x5e6163,
+
+  // Hints - stopping points match goal green + glow, intermediate tiles lighter version
+  HINT_GLOW: 0x6aaa64,        // Match goal green for glow
+  HINT_TILE_FACE: 0x6aaa64,   // Match GOAL_FACE - stopping points
+  HINT_TILE_EDGE: 0x538d4e,   // Match GOAL_EDGE - stopping points
+  HINT_PATH_FACE: 0xa8d8a8,   // Lighter tint of goal green - intermediate path
+  HINT_PATH_EDGE: 0x8fc98a,   // Light green edge - intermediate path
 };
 
-export const TILE_SIZE = 32;
+export const TILE_SIZE = 64;

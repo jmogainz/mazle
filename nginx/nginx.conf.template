@@ -9,6 +9,8 @@ http {
     default_type  application/octet-stream;
     sendfile        on;
     keepalive_timeout  65;
+    # Optional resolver for dev-test (no backend); empty in other envs.
+    ${NGINX_RESOLVER_DIRECTIVE}
 
     # Upstream for Next.js Frontend
     upstream frontend {
@@ -17,7 +19,9 @@ http {
 
     # Upstream for Rust Backend
     upstream backend {
-        server mazle-generator:8080;
+        # In dev-test this adds 'resolve' so nginx can start without the backend.
+        ${NGINX_BACKEND_ZONE_DIRECTIVE}
+        server mazle-generator:8080 ${NGINX_BACKEND_RESOLVE_SUFFIX};
     }
 
     server {
@@ -35,6 +39,13 @@ http {
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
+
+            # Puzzle generation can legitimately take a long time (~minutes).
+            # Match client-side fetch timeout (10 min) to avoid premature 502/504s.
+            proxy_connect_timeout 600s;
+            proxy_send_timeout 600s;
+            proxy_read_timeout 600s;
+            send_timeout 600s;
         }
 
         # Health check (proxied to backend to ensure it's actually up)

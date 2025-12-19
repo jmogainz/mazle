@@ -4,6 +4,7 @@
   align-items: center;
   padding: 0.75rem 1rem;
   background: var(--color-background);
+  transition: padding 0.2s;
 }
 
 .leftSection {
@@ -25,6 +26,7 @@
   color: var(--color-text);
   letter-spacing: 0.1em;
   text-transform: uppercase;
+  transition: font-size 0.2s;
 }
 
 .rightSection {
@@ -52,3 +54,48 @@
   color: var(--color-primary);
 }
 
+/* Compact mode for short screens (e.g., iPhone SE, mobile landscape) */
+@media (max-height: 740px) {
+  .header {
+    padding: 0.25rem 0.75rem;
+  }
+
+  .logoText {
+    font-size: 1.4rem;
+  }
+
+  .iconButton {
+    padding: 0.25rem;
+  }
+
+  .iconButton svg {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+/* Compact mode for 1024×768-class viewports (e.g., iPad landscape / smaller windows) */
+@media (max-height: 820px) and (min-height: 741px) {
+  .header {
+    padding: 0.5rem 0.75rem;
+  }
+
+  .logoText {
+    font-size: 1.6rem;
+  }
+
+  .iconButton {
+    padding: 0.35rem;
+  }
+}
+
+/* Mobile - bigger logo */
+@media (max-width: 768px) {
+  .header {
+    padding: 1rem 1rem 0.5rem;
+  }
+
+  .logoText {
+    font-size: 2.4rem;
+  }
+}

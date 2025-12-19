@@ -7,6 +7,7 @@
 //!
 //! Both targets produce **identical puzzles** for the same seed and config.
 
+#[cfg(not(target_arch = "wasm32"))]
 pub mod cache;
 pub mod generators;
 #[cfg(not(target_arch = "wasm32"))]

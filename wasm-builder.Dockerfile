@@ -71,6 +71,7 @@ RUN --mount=type=cache,id=wasm-cargo-registry,target=/usr/local/cargo/registry \
     --mount=type=cache,id=wasm-cargo-git,target=/usr/local/cargo/git \
     --mount=type=cache,id=wasm-target,target=/app/target \
     --mount=type=cache,id=wasm-hash,target=/wasm-hash \
+    set -euo pipefail; \
     PREBUILT_WASM="/app/prebuilt-wasm/mazle_generator_bg.wasm"; \
     mkdir -p /wasm-output; \
     # Calculate source hash for change detection \
@@ -93,6 +94,11 @@ RUN --mount=type=cache,id=wasm-cargo-registry,target=/usr/local/cargo/registry \
         echo "[WASM] Sources changed or no cache; building WASM for BUILD_ENV=$BUILD_ENV"; \
       fi; \
       wasm-pack build --target web --out-dir /wasm-output --out-name mazle_generator; \
+      # Verify wasm-pack produced output \
+      if [ ! -f /wasm-output/mazle_generator_bg.wasm ]; then \
+        echo "[ERROR] wasm-pack build failed - no output produced"; \
+        exit 1; \
+      fi; \
       # Cache artifacts and hash for future builds \
       if [ "$BUILD_ENV" = "prod" ]; then \
         echo "$NEW_HASH" > /wasm-hash/.build-hash; \

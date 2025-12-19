@@ -717,42 +717,70 @@ export class GameScene extends Phaser.Scene {
       this.analysisTweens.push(tween);
     };
 
-    // Reveal intermediate tiles between two points
-    const revealIntermediateTiles = (from: Position, to: Position) => {
+    // Reveal intermediate tiles between two points - stepping stone style (one at a time, ahead of ghost)
+    const revealIntermediateTiles = (from: Position, to: Position, moveDuration: number, ghostStartDelay: number) => {
       const dx = Math.sign(to.x - from.x);
       const dy = Math.sign(to.y - from.y);
+      
+      // Collect all intermediate positions
+      const positions: Position[] = [];
       let cx = from.x + dx;
       let cy = from.y + dy;
-
       while (cx !== to.x || cy !== to.y) {
-        const key = positionKey({ x: cx, y: cy });
-        // Only skip if there's already a stopping tile or intermediate tile at this position
-        if (!revealedStoppingTiles.has(key) && !intermediateTileContainers.has(key)) {
-          const px = this.offsetX + cx * TILE_SIZE;
-          const py = this.offsetY + cy * TILE_SIZE;
+        positions.push({ x: cx, y: cy });
+        cx += dx;
+        cy += dy;
+      }
+      
+      if (positions.length === 0) return;
+      
+      const totalDist = positions.length + 1; // +1 for the final stopping tile
+      const LEAD_TIME = 180; // Tiles appear this many ms before ghost arrives
+      
+      positions.forEach((pos, idx) => {
+        const key = positionKey(pos);
+        if (revealedStoppingTiles.has(key) || intermediateTileContainers.has(key)) return;
+        
+        // Calculate exact time ghost will arrive at this tile
+        // Ghost uses Quad.easeOut: p(t) = 2t - t^2
+        // Inverse (time to reach progress p): t = 1 - sqrt(1 - p)
+        const tileDist = idx + 1;
+        const progress = tileDist / totalDist;
+        const easeTime = 1 - Math.sqrt(1 - progress);
+        const ghostArrivalTime = ghostStartDelay + (moveDuration * easeTime);
+        
+        // Schedule reveal relative to ghost arrival
+        const delay = Math.max(0, ghostArrivalTime - LEAD_TIME);
+        
+        const timer = this.time.delayedCall(delay, () => {
+          if (revealedStoppingTiles.has(key) || intermediateTileContainers.has(key)) return;
+          
+          const px = this.offsetX + pos.x * TILE_SIZE;
+          const py = this.offsetY + pos.y * TILE_SIZE;
 
           const container = this.add.container(px + TILE_SIZE / 2, py + TILE_SIZE / 2);
-          container.setDepth(4); // Slightly below stopping tiles
+          container.setDepth(4);
           container.setAlpha(0);
+          container.setScale(0.7);
           this.analysisObjects.push(container);
           intermediateTileContainers.set(key, container);
 
           const tileG = this.add.graphics();
-          const tile = this.puzzle.tiles[cy][cx];
-          this.drawAnalysisTileGraphics(tileG, tile, true); // lighter green for intermediate
+          const tile = this.puzzle.tiles[pos.y][pos.x];
+          this.drawAnalysisTileGraphics(tileG, tile, true);
           container.add(tileG);
 
           const tween = this.tweens.add({
             targets: container,
             alpha: 1,
-            duration: 150,
-            ease: 'Quad.easeOut',
+            scale: 1,
+            duration: 80,
+            ease: 'Back.easeOut',
           });
           this.analysisTweens.push(tween);
-        }
-        cx += dx;
-        cy += dy;
-      }
+        });
+        this.analysisTimers.push(timer);
+      });
     };
 
     // Reveal start tile immediately
@@ -785,28 +813,35 @@ export class GameScene extends Phaser.Scene {
       // Calculate distance for duration scaling
       const dist = Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y));
       const duration = moveDelay * Math.max(dist, 1);
+      
+      const GHOST_START_DELAY = 150; // Fixed start delay for consistent "chase" feel
 
-      // Reveal intermediate tiles as ghost starts moving
-      revealIntermediateTiles(from, to);
+      // Reveal intermediate tiles FIRST (stepping stone effect)
+      // We sync this perfectly with the ghost's Quad.easeOut movement
+      revealIntermediateTiles(from, to, duration, GHOST_START_DELAY);
 
-      const moveTween = this.tweens.add({
-        targets: ghost,
-        x: targetX,
-        y: targetY,
-        duration,
-        ease: dist > 1 ? 'Quad.easeOut' : 'Quad.easeInOut',
-        onComplete: () => {
-          // Reveal stopping tile when ghost arrives
-          revealTile(to, stepIndex);
+      // Delay ghost start so tiles appear ahead
+      const ghostStartTimer = this.time.delayedCall(GHOST_START_DELAY, () => {
+        const moveTween = this.tweens.add({
+          targets: ghost,
+          x: targetX,
+          y: targetY,
+          duration,
+          ease: dist > 1 ? 'Quad.easeOut' : 'Quad.easeInOut',
+          onComplete: () => {
+            // Reveal stopping tile when ghost arrives
+            revealTile(to, stepIndex);
 
-          // Small gap before next move, then continue chain
-          const gapTimer = this.time.delayedCall(50, () => {
-            animateStep(stepIndex + 1);
-          });
-          this.analysisTimers.push(gapTimer);
-        },
+            // Small gap before next move, then continue chain
+            const gapTimer = this.time.delayedCall(50, () => {
+              animateStep(stepIndex + 1);
+            });
+            this.analysisTimers.push(gapTimer);
+          },
+        });
+        this.analysisTweens.push(moveTween);
       });
-      this.analysisTweens.push(moveTween);
+      this.analysisTimers.push(ghostStartTimer);
     };
 
     // Start the animation chain from step 1 (step 0 is the start tile, already revealed)
@@ -1301,6 +1336,7 @@ export class GameScene extends Phaser.Scene {
     this.player.setVisible(false);
     this.drawEndGameAnalysis();
   }
+
 
   // Public method to trigger a move from external (React) calls
   public movePlayer(dir: Direction) {

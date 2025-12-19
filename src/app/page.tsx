@@ -1248,11 +1248,18 @@ export default function Home() {
           </div>
 
           <div className={styles.controlsArea}>
-            {showResultsButton && (
-              <button className={styles.shareButton} onClick={handleShowShareCard}>
-                Share Score
-              </button>
-            )}
+            <button
+              className={styles.shareButton}
+              onClick={handleShowShareCard}
+              style={{
+                visibility: showResultsButton ? 'visible' : 'hidden',
+                opacity: showResultsButton ? 1 : 0,
+                transform: showResultsButton ? 'scale(1)' : 'scale(0.9)',
+                pointerEvents: showResultsButton ? 'auto' : 'none',
+              }}
+            >
+              Share Score
+            </button>
           </div>
         </div>
 

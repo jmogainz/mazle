@@ -653,14 +653,28 @@ export class GameScene extends Phaser.Scene {
     body.fillCircle(4 * s, -4 * s, 1.5 * s);
     ghost.add(body);
 
-    // Track which tiles have been revealed
-    const revealedTiles: Set<string> = new Set();
+    // Track which tiles have been revealed (stopping tiles only)
+    const revealedStoppingTiles: Set<string> = new Set();
+    // Track intermediate tile containers so we can remove them if a stopping tile needs that spot
+    const intermediateTileContainers: Map<string, Phaser.GameObjects.Container> = new Map();
 
     // Function to reveal a tile with green overlay and number
     const revealTile = (pos: Position, moveNumber: number) => {
       const key = positionKey(pos);
-      if (revealedTiles.has(key)) return;
-      revealedTiles.add(key);
+      if (revealedStoppingTiles.has(key)) return;
+      revealedStoppingTiles.add(key);
+
+      // If there's an intermediate tile at this position, remove it
+      const existingIntermediate = intermediateTileContainers.get(key);
+      if (existingIntermediate) {
+        existingIntermediate.destroy();
+        intermediateTileContainers.delete(key);
+        // Also remove from analysisObjects array
+        const idx = this.analysisObjects.indexOf(existingIntermediate);
+        if (idx !== -1) {
+          this.analysisObjects.splice(idx, 1);
+        }
+      }
 
       const px = this.offsetX + pos.x * TILE_SIZE;
       const py = this.offsetY + pos.y * TILE_SIZE;
@@ -709,9 +723,8 @@ export class GameScene extends Phaser.Scene {
 
       while (cx !== to.x || cy !== to.y) {
         const key = positionKey({ x: cx, y: cy });
-        if (!revealedTiles.has(key)) {
-          revealedTiles.add(key);
-
+        // Only skip if there's already a stopping tile or intermediate tile at this position
+        if (!revealedStoppingTiles.has(key) && !intermediateTileContainers.has(key)) {
           const px = this.offsetX + cx * TILE_SIZE;
           const py = this.offsetY + cy * TILE_SIZE;
 
@@ -719,6 +732,7 @@ export class GameScene extends Phaser.Scene {
           container.setDepth(4); // Slightly below stopping tiles
           container.setAlpha(0);
           this.analysisObjects.push(container);
+          intermediateTileContainers.set(key, container);
 
           const tileG = this.add.graphics();
           const tile = this.puzzle.tiles[cy][cx];

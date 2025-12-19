@@ -11,7 +11,7 @@ This document is the **complete integration plan** for adding OIDC-only accounts
 - Stateless sessions (JWT in HttpOnly cookie), no app-level refresh token flow.
 - Guest-first UX: generate a random username on first visit; allow claim on sign-in.
 - Stripe one-time purchase unlocks **all historical puzzles** (calendar view).
-- Global real-time leaderboard (5-7k QPS peak) with low latency and a few seconds of drift acceptable.
+- Global real-time **daily leaderboard** (5-7k QPS peak) with low latency and a few seconds of drift acceptable.
 - Local dev: `make up ENV=dev` spins up a Postgres DB and seeds sample data automatically.
 
 **Constraints**
@@ -27,13 +27,18 @@ This document is the **complete integration plan** for adding OIDC-only accounts
 - **Next.js (Vercel)**: UI, API routes, Auth.js, Stripe webhook, leaderboard reads/writes.
 - **Auth.js**: OIDC Google + Apple, JWT session strategy.
 - **Neon Postgres**: users, guest profiles, entitlements, historical puzzles, leaderboard snapshots.
-- **Upstash Redis**: hot path for leaderboard writes/reads.
+- **Upstash Redis (daily puzzle cache)**: KV cache for daily puzzles (separate DB).
+- **Upstash Redis Global (leaderboard)**: daily global leaderboard read/write (separate DB).
 - **Stripe**: checkout session, webhook for entitlements.
 - **Generator**: Rust service on Fly.io + WASM fallback.
 
 ### Runtime Modes
 - **Prod**: Vercel + Neon + Upstash + Stripe + Fly generator.
 - **Dev (local)**: Dockerized Next.js + Postgres + seed container + optional backend.
+
+### Daily Puzzle Cache Decision
+- **Upstash Redis (KV)** stores the daily puzzle archive with **no TTL** to support the all-time calendar unlock.
+- If/when Postgres becomes the archive source of truth, Redis can revert to short TTL for hot caching only.
 
 ---
 
@@ -163,10 +168,11 @@ session: {
 
 ---
 
-## 6) Leaderboard (Wordle-scale)
+## 6) Leaderboard (Wordle-scale, daily global)
 
 ### Hot path: Redis sorted sets
-Use `lb:{date}` sorted set key per day.
+Use a **separate Upstash Redis Global database** for leaderboard traffic.
+Key pattern: `lb:{date}` sorted set per day (global daily leaderboard).
 
 Source: Upstash Redis ZADD (TS example)
 ```
@@ -183,7 +189,7 @@ const res = await redis.zrange("key", 1, 3)
 
 ### Read path
 - Global reads from Redis replicas with **seconds of drift** accepted.
-- Cache "top N" for 1-5 seconds at the edge to smooth spikes.
+- Cache “top N” for 1–5 seconds at the edge to smooth spikes.
 
 ### Write path
 - All writes go to a **primary Redis region** to preserve ordering consistency.
@@ -191,6 +197,29 @@ const res = await redis.zrange("key", 1, 3)
 
 ### Daily snapshot
 - Nightly job copies top N to `leaderboard_entries` in Postgres.
+
+### Rendering & Population Options (choose per UX)
+**Rendering approaches**
+- **Top N + "My Rank" + Around Me**: fetch top 50/100, plus the user's rank and a small window around them.
+- **Paged by rank**: `page` + `pageSize` or cursor-based paging (rank offset).
+- **Search / Jump**: lookup by username or rank, then return a local window.
+- **Percentile buckets**: show "Top 1%, Top 10%, Top 50%" counts with optional drill-down.
+- **Friends-only view**: filter to a small subset for low-latency rendering.
+- **Virtualized list**: only render visible rows; page or infinite scroll for deep browsing.
+- **Pinned self row**: always show the user's row while they scroll.
+
+**Population strategies**
+- **Direct write-through**: client submits result -> API validates -> Redis ZADD.
+- **Write-behind**: submit to API -> enqueue -> worker writes Redis (smooths spikes).
+- **Best-score-only**: keep only the best attempt per user/day (dedupe on submit).
+- **Anti-cheat validation**: server validates move count, seed, and timing before accepting.
+- **Snapshot persistence**: nightly job writes top N (or full list) into Postgres for history.
+
+**Recommended default**
+- Top N + My Rank + Around Me
+- Cursor-based paging for deep browsing
+- Virtualized rendering in UI
+- Best-score-only writes with server validation
 
 ---
 

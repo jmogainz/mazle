@@ -22,7 +22,8 @@ export default function HelpModal({ onClose, mapType = MapType.ICE }: HelpModalP
           <div className={styles.tileGoalLarge}></div>
           <div className={styles.goalTextWrapper}>
             <p className={styles.goalText}>Reach the star in 10 moves.</p>
-            <p className={styles.goalSubtext}>Be careful, you only have 3 lives!</p>
+            <p className={styles.goalSubtext}>Solve as fast as you can!</p>
+            <p className={styles.goalSubtext}>3 Lives. Losing a life adds a time penalty!</p>
           </div>
         </div>
 
@@ -107,7 +108,7 @@ export default function HelpModal({ onClose, mapType = MapType.ICE }: HelpModalP
               <div className={styles.animationDemo}>
                 <div className={styles.demoRow}>
                   <div className={styles.demoTile}>
-                    <div className={styles.tileIceEx} />
+                    <div className={styles.tileFloorEx} />
                     <div className={styles.playerLedge} />
                   </div>
                   <div className={styles.demoTile}><div className={styles.tileIceEx} /></div>
@@ -118,7 +119,7 @@ export default function HelpModal({ onClose, mapType = MapType.ICE }: HelpModalP
                     </div>
                   </div>
                 </div>
-                <span className={styles.demoLabel}>One-way entry</span>
+                <span className={styles.demoLabel}>One-way in, any out</span>
               </div>
             </div>
           </div>

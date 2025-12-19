@@ -93,7 +93,7 @@ export default function PhaserGame({ puzzle, viewportWidth, viewportHeight, onRe
     ) || window.innerWidth <= 768;
 
     const config: Phaser.Types.Core.GameConfig = {
-      type: isMobile ? Phaser.CANVAS : Phaser.WEBGL, // Canvas on mobile for stability, WebGL on desktop for performance
+      type: Phaser.CANVAS, // TEST: Force Canvas to debug WebGL performance issue
       parent: gameContainerRef.current,
       backgroundColor: COLORS.BACKGROUND,
       audio: {

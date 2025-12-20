@@ -23,10 +23,10 @@ fn get_ny_datetime() -> chrono::DateTime<chrono_tz::Tz> {
     chrono::Utc::now().with_timezone(&New_York)
 }
 
-/// Generate daily seed in format: "daily-YYYY-MM-DD"
+/// Generate daily seed in format: "YYYY-MM-DD"
 /// Must match frontend: src/game/puzzleGenerator.ts:getDailySeed()
 fn get_daily_seed(date: NaiveDate) -> String {
-    format!("daily-{}", date.format("%Y-%m-%d"))
+    date.format("%Y-%m-%d").to_string()
 }
 
 /// Calculate seconds until next 10 PM ET (1 hour before Vercel cron)
@@ -49,7 +49,9 @@ fn calculate_seconds_until_10pm_et() -> u64 {
     let target_et = New_York.from_local_datetime(&target).unwrap();
 
     let duration = target_et.signed_duration_since(now_et);
-    duration.num_seconds().max(0) as u64
+    let seconds = duration.num_seconds();
+    // Avoid a tight loop when we're within the same second as the target time.
+    if seconds <= 0 { 1 } else { seconds as u64 }
 }
 
 /// Generate today, tomorrow, and day-after-tomorrow puzzles

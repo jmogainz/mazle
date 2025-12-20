@@ -11,7 +11,7 @@ This document is the **complete integration plan** for adding OIDC-only accounts
 - Stateless sessions (JWT in HttpOnly cookie), no app-level refresh token flow.
 - Guest-first UX: generate a random username on first visit; allow claim on sign-in.
 - Stripe one-time purchase unlocks **all historical puzzles** (calendar view).
-- Global real-time **daily leaderboard** (5-7k QPS peak) with low latency and a few seconds of drift acceptable.
+- Real-time **daily leaderboard** (5-7k QPS peak) with low latency and a few seconds of drift acceptable.
 - Local dev: `make up ENV=dev` spins up a Postgres DB and seeds sample data automatically.
 
 **Constraints**
@@ -37,7 +37,7 @@ This document is the **complete integration plan** for adding OIDC-only accounts
 - **Dev (local)**: Dockerized Next.js + Postgres + seed container + optional backend.
 
 ### Daily Puzzle Cache Decision
-- **Upstash Redis (KV)** stores the daily puzzle archive with **no TTL** to support the all-time calendar unlock.
+- **Upstash Redis (KV)** stores the daily puzzle archive with **no TTL** to support the calendar unlock.
 - If/when Postgres becomes the archive source of truth, Redis can revert to short TTL for hot caching only.
 
 ---
@@ -72,7 +72,7 @@ leaderboard_entries (
   subject_type TEXT,         -- "guest" or "user"
   subject_id UUID,
   moves INT,
-  time_ms INT,
+  time_ms INT,               -- ranking uses time only
   created_at TIMESTAMP,
   PRIMARY KEY (date, subject_type, subject_id)
 )
@@ -99,11 +99,12 @@ entitlements (
   expires_at TIMESTAMP NULL,
   source TEXT                -- "stripe"
 )
+
 ```
 
 **Notes**
 - `subject_type` lets leaderboard entries work for guests before claim.
-- After claim, we can either **migrate entries** to `subject_type="user"` or keep a mapping that resolves guest -> user.
+- On claim, **guest scores migrate immediately** to `subject_type="user"`.
 - `daily_puzzles` supports the historical calendar.
 
 ---
@@ -163,8 +164,8 @@ session: {
 3) On callback:
    - Create `users` row if missing.
    - Link `guest_id` to `user_id`.
-   - **Migrate leaderboard ownership** or store mapping.
-4) If display name collision, prompt rename.
+   - **Migrate leaderboard ownership immediately** to user.
+4) If display name collision, **prompt rename** and allow user to choose a new name on claim.
 
 ---
 
@@ -173,6 +174,7 @@ session: {
 ### Hot path: Redis sorted sets
 Use a **separate Upstash Redis Global database** for leaderboard traffic.
 Key pattern: `lb:{date}` sorted set per day (global daily leaderboard).
+Score = **time_ms only** (lower is better).
 
 Source: Upstash Redis ZADD (TS example)
 ```
@@ -189,7 +191,7 @@ const res = await redis.zrange("key", 1, 3)
 
 ### Read path
 - Global reads from Redis replicas with **seconds of drift** accepted.
-- Cache “top N” for 1–5 seconds at the edge to smooth spikes.
+- Cache "top N" for 1-5 seconds at the edge to smooth spikes.
 
 ### Write path
 - All writes go to a **primary Redis region** to preserve ordering consistency.
@@ -309,6 +311,7 @@ POST /api/claim
 POST /api/leaderboard/submit
 GET  /api/leaderboard/top?date=YYYY-MM-DD
 GET  /api/leaderboard/me?date=YYYY-MM-DD
+GET  /api/leaderboard/around?date=YYYY-MM-DD&rank=123&window=5
 ```
 
 ### Entitlements & Archive
@@ -364,14 +367,42 @@ GET  /api/archive/:date
 
 ---
 
-## 13) Open Questions
-- Should guest scores migrate to user immediately on claim or remain "guest" with alias?
-- How many historical puzzles to store (and for how long)?
-- Will we allow name changes after claim?
+## 13) Parallel Work Plan (2 People)
+
+### Backend Owner (Auth/Stripe/Leaderboard)
+- Auth.js config (OIDC Google + Apple) and JWT session settings.
+- Guest creation + claim endpoints; immediate migration of guest scores.
+- Postgres migrations: users, guest_profiles, user_links, entitlements, purchases, daily_puzzles, leaderboard_entries, leaderboard_daily_rollup.
+- Stripe Checkout endpoint + webhook verification + entitlements write.
+- Leaderboard APIs (daily only) using Redis ZSET.
+- Leaderboard write validation (time-only ranking) and dedupe per user/day.
+- Cron endpoints for daily puzzle cache (keep no TTL in Redis).
+- Seed container + idempotent seed script for dev.
+
+### Frontend Owner (UI/UX/Leaderboard/Calendar)
+- Guest username generation + claim UX (rename on collision).
+- Auth UX (sign-in providers, success flow, error states).
+- Daily leaderboard UI: top N, my rank, around me, paging/search, virtualized list.
+- Daily leaderboard UI (top N, my rank, around me).
+- Calendar UI for historical puzzles and gating by entitlement.
+- Stripe purchase UX and confirmation states.
+- Analytics + telemetry hooks (optional).
 
 ---
 
-## 14) Reference Links (official)
+## 14) Open Questions
+
+Resolved:
+- Guest scores migrate immediately on claim.
+- User is prompted to rename on claim if name is taken.
+- Puzzle archive stored in Upstash Redis with no TTL.
+
+Still open:
+- Should we surface "all players" via pagination-only, or add search/jump to rank for large lists?
+
+---
+
+## 15) Reference Links (official)
 - Auth.js Next.js Reference (handlers, auth): https://authjs.dev/reference/nextjs  
 - Auth.js Session Strategy (JWT): https://authjs.dev/concepts/session-strategies  
 - Auth.js Google Provider: https://authjs.dev/reference/core/providers/google  

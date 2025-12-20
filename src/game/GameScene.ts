@@ -854,7 +854,7 @@ export class GameScene extends Phaser.Scene {
       if (positions.length === 0) return;
 
       const totalDist = positions.length + 1; // +1 for the final stopping tile
-      const LEAD_TIME = 180; // Tiles appear this many ms before ghost arrives
+      const LEAD_TIME = 140; // Tiles appear this many ms before ghost arrives
 
       positions.forEach((pos, idx) => {
         const key = positionKey(pos);
@@ -931,7 +931,8 @@ export class GameScene extends Phaser.Scene {
 
       // Calculate distance for duration scaling
       const dist = Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y));
-      const duration = moveDelay * Math.max(dist, 1);
+      // Standard moveDelay for first tile, then much faster (60ms) for subsequent tiles in a slide
+      const duration = moveDelay + (Math.max(dist, 1) - 1) * 80;
 
       const GHOST_START_DELAY = 150; // Fixed start delay for consistent "chase" feel
 

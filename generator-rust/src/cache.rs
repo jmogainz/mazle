@@ -36,16 +36,15 @@ pub struct PuzzleCache {
 impl PuzzleCache {
     /// Identify daily seeds (never evict these before non-dailies)
     fn is_daily_seed(seed: &str) -> bool {
-        seed.starts_with("daily-")
+        Self::daily_seed_date(seed).is_some()
     }
 
-    /// Parse the date portion of a daily seed: daily-YYYY-MM-DD-...
+    /// Parse the date portion of a daily seed: strict "YYYY-MM-DD"
     fn daily_seed_date(seed: &str) -> Option<NaiveDate> {
-        if !Self::is_daily_seed(seed) {
+        if seed.len() != 10 {
             return None;
         }
-        // Expect at least "daily-YYYY-MM-DD"
-        let date_str = seed.get(6..16)?; // 6..16 gives 10 chars YYYY-MM-DD
+        let date_str = seed.get(0..10)?;
         NaiveDate::parse_from_str(date_str, "%Y-%m-%d").ok()
     }
 

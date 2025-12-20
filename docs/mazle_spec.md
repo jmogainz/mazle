@@ -116,7 +116,7 @@ A new puzzle is available globally each day with shareable results and leaderboa
 
 ### Deterministic Daily Seed
 - Puzzle generated via:  
-  `seed = YYYY-MM-DD + serverSalt`  
+  `seed = YYYY-MM-DD`  
 - All players see the **same puzzle globally**.
 
 ---

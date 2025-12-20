@@ -12,9 +12,6 @@
 import './maps/ice';
 import './maps/ground';
 
-// Server salt for puzzle generation (must match Rust backend)
-const SERVER_SALT = 'mazle-daily-v8-2024-genius';
-
 // Launch date for puzzle numbering (in New York timezone)
 // Puzzle #1 starts on December 4, 2025
 const LAUNCH_DATE = '2025-12-04';
@@ -34,7 +31,7 @@ export function getNewYorkDateString(date: Date = new Date()): string {
  */
 export function getDailySeed(date: Date = new Date()): string {
   const dateStr = getNewYorkDateString(date);
-  return `${dateStr}-${SERVER_SALT}`;
+  return dateStr;
 }
 
 /**

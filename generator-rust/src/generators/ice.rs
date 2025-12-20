@@ -62,15 +62,17 @@ struct GenerationContext {
 
 impl GenerationContext {
     fn new(seed: &str) -> Self {
-        // Create short run ID from seed (for log prefixing)
-        let run_id = if seed.starts_with("daily-") {
-            // For daily seeds, use the date part: "daily-2025-12-16" -> "12-16"
-            seed.split('-').skip(2).collect::<Vec<_>>().join("-")
-        } else if seed.len() > 12 {
-            // For long seeds, take first 8 chars
-            seed[..8].to_string()
-        } else {
-            seed.to_string()
+        // Use full seed for log prefixing unless it's very long.
+        let run_id = {
+            const MAX_LEN: usize = 80;
+            let seed_len = seed.chars().count();
+            if seed_len > MAX_LEN {
+                let mut shortened: String = seed.chars().take(MAX_LEN - 3).collect();
+                shortened.push_str("...");
+                shortened
+            } else {
+                seed.to_string()
+            }
         };
 
         Self {

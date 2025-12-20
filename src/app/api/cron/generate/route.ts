@@ -54,11 +54,15 @@ export async function GET(request: NextRequest) {
     // We run at 11 PM ET, so "tomorrow" is the puzzle that goes live at midnight
     const now = new Date();
     const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    const dayAfterTomorrow = new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000);
     const tomorrowDateStr = getNewYorkDateString(tomorrow);
     const tomorrowSeed = getDailySeed(tomorrow);
     const tomorrowPuzzleNumber = getPuzzleNumber(tomorrow);
+    const dayAfterDateStr = getNewYorkDateString(dayAfterTomorrow);
+    const dayAfterSeed = getDailySeed(dayAfterTomorrow);
+    const dayAfterPuzzleNumber = getPuzzleNumber(dayAfterTomorrow);
     
-    console.log(`[cron/generate] Generating puzzle for ${tomorrowDateStr} (puzzle #${tomorrowPuzzleNumber})`);
+    console.log(`[cron/generate] Generating puzzles for ${tomorrowDateStr} (puzzle #${tomorrowPuzzleNumber}) and ${dayAfterDateStr} (puzzle #${dayAfterPuzzleNumber})`);
     
     if (!redis) {
       console.warn('[cron/generate] Redis not configured (KV_REST_API_URL/TOKEN missing) - will generate but cannot cache');
@@ -121,6 +125,34 @@ export async function GET(request: NextRequest) {
     } else {
       results.push({ date: tomorrowDateStr, status: 'exists' });
       console.log(`[cron/generate] Puzzle for ${tomorrowDateStr} already exists in KV`);
+    }
+
+    // Generate day-after-tomorrow's puzzle
+    const dayAfterKey = `puzzle:${dayAfterDateStr}`;
+    const existingDayAfter = redis ? await redis.get(dayAfterKey) : null;
+
+    if (!existingDayAfter) {
+      const result = await generateFromRust(dayAfterSeed);
+      if (result) {
+        let cached = false;
+        if (redis) {
+          await redis.set(dayAfterKey, result.puzzle, { ex: 7 * 24 * 60 * 60 }); // 7 day TTL
+          cached = true;
+        }
+        results.push({ 
+          date: dayAfterDateStr, 
+          status: result.backendCached ? 'from_backend_cache' : 'generated', 
+          puzzleNumber: dayAfterPuzzleNumber,
+          cached,
+        });
+        console.log(`[cron/generate] Successfully ${result.backendCached ? 'fetched' : 'generated'} puzzle #${dayAfterPuzzleNumber}${cached ? ' (stored in KV)' : ' (KV unavailable)'}`);
+      } else {
+        results.push({ date: dayAfterDateStr, status: 'generation_failed' });
+        console.error(`[cron/generate] Failed to generate puzzle for ${dayAfterDateStr}`);
+      }
+    } else {
+      results.push({ date: dayAfterDateStr, status: 'exists' });
+      console.log(`[cron/generate] Puzzle for ${dayAfterDateStr} already exists in KV`);
     }
     
     return NextResponse.json({

@@ -1,0 +1,125 @@
+name: Deploy to Production
+
+permissions:
+  contents: write  # Needed for merge commit to develop
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1) Check out code with submodules
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          ssh-key: ${{ secrets.SSH_PRIVATE_KEY }}
+          submodules: recursive
+          fetch-depth: 0  # Full history for merge operations
+
+      # 2) Place SSH key for submodule access
+      - name: Place SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ci
+          chmod 600 ~/.ssh/id_ci
+
+      # ---------- Install GNU Make 4.4.1 (cached) ----------
+      - name: Cache GNU make 4.4.1 build
+        id: cache-make
+        uses: actions/cache@v4
+        with:
+          path: ~/opt/make-4.4.1
+          key: make-4.4.1-${{ runner.os }}
+
+      - name: Build + install GNU make 4.4.1
+        if: steps.cache-make.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends build-essential wget tar flock jq
+          wget -q https://ftp.gnu.org/gnu/make/make-4.4.1.tar.gz
+          tar -xzf make-4.4.1.tar.gz
+          cd make-4.4.1
+          ./configure --prefix=$HOME/opt/make-4.4.1 --quiet
+          make -j"$(nproc)"
+          make install
+
+      - name: Install system dependencies
+        if: steps.cache-make.outputs.cache-hit == 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends flock jq
+
+      - name: Add make 4.4.1 to PATH
+        run: echo "$HOME/opt/make-4.4.1/bin" >> "$GITHUB_PATH"
+
+      - name: Verify make version
+        run: make --version
+
+      # ---------- Install Docker 28 and Compose ----------
+      - name: Install Docker 28
+        uses: docker/setup-docker-action@v4
+        with:
+          version: v28.0.0
+
+      - name: Upgrade to Docker Compose v2.33.1
+        uses: docker/setup-compose-action@v1
+        with:
+          version: v2.33.1
+          cache-binary: true
+
+      - uses: docker/setup-buildx-action@v3
+        with:
+          install: true
+          driver: docker
+
+      - name: Verify Docker Compose
+        run: docker compose version
+
+      # ---------- Install Fly.io CLI ----------
+      - name: Install Fly.io CLI
+        run: |
+          curl -L https://fly.io/install.sh | sh
+          echo "$HOME/.fly/bin" >> "$GITHUB_PATH"
+
+      - name: Verify Fly CLI
+        run: |
+          export PATH="$HOME/.fly/bin:$PATH"
+          flyctl version
+
+      # ---------- Install Vercel CLI ----------
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel
+
+      - name: Verify Vercel CLI
+        run: vercel --version
+
+      # ---------- Deploy via Make ----------
+      - name: Deploy to Production
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          UNIQUE_RUNNER_ID: ${{ secrets.UNIQUE_RUNNER_ID }}
+          UNIQUE_RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          export PATH="$HOME/.fly/bin:$PATH"
+          make up ENV=prod
+
+      # ---------- Merge main into develop ----------
+      - name: Merge main into develop
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin develop
+          git checkout develop
+          git merge origin/main -m "Merge main into develop [automated]"
+          git push origin develop

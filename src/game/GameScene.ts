@@ -58,6 +58,111 @@ export class GameScene extends Phaser.Scene {
   private unlockedThisLifeTiles: Set<string> = new Set();
   private unlockedThisLifeEdges: Set<string> = new Set();
 
+  /**
+   * Generate pre-rendered number textures to avoid Canvas text rasterization artifacts.
+   * Some digits (especially 2 and 4) render with black artifacts on certain browsers/Canvas.
+   * Uses 2x supersampling with explicit canvas clearing for clean rendering.
+   * Font metrics-based placement keeps digits aligned across devices.
+   */
+  private generateNumberTextures() {
+    const scale = 2; // Supersampling factor for quality
+
+    const drawNumber = (
+      canvas: HTMLCanvasElement,
+      text: string,
+      font: string,
+      fontSize: number,
+      fillStyle: string,
+      align: 'top-left' | 'center',
+      margin: number,
+      nudgeX = 0
+    ) => {
+      const ctx = canvas.getContext('2d', { alpha: true });
+      if (!ctx) return;
+
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      ctx.font = font;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+
+      const metrics = ctx.measureText(text);
+      const ascent = metrics.actualBoundingBoxAscent ?? fontSize * 0.8;
+      const descent = metrics.actualBoundingBoxDescent ?? fontSize * 0.2;
+      const left = metrics.actualBoundingBoxLeft ?? 0;
+      const right = metrics.actualBoundingBoxRight ?? metrics.width;
+      const textWidth = left + right;
+
+      const baseSize = canvas.width / scale;
+      let x = 0;
+      let y = 0;
+
+      if (align === 'top-left') {
+        x = margin - left;
+        y = margin + ascent + 1;
+      } else {
+        x = (baseSize - textWidth) / 2 - left;
+        y = baseSize / 2 + (ascent - descent) / 2;
+      }
+      x += nudgeX;
+
+      ctx.setTransform(scale, 0, 0, scale, 0, 0);
+      ctx.font = font;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = fillStyle;
+      ctx.fillText(text, x, y);
+    };
+
+    // White numbers for solution path (font size 22)
+    for (let i = 1; i <= 20; i++) {
+      const key = `num_white_${i}`;
+      if (this.textures.exists(key)) {
+        this.textures.remove(key);
+      }
+
+      const canvas = document.createElement('canvas');
+      const baseSize = 32;
+      canvas.width = baseSize * scale;
+      canvas.height = baseSize * scale;
+      drawNumber(canvas, i.toString(), 'bold 22px Nunito, sans-serif', 22, '#ffffff', 'top-left', 2);
+      this.textures.addCanvas(key, canvas);
+    }
+
+    // Red numbers for attempt badges (font size 18, centered)
+    for (let i = 1; i <= 10; i++) {
+      const key = `num_red_${i}`;
+      if (this.textures.exists(key)) {
+        this.textures.remove(key);
+      }
+
+      const canvas = document.createElement('canvas');
+      const baseSize = 24;
+      canvas.width = baseSize * scale;
+      canvas.height = baseSize * scale;
+      const nudgeX = i === 1 ? -1 : 0;
+      drawNumber(canvas, i.toString(), 'bold 18px Nunito, sans-serif', 18, '#cc0000', 'center', 0, nudgeX);
+      this.textures.addCanvas(key, canvas);
+    }
+  }
+
+  /**
+   * Create a number sprite using pre-rendered texture.
+   */
+  private createNumberSprite(
+    x: number,
+    y: number,
+    num: number,
+    variant: 'white' | 'red',
+    originX: number,
+    originY: number
+  ): Phaser.GameObjects.Image {
+    const key = `num_${variant}_${num}`;
+    // Scale down from 2x supersampling
+    return this.add.image(x, y, key).setOrigin(originX, originY).setScale(0.5);
+  }
+
   constructor() {
     super({ key: 'GameScene' });
   }
@@ -101,6 +206,20 @@ export class GameScene extends Phaser.Scene {
   }
 
   create() {
+    // Generate pre-rendered number textures (avoids Canvas text artifacts)
+    this.generateNumberTextures();
+    const fonts = document.fonts;
+    if (fonts && (!fonts.check('bold 22px Nunito') || !fonts.check('bold 18px Nunito'))) {
+      let cancelled = false;
+      this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+        cancelled = true;
+      });
+      fonts.ready.then(() => {
+        if (cancelled) return;
+        this.generateNumberTextures();
+      });
+    }
+
     // Calculate offset to center the puzzle
     const gameWidth = this.scale.width;
     const gameHeight = this.scale.height;
@@ -696,15 +815,15 @@ export class GameScene extends Phaser.Scene {
       // Add move number in top-left corner (skip 0 for start tile, skip goal tile)
       const isGoal = pos.x === this.puzzle.goal.x && pos.y === this.puzzle.goal.y;
       if (moveNumber > 0 && !isGoal) {
-        const numText = this.add.text(-TILE_SIZE / 2 + 6 * s, -TILE_SIZE / 2 + 5 * s - this.tileFaceLift, moveNumber.toString(), {
-          fontSize: '22px',
-          fontFamily: 'Nunito, sans-serif',
-          color: '#ffffff',
-          fontStyle: 'bold',
-          padding: { x: 0, y: 0 },
-          backgroundColor: undefined,
-        }).setOrigin(0, 0);
-        container.add(numText);
+        const numSprite = this.createNumberSprite(
+          -TILE_SIZE / 2 + 5 * s,
+          -TILE_SIZE / 2 + 5 * s - this.tileFaceLift,
+          moveNumber,
+          'white',
+          0,
+          0
+        );
+        container.add(numSprite);
       }
 
       // Fade in the tile
@@ -721,7 +840,7 @@ export class GameScene extends Phaser.Scene {
     const revealIntermediateTiles = (from: Position, to: Position, moveDuration: number, ghostStartDelay: number) => {
       const dx = Math.sign(to.x - from.x);
       const dy = Math.sign(to.y - from.y);
-      
+
       // Collect all intermediate positions
       const positions: Position[] = [];
       let cx = from.x + dx;
@@ -731,16 +850,16 @@ export class GameScene extends Phaser.Scene {
         cx += dx;
         cy += dy;
       }
-      
+
       if (positions.length === 0) return;
-      
+
       const totalDist = positions.length + 1; // +1 for the final stopping tile
       const LEAD_TIME = 180; // Tiles appear this many ms before ghost arrives
-      
+
       positions.forEach((pos, idx) => {
         const key = positionKey(pos);
         if (revealedStoppingTiles.has(key) || intermediateTileContainers.has(key)) return;
-        
+
         // Calculate exact time ghost will arrive at this tile
         // Ghost uses Quad.easeOut: p(t) = 2t - t^2
         // Inverse (time to reach progress p): t = 1 - sqrt(1 - p)
@@ -748,13 +867,13 @@ export class GameScene extends Phaser.Scene {
         const progress = tileDist / totalDist;
         const easeTime = 1 - Math.sqrt(1 - progress);
         const ghostArrivalTime = ghostStartDelay + (moveDuration * easeTime);
-        
+
         // Schedule reveal relative to ghost arrival
         const delay = Math.max(0, ghostArrivalTime - LEAD_TIME);
-        
+
         const timer = this.time.delayedCall(delay, () => {
           if (revealedStoppingTiles.has(key) || intermediateTileContainers.has(key)) return;
-          
+
           const px = this.offsetX + pos.x * TILE_SIZE;
           const py = this.offsetY + pos.y * TILE_SIZE;
 
@@ -813,7 +932,7 @@ export class GameScene extends Phaser.Scene {
       // Calculate distance for duration scaling
       const dist = Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y));
       const duration = moveDelay * Math.max(dist, 1);
-      
+
       const GHOST_START_DELAY = 150; // Fixed start delay for consistent "chase" feel
 
       // Reveal intermediate tiles FIRST (stepping stone effect)
@@ -1011,15 +1130,15 @@ export class GameScene extends Phaser.Scene {
         badgeG.strokeCircle(10 * s, -12 * s, 6 * s);
         container.add(badgeG);
 
-        const numText = this.add.text(10 * s, -12 * s, (idx + 1).toString(), {
-          fontSize: '18px',
-          fontFamily: 'Nunito, sans-serif',
-          color: '#cc0000',
-          fontStyle: 'bold',
-          padding: { x: 0, y: 0 },
-          backgroundColor: undefined,
-        }).setOrigin(0.5);
-        container.add(numText);
+        const numSprite = this.createNumberSprite(
+          10 * s,
+          -12 * s,
+          idx + 1,
+          'red',
+          0.5,
+          0.5
+        );
+        container.add(numSprite);
 
         // Fade in
         const fadeInTween = this.tweens.add({

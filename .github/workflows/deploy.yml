@@ -40,7 +40,7 @@ jobs:
         if: steps.cache-make.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends build-essential wget tar flock jq
+          sudo apt-get install -y --no-install-recommends build-essential wget tar
           wget -q https://ftp.gnu.org/gnu/make/make-4.4.1.tar.gz
           tar -xzf make-4.4.1.tar.gz
           cd make-4.4.1
@@ -48,37 +48,11 @@ jobs:
           make -j"$(nproc)"
           make install
 
-      - name: Install system dependencies
-        if: steps.cache-make.outputs.cache-hit == 'true'
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends flock jq
-
       - name: Add make 4.4.1 to PATH
         run: echo "$HOME/opt/make-4.4.1/bin" >> "$GITHUB_PATH"
 
       - name: Verify make version
         run: make --version
-
-      # ---------- Install Docker 28 and Compose ----------
-      - name: Install Docker 28
-        uses: docker/setup-docker-action@v4
-        with:
-          version: v28.0.0
-
-      - name: Upgrade to Docker Compose v2.33.1
-        uses: docker/setup-compose-action@v1
-        with:
-          version: v2.33.1
-          cache-binary: true
-
-      - uses: docker/setup-buildx-action@v3
-        with:
-          install: true
-          driver: docker
-
-      - name: Verify Docker Compose
-        run: docker compose version
 
       # ---------- Install Fly.io CLI ----------
       - name: Install Fly.io CLI
@@ -109,17 +83,28 @@ jobs:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           UNIQUE_RUNNER_ID: ${{ secrets.UNIQUE_RUNNER_ID }}
-          UNIQUE_RUN_NUMBER: ${{ github.run_number }}
         run: |
           export PATH="$HOME/.fly/bin:$PATH"
           make up ENV=prod
 
       # ---------- Merge main into develop ----------
       - name: Merge main into develop
+        continue-on-error: true
+        id: merge
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Configure SSH for git operations
+          eval "$(ssh-agent -s)"
+          ssh-add ~/.ssh/id_ci
+          
           git fetch origin develop
           git checkout develop
           git merge origin/main -m "Merge main into develop [automated]"
           git push origin develop
+
+      - name: Warn if merge failed
+        if: steps.merge.outcome == 'failure'
+        run: |
+          echo "::warning::Auto-merge of main into develop failed. Manual merge may be required (likely due to conflicts)."

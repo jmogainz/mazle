@@ -58,6 +58,8 @@ endif
 
 # Passthrough FLY_API_TOKEN to backend (it uses Fly.io for deployment)
 DEPS_PASSTHROUGH_VARS += FLY_API_TOKEN
+# Passthrough Docker build cache vars for GHA caching
+DEPS_PASSTHROUGH_VARS += DOCKER_BUILD_CACHE_FROM DOCKER_BUILD_CACHE_TO
 
 export APP_NAME
 override APP_PORT := 8080

@@ -2943,26 +2943,56 @@ fn add_floor_stops(
     count: i32,
     protected: &HashSet<Position>,
 ) {
-    let mut placed = 0;
-    let mut attempts = 0;
-
-    while placed < count && attempts < count * 3 {
-        attempts += 1;
-        let x = rng.random_int(1, width as i32 - 1);
-        let y = rng.random_int(1, height as i32 - 1);
-        let candidate = Position { x, y };
-        if tiles[y as usize][x as usize] != TileType::Ice {
-            continue;
-        }
-        if pos_eq(&candidate, start) || pos_eq(&candidate, goal) {
-            continue;
-        }
-        if protected.contains(&candidate) {
-            continue;
-        }
-        tiles[y as usize][x as usize] = TileType::Ground;
-        placed += 1;
+    if count <= 0 {
+        return;
     }
+
+    let mut candidates: Vec<Position> = Vec::new();
+    for y in 1..height - 1 {
+        for x in 1..width - 1 {
+            let pos = Position {
+                x: x as i32,
+                y: y as i32,
+            };
+            if tiles[y][x] != TileType::Ice {
+                continue;
+            }
+            if pos_eq(&pos, start) || pos_eq(&pos, goal) {
+                continue;
+            }
+            if protected.contains(&pos) {
+                continue;
+            }
+            if count_valid_moves(tiles, &pos, width, height) >= 2 {
+                candidates.push(pos);
+            }
+        }
+    }
+
+    if candidates.is_empty() {
+        return;
+    }
+
+    let chosen = rng.shuffle(&candidates);
+    for pos in chosen.into_iter().take(count as usize) {
+        tiles[pos.y as usize][pos.x as usize] = TileType::Ground;
+    }
+}
+
+fn count_valid_moves(
+    tiles: &Vec<Vec<TileType>>,
+    pos: &Position,
+    width: usize,
+    height: usize,
+) -> i32 {
+    let mut valid_moves = 0;
+    for dir in get_all_dirs() {
+        let result = simulate_move(tiles, pos, dir, width, height);
+        if result.valid && !pos_eq(&result.pos, pos) {
+            valid_moves += 1;
+        }
+    }
+    valid_moves
 }
 
 fn add_ledges(
@@ -3817,16 +3847,14 @@ impl TrapFunction {
 }
 
 /// All available trap functions
-const ALL_TRAPS: [TrapFunction; 14] = [
+const ALL_TRAPS: [TrapFunction; 12] = [
     TrapFunction::AlmostThere,
     TrapFunction::DecoyOpenAreas,
     TrapFunction::HiddenChokePoints,
     TrapFunction::MomentumTraps,
     TrapFunction::AntiGradientZones,
     TrapFunction::ParallelPathIllusion,
-    TrapFunction::LedgeMisdirection,
     TrapFunction::GoalProximityDeadEnds,
-    TrapFunction::CommitmentTraps,
     TrapFunction::PrecisionGates,
     TrapFunction::FunnelPatterns,
     TrapFunction::TrapAlcoves,
@@ -4231,7 +4259,9 @@ pub fn generate_puzzle_with_cancel(
             
             // Always apply these structural elements (not randomized)
             let (fls_min, fls_max) = scale_range(2, 4);
-            let floor_stops = attempt_rng.random_int(fls_min, fls_max);
+            let floor_stops = attempt_rng
+                .random_int(fls_min, fls_max + 1)
+                .max(2);
             add_floor_stops(
                 &mut tiles,
                 &start,
@@ -4240,27 +4270,6 @@ pub fn generate_puzzle_with_cancel(
                 height,
                 &mut attempt_rng,
                 floor_stops,
-                &protected_cells,
-            );
-            convert_floors_to_ice(
-                &mut tiles,
-                &start,
-                &goal,
-                width,
-                height,
-                &mut attempt_rng,
-                0.82,
-            );
-            let (ldg_min, ldg_max) = scale_range(20, 35);
-            let ledge_count = attempt_rng.random_int(ldg_min, ldg_max);
-            add_ledges(
-                &mut tiles,
-                &start,
-                &goal,
-                width,
-                height,
-                &mut attempt_rng,
-                ledge_count,
                 &protected_cells,
             );
 
@@ -4521,7 +4530,7 @@ pub fn generate_puzzle_with_cancel(
                 // 1. All thresholds pass, OR
                 // 2. Closeness score is >= 1.0 (perfect match only)
                 let passes_all_thresholds = pass_unique_opt && pass_ci && pass_dec && pass_gate && pass_fp && pass_loc && pass_dir && pass_bt && pass_amb && pass_paths && pass_olap_best && pass_olap_avg && pass_ediv;
-                let passes_closeness_threshold = pass_unique_opt && closeness >= 1.0;
+                let passes_closeness_threshold = pass_unique_opt && closeness >= 0.990;
                 
                 passes_all_thresholds || passes_closeness_threshold
             };

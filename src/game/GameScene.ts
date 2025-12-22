@@ -618,7 +618,7 @@ export class GameScene extends Phaser.Scene {
 
   private handleLifeLost(finalPos: Position) {
     this.gameState.lives--;
-    this.gameState.penaltyTimeMs += 10000; // 10s penalty
+    this.gameState.penaltyTimeMs += 15000; // 15s penalty
 
     this.mergeHintsForNextLife();
 
@@ -649,7 +649,7 @@ export class GameScene extends Phaser.Scene {
     emitGameEvent('stateUpdate', { ...this.gameState });
     emitGameEvent('lifeLost', {
       lives: this.gameState.lives,
-      penaltyMs: 10000
+      penaltyMs: 15000
     });
 
     if (this.gameState.lives <= 0) {

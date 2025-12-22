@@ -155,7 +155,7 @@ export default function GameUI({ puzzleNumber, puzzleLabel, optimalMoves, varian
             ?
             {showTooltip && (
               <span className={styles.tooltip}>
-                +10s/life penalty
+                +15s/life penalty
               </span>
             )}
           </span>

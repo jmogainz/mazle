@@ -1,14 +1,19 @@
 'use client';
 
-import { MapType } from '@/game/types';
+import { MapType, HINTS_ENABLED } from '@/game/types';
 import styles from './HelpModal.module.css';
 
 interface HelpModalProps {
   onClose: () => void;
   mapType?: MapType;
+  hintsEnabled?: boolean;
 }
 
-export default function HelpModal({ onClose, mapType = MapType.ICE }: HelpModalProps) {
+export default function HelpModal({
+  onClose,
+  mapType = MapType.ICE,
+  hintsEnabled = HINTS_ENABLED,
+}: HelpModalProps) {
   return (
     <div className={styles.overlay} onClick={onClose}>
       <div className={styles.card} onClick={(e) => e.stopPropagation()}>
@@ -125,28 +130,30 @@ export default function HelpModal({ onClose, mapType = MapType.ICE }: HelpModalP
           </div>
         </div>
 
-        <div className={styles.section}>
-          <h3 className={styles.sectionTitleCentered}>Hints</h3>
-          <p className={styles.hintSubtext}>After you lose a life:</p>
-          <div className={styles.exampleRow}>
-            <div className={styles.exampleTile}>
-              <div className={styles.tileHintDark} />
+        {hintsEnabled && (
+          <div className={styles.section}>
+            <h3 className={styles.sectionTitleCentered}>Hints</h3>
+            <p className={styles.hintSubtext}>After you lose a life:</p>
+            <div className={styles.exampleRow}>
+              <div className={styles.exampleTile}>
+                <div className={styles.tileHintDark} />
+              </div>
+              <div className={styles.exampleTile}>
+                <div className={styles.tileHintLight} />
+              </div>
+              <div className={styles.exampleTile}>
+                <div className={styles.tileHintLight} />
+              </div>
+              <div className={styles.exampleTile}>
+                <div className={styles.tileHintDark} />
+              </div>
+              <div className={styles.exampleTile}>
+                <div className={styles.tileIceEx} />
+              </div>
             </div>
-            <div className={styles.exampleTile}>
-              <div className={styles.tileHintLight} />
-            </div>
-            <div className={styles.exampleTile}>
-              <div className={styles.tileHintLight} />
-            </div>
-            <div className={styles.exampleTile}>
-              <div className={styles.tileHintDark} />
-            </div>
-            <div className={styles.exampleTile}>
-              <div className={styles.tileIceEx} />
-            </div>
+            <p className={styles.exampleCaption}>Correct moves from previous attempts turn green</p>
           </div>
-          <p className={styles.exampleCaption}>Correct moves from previous attempts turn green</p>
-        </div>
+        )}
 
         <button className={styles.gotItButton} onClick={onClose}>
           Got it!

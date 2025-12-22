@@ -90,6 +90,7 @@ export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState<GenerationProgress | null>(null);
   const [showInlineResult, setShowInlineResult] = useState(false);
+  const [hintsEnabled, setHintsEnabled] = useState(true);
   const [lifeFlash, setLifeFlash] = useState(false);
   const [hasPendingRestore, setHasPendingRestore] = useState(false);
   const [initialStats, setInitialStats] = useState<{
@@ -107,11 +108,13 @@ export default function Home() {
   const cheatTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const gameFrameRef = useRef<HTMLDivElement | null>(null);
   const gameStageRef = useRef<HTMLDivElement | null>(null);
+  const hintsPrefLoadedRef = useRef(false);
   const [gameFrameSizePx, setGameFrameSizePx] = useState<{ width: number; height: number } | null>(null);
   const tapTimestampsRef = useRef<number[]>([]);
   const lastDevToolsTouchTsRef = useRef<number>(0);
   const devToolsTapTargetRef = useRef<HTMLDivElement | null>(null);
   const pendingRestoreRef = useRef<Parameters<GameControls['restoreState']>[0] | null>(null);
+  const hintsEnabledRef = useRef(hintsEnabled);
 
   // Sync CSS custom property to the real visual viewport height (iOS-safe)
   useEffect(() => {
@@ -131,6 +134,23 @@ export default function Home() {
       window.removeEventListener('resize', setVH);
     };
   }, []);
+
+  useEffect(() => {
+    const stored = localStorage.getItem('mazle_hints_enabled');
+    if (stored !== null) {
+      const enabled = stored === '1';
+      hintsEnabledRef.current = enabled;
+      setHintsEnabled(enabled);
+    }
+    hintsPrefLoadedRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!hintsPrefLoadedRef.current) return;
+    hintsEnabledRef.current = hintsEnabled;
+    localStorage.setItem('mazle_hints_enabled', hintsEnabled ? '1' : '0');
+    gameControlsRef.current?.setHintsEnabled?.(hintsEnabled);
+  }, [hintsEnabled]);
 
   const puzzleWidth = puzzle?.width ?? 10;
   const puzzleHeight = puzzle?.height ?? 10;
@@ -794,6 +814,7 @@ export default function Home() {
   const handleGameReady = useCallback((controls: GameControls) => {
     gameControlsRef.current = controls;
     setIsGameReady(true);
+    controls.setHintsEnabled(hintsEnabledRef.current);
 
     // Show help on first visit
     const hasSeenHelp = localStorage.getItem('mazle_seen_help');
@@ -930,6 +951,19 @@ export default function Home() {
                     {puzzleLabel ?? `Daily #${puzzleNumber}`}
                   </span>
                   <span className={styles.devSeedValue}>{activeSeed || 'daily'}</span>
+                </div>
+
+                <div className={styles.devToggleRow}>
+                  <label className={styles.devToggleLabel}>
+                    <input
+                      className={styles.devToggleInput}
+                      type="checkbox"
+                      checked={hintsEnabled}
+                      onChange={(e) => setHintsEnabled(e.target.checked)}
+                    />
+                    Hints
+                  </label>
+                  <span className={styles.devToggleHint}>Show hint overlays after life loss</span>
                 </div>
 
                 {/* Core Stats - 3x2 grid */}
@@ -1285,7 +1319,7 @@ export default function Home() {
           <StatsModal stats={stats} onClose={() => setShowStats(false)} />
         )}
 
-        {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
+        {showHelp && <HelpModal onClose={() => setShowHelp(false)} hintsEnabled={hintsEnabled} />}
       </main>
     </ErrorBoundary>
   );

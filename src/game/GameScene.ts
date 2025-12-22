@@ -40,6 +40,7 @@ export class GameScene extends Phaser.Scene {
   private readonly tileFaceLift = 3 * (TILE_SIZE / 32); // lift sprites to sit on the top face of 3D tiles
 
   private isPlaying = false;
+  private hintsEnabled = HINTS_ENABLED;
 
   // Boulder state tracking (for ground maps)
   private boulderPositions: Set<string> = new Set();
@@ -626,9 +627,11 @@ export class GameScene extends Phaser.Scene {
 
   private handleLifeLost(finalPos: Position) {
     this.gameState.lives--;
-    this.gameState.penaltyTimeMs += 10000; // 10s penalty
+    this.gameState.penaltyTimeMs += 15000; // 15s penalty
 
-    this.mergeHintsForNextLife();
+    if (this.hintsEnabled) {
+      this.mergeHintsForNextLife();
+    }
 
     // Calculate deviation index
     const deviationIndex = this.findDeviationIndex(this.gameState.moveHistory, this.puzzle.solutionPath || []);
@@ -649,7 +652,7 @@ export class GameScene extends Phaser.Scene {
     this.gameState.playerPos = { ...this.puzzle.start };
 
     // Apply hint visuals (visible starting next life)
-    if (HINTS_ENABLED) {
+    if (this.hintsEnabled) {
       this.redrawHintOverlays();
     }
 
@@ -657,7 +660,7 @@ export class GameScene extends Phaser.Scene {
     emitGameEvent('stateUpdate', { ...this.gameState });
     emitGameEvent('lifeLost', {
       lives: this.gameState.lives,
-      penaltyMs: 10000
+      penaltyMs: 15000
     });
 
     if (this.gameState.lives <= 0) {
@@ -1493,6 +1496,19 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  public setHintsEnabled(enabled: boolean) {
+    if (this.hintsEnabled === enabled) return;
+    this.hintsEnabled = enabled;
+
+    if (!this.tileGraphics) return;
+
+    if (this.hintsEnabled) {
+      this.redrawHintOverlays();
+    } else {
+      this.clearHintOverlays();
+    }
+  }
+
   // Public method to restart the puzzle
   public restart() {
     this.clearAnalysis();
@@ -1516,7 +1532,7 @@ export class GameScene extends Phaser.Scene {
     this.unlockedHintEdges = new Set();
     this.unlockedThisLifeTiles = new Set();
     this.unlockedThisLifeEdges = new Set();
-    if (HINTS_ENABLED) {
+    if (this.hintsEnabled) {
       this.redrawHintOverlays();
     }
 
@@ -1585,7 +1601,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Visual hint unlocking (only if hints enabled)
-    if (HINTS_ENABLED) {
+    if (this.hintsEnabled) {
       // 2) Stopping on an optimal-path tile (landing positions only; not intermediate slide tiles)
       const toIndex = this.solutionIndexByKey.get(toKey);
       if (toIndex !== undefined && toKey !== startKey && toKey !== goalKey) {
@@ -1614,12 +1630,34 @@ export class GameScene extends Phaser.Scene {
     // Hints only appear after losing a life, which calls redrawHintOverlays()
   }
 
+  private clearHintOverlays() {
+    this.hintTileTweens.forEach(t => t.stop());
+    this.hintTileTweens = [];
+    this.hintTileContainers.forEach(c => c.destroy());
+    this.hintTileContainers = [];
+
+    this.tileGraphics.clear();
+    for (let y = 0; y < this.puzzle.height; y++) {
+      for (let x = 0; x < this.puzzle.width; x++) {
+        const tile = this.puzzle.tiles[y][x];
+        const px = this.offsetX + x * TILE_SIZE;
+        const py = this.offsetY + y * TILE_SIZE;
+        this.drawTile(px, py, tile, x, y, 0);
+      }
+    }
+  }
+
   private redrawHintOverlays() {
     // Clean up previous hint tile containers and tweens
     this.hintTileTweens.forEach(t => t.stop());
     this.hintTileTweens = [];
     this.hintTileContainers.forEach(c => c.destroy());
     this.hintTileContainers = [];
+
+    if (!this.hintsEnabled) {
+      this.clearHintOverlays();
+      return;
+    }
 
     // Skip redraw if no hints to show (avoids unnecessary tile redraw)
     if (this.unlockedHintTiles.size === 0 && this.unlockedHintEdges.size === 0) {
@@ -1929,7 +1967,7 @@ export class GameScene extends Phaser.Scene {
     this.unlockedThisLifeTiles = new Set(state.unlockedThisLifeTiles ?? []);
     this.unlockedThisLifeEdges = new Set(state.unlockedThisLifeEdges ?? []);
     // Redraw hint overlays if any hints were restored
-    if (state.unlockedHintTiles?.length || state.unlockedHintEdges?.length) {
+    if (this.hintsEnabled && (state.unlockedHintTiles?.length || state.unlockedHintEdges?.length)) {
       this.redrawHintOverlays();
     }
 

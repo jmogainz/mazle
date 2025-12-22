@@ -580,10 +580,18 @@ export class GameScene extends Phaser.Scene {
         S: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S),
         D: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
       };
+      // Don't capture keys globally - allows typing in textareas/inputs
+      this.input.keyboard.disableGlobalCapture();
     }
   }
   update() {
     if (this.isAnimating || this.gameState.isComplete) return;
+
+    // Skip keyboard input if user is typing in an input/textarea
+    const activeEl = document.activeElement;
+    if (activeEl instanceof HTMLInputElement || activeEl instanceof HTMLTextAreaElement) {
+      return;
+    }
 
     // Check keyboard input (only if keyboard and cursors are available)
     if (this.input.keyboard && this.cursors && this.wasd) {
@@ -730,20 +738,26 @@ export class GameScene extends Phaser.Scene {
         // Emit state update so UI knows game is complete
         emitGameEvent('stateUpdate', { ...this.gameState });
 
-        emitGameEvent('gameComplete', {
-          moveCount: this.gameState.moveCount,
-          timeMs: ((this.gameState.endTime ?? this.gameState.startTime) - this.gameState.startTime) + this.gameState.penaltyTimeMs,
-          optimalMoves: this.puzzle.optimalMoves,
-          failed: true,
-          attempts: this.gameState.attempts,
-          solutionPath: this.puzzle.solutionPath,
+        // Show analysis first, then emit gameComplete when animation finishes
+        this.drawEndGameAnalysis(() => {
+          emitGameEvent('gameComplete', {
+            moveCount: this.gameState.moveCount,
+            timeMs: ((this.gameState.endTime ?? this.gameState.startTime) - this.gameState.startTime) + this.gameState.penaltyTimeMs,
+            optimalMoves: this.puzzle.optimalMoves,
+            failed: true,
+            attempts: this.gameState.attempts,
+            solutionPath: this.puzzle.solutionPath,
+          });
         });
       }
     });
   }
 
-  private drawEndGameAnalysis() {
-    if (!this.puzzle.solutionPath) return;
+  private drawEndGameAnalysis(onComplete?: () => void) {
+    if (!this.puzzle.solutionPath) {
+      onComplete?.();
+      return;
+    }
 
     // Clear previous analysis if any
     this.clearAnalysis();
@@ -922,6 +936,10 @@ export class GameScene extends Phaser.Scene {
           });
           this.analysisTweens.push(fadeOutTween);
           this.drawUserAttemptPaths();
+          // Notify when analysis is fully complete (after attempt paths fade in)
+          if (onComplete) {
+            this.time.delayedCall(400, onComplete);
+          }
         });
         this.analysisTimers.push(timer);
         return;

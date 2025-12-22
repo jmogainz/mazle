@@ -114,6 +114,9 @@ export default function PhaserGame({ puzzle, viewportWidth, viewportHeight, onRe
       // Mobile-specific settings
       input: {
         touch: true,
+        keyboard: {
+          capture: [], // Don't capture any keys globally - let them propagate to DOM
+        },
       },
       // High-Quality Rendering for Smooth Jelly Animations
       render: {

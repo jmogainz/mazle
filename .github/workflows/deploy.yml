@@ -54,31 +54,59 @@ jobs:
       - name: Verify make version
         run: make --version
 
+      # ---------- Detect Changes ----------
+      - name: Filter changed paths
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend:
+              - 'generator-rust/**'
+              - 'devops-toolkit'
+              - 'Makefile'
+            frontend:
+              - 'src/**'
+              - 'public/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'next.config.mjs'
+              - 'tsconfig.json'
+              - 'mazle.Dockerfile'
+              - 'mazle.compose.yaml'
+              - 'devops-toolkit'
+              - 'Makefile'
+
       # ---------- Install Fly.io CLI ----------
       - name: Install Fly.io CLI
+        if: steps.changes.outputs.backend == 'true'
         run: |
           curl -L https://fly.io/install.sh | sh
           echo "$HOME/.fly/bin" >> "$GITHUB_PATH"
 
       - name: Verify Fly CLI
+        if: steps.changes.outputs.backend == 'true'
         run: |
           export PATH="$HOME/.fly/bin:$PATH"
           flyctl version
 
       # ---------- Install Vercel CLI ----------
       - name: Setup Node.js
+        if: steps.changes.outputs.frontend == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
       - name: Install Vercel CLI
+        if: steps.changes.outputs.frontend == 'true'
         run: npm install -g vercel
 
       - name: Verify Vercel CLI
+        if: steps.changes.outputs.frontend == 'true'
         run: vercel --version
 
       # ---------- Deploy backend (generator-rust) to Fly ----------
       - name: Deploy mazle-generator to Fly
+        if: steps.changes.outputs.backend == 'true'
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           UNIQUE_RUNNER_ID: ${{ secrets.UNIQUE_RUNNER_ID }}
@@ -88,13 +116,14 @@ jobs:
 
       # ---------- Deploy frontend to Vercel ----------
       - name: Deploy to Production
+        if: steps.changes.outputs.frontend == 'true'
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           UNIQUE_RUNNER_ID: ${{ secrets.UNIQUE_RUNNER_ID }}
         run: |
           export PATH="$HOME/.fly/bin:$PATH"
-          # Backend already deployed above, skip deps
+          # Backend already deployed above (or skipped), skip deps
           make up ENV=prod WITH_DEPS=0
 
       # ---------- Merge main into develop ----------

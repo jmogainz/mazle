@@ -579,10 +579,18 @@ export class GameScene extends Phaser.Scene {
         S: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S),
         D: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
       };
+      // Don't capture keys globally - allows typing in textareas/inputs
+      this.input.keyboard.disableGlobalCapture();
     }
   }
   update() {
     if (this.isAnimating || this.gameState.isComplete) return;
+
+    // Skip keyboard input if user is typing in an input/textarea
+    const activeEl = document.activeElement;
+    if (activeEl instanceof HTMLInputElement || activeEl instanceof HTMLTextAreaElement) {
+      return;
+    }
 
     // Check keyboard input (only if keyboard and cursors are available)
     if (this.input.keyboard && this.cursors && this.wasd) {

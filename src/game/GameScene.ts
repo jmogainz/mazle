@@ -480,8 +480,8 @@ export class GameScene extends Phaser.Scene {
 
     const s = TILE_SIZE / 32;
 
-    // 3D Star Drawing Helper
-    const drawStar = (color: number, offsetY: number, outlineColor?: number) => {
+    // 3D Star Drawing Helper - Returns Graphics, centered at 0,0
+    const createStarGraphics = (color: number, outlineColor?: number) => {
       const star = this.add.graphics();
       star.fillStyle(color);
       if (outlineColor !== undefined) {
@@ -495,35 +495,67 @@ export class GameScene extends Phaser.Scene {
       const step = Math.PI / points;
 
       star.beginPath();
-      star.moveTo(0, offsetY - outerRadius);
+      star.moveTo(0, -outerRadius); // offsetY removed (is 0)
       for (let i = 0; i < points; i++) {
         star.lineTo(
           Math.cos(rot + step * i * 2) * outerRadius,
-          offsetY + Math.sin(rot + step * i * 2) * outerRadius
+          Math.sin(rot + step * i * 2) * outerRadius
         );
         star.lineTo(
           Math.cos(rot + step * (i * 2 + 1)) * innerRadius,
-          offsetY + Math.sin(rot + step * (i * 2 + 1)) * innerRadius
+          Math.sin(rot + step * (i * 2 + 1)) * innerRadius
         );
       }
-      star.lineTo(0, offsetY - outerRadius);
+      star.lineTo(0, -outerRadius);
       star.closePath();
       star.fillPath();
       if (outlineColor !== undefined) {
         star.strokePath();
       }
 
-      this.goalSprite.add(star);
+      return star;
     };
 
     // 1. Draw Shadow/Edge (Dark Yellow) - Offset slightly down from face center
-    drawStar(0xdaa520, 2 * s);
+    const edge = createStarGraphics(0xdaa520);
+    edge.y = 2 * s;
+    this.goalSprite.add(edge);
 
     // 2. Draw Face (Bright Gold) - On face center
     // Use darker gold/brown for outline (Dark Goldenrod: 0xb8860b)
-    drawStar(0xffd700, 0, 0xb8860b);
+    const face = createStarGraphics(0xffd700, 0xb8860b);
+    face.y = 0;
+    this.goalSprite.add(face);
 
-    // Static (no pulse) to respect 3D tile face
+    // Periodic Pulse & Spin Animation
+    this.time.addEvent({
+      delay: 2400,
+      loop: true,
+      callback: () => {
+        if (!this.goalSprite || !this.goalSprite.scene || this.gameState.isComplete) return;
+
+        // Spin
+        this.tweens.add({
+          targets: [edge, face],
+          angle: 360,
+          duration: 1000,
+          ease: 'Cubic.easeInOut',
+          onComplete: () => {
+            edge.angle = 0;
+            face.angle = 0;
+          }
+        });
+
+        // Pulse
+        this.tweens.add({
+          targets: [edge, face],
+          scale: 1.25,
+          duration: 500,
+          yoyo: true,
+          ease: 'Sine.easeInOut'
+        });
+      }
+    });
   }
 
   private createPlayer() {

@@ -677,6 +677,18 @@ export class GameScene extends Phaser.Scene {
       deviationIndex,
     });
 
+    // Final life: keep the board state and freeze moves remaining at 0.
+    if (this.gameState.lives <= 0) {
+      this.gameState.currentAttemptMoves = this.puzzle.optimalMoves;
+      emitGameEvent('stateUpdate', { ...this.gameState });
+      emitGameEvent('lifeLost', {
+        lives: this.gameState.lives,
+        penaltyMs: 15000
+      });
+      this.handleGameOver();
+      return;
+    }
+
     // Reset for next life
     this.gameState.currentAttemptMoves = 0;
     this.gameState.currentAttemptCorrectMoves = 0;
@@ -695,56 +707,52 @@ export class GameScene extends Phaser.Scene {
       penaltyMs: 15000
     });
 
-    if (this.gameState.lives <= 0) {
-      this.handleGameOver();
-    } else {
-      // Block input during respawn sequence
-      this.isAnimating = true;
+    // Block input during respawn sequence
+    this.isAnimating = true;
 
-      // Visual Feedback: Camera Shake & Subtle Red Flash
-      this.cameras.main.shake(200, 0.01);
+    // Visual Feedback: Camera Shake & Subtle Red Flash
+    this.cameras.main.shake(200, 0.01);
 
-      // Flash overlay
-      this.flashOverlay.setAlpha(0.3);
-      this.tweens.add({
-        targets: this.flashOverlay,
-        alpha: 0,
-        duration: 300,
-        ease: 'Quad.easeOut'
-      });
+    // Flash overlay
+    this.flashOverlay.setAlpha(0.3);
+    this.tweens.add({
+      targets: this.flashOverlay,
+      alpha: 0,
+      duration: 300,
+      ease: 'Quad.easeOut'
+    });
 
-      // Player "Death" animation
-      this.tweens.add({
-        targets: this.player,
-        scaleX: 1.5,
-        scaleY: 1.5,
-        alpha: 0,
-        duration: 200,
-        ease: 'Quad.easeOut',
-        onComplete: () => {
-          // ... rest of teleport logic
-          this.time.delayedCall(200, () => {
-            const px = this.offsetX + this.puzzle.start.x * TILE_SIZE + TILE_SIZE / 2;
-            const py = this.offsetY + this.puzzle.start.y * TILE_SIZE + TILE_SIZE / 2 - this.tileFaceLift;
-            this.player.setPosition(px, py);
-            this.player.setScale(0); // Start small
-            this.player.setAlpha(1);
+    // Player "Death" animation
+    this.tweens.add({
+      targets: this.player,
+      scaleX: 1.5,
+      scaleY: 1.5,
+      alpha: 0,
+      duration: 200,
+      ease: 'Quad.easeOut',
+      onComplete: () => {
+        // ... rest of teleport logic
+        this.time.delayedCall(200, () => {
+          const px = this.offsetX + this.puzzle.start.x * TILE_SIZE + TILE_SIZE / 2;
+          const py = this.offsetY + this.puzzle.start.y * TILE_SIZE + TILE_SIZE / 2 - this.tileFaceLift;
+          this.player.setPosition(px, py);
+          this.player.setScale(0); // Start small
+          this.player.setAlpha(1);
 
-            // Pop in at start
-            this.tweens.add({
-              targets: this.player,
-              scaleX: 1,
-              scaleY: 1,
-              duration: 400,
-              ease: 'Back.out',
-              onComplete: () => {
-                this.isAnimating = false;
-              }
-            });
+          // Pop in at start
+          this.tweens.add({
+            targets: this.player,
+            scaleX: 1,
+            scaleY: 1,
+            duration: 400,
+            ease: 'Back.out',
+            onComplete: () => {
+              this.isAnimating = false;
+            }
           });
-        }
-      });
-    }
+        });
+      }
+    });
   }
 
   private handleGameOver() {

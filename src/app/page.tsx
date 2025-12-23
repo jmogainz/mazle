@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { Header, GameUI, ShareCard, StatsModal, HelpModal, ErrorBoundary, Loader } from '@/components';
+import { HELP_MENU_HASH } from '@/components/helpMenuHash';
 import {
   getPuzzleNumber,
   onGameEvent,
@@ -49,6 +50,7 @@ const TAP_COUNT_THRESHOLD = 10;
 const TAP_WINDOW_MS = 3000;
 // Hash of the cheat code (pre-computed, code itself not in source)
 const CHEAT_HASH = 0x5f69e7c;
+const HELP_SEEN_KEY = `mazle_seen_help_${HELP_MENU_HASH}`;
 
 // Simple hash function for string comparison
 function hashCode(str: string): number {
@@ -817,10 +819,22 @@ export default function Home() {
     controls.setHintsEnabled(hintsEnabledRef.current);
 
     // Show help on first visit
-    const hasSeenHelp = localStorage.getItem('mazle_seen_help');
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (!key) continue;
+        if (key.startsWith('mazle_seen_help') && key !== HELP_SEEN_KEY) {
+          localStorage.removeItem(key);
+        }
+      }
+    } catch {
+      // Ignore storage access errors (e.g., private mode)
+    }
+
+    const hasSeenHelp = localStorage.getItem(HELP_SEEN_KEY);
     if (!hasSeenHelp) {
       setShowHelp(true);
-      localStorage.setItem('mazle_seen_help', 'true');
+      localStorage.setItem(HELP_SEEN_KEY, 'true');
     }
 
     // Restore in-progress state if we have one (mid-game refresh resume)

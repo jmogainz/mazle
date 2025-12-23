@@ -632,11 +632,11 @@ export default function Home() {
 
     const unsubscribeLifeLost = onGameEvent('lifeLost', (data) => {
       const { lives } = data as { lives: number; penaltyMs: number };
-      // Final life gets longer flash handled by GameScene, but still trigger React flash
-      setLifeFlash(true);
-      // Longer timeout for final life to match GameScene's linger
-      const flashDuration = lives <= 0 ? 800 : 500;
-      setTimeout(() => setLifeFlash(false), flashDuration);
+      // Let GameScene handle the final life flash to avoid double-flashing.
+      if (lives > 0) {
+        setLifeFlash(true);
+        setTimeout(() => setLifeFlash(false), 500);
+      }
     });
 
     // Save in-progress state on each state update (for resume after refresh)

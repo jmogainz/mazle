@@ -126,6 +126,24 @@ jobs:
           # Backend already deployed above (or skipped), skip deps
           make up ENV=prod WITH_DEPS=0
 
+  merge:
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: ${{ needs.deploy.result == 'success' }}
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          ssh-key: ${{ secrets.SSH_PRIVATE_KEY }}
+          fetch-depth: 0
+
+      - name: Place SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ci
+          chmod 600 ~/.ssh/id_ci
+
       # ---------- Merge main into develop ----------
       - name: Merge main into develop
         continue-on-error: true
@@ -133,11 +151,11 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
+
           # Configure SSH for git operations
           eval "$(ssh-agent -s)"
           ssh-add ~/.ssh/id_ci
-          
+
           git fetch origin develop
           git checkout develop
           git merge origin/main -m "Merge main into develop [automated]"

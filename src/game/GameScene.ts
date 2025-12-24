@@ -40,6 +40,7 @@ export class GameScene extends Phaser.Scene {
   private readonly tileFaceLift = 3 * (TILE_SIZE / 32); // lift sprites to sit on the top face of 3D tiles
 
   private isPlaying = false;
+  private hintsEnabled = HINTS_ENABLED;
 
   // Boulder state tracking (for ground maps)
   private boulderPositions: Set<string> = new Set();
@@ -479,8 +480,8 @@ export class GameScene extends Phaser.Scene {
 
     const s = TILE_SIZE / 32;
 
-    // 3D Star Drawing Helper
-    const drawStar = (color: number, offsetY: number, outlineColor?: number) => {
+    // 3D Star Drawing Helper - Returns Graphics, centered at 0,0
+    const createStarGraphics = (color: number, outlineColor?: number) => {
       const star = this.add.graphics();
       star.fillStyle(color);
       if (outlineColor !== undefined) {
@@ -494,35 +495,67 @@ export class GameScene extends Phaser.Scene {
       const step = Math.PI / points;
 
       star.beginPath();
-      star.moveTo(0, offsetY - outerRadius);
+      star.moveTo(0, -outerRadius); // offsetY removed (is 0)
       for (let i = 0; i < points; i++) {
         star.lineTo(
           Math.cos(rot + step * i * 2) * outerRadius,
-          offsetY + Math.sin(rot + step * i * 2) * outerRadius
+          Math.sin(rot + step * i * 2) * outerRadius
         );
         star.lineTo(
           Math.cos(rot + step * (i * 2 + 1)) * innerRadius,
-          offsetY + Math.sin(rot + step * (i * 2 + 1)) * innerRadius
+          Math.sin(rot + step * (i * 2 + 1)) * innerRadius
         );
       }
-      star.lineTo(0, offsetY - outerRadius);
+      star.lineTo(0, -outerRadius);
       star.closePath();
       star.fillPath();
       if (outlineColor !== undefined) {
         star.strokePath();
       }
 
-      this.goalSprite.add(star);
+      return star;
     };
 
     // 1. Draw Shadow/Edge (Dark Yellow) - Offset slightly down from face center
-    drawStar(0xdaa520, 2 * s);
+    const edge = createStarGraphics(0xdaa520);
+    edge.y = 2 * s;
+    this.goalSprite.add(edge);
 
     // 2. Draw Face (Bright Gold) - On face center
     // Use darker gold/brown for outline (Dark Goldenrod: 0xb8860b)
-    drawStar(0xffd700, 0, 0xb8860b);
+    const face = createStarGraphics(0xffd700, 0xb8860b);
+    face.y = 0;
+    this.goalSprite.add(face);
 
-    // Static (no pulse) to respect 3D tile face
+    // Periodic Pulse & Spin Animation
+    this.time.addEvent({
+      delay: 2400,
+      loop: true,
+      callback: () => {
+        if (!this.goalSprite || !this.goalSprite.scene || this.gameState.isComplete) return;
+
+        // Spin
+        this.tweens.add({
+          targets: [edge, face],
+          angle: 360,
+          duration: 1000,
+          ease: 'Cubic.easeInOut',
+          onComplete: () => {
+            edge.angle = 0;
+            face.angle = 0;
+          }
+        });
+
+        // Pulse
+        this.tweens.add({
+          targets: [edge, face],
+          scale: 1.25,
+          duration: 500,
+          yoyo: true,
+          ease: 'Sine.easeInOut'
+        });
+      }
+    });
   }
 
   private createPlayer() {
@@ -579,10 +612,18 @@ export class GameScene extends Phaser.Scene {
         S: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S),
         D: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
       };
+      // Don't capture keys globally - allows typing in textareas/inputs
+      this.input.keyboard.disableGlobalCapture();
     }
   }
   update() {
     if (this.isAnimating || this.gameState.isComplete) return;
+
+    // Skip keyboard input if user is typing in an input/textarea
+    const activeEl = document.activeElement;
+    if (activeEl instanceof HTMLInputElement || activeEl instanceof HTMLTextAreaElement) {
+      return;
+    }
 
     // Check keyboard input (only if keyboard and cursors are available)
     if (this.input.keyboard && this.cursors && this.wasd) {
@@ -618,9 +659,11 @@ export class GameScene extends Phaser.Scene {
 
   private handleLifeLost(finalPos: Position) {
     this.gameState.lives--;
-    this.gameState.penaltyTimeMs += 10000; // 10s penalty
+    this.gameState.penaltyTimeMs += 15000; // 15s penalty
 
-    this.mergeHintsForNextLife();
+    if (this.hintsEnabled) {
+      this.mergeHintsForNextLife();
+    }
 
     // Calculate deviation index
     const deviationIndex = this.findDeviationIndex(this.gameState.moveHistory, this.puzzle.solutionPath || []);
@@ -634,6 +677,18 @@ export class GameScene extends Phaser.Scene {
       deviationIndex,
     });
 
+    // Final life: keep the board state and freeze moves remaining at 0.
+    if (this.gameState.lives <= 0) {
+      this.gameState.currentAttemptMoves = this.puzzle.optimalMoves;
+      emitGameEvent('stateUpdate', { ...this.gameState });
+      emitGameEvent('lifeLost', {
+        lives: this.gameState.lives,
+        penaltyMs: 15000
+      });
+      this.handleGameOver();
+      return;
+    }
+
     // Reset for next life
     this.gameState.currentAttemptMoves = 0;
     this.gameState.currentAttemptCorrectMoves = 0;
@@ -641,7 +696,7 @@ export class GameScene extends Phaser.Scene {
     this.gameState.playerPos = { ...this.puzzle.start };
 
     // Apply hint visuals (visible starting next life)
-    if (HINTS_ENABLED) {
+    if (this.hintsEnabled) {
       this.redrawHintOverlays();
     }
 
@@ -649,59 +704,55 @@ export class GameScene extends Phaser.Scene {
     emitGameEvent('stateUpdate', { ...this.gameState });
     emitGameEvent('lifeLost', {
       lives: this.gameState.lives,
-      penaltyMs: 10000
+      penaltyMs: 15000
     });
 
-    if (this.gameState.lives <= 0) {
-      this.handleGameOver();
-    } else {
-      // Block input during respawn sequence
-      this.isAnimating = true;
+    // Block input during respawn sequence
+    this.isAnimating = true;
 
-      // Visual Feedback: Camera Shake & Subtle Red Flash
-      this.cameras.main.shake(200, 0.01);
+    // Visual Feedback: Camera Shake & Subtle Red Flash
+    this.cameras.main.shake(200, 0.01);
 
-      // Flash overlay
-      this.flashOverlay.setAlpha(0.3);
-      this.tweens.add({
-        targets: this.flashOverlay,
-        alpha: 0,
-        duration: 300,
-        ease: 'Quad.easeOut'
-      });
+    // Flash overlay
+    this.flashOverlay.setAlpha(0.3);
+    this.tweens.add({
+      targets: this.flashOverlay,
+      alpha: 0,
+      duration: 300,
+      ease: 'Quad.easeOut'
+    });
 
-      // Player "Death" animation
-      this.tweens.add({
-        targets: this.player,
-        scaleX: 1.5,
-        scaleY: 1.5,
-        alpha: 0,
-        duration: 200,
-        ease: 'Quad.easeOut',
-        onComplete: () => {
-          // ... rest of teleport logic
-          this.time.delayedCall(200, () => {
-            const px = this.offsetX + this.puzzle.start.x * TILE_SIZE + TILE_SIZE / 2;
-            const py = this.offsetY + this.puzzle.start.y * TILE_SIZE + TILE_SIZE / 2 - this.tileFaceLift;
-            this.player.setPosition(px, py);
-            this.player.setScale(0); // Start small
-            this.player.setAlpha(1);
+    // Player "Death" animation
+    this.tweens.add({
+      targets: this.player,
+      scaleX: 1.5,
+      scaleY: 1.5,
+      alpha: 0,
+      duration: 200,
+      ease: 'Quad.easeOut',
+      onComplete: () => {
+        // ... rest of teleport logic
+        this.time.delayedCall(200, () => {
+          const px = this.offsetX + this.puzzle.start.x * TILE_SIZE + TILE_SIZE / 2;
+          const py = this.offsetY + this.puzzle.start.y * TILE_SIZE + TILE_SIZE / 2 - this.tileFaceLift;
+          this.player.setPosition(px, py);
+          this.player.setScale(0); // Start small
+          this.player.setAlpha(1);
 
-            // Pop in at start
-            this.tweens.add({
-              targets: this.player,
-              scaleX: 1,
-              scaleY: 1,
-              duration: 400,
-              ease: 'Back.out',
-              onComplete: () => {
-                this.isAnimating = false;
-              }
-            });
+          // Pop in at start
+          this.tweens.add({
+            targets: this.player,
+            scaleX: 1,
+            scaleY: 1,
+            duration: 400,
+            ease: 'Back.out',
+            onComplete: () => {
+              this.isAnimating = false;
+            }
           });
-        }
-      });
-    }
+        });
+      }
+    });
   }
 
   private handleGameOver() {
@@ -727,20 +778,26 @@ export class GameScene extends Phaser.Scene {
         // Emit state update so UI knows game is complete
         emitGameEvent('stateUpdate', { ...this.gameState });
 
-        emitGameEvent('gameComplete', {
-          moveCount: this.gameState.moveCount,
-          timeMs: ((this.gameState.endTime ?? this.gameState.startTime) - this.gameState.startTime) + this.gameState.penaltyTimeMs,
-          optimalMoves: this.puzzle.optimalMoves,
-          failed: true,
-          attempts: this.gameState.attempts,
-          solutionPath: this.puzzle.solutionPath,
+        // Show analysis first, then emit gameComplete when animation finishes
+        this.drawEndGameAnalysis(() => {
+          emitGameEvent('gameComplete', {
+            moveCount: this.gameState.moveCount,
+            timeMs: ((this.gameState.endTime ?? this.gameState.startTime) - this.gameState.startTime) + this.gameState.penaltyTimeMs,
+            optimalMoves: this.puzzle.optimalMoves,
+            failed: true,
+            attempts: this.gameState.attempts,
+            solutionPath: this.puzzle.solutionPath,
+          });
         });
       }
     });
   }
 
-  private drawEndGameAnalysis() {
-    if (!this.puzzle.solutionPath) return;
+  private drawEndGameAnalysis(onComplete?: () => void) {
+    if (!this.puzzle.solutionPath) {
+      onComplete?.();
+      return;
+    }
 
     // Clear previous analysis if any
     this.clearAnalysis();
@@ -919,6 +976,10 @@ export class GameScene extends Phaser.Scene {
           });
           this.analysisTweens.push(fadeOutTween);
           this.drawUserAttemptPaths();
+          // Notify when analysis is fully complete (after attempt paths fade in)
+          if (onComplete) {
+            this.time.delayedCall(400, onComplete);
+          }
         });
         this.analysisTimers.push(timer);
         return;
@@ -1475,6 +1536,19 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  public setHintsEnabled(enabled: boolean) {
+    if (this.hintsEnabled === enabled) return;
+    this.hintsEnabled = enabled;
+
+    if (!this.tileGraphics) return;
+
+    if (this.hintsEnabled) {
+      this.redrawHintOverlays();
+    } else {
+      this.clearHintOverlays();
+    }
+  }
+
   // Public method to restart the puzzle
   public restart() {
     this.clearAnalysis();
@@ -1498,7 +1572,7 @@ export class GameScene extends Phaser.Scene {
     this.unlockedHintEdges = new Set();
     this.unlockedThisLifeTiles = new Set();
     this.unlockedThisLifeEdges = new Set();
-    if (HINTS_ENABLED) {
+    if (this.hintsEnabled) {
       this.redrawHintOverlays();
     }
 
@@ -1567,7 +1641,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Visual hint unlocking (only if hints enabled)
-    if (HINTS_ENABLED) {
+    if (this.hintsEnabled) {
       // 2) Stopping on an optimal-path tile (landing positions only; not intermediate slide tiles)
       const toIndex = this.solutionIndexByKey.get(toKey);
       if (toIndex !== undefined && toKey !== startKey && toKey !== goalKey) {
@@ -1596,12 +1670,34 @@ export class GameScene extends Phaser.Scene {
     // Hints only appear after losing a life, which calls redrawHintOverlays()
   }
 
+  private clearHintOverlays() {
+    this.hintTileTweens.forEach(t => t.stop());
+    this.hintTileTweens = [];
+    this.hintTileContainers.forEach(c => c.destroy());
+    this.hintTileContainers = [];
+
+    this.tileGraphics.clear();
+    for (let y = 0; y < this.puzzle.height; y++) {
+      for (let x = 0; x < this.puzzle.width; x++) {
+        const tile = this.puzzle.tiles[y][x];
+        const px = this.offsetX + x * TILE_SIZE;
+        const py = this.offsetY + y * TILE_SIZE;
+        this.drawTile(px, py, tile, x, y, 0);
+      }
+    }
+  }
+
   private redrawHintOverlays() {
     // Clean up previous hint tile containers and tweens
     this.hintTileTweens.forEach(t => t.stop());
     this.hintTileTweens = [];
     this.hintTileContainers.forEach(c => c.destroy());
     this.hintTileContainers = [];
+
+    if (!this.hintsEnabled) {
+      this.clearHintOverlays();
+      return;
+    }
 
     // Skip redraw if no hints to show (avoids unnecessary tile redraw)
     if (this.unlockedHintTiles.size === 0 && this.unlockedHintEdges.size === 0) {
@@ -1911,7 +2007,7 @@ export class GameScene extends Phaser.Scene {
     this.unlockedThisLifeTiles = new Set(state.unlockedThisLifeTiles ?? []);
     this.unlockedThisLifeEdges = new Set(state.unlockedThisLifeEdges ?? []);
     // Redraw hint overlays if any hints were restored
-    if (state.unlockedHintTiles?.length || state.unlockedHintEdges?.length) {
+    if (this.hintsEnabled && (state.unlockedHintTiles?.length || state.unlockedHintEdges?.length)) {
       this.redrawHintOverlays();
     }
 

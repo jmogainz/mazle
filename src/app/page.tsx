@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { Header, GameUI, ShareCard, StatsModal, HelpModal, ErrorBoundary, Loader } from '@/components';
+import { HELP_MENU_HASH } from '@/components/helpMenuHash';
 import {
   getPuzzleNumber,
   onGameEvent,
@@ -49,6 +50,7 @@ const TAP_COUNT_THRESHOLD = 10;
 const TAP_WINDOW_MS = 3000;
 // Hash of the cheat code (pre-computed, code itself not in source)
 const CHEAT_HASH = 0x5f69e7c;
+const HELP_SEEN_KEY = `mazle_seen_help_${HELP_MENU_HASH}`;
 
 // Simple hash function for string comparison
 function hashCode(str: string): number {
@@ -90,6 +92,7 @@ export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState<GenerationProgress | null>(null);
   const [showInlineResult, setShowInlineResult] = useState(false);
+  const [hintsEnabled, setHintsEnabled] = useState(true);
   const [lifeFlash, setLifeFlash] = useState(false);
   const [hasPendingRestore, setHasPendingRestore] = useState(false);
   const [initialStats, setInitialStats] = useState<{
@@ -107,11 +110,13 @@ export default function Home() {
   const cheatTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const gameFrameRef = useRef<HTMLDivElement | null>(null);
   const gameStageRef = useRef<HTMLDivElement | null>(null);
+  const hintsPrefLoadedRef = useRef(false);
   const [gameFrameSizePx, setGameFrameSizePx] = useState<{ width: number; height: number } | null>(null);
   const tapTimestampsRef = useRef<number[]>([]);
   const lastDevToolsTouchTsRef = useRef<number>(0);
   const devToolsTapTargetRef = useRef<HTMLDivElement | null>(null);
   const pendingRestoreRef = useRef<Parameters<GameControls['restoreState']>[0] | null>(null);
+  const hintsEnabledRef = useRef(hintsEnabled);
 
   // Sync CSS custom property to the real visual viewport height (iOS-safe)
   useEffect(() => {
@@ -131,6 +136,23 @@ export default function Home() {
       window.removeEventListener('resize', setVH);
     };
   }, []);
+
+  useEffect(() => {
+    const stored = localStorage.getItem('mazle_hints_enabled');
+    if (stored !== null) {
+      const enabled = stored === '1';
+      hintsEnabledRef.current = enabled;
+      setHintsEnabled(enabled);
+    }
+    hintsPrefLoadedRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!hintsPrefLoadedRef.current) return;
+    hintsEnabledRef.current = hintsEnabled;
+    localStorage.setItem('mazle_hints_enabled', hintsEnabled ? '1' : '0');
+    gameControlsRef.current?.setHintsEnabled?.(hintsEnabled);
+  }, [hintsEnabled]);
 
   const puzzleWidth = puzzle?.width ?? 10;
   const puzzleHeight = puzzle?.height ?? 10;
@@ -610,11 +632,11 @@ export default function Home() {
 
     const unsubscribeLifeLost = onGameEvent('lifeLost', (data) => {
       const { lives } = data as { lives: number; penaltyMs: number };
-      // Final life gets longer flash handled by GameScene, but still trigger React flash
-      setLifeFlash(true);
-      // Longer timeout for final life to match GameScene's linger
-      const flashDuration = lives <= 0 ? 800 : 500;
-      setTimeout(() => setLifeFlash(false), flashDuration);
+      // Let GameScene handle the final life flash to avoid double-flashing.
+      if (lives > 0) {
+        setLifeFlash(true);
+        setTimeout(() => setLifeFlash(false), 500);
+      }
     });
 
     // Save in-progress state on each state update (for resume after refresh)
@@ -794,12 +816,25 @@ export default function Home() {
   const handleGameReady = useCallback((controls: GameControls) => {
     gameControlsRef.current = controls;
     setIsGameReady(true);
+    controls.setHintsEnabled(hintsEnabledRef.current);
 
     // Show help on first visit
-    const hasSeenHelp = localStorage.getItem('mazle_seen_help');
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (!key) continue;
+        if (key.startsWith('mazle_seen_help') && key !== HELP_SEEN_KEY) {
+          localStorage.removeItem(key);
+        }
+      }
+    } catch {
+      // Ignore storage access errors (e.g., private mode)
+    }
+
+    const hasSeenHelp = localStorage.getItem(HELP_SEEN_KEY);
     if (!hasSeenHelp) {
       setShowHelp(true);
-      localStorage.setItem('mazle_seen_help', 'true');
+      localStorage.setItem(HELP_SEEN_KEY, 'true');
     }
 
     // Restore in-progress state if we have one (mid-game refresh resume)
@@ -930,6 +965,19 @@ export default function Home() {
                     {puzzleLabel ?? `Daily #${puzzleNumber}`}
                   </span>
                   <span className={styles.devSeedValue}>{activeSeed || 'daily'}</span>
+                </div>
+
+                <div className={styles.devToggleRow}>
+                  <label className={styles.devToggleLabel}>
+                    <input
+                      className={styles.devToggleInput}
+                      type="checkbox"
+                      checked={hintsEnabled}
+                      onChange={(e) => setHintsEnabled(e.target.checked)}
+                    />
+                    Hints
+                  </label>
+                  <span className={styles.devToggleHint}>Show hint overlays after life loss</span>
                 </div>
 
                 {/* Core Stats - 3x2 grid */}
@@ -1285,7 +1333,7 @@ export default function Home() {
           <StatsModal stats={stats} onClose={() => setShowStats(false)} />
         )}
 
-        {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
+        {showHelp && <HelpModal onClose={() => setShowHelp(false)} hintsEnabled={hintsEnabled} />}
       </main>
     </ErrorBoundary>
   );

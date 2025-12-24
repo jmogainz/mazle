@@ -13,6 +13,7 @@ export interface GameControls {
   showAnalysis: (attempts: any[]) => void;
   getSerializableState: () => ReturnType<GameScene['getSerializableState']> | null;
   restoreState: (state: Parameters<GameScene['restoreState']>[0]) => void;
+  setHintsEnabled: (enabled: boolean) => void;
 }
 
 interface PhaserGameProps {
@@ -65,6 +66,10 @@ export default function PhaserGame({ puzzle, viewportWidth, viewportHeight, onRe
       const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;
       scene?.restoreState(state);
     },
+    setHintsEnabled: (enabled: boolean) => {
+      const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;
+      scene?.setHintsEnabled(enabled);
+    },
   }), []);
 
 
@@ -109,6 +114,9 @@ export default function PhaserGame({ puzzle, viewportWidth, viewportHeight, onRe
       // Mobile-specific settings
       input: {
         touch: true,
+        keyboard: {
+          capture: [], // Don't capture any keys globally - let them propagate to DOM
+        },
       },
       // High-Quality Rendering for Smooth Jelly Animations
       render: {

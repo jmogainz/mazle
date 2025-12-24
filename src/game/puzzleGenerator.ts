@@ -14,7 +14,7 @@ import './maps/ground';
 
 // Launch date for puzzle numbering (in New York timezone)
 // Puzzle #1 starts on December 4, 2025
-const LAUNCH_DATE = '2025-12-04';
+export const LAUNCH_DATE_NY = '2025-12-04';
 
 /**
  * Get the current date string in New York timezone (YYYY-MM-DD format).
@@ -41,7 +41,7 @@ export function getDailySeed(date: Date = new Date()): string {
 export function getPuzzleNumber(date: Date = new Date()): number {
   const currentDateStr = getNewYorkDateString(date);
   const currentDate = new Date(currentDateStr + 'T00:00:00');
-  const launchDate = new Date(LAUNCH_DATE + 'T00:00:00');
+  const launchDate = new Date(LAUNCH_DATE_NY + 'T00:00:00');
   const diffTime = currentDate.getTime() - launchDate.getTime();
   const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
   return diffDays + 1;

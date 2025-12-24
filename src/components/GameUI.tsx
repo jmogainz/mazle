@@ -30,6 +30,7 @@ export default function GameUI({ puzzleNumber, puzzleLabel, optimalMoves, varian
   const [startTime, setStartTime] = useState<number | null>(null);
   const [penaltyTimeMs, setPenaltyTimeMs] = useState(initialState?.penaltyTimeMs ?? 0);
   const [isComplete, setIsComplete] = useState(frozen);
+  const [isPaused, setIsPaused] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
   const [penaltyFlash, setPenaltyFlash] = useState(false);
   const displayLabel = puzzleLabel ?? `#${puzzleNumber}`;
@@ -53,6 +54,7 @@ export default function GameUI({ puzzleNumber, puzzleLabel, optimalMoves, varian
       setStartTime(state.startTime);
       setPenaltyTimeMs(state.penaltyTimeMs);
       setIsComplete(state.isComplete);
+      setIsPaused(state.isPaused);
 
       if (state.startTime === 0) {
         setElapsedTime(0);
@@ -77,14 +79,14 @@ export default function GameUI({ puzzleNumber, puzzleLabel, optimalMoves, varian
 
   // Timer
   useEffect(() => {
-    if (!startTime || isComplete) return;
+    if (!startTime || isComplete || isPaused) return;
 
     const interval = setInterval(() => {
       setElapsedTime(Date.now() - startTime);
     }, 100);
 
     return () => clearInterval(interval);
-  }, [startTime, isComplete]);
+  }, [startTime, isComplete, isPaused]);
 
   const movesRemaining = optimalMoves - currentAttemptMoves;
   const totalDisplayTime = elapsedTime + penaltyTimeMs;

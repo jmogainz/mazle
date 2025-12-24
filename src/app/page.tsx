@@ -2,8 +2,17 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
-import { Header, GameUI, ShareCard, StatsModal, HelpModal, ErrorBoundary, Loader } from '@/components';
+import { Header, GameUI, ShareCard, StatsModal, HelpModal, ErrorBoundary, Loader, DevTools } from '@/components';
 import { HELP_MENU_HASH } from '@/components/helpMenuHash';
+import {
+  CHEAT_TIMEOUT_MS,
+  CHEAT_CODE_LENGTH,
+  TAP_COUNT_THRESHOLD,
+  TAP_WINDOW_MS,
+  GAME_BUFFER_PX,
+  STORAGE_KEYS,
+  isCheatCode,
+} from '@/constants';
 import {
   getPuzzleNumber,
   onGameEvent,
@@ -15,7 +24,6 @@ import {
   getDailySeed,
   GenerationProgress,
   GeneratorBackend,
-  isRustBackendConfigured,
   preloadWasm,
   TILE_SIZE,
 } from '@/game';
@@ -40,35 +48,7 @@ const _DEVTOOLS_BUILD_FLAG =
   process.env.NEXT_PUBLIC_DEVTOOLS_ENABLED === '1' ||
   process.env.NEXT_PUBLIC_DEVTOOLS_ENABLED === 'true';
 
-// Cheat code validation using hash comparison
-// The actual code is never stored as plain text in the bundle
-const CHEAT_TIMEOUT_MS = 2000;
-const CHEAT_CODE_LENGTH = 5;
-
-// Mobile tap-to-open dev tools config
-const TAP_COUNT_THRESHOLD = 10;
-const TAP_WINDOW_MS = 3000;
-// Hash of the cheat code (pre-computed, code itself not in source)
-const CHEAT_HASH = 0x5f69e7c;
 const HELP_SEEN_KEY = `mazle_seen_help_${HELP_MENU_HASH}`;
-
-// Simple hash function for string comparison
-function hashCode(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32bit integer
-  }
-  return hash >>> 0; // Convert to unsigned
-}
-
-// Check if buffer ends with the cheat code
-function isCheatCode(buffer: string): boolean {
-  if (buffer.length < CHEAT_CODE_LENGTH) return false;
-  const suffix = buffer.slice(-CHEAT_CODE_LENGTH);
-  return hashCode(suffix) === CHEAT_HASH;
-}
 
 export default function Home() {
   const [puzzle, setPuzzle] = useState<PuzzleData | null>(null);
@@ -138,7 +118,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const stored = localStorage.getItem('mazle_hints_enabled');
+    const stored = localStorage.getItem(STORAGE_KEYS.HINTS_ENABLED);
     if (stored !== null) {
       const enabled = stored === '1';
       hintsEnabledRef.current = enabled;
@@ -150,16 +130,14 @@ export default function Home() {
   useEffect(() => {
     if (!hintsPrefLoadedRef.current) return;
     hintsEnabledRef.current = hintsEnabled;
-    localStorage.setItem('mazle_hints_enabled', hintsEnabled ? '1' : '0');
+    localStorage.setItem(STORAGE_KEYS.HINTS_ENABLED, hintsEnabled ? '1' : '0');
     gameControlsRef.current?.setHintsEnabled?.(hintsEnabled);
   }, [hintsEnabled]);
 
   const puzzleWidth = puzzle?.width ?? 10;
   const puzzleHeight = puzzle?.height ?? 10;
-  // Add a small buffer so tiles aren't right up against the edge
-  const BUFFER = 16;
-  const baseWidth = puzzleWidth * TILE_SIZE + BUFFER * 2;
-  const baseHeight = puzzleHeight * TILE_SIZE + BUFFER * 2;
+  const baseWidth = puzzleWidth * TILE_SIZE + GAME_BUFFER_PX * 2;
+  const baseHeight = puzzleHeight * TILE_SIZE + GAME_BUFFER_PX * 2;
 
   // Size the maze frame to the *actual available* game area so it can't expand underneath
   // the header/footer when the viewport is short or zoomed.
@@ -899,7 +877,7 @@ export default function Home() {
     } else {
       console.log('[Dev] Cancel skipped; another request for this seed is in-flight');
     }
-  }, []);
+  }, [activeSeed]);
 
   const handleCloseShareCard = useCallback(() => {
     // Hide the share card but keep inline analysis visible
@@ -941,300 +919,30 @@ export default function Home() {
 
         <div className={styles.gameWrapper}>
           {showDevTools && (
-            <div
-              className={styles.devOverlay}
-              role="dialog"
-              aria-modal="true"
-              aria-label="Dev Tools"
-            >
-              <div className={styles.devPanel} onClick={(e) => e.stopPropagation()}>
-                <div className={styles.devPanelHeader}>
-                  <span className={styles.devPanelTitle}>🛠 Dev Tools</span>
-                  <button
-                    className={styles.devCloseButton}
-                    onClick={() => setShowDevTools(false)}
-                    title="Close"
-                  >
-                    ✕
-                  </button>
-                </div>
-
-                {/* Seed Info */}
-                <div className={styles.devSeedInfo}>
-                  <span className={styles.devSeedLabel}>
-                    {puzzleLabel ?? `Daily #${puzzleNumber}`}
-                  </span>
-                  <span className={styles.devSeedValue}>{activeSeed || 'daily'}</span>
-                </div>
-
-                <div className={styles.devToggleRow}>
-                  <label className={styles.devToggleLabel}>
-                    <input
-                      className={styles.devToggleInput}
-                      type="checkbox"
-                      checked={hintsEnabled}
-                      onChange={(e) => setHintsEnabled(e.target.checked)}
-                    />
-                    Hints
-                  </label>
-                  <span className={styles.devToggleHint}>Show hint overlays after life loss</span>
-                </div>
-
-                {/* Core Stats - 3x2 grid */}
-                <div className={styles.devStatsGrid6}>
-                  <div className={styles.devStatItem}>
-                    <span className={styles.devStatValue} style={{ textTransform: 'uppercase' }}>
-                      {puzzle.mapType ?? 'ice'}
-                    </span>
-                    <span className={styles.devStatLabel}>Map</span>
-                  </div>
-                  <div className={styles.devStatItem}>
-                    <span className={styles.devStatValue}>{puzzle.width}×{puzzle.height}</span>
-                    <span className={styles.devStatLabel}>Size</span>
-                  </div>
-                  <div className={styles.devStatItem}>
-                    <span className={styles.devStatValue}>{puzzle.optimalMoves}</span>
-                    <span className={styles.devStatLabel}>Moves</span>
-                  </div>
-                  <div className={styles.devStatItem}>
-                    <span className={styles.devStatValue}>{puzzle.difficultyScore ?? '—'}</span>
-                    <span className={styles.devStatLabel}>Score</span>
-                  </div>
-                  <div className={styles.devStatItem}>
-                    <span className={styles.devStatValue}>{puzzle.selectedBatch ?? '—'}</span>
-                    <span className={styles.devStatLabel}>Batch</span>
-                  </div>
-                  <div className={styles.devStatItem}>
-                    <span className={styles.devStatValue}>{puzzle.nearOptimalPaths ?? '—'}</span>
-                    <span className={styles.devStatLabel}>Paths</span>
-                  </div>
-                </div>
-
-                {/* Key Metrics - 2x2 grid */}
-                <div className={styles.devMetricsSection}>
-                  <div className={styles.devMetricsHeader}>
-                    <span className={styles.devMetricsTitle}>Key Metrics</span>
-                  </div>
-                  <div className={styles.devMetricsGrid2x2}>
-                    <div className={styles.devMetricItemPrimary}>
-                      <span className={styles.devMetricValue}>
-                        {puzzle.pathOverlap != null ? puzzle.pathOverlap.toFixed(2) : '—'}
-                      </span>
-                      <span className={styles.devMetricLabel}>Overlap Min</span>
-                    </div>
-                    <div className={styles.devMetricItemPrimary}>
-                      <span className={styles.devMetricValue}>
-                        {puzzle.pathOverlapAvg != null ? puzzle.pathOverlapAvg.toFixed(2) : '—'}
-                      </span>
-                      <span className={styles.devMetricLabel}>Overlap Avg</span>
-                    </div>
-                    <div className={styles.devMetricItemPrimary}>
-                      <span className={styles.devMetricValue}>
-                        {puzzle.earlyDivergence != null ? puzzle.earlyDivergence.toFixed(2) : '—'}
-                      </span>
-                      <span className={styles.devMetricLabel}>Early Div</span>
-                    </div>
-                    <div className={styles.devMetricItemPrimary}>
-                      <span className={styles.devMetricValue}>
-                        {puzzle.pathLocality != null ? puzzle.pathLocality.toFixed(2) : '—'}
-                      </span>
-                      <span className={styles.devMetricLabel}>Locality</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Secondary Metrics - 2 column */}
-                <div className={styles.devMetricsSection}>
-                  <div className={styles.devMetricsHeader}>
-                    <span className={styles.devMetricsTitle}>Per-Move</span>
-                  </div>
-                  <div className={styles.devMetricsGrid2}>
-                    <div className={styles.devMetricItemSecondary}>
-                      <span className={styles.devMetricValue}>{puzzle.directionChanges ?? '—'}</span>
-                      <span className={styles.devMetricLabel}>Dir Changes</span>
-                    </div>
-                    <div className={styles.devMetricItemSecondary}>
-                      <span className={styles.devMetricValue}>
-                        {puzzle.decisionAmbiguity != null ? puzzle.decisionAmbiguity.toFixed(1) : '—'}
-                      </span>
-                      <span className={styles.devMetricLabel}>Ambiguity</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Legacy Metrics (Collapsed) */}
-                <details className={styles.devMetricsCollapsible}>
-                  <summary className={styles.devMetricsSummary}>
-                    <span className={styles.devMetricsTitle}>Legacy Metrics</span>
-                  </summary>
-                  <div className={styles.devMetricsGrid3}>
-                    <div className={styles.devMetricItemTertiary}>
-                      <span className={styles.devMetricValue}>{puzzle.counterIntuitiveMoves ?? '—'}</span>
-                      <span className={styles.devMetricLabel}>CI</span>
-                    </div>
-                    <div className={styles.devMetricItemTertiary}>
-                      <span className={styles.devMetricValue}>{puzzle.attractiveDecoys ?? '—'}</span>
-                      <span className={styles.devMetricLabel}>Decoys</span>
-                    </div>
-                    <div className={styles.devMetricItemTertiary}>
-                      <span className={styles.devMetricValue}>{puzzle.commitmentGates ?? '—'}</span>
-                      <span className={styles.devMetricLabel}>Gates</span>
-                    </div>
-                    <div className={styles.devMetricItemTertiary}>
-                      <span className={styles.devMetricValue}>{puzzle.falseProgressPaths ?? '—'}</span>
-                      <span className={styles.devMetricLabel}>False Prog</span>
-                    </div>
-                    <div className={styles.devMetricItemTertiary}>
-                      <span className={styles.devMetricValue}>{puzzle.backtrackDepth ?? '—'}</span>
-                      <span className={styles.devMetricLabel}>Backtrack</span>
-                    </div>
-                  </div>
-                </details>
-
-                {/* Maze Engine Selector */}
-                <div className={styles.devBackendSection}>
-                  <div className={styles.devBackendHeader}>
-                    Maze Engine
-                    {lastUsedBackend && (
-                      <span className={styles.devBackendStatus}>
-                        {lastUsedBackend === 'rust-backend' ? '🦀 Rust' : 'WASM'}
-                      </span>
-                    )}
-                  </div>
-                  <div className={styles.devBackendOptions}>
-                    <label className={styles.devBackendOption}>
-                      <input
-                        type="radio"
-                        name="engine"
-                        value="auto"
-                        checked={selectedBackend === 'auto'}
-                        onChange={() => setSelectedBackend('auto')}
-                        disabled={isGenerating}
-                      />
-                      <span>Auto</span>
-                    </label>
-                    <label
-                      className={`${styles.devBackendOption} ${!isRustBackendConfigured() ? styles.devBackendDisabled : ''}`}
-                      title={isRustBackendConfigured() ? 'Rust server (fastest, parallel)' : 'Not configured (set NEXT_PUBLIC_GENERATOR_URL)'}
-                    >
-                      <input
-                        type="radio"
-                        name="engine"
-                        value="rust"
-                        checked={selectedBackend === 'rust'}
-                        onChange={() => setSelectedBackend('rust')}
-                        disabled={isGenerating || !isRustBackendConfigured()}
-                      />
-                      <span>🦀 Rust</span>
-                    </label>
-                    <label
-                      className={styles.devBackendOption}
-                      title="Browser WASM (parallel via Web Workers)"
-                    >
-                      <input
-                        type="radio"
-                        name="engine"
-                        value="wasm"
-                        checked={selectedBackend === 'wasm'}
-                        onChange={() => setSelectedBackend('wasm')}
-                        disabled={isGenerating}
-                      />
-                      <span>WASM</span>
-                    </label>
-                  </div>
-                </div>
-
-                {/* Controls */}
-                <div className={styles.devControls}>
-                  <input
-                    value={seedInput}
-                    onChange={(e) => setSeedInput(e.target.value)}
-                    placeholder="Custom seed or YYYY-MM-DD"
-                    className={styles.devInput}
-                    disabled={isGenerating}
-                  />
-                  <div className={styles.devInputRow}>
-                    <select
-                      value={selectedMapType}
-                      onChange={(e) => setSelectedMapType(e.target.value as MapType | 'random')}
-                      className={styles.devSelect}
-                      disabled={isGenerating}
-                    >
-                      <option value="random">Random Map</option>
-                      <option value={MapType.ICE}>Ice Map</option>
-                      <option value={MapType.GROUND}>Ground Map</option>
-                    </select>
-                    <input
-                      value={startBatchInput}
-                      onChange={(e) => setStartBatchInput(e.target.value.replace(/\D/g, ''))}
-                      placeholder="Start batch #"
-                      className={styles.devInputSmall}
-                      disabled={isGenerating}
-                      title="Start generation at a specific batch number (deterministic)"
-                    />
-                  </div>
-                  <div className={styles.devButtonRow}>
-                    <button
-                      type="button"
-                      className={styles.devButton}
-                      onClick={() => handleDevSeedGenerate(seedInput)}
-                      disabled={isGenerating}
-                    >
-                      Load
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.devButtonSecondary}
-                      onClick={() => handleDevSeedGenerate()}
-                      disabled={isGenerating}
-                    >
-                      {isGenerating ? (
-                        <span className={styles.buttonSpinner} />
-                      ) : (
-                        '🎲 Random'
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.devButtonGhost}
-                      onClick={handleLoadDaily}
-                      disabled={isGenerating}
-                    >
-                      ↩ Daily
-                    </button>
-                  </div>
-                </div>
-
-                {/* Generation Progress */}
-                {isGenerating && generationProgress && (
-                  <div className={styles.devProgress}>
-                    <div className={styles.devProgressHeader}>
-                      {generationProgress.phase === 'rust-backend'
-                        ? `🦀 Generating... ${progressPercent}%`
-                        : `⚡ Generating... ${progressPercent}%`}
-                    </div>
-                    <div className={styles.progressBar}>
-                      <div
-                        className={styles.progressFill}
-                        style={{ width: `${progressPercent}%` }}
-                      />
-                    </div>
-                    <div className={styles.devProgressActions}>
-                      <button
-                        type="button"
-                        className={styles.devButtonDanger}
-                        onClick={handleStopGeneration}
-                        disabled={!generationAbortRef.current}
-                      >
-                        ⏹ Stop
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                <p className={styles.devHint}>Dev runs are not saved to stats</p>
-              </div>
-            </div>
+            <DevTools
+              puzzle={puzzle}
+              puzzleNumber={puzzleNumber}
+              puzzleLabel={puzzleLabel}
+              activeSeed={activeSeed}
+              seedInput={seedInput}
+              onSeedInputChange={setSeedInput}
+              selectedMapType={selectedMapType}
+              onMapTypeChange={setSelectedMapType}
+              startBatchInput={startBatchInput}
+              onStartBatchInputChange={setStartBatchInput}
+              selectedBackend={selectedBackend}
+              onBackendChange={setSelectedBackend}
+              lastUsedBackend={lastUsedBackend}
+              hintsEnabled={hintsEnabled}
+              onHintsToggle={setHintsEnabled}
+              isGenerating={isGenerating}
+              generationProgress={generationProgress}
+              onGenerate={handleDevSeedGenerate}
+              onLoadDaily={handleLoadDaily}
+              onStopGeneration={handleStopGeneration}
+              onClose={() => setShowDevTools(false)}
+              canStopGeneration={!!generationAbortRef.current}
+            />
           )}
 
           {/* Puzzle Number - separate from stats for better spacing */}

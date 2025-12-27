@@ -26,8 +26,12 @@ export default function Header({ streak, puzzleInfo, onHelpClick, onStatsClick, 
       
       <div className={`${styles.logo} ${logoClassName ?? ''}`.trim()} ref={logoRef}>
         <h1 className={styles.logoText}>MAZLE</h1>
-        {puzzleInfo && <span className={styles.puzzleInfo}>{puzzleInfo}</span>}
       </div>
+      {puzzleInfo && (
+        <div className={styles.puzzleInfoRow}>
+          <span className={styles.puzzleInfo}>{puzzleInfo}</span>
+        </div>
+      )}
       
       <div className={styles.rightSection}>
         <button className={styles.iconButton} onClick={onStatsClick} aria-label="Statistics">

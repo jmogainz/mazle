@@ -10,6 +10,18 @@ export function middleware(request: NextRequest) {
   console.log('[Middleware] Processing:', request.nextUrl.pathname);
   
   const response = NextResponse.next();
+  const geoCountry =
+    request.headers.get('x-vercel-ip-country') ||
+    '';
+  const existingCountry = request.cookies.get('geo_country')?.value;
+  if (geoCountry && geoCountry !== existingCountry) {
+    response.cookies.set('geo_country', geoCountry, {
+      path: '/',
+      sameSite: 'lax',
+      secure: request.nextUrl.protocol === 'https:',
+      maxAge: 60 * 60 * 24 * 30,
+    });
+  }
   
   // Cross-Origin-Opener-Policy: same-origin
   response.headers.set('Cross-Origin-Opener-Policy', 'same-origin');

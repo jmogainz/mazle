@@ -4,6 +4,7 @@ import styles from './Header.module.css';
 
 interface HeaderProps {
   streak: number;
+  puzzleInfo?: string;
   onHelpClick: () => void;
   onStatsClick: () => void;
   onMenuClick?: () => void;
@@ -11,7 +12,7 @@ interface HeaderProps {
   logoClassName?: string;
 }
 
-export default function Header({ streak, onHelpClick, onStatsClick, onMenuClick, logoRef, logoClassName }: HeaderProps) {
+export default function Header({ streak, puzzleInfo, onHelpClick, onStatsClick, onMenuClick, logoRef, logoClassName }: HeaderProps) {
   return (
     <header className={styles.header}>
       <div className={styles.leftSection}>
@@ -26,6 +27,7 @@ export default function Header({ streak, onHelpClick, onStatsClick, onMenuClick,
       
       <div className={`${styles.logo} ${logoClassName ?? ''}`.trim()} ref={logoRef}>
         <span className={styles.logoText}>MAZLE</span>
+        {puzzleInfo && <span className={styles.puzzleInfo}>{puzzleInfo}</span>}
       </div>
       
       <div className={styles.rightSection}>

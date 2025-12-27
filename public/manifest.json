@@ -1,7 +1,7 @@
 {
   "name": "Mazle",
   "short_name": "Mazle",
-  "description": "A daily Pokémon-inspired puzzle game",
+  "description": "A free daily sliding puzzle game",
   "id": "/",
   "scope": "/",
   "start_url": "/",

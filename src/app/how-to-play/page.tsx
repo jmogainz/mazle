@@ -4,14 +4,14 @@ import styles from './page.module.css';
 
 export const metadata: Metadata = {
   title: 'How to Play Mazle - Daily Puzzle Game Guide',
-  description: 'Learn how to play Mazle, the daily puzzle game inspired by Pokémon ice gym puzzles. Master ice sliding, ledges, and strategic movement to solve puzzles in optimal moves.',
-  keywords: ['mazle tutorial', 'how to play mazle', 'puzzle game guide', 'ice puzzle game', 'daily puzzle help'],
+  description: 'Learn how to play Mazle, the daily sliding puzzle game. Master ice sliding, ledges, and strategic movement to solve puzzles in optimal moves.',
+  keywords: ['mazle tutorial', 'how to play mazle', 'puzzle game guide', 'ice puzzle game', 'daily puzzle help', 'sliding puzzle rules'],
   alternates: {
     canonical: 'https://mazle.io/how-to-play',
   },
   openGraph: {
     title: 'How to Play Mazle - Daily Puzzle Game Guide',
-    description: 'Learn how to play Mazle, the daily puzzle game inspired by Pokémon ice gym puzzles. Master ice sliding, ledges, and strategic movement.',
+    description: 'Learn how to play Mazle, the daily sliding puzzle game. Master ice sliding, ledges, and strategic movement.',
     url: 'https://mazle.io/how-to-play',
     siteName: 'Mazle',
     type: 'article',
@@ -34,7 +34,7 @@ export default function HowToPlay() {
             '@context': 'https://schema.org',
             '@type': 'HowTo',
             name: 'How to Play Mazle',
-            description: 'A step-by-step guide to playing Mazle, the daily puzzle game.',
+            description: 'A step-by-step guide to playing Mazle, the daily sliding puzzle game.',
             step: [
               {
                 '@type': 'HowToStep',
@@ -81,7 +81,7 @@ export default function HowToPlay() {
         <header>
           <h1 className={styles.title}>How to Play Mazle</h1>
           <p className={styles.subtitle}>
-            Master the daily puzzle game inspired by Pokémon ice gym puzzles
+            Master the daily sliding puzzle game
           </p>
         </header>
 

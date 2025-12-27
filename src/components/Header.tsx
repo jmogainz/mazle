@@ -26,7 +26,7 @@ export default function Header({ streak, puzzleInfo, onHelpClick, onStatsClick, 
       </div>
       
       <div className={`${styles.logo} ${logoClassName ?? ''}`.trim()} ref={logoRef}>
-        <span className={styles.logoText}>MAZLE</span>
+        <h1 className={styles.logoText}>MAZLE</h1>
         {puzzleInfo && <span className={styles.puzzleInfo}>{puzzleInfo}</span>}
       </div>
       

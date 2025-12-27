@@ -4,14 +4,14 @@ import styles from './page.module.css';
 
 export const metadata: Metadata = {
   title: 'About Mazle - Daily Puzzle Game',
-  description: 'Mazle is a free daily puzzle game inspired by Pokémon ice gym puzzles. Navigate ice, ledges, and walls to reach the goal in optimal moves. New puzzle every day!',
-  keywords: ['mazle game', 'daily puzzle', 'ice puzzle', 'pokemon ice gym', 'free puzzle game', 'wordle alternative'],
+  description: 'Mazle is a daily sliding puzzle game. Navigate ice, ledges, and walls to reach the goal in optimal moves. New puzzle every day!',
+  keywords: ['mazle game', 'daily puzzle', 'ice puzzle', 'sliding puzzle', 'puzzle game', 'wordle alternative', 'logic game'],
   alternates: {
     canonical: 'https://mazle.io/about',
   },
   openGraph: {
     title: 'About Mazle - Daily Puzzle Game',
-    description: 'A free daily puzzle game inspired by Pokémon ice gym puzzles. New puzzle every day!',
+    description: 'A daily sliding puzzle game. New puzzle every day!',
     url: 'https://mazle.io/about',
     siteName: 'Mazle',
     type: 'website',
@@ -34,7 +34,7 @@ export default function About() {
             '@context': 'https://schema.org',
             '@type': 'VideoGame',
             name: 'Mazle',
-            description: 'A daily puzzle game inspired by Pokémon ice gym puzzles. Navigate ice, ledges, and walls to reach the goal.',
+            description: 'A daily puzzle game where you navigate ice, ledges, and walls to reach the goal.',
             url: 'https://mazle.io',
             genre: ['Puzzle', 'Strategy', 'Casual'],
             gamePlatform: ['Web Browser', 'Mobile Web'],
@@ -68,7 +68,7 @@ export default function About() {
                 name: 'What is Mazle?',
                 acceptedAnswer: {
                   '@type': 'Answer',
-                  text: 'Mazle is a free daily puzzle game inspired by Pokémon ice gym puzzles. Players navigate through ice, ledges, and walls to reach the goal in exactly 10 optimal moves.',
+                  text: 'Mazle is a daily sliding puzzle game. Players navigate through ice, ledges, and walls to reach the goal in exactly 10 optimal moves.',
                 },
               },
               {
@@ -117,8 +117,8 @@ export default function About() {
         <section className={styles.section}>
           <h2>What is Mazle?</h2>
           <p>
-            Mazle is a <strong>free daily puzzle game</strong> inspired by the ice gym puzzles 
-            from Pokémon games. Each day, players around the world tackle the same puzzle, 
+            Mazle is a <strong>daily puzzle game</strong> inspired by classic sliding puzzle 
+            mechanics. Each day, players around the world tackle the same puzzle, 
             navigating a character through ice tiles, ledges, and obstacles to reach the goal.
           </p>
           <p>

@@ -30,6 +30,7 @@
   letter-spacing: 0.12em;
   text-transform: uppercase;
   transition: font-size 0.15s ease-out;
+  margin: 0;
 }
 
 .puzzleInfo {

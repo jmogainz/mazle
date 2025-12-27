@@ -12,14 +12,6 @@
   - Archive UI component(s) (calendar/modal) in `src/app/page.tsx` and/or `src/components/*`.
   - Any client API wrapper in `src/lib/api/*` used by archive UI.
 
-## Stripe checkout: “already owned” guardrails
-
-- Current behavior: even when `GET /api/me` shows `{ archiveAccess: true, adsRemoved: true }`, `POST /api/stripe/checkout` still returns a valid Checkout URL.
-- Desired behavior:
-  - UI: replace “Buy” CTA with “Owned” state (and/or “Manage” link) when entitled.
-  - API: add a server-side entitlement check; if already entitled, return a non-error response like `{ alreadyOwned: true }` (or a dedicated `409 ALREADY_ENTITLED`) instead of creating a new Checkout session.
-- Goal: prevent accidental double-purchases and make the purchase UX feel deterministic.
-
 ## Auth: Apple sign-in (UI + local test)
 
 - Backend support exists in `src/auth.ts` (Apple provider is enabled when Apple env vars are present), but the end-to-end UX is not finished until:

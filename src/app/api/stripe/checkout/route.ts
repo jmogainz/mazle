@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { isDevMode } from '@/lib/server/env';
-import { getSessionUserId } from '@/lib/server/identity';
+import { getEntitlementsForUser, getSessionUserId } from '@/lib/server/identity';
 import { jsonError, readJsonBody } from '@/lib/server/responses';
 import { getStripe, stripePriceId } from '@/lib/server/stripe';
 
@@ -44,6 +44,11 @@ export async function POST(request: Request) {
     const expected = stripePriceId();
     if (body.priceId !== expected) {
       return jsonError(400, 'INVALID_PRICE', 'Unknown priceId.');
+    }
+
+    const entitlements = await getEntitlementsForUser(userId);
+    if (entitlements.archiveAccess || entitlements.adsRemoved) {
+      return NextResponse.json({ alreadyOwned: true }, { headers: { 'Cache-Control': 'no-store' } });
     }
 
     const stripe = getStripe();

@@ -256,6 +256,27 @@ Expected:
 - `entitlements.archiveAccess === true`
 - `entitlements.adsRemoved === true`
 
+Optional guardrail check (should not create another checkout session):
+
+```js
+(async () => {
+  const offer = await (await fetch('/api/stripe/archive-offer')).json();
+  const origin = window.location.origin;
+  const r = await fetch('/api/stripe/checkout', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      priceId: offer.priceId,
+      successUrl: `${origin}/?checkout=success`,
+      cancelUrl: `${origin}/?checkout=cancel`,
+    }),
+  });
+  console.log(r.status, await r.json());
+})();
+```
+
+Expected: `200` with `{ alreadyOwned: true }`.
+
 Then confirm a past day is unlocked (DevTools Console):
 
 ```js

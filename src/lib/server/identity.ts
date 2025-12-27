@@ -155,7 +155,7 @@ async function linkGuestToUser(userId: string, guestId: string): Promise<void> {
   await migrateTodayLeaderboardIfPresent({ userId, guestId, userDisplayName }).catch(() => null);
 }
 
-async function getEntitlementsForUser(userId: string): Promise<{ archiveAccess: boolean; adsRemoved: boolean }> {
+export async function getEntitlementsForUser(userId: string): Promise<{ archiveAccess: boolean; adsRemoved: boolean }> {
   if (isDevMode()) {
     return { archiveAccess: true, adsRemoved: true };
   }

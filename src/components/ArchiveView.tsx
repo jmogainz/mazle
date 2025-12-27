@@ -256,16 +256,26 @@ export default function ArchiveView({ presentation = 'overlay' }: ArchiveViewPro
       const origin = window.location.origin;
       const successUrl = `${origin}/archive?checkout=success&d=${encodeURIComponent(requestedDate)}`;
       const cancelUrl = `${origin}/archive?checkout=canceled&d=${encodeURIComponent(requestedDate)}`;
-      const { url } = await api.createCheckout({
+      const { url, alreadyOwned } = await api.createCheckout({
         priceId: offerState.data.priceId,
         successUrl,
         cancelUrl,
       });
-      window.location.href = url;
+      if (alreadyOwned) {
+        setToast('Archive already unlocked.');
+        await refreshMe();
+        router.replace('/archive');
+        return;
+      }
+      if (url) {
+        window.location.href = url;
+        return;
+      }
+      setToast('Unable to start checkout.');
     } finally {
       setPaywallBusy(false);
     }
-  }, [offerState, requestedDate]);
+  }, [offerState, requestedDate, refreshMe, router]);
 
   const monthStartDate = monthStart(monthId);
   const leadingBlankDays = weekdayIndexOfDate(monthStartDate);
@@ -404,6 +414,10 @@ export default function ArchiveView({ presentation = 'overlay' }: ArchiveViewPro
               {!isSignedIn ? (
                 <button type="button" className={styles.primary} onClick={handleSignIn} disabled={paywallBusy}>
                   {paywallBusy ? 'Signing in…' : 'Sign in to unlock'}
+                </button>
+              ) : entitled ? (
+                <button type="button" className={styles.primary} disabled>
+                  Owned
                 </button>
               ) : (
                 <button

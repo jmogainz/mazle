@@ -39,7 +39,8 @@ export type CheckoutRequest = {
 };
 
 export type CheckoutResponse = {
-  url: string;
+  url?: string;
+  alreadyOwned?: boolean;
 };
 
 export type LeaderboardEntry = {

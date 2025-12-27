@@ -367,6 +367,9 @@ export const mockApi = {
 
   createCheckout: async (body: CheckoutRequest): Promise<CheckoutResponse> => {
     const state = getOrInitMe();
+    if (state.entitlements.archiveAccess) {
+      return { alreadyOwned: true };
+    }
     // Simulate webhook granting entitlement shortly after returning.
     setMe({ ...state, pendingArchiveGrantAtMs: Date.now() + 1500 });
 

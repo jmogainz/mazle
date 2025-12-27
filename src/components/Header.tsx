@@ -4,13 +4,14 @@ import styles from './Header.module.css';
 
 interface HeaderProps {
   streak: number;
+  puzzleInfo?: string;
   onHelpClick: () => void;
   onStatsClick: () => void;
   logoRef?: React.Ref<HTMLDivElement>;
   logoClassName?: string;
 }
 
-export default function Header({ streak, onHelpClick, onStatsClick, logoRef, logoClassName }: HeaderProps) {
+export default function Header({ streak, puzzleInfo, onHelpClick, onStatsClick, logoRef, logoClassName }: HeaderProps) {
   return (
     <header className={styles.header}>
       <div className={styles.leftSection}>
@@ -25,6 +26,7 @@ export default function Header({ streak, onHelpClick, onStatsClick, logoRef, log
       
       <div className={`${styles.logo} ${logoClassName ?? ''}`.trim()} ref={logoRef}>
         <span className={styles.logoText}>MAZLE</span>
+        {puzzleInfo && <span className={styles.puzzleInfo}>{puzzleInfo}</span>}
       </div>
       
       <div className={styles.rightSection}>
@@ -39,4 +41,3 @@ export default function Header({ streak, onHelpClick, onStatsClick, logoRef, log
     </header>
   );
 }
-

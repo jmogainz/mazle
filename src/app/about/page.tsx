@@ -84,7 +84,7 @@ export default function About() {
                 name: 'Is Mazle free to play?',
                 acceptedAnswer: {
                   '@type': 'Answer',
-                  text: 'Yes! Mazle is completely free to play with no ads or in-app purchases. Just visit mazle.io to start playing.',
+                  text: 'Yes! Mazle is completely free to play. Just visit mazle.io to start playing.',
                 },
               },
               {
@@ -202,6 +202,8 @@ export default function About() {
         <Link href="/">← Back to Game</Link>
         <span>·</span>
         <Link href="/how-to-play">How to Play</Link>
+        <span>·</span>
+        <Link href="/privacy">Privacy</Link>
       </footer>
     </main>
   );

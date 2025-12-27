@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
-import { Header, GameUI, ShareCard, StatsModal, HelpModal, ErrorBoundary, Loader, DevTools } from '@/components';
+import { Header, GameUI, ShareCard, StatsModal, HelpModal, ErrorBoundary, Loader, DevTools, AdSlot } from '@/components';
 import { HELP_MENU_HASH } from '@/components/helpMenuHash';
 import {
   CHEAT_TIMEOUT_MS,
@@ -28,6 +28,7 @@ import {
   TILE_SIZE,
 } from '@/game';
 import { getPlayerStats, saveTodaysResult, getTodaysResult, getCachedPuzzle, cachePuzzle, saveInProgressState, getInProgressState, clearInProgressState } from '@/utils/storage';
+import { useAdConsent } from '@/utils/consent';
 import { PlayerStats, DailyStats } from '@/game/types';
 import type { GameControls } from '@/game/PhaserGame';
 import { getSwipeDirection, SWIPE_MIN_DISTANCE_PX } from '@/game/swipe';
@@ -45,10 +46,13 @@ const PhaserGame = dynamic(() => import('@/game/PhaserGame'), {
 
 // Keep for potential future use (e.g., auto-enable in dev builds)
 const _DEVTOOLS_BUILD_FLAG =
-  process.env.NEXT_PUBLIC_DEVTOOLS_ENABLED === '1' ||
   process.env.NEXT_PUBLIC_DEVTOOLS_ENABLED === 'true';
 
+const IS_PROD = process.env.NEXT_PUBLIC_ENV === 'prod';
 const HELP_SEEN_KEY = `mazle_seen_help_${HELP_MENU_HASH}`;
+const ADSENSE_TOP_SLOT = process.env.NEXT_PUBLIC_ADSENSE_SLOT_MOBILE_TOP ?? (!IS_PROD ? 'DEV_TOP' : '');
+const ADSENSE_BOTTOM_SLOT = process.env.NEXT_PUBLIC_ADSENSE_SLOT_BOTTOM ?? (!IS_PROD ? 'DEV_BOTTOM' : '');
+const AD_BANNER_HEIGHT = 50;
 
 export default function Home() {
   const [puzzle, setPuzzle] = useState<PuzzleData | null>(null);
@@ -68,6 +72,9 @@ export default function Home() {
   const [gameResult, setGameResult] = useState<{ moveCount: number; timeMs: number; failed?: boolean; attempts?: any[] } | null>(null);
   const [previousResult, setPreviousResult] = useState<DailyStats | null>(null);
   const [isGameReady, setIsGameReady] = useState(false);
+  const [isMobileDevice, setIsMobileDevice] = useState(false);
+  const [adsReady, setAdsReady] = useState(false);
+  const { consentReady } = useAdConsent();
   const [isPlaying, setIsPlaying] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState<GenerationProgress | null>(null);
@@ -82,6 +89,10 @@ export default function Home() {
     penaltyTimeMs?: number;
   } | null>(null);
   const [startBatchInput, setStartBatchInput] = useState('');
+  const [adStatus, setAdStatus] = useState<{ top: 'filled' | 'unfilled' | null; bottom: 'filled' | 'unfilled' | null }>({
+    top: null,
+    bottom: null,
+  });
   const gameControlsRef = useRef<GameControls | null>(null);
   const generationAbortRef = useRef<AbortController | null>(null);
   const inFlightSeedRef = useRef<string | null>(null);
@@ -90,6 +101,10 @@ export default function Home() {
   const cheatTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const gameFrameRef = useRef<HTMLDivElement | null>(null);
   const gameStageRef = useRef<HTMLDivElement | null>(null);
+  const adTopRef = useRef<HTMLDivElement | null>(null);
+  const adBottomRef = useRef<HTMLDivElement | null>(null);
+  const adsReadyTimeoutRef = useRef<number | null>(null);
+  const adTimeoutsRef = useRef<{ top?: number; bottom?: number }>({});
   const hintsPrefLoadedRef = useRef(false);
   const [gameFrameSizePx, setGameFrameSizePx] = useState<{ width: number; height: number } | null>(null);
   const tapTimestampsRef = useRef<number[]>([]);
@@ -118,6 +133,39 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    const uaData = (navigator as Navigator & { userAgentData?: { mobile?: boolean } }).userAgentData;
+    const ua = navigator.userAgent || '';
+    const uaMobile = /Android|iPhone|iPad|iPod|IEMobile|BlackBerry|Opera Mini|Mobi/i.test(ua);
+    const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+
+    setIsMobileDevice(Boolean(uaData?.mobile) || uaMobile || coarsePointer);
+  }, []);
+
+  useEffect(() => {
+    if (!isGameReady) {
+      setAdsReady(false);
+      if (adsReadyTimeoutRef.current !== null) {
+        window.clearTimeout(adsReadyTimeoutRef.current);
+        adsReadyTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    if (adsReady) return;
+    adsReadyTimeoutRef.current = window.setTimeout(() => {
+      setAdsReady(true);
+      adsReadyTimeoutRef.current = null;
+    }, 1000);
+
+    return () => {
+      if (adsReadyTimeoutRef.current !== null) {
+        window.clearTimeout(adsReadyTimeoutRef.current);
+        adsReadyTimeoutRef.current = null;
+      }
+    };
+  }, [isGameReady, adsReady]);
+
+  useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEYS.HINTS_ENABLED);
     if (stored !== null) {
       const enabled = stored === '1';
@@ -138,29 +186,86 @@ export default function Home() {
   const puzzleHeight = puzzle?.height ?? 10;
   const baseWidth = puzzleWidth * TILE_SIZE + GAME_BUFFER_PX * 2;
   const baseHeight = puzzleHeight * TILE_SIZE + GAME_BUFFER_PX * 2;
+  const showTopAd = !!ADSENSE_TOP_SLOT;
+  const showBottomAd = !!ADSENSE_BOTTOM_SLOT;
+  const canRequestAds = adsReady && consentReady;
 
-  // Size the maze frame to the *actual available* game area so it can't expand underneath
-  // the header/footer when the viewport is short or zoomed.
+  // Dynamic UI scaling system - maximizes maze size while keeping UI readable
+  // The --ui-scale CSS variable controls all UI element sizes
   useEffect(() => {
-    const stage = gameStageRef.current;
-    if (!stage) return;
-
     let rafId: number | null = null;
-    const update = () => {
-      const computedStyle = window.getComputedStyle(stage);
-      const paddingX =
-        parseFloat(computedStyle.paddingLeft || '0') + parseFloat(computedStyle.paddingRight || '0');
-      const paddingY =
-        parseFloat(computedStyle.paddingTop || '0') + parseFloat(computedStyle.paddingBottom || '0');
-
-      const availableWidth = stage.clientWidth - paddingX;
-      const availableHeight = stage.clientHeight - paddingY;
-      if (availableWidth <= 0 || availableHeight <= 0) return;
-
-      const scale = Math.min(1, availableWidth / baseWidth, availableHeight / baseHeight);
-      const width = Math.max(1, Math.floor(baseWidth * scale));
-      const height = Math.max(1, Math.floor(baseHeight * scale));
-
+    
+    const updateScale = () => {
+      const viewportHeight = window.visualViewport?.height || window.innerHeight;
+      const viewportWidth = window.innerWidth;
+      
+      // Fixed UI heights at scale=1 (approximate values)
+      const HEADER_HEIGHT = 56;      // MAZLE logo + icons
+      const PUZZLE_NUM_HEIGHT = 32;  // Puzzle number banner
+      const SCOREBOARD_HEIGHT = 70;  // Lives, moves, time row
+      const CONTROLS_HEIGHT = 56;    // Share button area
+      const FOOTER_HEIGHT = viewportWidth > 768 ? 32 : 0; // Desktop footer
+      const AD_HEIGHT = (showTopAd ? AD_BANNER_HEIGHT + 8 : 0) + (showBottomAd ? AD_BANNER_HEIGHT + 8 : 0);
+      const PADDING = 24;            // Various padding/gaps
+      
+      const totalUIHeight = HEADER_HEIGHT + PUZZLE_NUM_HEIGHT + SCOREBOARD_HEIGHT + 
+                           CONTROLS_HEIGHT + FOOTER_HEIGHT + AD_HEIGHT + PADDING;
+      
+      // Available height for the maze
+      const availableForMaze = viewportHeight - totalUIHeight;
+      
+      // Maximum maze size (don't let it grow infinitely on large screens)
+      const MAX_MAZE_SIZE = 520;
+      const MIN_MAZE_SIZE = 200;
+      
+      // Scale limits for UI
+      const UI_SCALE_MIN = 0.75;
+      const UI_SCALE_MAX = 1.0;
+      
+      // Calculate ideal maze size (constrained by width too)
+      const maxMazeByWidth = Math.min(viewportWidth - 32, MAX_MAZE_SIZE); // 16px padding each side
+      const idealMazeSize = Math.min(baseWidth, baseHeight, maxMazeByWidth, MAX_MAZE_SIZE);
+      
+      // How much height do we need for the ideal maze?
+      const neededForIdealMaze = idealMazeSize;
+      
+      let uiScale = UI_SCALE_MAX;
+      let mazeSize = idealMazeSize;
+      
+      if (availableForMaze < neededForIdealMaze) {
+        // Not enough space - try scaling down UI first
+        // Calculate how much UI space we can save by scaling
+        const uiScalableHeight = HEADER_HEIGHT + PUZZLE_NUM_HEIGHT + SCOREBOARD_HEIGHT + CONTROLS_HEIGHT;
+        
+        // How much extra space do we need?
+        const deficit = neededForIdealMaze - availableForMaze;
+        
+        // How much can we save by scaling UI to minimum?
+        const maxUISavings = uiScalableHeight * (1 - UI_SCALE_MIN);
+        
+        if (deficit <= maxUISavings) {
+          // We can fit the ideal maze by just scaling down UI
+          // Calculate the exact scale needed
+          uiScale = 1 - (deficit / uiScalableHeight);
+          uiScale = Math.max(UI_SCALE_MIN, Math.min(UI_SCALE_MAX, uiScale));
+          mazeSize = idealMazeSize;
+        } else {
+          // Even at minimum UI scale, we can't fit ideal maze
+          // Scale UI to minimum and shrink maze
+          uiScale = UI_SCALE_MIN;
+          const minUIHeight = totalUIHeight - uiScalableHeight * (1 - UI_SCALE_MIN);
+          mazeSize = Math.max(MIN_MAZE_SIZE, viewportHeight - minUIHeight);
+        }
+      }
+      
+      // Apply the UI scale to CSS custom property
+      document.documentElement.style.setProperty('--ui-scale', uiScale.toFixed(3));
+      
+      // Also update maze frame size
+      const mazeScale = Math.min(1, mazeSize / baseWidth, mazeSize / baseHeight);
+      const width = Math.max(1, Math.floor(baseWidth * mazeScale));
+      const height = Math.max(1, Math.floor(baseHeight * mazeScale));
+      
       setGameFrameSizePx((prev) => {
         if (prev && prev.width === width && prev.height === height) return prev;
         return { width, height };
@@ -171,23 +276,60 @@ export default function Home() {
       if (rafId != null) cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => {
         rafId = null;
-        update();
+        updateScale();
       });
     };
 
     scheduleUpdate();
-    const resizeObserver = new ResizeObserver(scheduleUpdate);
-    resizeObserver.observe(stage);
     window.visualViewport?.addEventListener('resize', scheduleUpdate);
     window.addEventListener('resize', scheduleUpdate);
 
     return () => {
       if (rafId != null) cancelAnimationFrame(rafId);
-      resizeObserver.disconnect();
       window.visualViewport?.removeEventListener('resize', scheduleUpdate);
       window.removeEventListener('resize', scheduleUpdate);
     };
-  }, [baseWidth, baseHeight]);
+  }, [baseWidth, baseHeight, showTopAd, showBottomAd]);
+
+  useEffect(() => {
+    const targets: Record<'top' | 'bottom', boolean> = {
+      top: adsReady && showTopAd,
+      bottom: adsReady && showBottomAd,
+    };
+
+    const clearTimeoutFor = (key: keyof typeof targets) => {
+      const timeoutId = adTimeoutsRef.current[key];
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId);
+        adTimeoutsRef.current[key] = undefined;
+      }
+    };
+
+    const ensureTimeout = (key: keyof typeof targets) => {
+      if (adTimeoutsRef.current[key] !== undefined) return;
+      adTimeoutsRef.current[key] = window.setTimeout(() => {
+        setAdStatus((prev) => {
+          if (prev[key] !== null) return prev;
+          return { ...prev, [key]: 'unfilled' };
+        });
+        adTimeoutsRef.current[key] = undefined;
+      }, 2000);
+    };
+
+    (Object.keys(targets) as Array<keyof typeof targets>).forEach((key) => {
+      const shouldTrack = targets[key];
+      if (!shouldTrack || adStatus[key] !== null) {
+        clearTimeoutFor(key);
+        return;
+      }
+      ensureTimeout(key);
+    });
+  }, [
+    adsReady,
+    showTopAd,
+    showBottomAd,
+    adStatus,
+  ]);
 
   // Secret cheat code listener (hash-based, code not in plain text)
   useEffect(() => {
@@ -905,12 +1047,33 @@ export default function Home() {
   const isPostGame = !isPlaying && (!!gameResult || !!previousResult);
   const shouldBlur = showShareCard || (!isPlaying && isGameReady && !showInlineResult);
   const showResultsButton = showInlineResult;
+  const isAdVisible = (status: 'filled' | 'unfilled' | null) => canRequestAds && status === 'filled';
 
   return (
     <ErrorBoundary>
       <main className={`${styles.main} bg-pattern`}>
+        {showTopAd && (
+          <div
+            ref={adTopRef}
+            className={`${styles.adBanner} ${styles.adBannerTop} ${adStatus.top === 'unfilled' ? styles.adCollapsed : (!isAdVisible(adStatus.top) ? styles.adHidden : '')}`}
+            role="complementary"
+            aria-label="Advertisement"
+          >
+            <AdSlot
+              slot={ADSENSE_TOP_SLOT}
+              className={styles.adBannerSlot}
+              format="horizontal"
+              responsive={true}
+              enabled={canRequestAds}
+              onSlotStatus={(status) =>
+                setAdStatus((prev) => (prev.top === status ? prev : { ...prev, top: status }))
+              }
+            />
+          </div>
+        )}
         <Header
           streak={stats?.currentStreak || 0}
+          puzzleInfo={puzzleLabel ?? `#${puzzleNumber}`}
           onHelpClick={() => setShowHelp(true)}
           onStatsClick={() => setShowStats(true)}
           logoRef={devToolsTapTargetRef}
@@ -944,14 +1107,6 @@ export default function Home() {
               canStopGeneration={!!generationAbortRef.current}
             />
           )}
-
-          {/* Puzzle Number - separate from stats for better spacing */}
-          <div className={styles.puzzleNumberBanner}>
-            <span className={styles.puzzleNumberText}>
-              {puzzleLabel ?? `#${puzzleNumber}`}
-            </span>
-          </div>
-
 
           {/* Only show stats when game is ready (avoids flash of default values during restore) */}
           {(!hasPendingRestore || isGameReady) && (
@@ -1019,8 +1174,33 @@ export default function Home() {
           </div>
         </div>
 
+        {showBottomAd && (
+          <div
+            ref={adBottomRef}
+            className={`${styles.adBanner} ${styles.adBannerBottom} ${adStatus.bottom === 'unfilled' ? styles.adCollapsed : (!isAdVisible(adStatus.bottom) ? styles.adHidden : '')}`}
+            role="complementary"
+            aria-label="Advertisement"
+          >
+            <AdSlot
+              slot={ADSENSE_BOTTOM_SLOT}
+              className={styles.adBannerSlot}
+              format="horizontal"
+              responsive={true}
+              enabled={canRequestAds}
+              onSlotStatus={(status) =>
+                setAdStatus((prev) => (prev.bottom === status ? prev : { ...prev, bottom: status }))
+              }
+            />
+          </div>
+        )}
+
         <footer className={styles.footer}>
           <p>Use arrow keys or swipe to move</p>
+          <p className={styles.footerLinks}>
+            <a href="/about">About</a>
+            <span>·</span>
+            <a href="/privacy">Privacy</a>
+          </p>
         </footer>
 
         {/* Modals */}

@@ -1,7 +1,10 @@
 import type { Metadata, Viewport } from 'next';
 import { Analytics } from '@vercel/analytics/next';
 import { Nunito, Press_Start_2P } from 'next/font/google';
+import Script from 'next/script';
 import './globals.css';
+
+const CMP_SCRIPT_SRC = process.env.NEXT_PUBLIC_CMP_SCRIPT_SRC || '';
 
 const pixelFont = Press_Start_2P({
   weight: '400',
@@ -121,7 +124,23 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${pixelFont.variable} ${nunito.variable}`}>
+      <head>
+        {CMP_SCRIPT_SRC ? (
+          <Script
+            id="cmp-script"
+            strategy="beforeInteractive"
+            src={CMP_SCRIPT_SRC}
+            crossOrigin="anonymous"
+          />
+        ) : null}
+      </head>
       <body>
+        <Script
+          id="adsense"
+          strategy="beforeInteractive"
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4676376614824147"
+          crossOrigin="anonymous"
+        />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{

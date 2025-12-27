@@ -621,13 +621,49 @@
   width: 100%;
   padding: 0.25rem;
   overflow: hidden;
-  /* This is key - establish a containing block with explicit dimensions */
   position: relative;
+}
+
+.adHidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.adCollapsed {
+  display: none;
+}
+
+/* Banner ads - full width top/bottom */
+.adBanner {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem 0;
+  z-index: 30;
+  touch-action: manipulation;
+  flex: 0 0 auto;
+}
+
+.adBannerTop {
+  padding-top: env(safe-area-inset-top);
+}
+
+.adBannerBottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.adBannerSlot {
+  width: 100%;
+  max-width: 728px;
+  min-height: 50px;
+  max-height: 50px;
 }
 
 /* Game Frame - shrink-wraps the canvas */
 .gameFrame {
   position: relative;
+  z-index: 1;
   border-radius: 10px;
   overflow: hidden;
   /* Don't set explicit width/height - let it shrink-wrap the canvas */
@@ -703,8 +739,9 @@
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  min-height: 48px;
-  padding: 0.25rem 0;
+  min-height: calc(48px * var(--ui-scale));
+  padding: calc(0.25rem * var(--ui-scale)) 0;
+  transition: min-height 0.15s ease-out, padding 0.15s ease-out;
 }
 
 /* Unified share button (works on all devices) */
@@ -713,15 +750,15 @@
   color: var(--color-background);
   border: 2px solid var(--color-primary);
   border-radius: 10px;
-  padding: 0.65rem 1.25rem;
-  font-size: 0.9rem;
+  padding: calc(0.65rem * var(--ui-scale)) calc(1.25rem * var(--ui-scale));
+  font-size: calc(0.9rem * var(--ui-scale));
   font-weight: 700;
   font-family: var(--font-main);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   cursor: pointer;
   box-shadow: 0 3px 10px rgba(99, 102, 241, 0.25);
-  transition: opacity 0.2s, transform 0.2s, box-shadow 0.2s;
+  transition: opacity 0.2s, transform 0.2s, box-shadow 0.2s, padding 0.15s ease-out, font-size 0.15s ease-out;
 }
 
 .shareButton:hover {
@@ -746,8 +783,8 @@
 }
 
 .startButton {
-  padding: 1.1rem 3.2rem;
-  font-size: 1.3rem;
+  padding: calc(1.1rem * var(--ui-scale)) calc(3.2rem * var(--ui-scale));
+  font-size: calc(1.3rem * var(--ui-scale));
   font-weight: 800;
   font-family: var(--font-main);
   color: var(--color-text);
@@ -758,7 +795,7 @@
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1), padding 0.15s ease-out, font-size 0.15s ease-out;
   animation: none;
 }
 
@@ -839,35 +876,37 @@
 
 .previousResult {
   text-align: center;
-  padding: 1.5rem;
+  padding: calc(1.5rem * var(--ui-scale));
   background: var(--color-background);
   border-radius: 14px;
   border: 2px solid var(--color-border);
   backdrop-filter: blur(4px);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
   width: 80%;
-  max-width: 300px;
+  max-width: calc(300px * var(--ui-scale));
   font-family: var(--font-main);
+  transition: padding 0.15s ease-out, max-width 0.15s ease-out;
 }
 
 .previousResult p {
   color: var(--color-secondary);
-  font-size: 0.9rem;
-  margin-bottom: 1rem;
+  font-size: calc(0.9rem * var(--ui-scale));
+  margin-bottom: calc(1rem * var(--ui-scale));
   font-weight: 500;
+  transition: font-size 0.15s ease-out, margin-bottom 0.15s ease-out;
 }
 
 .viewResultButton {
-  padding: 0.75rem 1.5rem;
+  padding: calc(0.75rem * var(--ui-scale)) calc(1.5rem * var(--ui-scale));
   background: var(--color-surface);
   color: var(--color-text);
   border: 2px solid var(--color-border);
   border-radius: 10px;
-  font-size: 0.9rem;
+  font-size: calc(0.9rem * var(--ui-scale));
   font-weight: 700;
   font-family: var(--font-main);
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1), padding 0.15s ease-out, font-size 0.15s ease-out;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -930,6 +969,27 @@
   font-size: 0.75rem;
 }
 
+.footerLinks {
+  margin-top: 0.25rem;
+  font-size: 0.7rem;
+}
+
+.footerLinks a {
+  color: var(--color-secondary);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.footerLinks a:hover {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+.footerLinks span {
+  margin: 0 0.35rem;
+  opacity: 0.5;
+}
+
 /* Desktop (769px+) - show footer, more padding */
 @media (min-width: 769px) {
   .gameWrapper {
@@ -963,65 +1023,18 @@
   }
 
   .gameArea {
-    flex: 0 0 auto;
+    flex: 0 1 auto;
+    min-height: 0;
     padding: 0;
   }
 
   .controlsArea {
-    margin-top: 1.25rem;
-    min-height: 60px;
-    padding: 0.5rem 0;
-  }
-
-  .shareButton {
-    padding: 0.85rem 1.75rem;
-    font-size: 1rem;
+    margin-top: calc(1rem * var(--ui-scale));
   }
 
   .puzzleNumberBanner {
-    margin-bottom: 0.5rem;
-  }
-
-  .puzzleNumberText {
-    font-size: 1.6rem;
+    margin-bottom: calc(0.35rem * var(--ui-scale));
   }
 }
 
 /* Puzzle Number Banner - sits between header and stats */
-.puzzleNumberBanner {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 0.25rem 0;
-}
-
-.puzzleNumberText {
-  font-family: var(--font-main);
-  font-size: 1.4rem;
-  font-weight: 800;
-  color: var(--color-text);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-/* Short screens - reduce header impact */
-@media (max-height: 600px) {
-  .gameWrapper {
-    padding: 0.25rem;
-    gap: 0;
-  }
-
-  .gameArea {
-    padding: 0;
-  }
-
-  .controlsArea {
-    min-height: 40px;
-    padding: 0.125rem 0;
-  }
-
-  .shareButton {
-    padding: 0.5rem 1rem;
-    font-size: 0.85rem;
-  }
-}

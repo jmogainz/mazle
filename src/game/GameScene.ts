@@ -61,6 +61,7 @@ export class GameScene extends Phaser.Scene {
   private unlockedHintEdges: Set<string> = new Set();
   private unlockedThisLifeTiles: Set<string> = new Set();
   private unlockedThisLifeEdges: Set<string> = new Set();
+  private nextHintEdgeIndex = 0;
 
   /**
    * Generate pre-rendered number textures to avoid Canvas text rasterization artifacts.
@@ -1615,6 +1616,7 @@ export class GameScene extends Phaser.Scene {
     this.unlockedHintEdges = new Set();
     this.unlockedThisLifeTiles = new Set();
     this.unlockedThisLifeEdges = new Set();
+    this.recomputeNextHintEdgeIndex();
     if (this.hintsEnabled) {
       this.redrawHintOverlays();
     }
@@ -1642,6 +1644,7 @@ export class GameScene extends Phaser.Scene {
       this.solutionNextByKey = null;
       this.solutionPosByKey = null;
       this.solutionEdges = null;
+      this.nextHintEdgeIndex = 0;
       return;
     }
 
@@ -1665,6 +1668,22 @@ export class GameScene extends Phaser.Scene {
     this.solutionNextByKey = nextByKey;
     this.solutionPosByKey = posByKey;
     this.solutionEdges = edges;
+    this.recomputeNextHintEdgeIndex();
+  }
+
+  private recomputeNextHintEdgeIndex() {
+    const path = this.puzzle.solutionPath;
+    if (!path || path.length < 2) {
+      this.nextHintEdgeIndex = 0;
+      return;
+    }
+
+    let idx = 0;
+    for (; idx < path.length - 1; idx++) {
+      const edgeKey = `${positionKey(path[idx])}->${positionKey(path[idx + 1])}`;
+      if (!this.unlockedHintEdges.has(edgeKey)) break;
+    }
+    this.nextHintEdgeIndex = idx;
   }
 
   private recordHintProgress(fromPos: Position, toPos: Position) {
@@ -1685,16 +1704,20 @@ export class GameScene extends Phaser.Scene {
 
     // Visual hint unlocking (only if hints enabled)
     if (this.hintsEnabled) {
-      // 2) Stopping on an optimal-path tile (landing positions only; not intermediate slide tiles)
-      const toIndex = this.solutionIndexByKey.get(toKey);
-      if (toIndex !== undefined && toKey !== startKey && toKey !== goalKey) {
-        this.unlockedThisLifeTiles.add(toKey);
-      }
+      // Reveal at most one new correct edge per life, in order.
+      if (this.unlockedThisLifeEdges.size > 0) return;
 
-      // 3) Making a move along the optimal path (consecutive step) - for hint unlocking
-      const expectedNextKey = this.solutionNextByKey.get(fromKey);
-      if (expectedNextKey === toKey && toKey !== goalKey) {
-        this.unlockedThisLifeEdges.add(edgeKey);
+      const path = this.puzzle.solutionPath;
+      if (!path || path.length < 2) return;
+      if (this.nextHintEdgeIndex >= path.length - 1) return;
+
+      const expectedFromKey = positionKey(path[this.nextHintEdgeIndex]);
+      const expectedNextKey = this.solutionNextByKey.get(expectedFromKey);
+      if (!expectedNextKey) return;
+
+      if (fromKey === expectedFromKey && expectedNextKey === toKey && toKey !== goalKey) {
+        const expectedEdgeKey = `${expectedFromKey}->${expectedNextKey}`;
+        this.unlockedThisLifeEdges.add(expectedEdgeKey);
         if (fromKey !== startKey && fromKey !== goalKey) this.unlockedThisLifeTiles.add(fromKey);
         if (toKey !== startKey && toKey !== goalKey) this.unlockedThisLifeTiles.add(toKey);
       }
@@ -1706,6 +1729,7 @@ export class GameScene extends Phaser.Scene {
     for (const key of this.unlockedThisLifeEdges) this.unlockedHintEdges.add(key);
     this.unlockedThisLifeTiles = new Set();
     this.unlockedThisLifeEdges = new Set();
+    this.recomputeNextHintEdgeIndex();
   }
 
   private createHintOverlays() {
@@ -2286,6 +2310,7 @@ export class GameScene extends Phaser.Scene {
     this.unlockedHintEdges = new Set(state.unlockedHintEdges ?? []);
     this.unlockedThisLifeTiles = new Set(state.unlockedThisLifeTiles ?? []);
     this.unlockedThisLifeEdges = new Set(state.unlockedThisLifeEdges ?? []);
+    this.recomputeNextHintEdgeIndex();
     // Redraw hint overlays if any hints were restored
     if (this.hintsEnabled && (state.unlockedHintTiles?.length || state.unlockedHintEdges?.length)) {
       this.redrawHintOverlays();

@@ -1086,6 +1086,7 @@ export default function Home() {
     // Hide the share card but keep inline analysis visible
     setShowShareCard(false);
     setShowInlineResult(true);
+    setReviewAttemptIndex(null);
     showAnalysis();
   }, [showAnalysis]);
 

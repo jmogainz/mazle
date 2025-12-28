@@ -167,6 +167,12 @@
   accent-color: var(--color-primary);
 }
 
+.devRangeInput {
+  flex: 1;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
 .devToggleHint {
   color: var(--color-secondary);
   font-size: 0.7rem;

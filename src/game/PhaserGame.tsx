@@ -14,6 +14,8 @@ export interface GameControls {
   getSerializableState: () => ReturnType<GameScene['getSerializableState']> | null;
   restoreState: (state: Parameters<GameScene['restoreState']>[0]) => void;
   setHintsEnabled: (enabled: boolean) => void;
+  setMaxLives: (count: number) => void;
+  getMaxLives: () => number;
 }
 
 interface PhaserGameProps {
@@ -69,6 +71,14 @@ export default function PhaserGame({ puzzle, viewportWidth, viewportHeight, onRe
     setHintsEnabled: (enabled: boolean) => {
       const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;
       scene?.setHintsEnabled(enabled);
+    },
+    setMaxLives: (count: number) => {
+      const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;
+      scene?.setMaxLives(count);
+    },
+    getMaxLives: () => {
+      const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;
+      return scene?.getMaxLives() ?? 3;
     },
   }), []);
 

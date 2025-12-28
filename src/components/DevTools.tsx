@@ -20,6 +20,8 @@ interface DevToolsProps {
   lastUsedBackend: 'rust-backend' | 'wasm' | null;
   hintsEnabled: boolean;
   onHintsToggle: (enabled: boolean) => void;
+  maxLives: number;
+  onMaxLivesChange: (count: number) => void;
   isGenerating: boolean;
   generationProgress: GenerationProgress | null;
   onGenerate: (seed?: string) => void;
@@ -45,6 +47,8 @@ export default function DevTools({
   lastUsedBackend,
   hintsEnabled,
   onHintsToggle,
+  maxLives,
+  onMaxLivesChange,
   isGenerating,
   generationProgress,
   onGenerate,
@@ -95,6 +99,21 @@ export default function DevTools({
             Hints
           </label>
           <span className={styles.devToggleHint}>Show hint overlays after life loss</span>
+        </div>
+
+        <div className={styles.devToggleRow}>
+          <label className={styles.devToggleLabel}>
+            Lives: {maxLives}
+          </label>
+          <input
+            type="range"
+            min="3"
+            max="5"
+            value={maxLives}
+            onChange={(e) => onMaxLivesChange(parseInt(e.target.value, 10))}
+            className={styles.devRangeInput}
+            disabled={isGenerating}
+          />
         </div>
 
         {/* Core Stats - 3x2 grid */}

@@ -14,6 +14,7 @@ interface ShareCardProps {
   failed?: boolean;
   attempts?: any[]; // Keep flexible for now
   mapType?: MapType;
+  maxLives?: number; // Dynamic lives count (default 3)
   onClose: () => void;
   inline?: boolean;
 }
@@ -65,6 +66,7 @@ export default function ShareCard({
   failed = false,
   attempts = [],
   mapType = MapType.ICE,
+  maxLives = 3,
   onClose,
   inline = false,
 }: ShareCardProps) {
@@ -118,8 +120,8 @@ export default function ShareCard({
         rows.push('🟥'.repeat(filledBlocks) + '💀' + '⬛'.repeat(remainingBlocks));
       }
 
-      // Always show 3 rows for failed attempts
-      while (rows.length < 3) {
+      // Show rows up to maxLives for failed attempts
+      while (rows.length < maxLives) {
         rows.push('⬛'.repeat(optimalMoves));
       }
 
@@ -289,11 +291,11 @@ ${generateProgressBlocks()}
       rows.push({ progress: Math.min(moveCount, maxBlocks), status: 'success' });
     }
 
-    while (rows.length < 3) {
+    while (rows.length < maxLives) {
       rows.push({ progress: 0, status: 'empty' });
     }
 
-    return rows.slice(0, 3);
+    return rows.slice(0, maxLives);
   };
 
   const bars = attemptBars();

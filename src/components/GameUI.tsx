@@ -11,6 +11,7 @@ interface InitialGameState {
   currentAttemptMoves?: number;
   elapsedTimeMs?: number;
   penaltyTimeMs?: number;
+  maxLives?: number;
 }
 
 interface GameUIProps {
@@ -21,11 +22,13 @@ interface GameUIProps {
   hidePuzzleNumber?: boolean;
   initialState?: InitialGameState;
   frozen?: boolean; // When true, ignore game events (for completed game display)
+  maxLives?: number; // Override default 3 lives (for dev tools)
 }
 
-export default function GameUI({ puzzleNumber, puzzleLabel, optimalMoves, variant = 'header', hidePuzzleNumber = false, initialState, frozen = false }: GameUIProps) {
+export default function GameUI({ puzzleNumber, puzzleLabel, optimalMoves, variant = 'header', hidePuzzleNumber = false, initialState, frozen = false, maxLives: propMaxLives }: GameUIProps) {
   const [currentAttemptMoves, setCurrentAttemptMoves] = useState(initialState?.currentAttemptMoves ?? 0);
-  const [lives, setLives] = useState(initialState?.lives ?? 3);
+  const [maxLives, setMaxLives] = useState(propMaxLives ?? initialState?.maxLives ?? 3);
+  const [lives, setLives] = useState(initialState?.lives ?? maxLives);
   const [elapsedTime, setElapsedTime] = useState(initialState?.elapsedTimeMs ?? 0);
   const [startTime, setStartTime] = useState<number | null>(null);
   const [penaltyTimeMs, setPenaltyTimeMs] = useState(initialState?.penaltyTimeMs ?? 0);
@@ -33,6 +36,14 @@ export default function GameUI({ puzzleNumber, puzzleLabel, optimalMoves, varian
   const [showTooltip, setShowTooltip] = useState(false);
   const [penaltyFlash, setPenaltyFlash] = useState(false);
   const displayLabel = puzzleLabel ?? `#${puzzleNumber}`;
+
+  // Sync maxLives and lives when prop changes (dev tools adjustment)
+  useEffect(() => {
+    if (propMaxLives !== undefined) {
+      setMaxLives(propMaxLives);
+      setLives(propMaxLives);
+    }
+  }, [propMaxLives]);
 
   // Initialize startTime on client only to avoid hydration mismatch
   useEffect(() => {
@@ -47,9 +58,12 @@ export default function GameUI({ puzzleNumber, puzzleLabel, optimalMoves, varian
     if (frozen) return;
 
     const unsubscribeState = onGameEvent('stateUpdate', (data) => {
-      const state = data as GameState;
+      const state = data as GameState & { maxLives?: number };
       setCurrentAttemptMoves(state.currentAttemptMoves);
       setLives(state.lives);
+      if (state.maxLives !== undefined) {
+        setMaxLives(state.maxLives);
+      }
       setStartTime(state.startTime);
       setPenaltyTimeMs(state.penaltyTimeMs);
       setIsComplete(state.isComplete);
@@ -115,7 +129,7 @@ export default function GameUI({ puzzleNumber, puzzleLabel, optimalMoves, varian
         {/* Lives */}
         <div className={styles.statGroup}>
           <div className={styles.livesContainer}>
-            {Array.from({ length: 3 }).map((_, i) => (
+            {Array.from({ length: maxLives }).map((_, i) => (
               <div
                 key={i}
                 className={`${styles.lifeNode} ${i < lives ? styles.lifeActive : styles.lifeLost}`}

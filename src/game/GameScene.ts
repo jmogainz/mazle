@@ -41,6 +41,7 @@ export class GameScene extends Phaser.Scene {
 
   private isPlaying = false;
   private hintsEnabled = HINTS_ENABLED;
+  private maxLives = 3; // Configurable via dev tools (3-5)
 
   // Boulder state tracking (for ground maps)
   private boulderPositions: Set<string> = new Set();
@@ -178,7 +179,7 @@ export class GameScene extends Phaser.Scene {
       moveCount: 0,
       currentAttemptMoves: 0,
       currentAttemptCorrectMoves: 0,
-      lives: 3,
+      lives: this.maxLives,
       penaltyTimeMs: 0,
       attempts: [],
       startTime: 0,
@@ -1549,6 +1550,22 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  // Set maximum lives (for dev tools, 3-5)
+  public setMaxLives(count: number) {
+    const clamped = Math.max(3, Math.min(5, count));
+    if (this.maxLives === clamped) return;
+    this.maxLives = clamped;
+    // Update current lives to match new max if game hasn't started
+    if (!this.isPlaying) {
+      this.gameState.lives = this.maxLives;
+    }
+    emitGameEvent('stateUpdate', { ...this.gameState, maxLives: this.maxLives });
+  }
+
+  public getMaxLives(): number {
+    return this.maxLives;
+  }
+
   // Public method to restart the puzzle
   public restart() {
     this.clearAnalysis();
@@ -1558,7 +1575,7 @@ export class GameScene extends Phaser.Scene {
       moveCount: 0,
       currentAttemptMoves: 0,
       currentAttemptCorrectMoves: 0,
-      lives: 3,
+      lives: this.maxLives,
       penaltyTimeMs: 0,
       attempts: [],
       startTime: 0,

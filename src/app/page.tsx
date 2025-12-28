@@ -80,6 +80,7 @@ export default function Home() {
   const [generationProgress, setGenerationProgress] = useState<GenerationProgress | null>(null);
   const [showInlineResult, setShowInlineResult] = useState(false);
   const [hintsEnabled, setHintsEnabled] = useState(true);
+  const [devMaxLives, setDevMaxLives] = useState(3);
   const [lifeFlash, setLifeFlash] = useState(false);
   const [hasPendingRestore, setHasPendingRestore] = useState(false);
   const [initialStats, setInitialStats] = useState<{
@@ -87,6 +88,7 @@ export default function Home() {
     currentAttemptMoves?: number;
     elapsedTimeMs?: number;
     penaltyTimeMs?: number;
+    maxLives?: number;
   } | null>(null);
   const [startBatchInput, setStartBatchInput] = useState('');
   const [adStatus, setAdStatus] = useState<{ top: 'filled' | 'unfilled' | null; bottom: 'filled' | 'unfilled' | null }>({
@@ -112,6 +114,12 @@ export default function Home() {
   const devToolsTapTargetRef = useRef<HTMLDivElement | null>(null);
   const pendingRestoreRef = useRef<Parameters<GameControls['restoreState']>[0] | null>(null);
   const hintsEnabledRef = useRef(hintsEnabled);
+  const devMaxLivesRef = useRef(devMaxLives);
+
+  // Keep devMaxLivesRef in sync
+  useEffect(() => {
+    devMaxLivesRef.current = devMaxLives;
+  }, [devMaxLives]);
 
   // Sync CSS custom property to the real visual viewport height (iOS-safe)
   useEffect(() => {
@@ -937,6 +945,11 @@ export default function Home() {
     gameControlsRef.current = controls;
     setIsGameReady(true);
     controls.setHintsEnabled(hintsEnabledRef.current);
+    
+    // Sync dev tools maxLives setting if not default
+    if (devMaxLivesRef.current !== 3) {
+      controls.setMaxLives(devMaxLivesRef.current);
+    }
 
     // Show help on first visit
     try {
@@ -1021,6 +1034,11 @@ export default function Home() {
     }
   }, [activeSeed]);
 
+  const handleMaxLivesChange = useCallback((count: number) => {
+    setDevMaxLives(count);
+    gameControlsRef.current?.setMaxLives(count);
+  }, []);
+
   const handleCloseShareCard = useCallback(() => {
     // Hide the share card but keep inline analysis visible
     setShowShareCard(false);
@@ -1098,6 +1116,8 @@ export default function Home() {
               lastUsedBackend={lastUsedBackend}
               hintsEnabled={hintsEnabled}
               onHintsToggle={setHintsEnabled}
+              maxLives={devMaxLives}
+              onMaxLivesChange={handleMaxLivesChange}
               isGenerating={isGenerating}
               generationProgress={generationProgress}
               onGenerate={handleDevSeedGenerate}
@@ -1118,6 +1138,7 @@ export default function Home() {
               hidePuzzleNumber={true}
               initialState={initialStats ?? undefined}
               frozen={isPostGame}
+              maxLives={devMaxLives}
             />
           )}
 
@@ -1213,6 +1234,7 @@ export default function Home() {
             optimalMoves={puzzle.optimalMoves}
             failed={gameResult.failed}
             attempts={gameResult.attempts}
+            maxLives={devMaxLives}
             onClose={handleCloseShareCard}
           />
         )}

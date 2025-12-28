@@ -179,6 +179,13 @@ export const COLORS = {
   HINT_TILE_EDGE: 0x538d4e,   // Match GOAL_EDGE - stopping points
   HINT_PATH_FACE: 0xa8d8a8,   // Lighter tint of goal green - intermediate path
   HINT_PATH_EDGE: 0x8fc98a,   // Light green edge - intermediate path
+
+  // Attempt Review (Red - similar to Hints but for failures)
+  ATTEMPT_GLOW: 0xff4d4d,
+  ATTEMPT_TILE_FACE: 0xff4d4d,
+  ATTEMPT_TILE_EDGE: 0xcc0000,
+  ATTEMPT_PATH_FACE: 0xffb3b3, // Lighter red
+  ATTEMPT_PATH_EDGE: 0xff8080,
 };
 
 export const TILE_SIZE = 64;

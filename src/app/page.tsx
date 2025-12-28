@@ -29,7 +29,7 @@ import {
 } from '@/game';
 import { getPlayerStats, saveTodaysResult, getTodaysResult, getCachedPuzzle, cachePuzzle, saveInProgressState, getInProgressState, clearInProgressState } from '@/utils/storage';
 import { useAdConsent } from '@/utils/consent';
-import { PlayerStats, DailyStats } from '@/game/types';
+import { PlayerStats, DailyStats, GameState } from '@/game/types';
 import type { GameControls } from '@/game/PhaserGame';
 import { getSwipeDirection, SWIPE_MIN_DISTANCE_PX } from '@/game/swipe';
 import styles from './page.module.css';
@@ -115,6 +115,8 @@ export default function Home() {
   const pendingRestoreRef = useRef<Parameters<GameControls['restoreState']>[0] | null>(null);
   const hintsEnabledRef = useRef(hintsEnabled);
   const devMaxLivesRef = useRef(devMaxLives);
+  const [liveAttempts, setLiveAttempts] = useState<GameState['attempts']>([]);
+  const [reviewAttemptIndex, setReviewAttemptIndex] = useState<number | null>(null);
 
   // Keep devMaxLivesRef in sync
   useEffect(() => {
@@ -768,26 +770,42 @@ export default function Home() {
     });
 
     // Save in-progress state on each state update (for resume after refresh)
-    const persistInProgressState = () => {
+    const persistInProgressState = (data: any) => {
+      const state = data as GameState;
+      setLiveAttempts(state.attempts);
+
       // Only save if we're in the daily puzzle (not debug mode) and game hasn't completed
       if (debugModeRef.current || previousResult) return;
 
-      const state = gameControlsRef.current?.getSerializableState();
-      if (state && state.isPlaying && activeSeed) {
-        saveInProgressState(activeSeed, state);
+      const serializableState = gameControlsRef.current?.getSerializableState();
+      if (serializableState && serializableState.isPlaying && activeSeed) {
+        saveInProgressState(activeSeed, serializableState);
       }
     };
     const unsubscribeStateUpdate = onGameEvent('stateUpdate', persistInProgressState);
 
     // Also persist while idle and when backgrounding/unloading so elapsed time doesn't jump backwards.
-    const intervalId = window.setInterval(persistInProgressState, 5000);
+    const intervalId = window.setInterval(() => {
+        // We can't access state directly here easily without ref, but getSerializableState works
+        const state = gameControlsRef.current?.getSerializableState();
+        if (state && state.isPlaying && activeSeed && !debugModeRef.current && !previousResult) {
+            saveInProgressState(activeSeed, state);
+        }
+    }, 5000);
+    
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
-        persistInProgressState();
+         const state = gameControlsRef.current?.getSerializableState();
+         if (state && state.isPlaying && activeSeed && !debugModeRef.current && !previousResult) {
+             saveInProgressState(activeSeed, state);
+         }
       }
     };
     const handlePageHide = () => {
-      persistInProgressState();
+       const state = gameControlsRef.current?.getSerializableState();
+       if (state && state.isPlaying && activeSeed && !debugModeRef.current && !previousResult) {
+           saveInProgressState(activeSeed, state);
+       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('pagehide', handlePageHide);
@@ -802,15 +820,31 @@ export default function Home() {
     };
   }, [puzzleNumber, previousResult, activeSeed]);
 
+  // Reset review mode when hints are enabled
+  useEffect(() => {
+    if (hintsEnabled) {
+      setReviewAttemptIndex(null);
+    }
+  }, [hintsEnabled]);
+
+  // Apply review path when index changes
+  useEffect(() => {
+    gameControlsRef.current?.showSingleAttemptPath(reviewAttemptIndex);
+  }, [reviewAttemptIndex]);
+
   const handleRestart = useCallback(() => {
     setIsPlaying(false);
     gameControlsRef.current?.restart();
     setShowShareCard(false);
+    setLiveAttempts([]);
+    setReviewAttemptIndex(null);
   }, []);
 
   const handleBegin = useCallback(() => {
     setIsPlaying(true);
     gameControlsRef.current?.start();
+    setLiveAttempts([]);
+    setReviewAttemptIndex(null);
   }, []);
 
   const handleDevSeedGenerate = useCallback(
@@ -869,6 +903,7 @@ export default function Home() {
           setPreviousResult(null);
           setInitialStats(null);
           setIsPlaying(false);
+          setReviewAttemptIndex(null);
         } catch (error) {
           if (abortController.signal.aborted || (error instanceof DOMException && error.name === 'AbortError')) {
             console.log('[Dev] Generation cancelled by user');
@@ -914,6 +949,7 @@ export default function Home() {
         setPreviousResult(null);
         setInitialStats(null);
         setIsPlaying(false);
+        setReviewAttemptIndex(null);
       } catch (error) {
         if (abortController.signal.aborted || (error instanceof DOMException && error.name === 'AbortError')) {
           console.log('[Dev] Generation cancelled by user');
@@ -1139,6 +1175,9 @@ export default function Home() {
               initialState={initialStats ?? undefined}
               frozen={isPostGame}
               maxLives={devMaxLives}
+              hintsEnabled={hintsEnabled}
+              onReviewAttempt={setReviewAttemptIndex}
+              reviewAttemptIndex={reviewAttemptIndex}
             />
           )}
 

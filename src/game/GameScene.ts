@@ -30,6 +30,8 @@ export class GameScene extends Phaser.Scene {
   private tileGraphics!: Phaser.GameObjects.Graphics;
   private hintTileContainers: Phaser.GameObjects.Container[] = [];
   private hintTileTweens: Phaser.Tweens.Tween[] = [];
+  private reviewTileContainers: Phaser.GameObjects.Container[] = [];
+  private reviewTileTweens: Phaser.Tweens.Tween[] = [];
   private goalSprite!: Phaser.GameObjects.Container;
   private flashOverlay!: Phaser.GameObjects.Graphics;
   private isAnimating = false;
@@ -1139,79 +1141,103 @@ export class GameScene extends Phaser.Scene {
 
     const s = TILE_SIZE / 32;
 
-    // Draw dead character at each failure point
+    // Group attempts by failure position
+    const failuresByPos = new Map<string, { pos: Position, indices: number[] }>();
+
     this.gameState.attempts.forEach((attempt, idx) => {
       if (attempt.failedAt) {
-        const fx = this.offsetX + attempt.failedAt.x * TILE_SIZE + TILE_SIZE / 2;
-        const fy = this.offsetY + attempt.failedAt.y * TILE_SIZE + TILE_SIZE / 2 - this.tileFaceLift;
+        const key = positionKey(attempt.failedAt);
+        if (!failuresByPos.has(key)) {
+          failuresByPos.set(key, { pos: attempt.failedAt, indices: [] });
+        }
+        failuresByPos.get(key)!.indices.push(idx + 1); // Store 1-based attempt number
+      }
+    });
 
-        // Create container for the failure marker
-        const container = this.add.container(fx, fy);
-        container.setDepth(6);
-        container.setAlpha(0);
-        this.analysisObjects.push(container);
+    // Draw one dead character per unique failure position
+    failuresByPos.forEach(({ pos, indices }) => {
+      const fx = this.offsetX + pos.x * TILE_SIZE + TILE_SIZE / 2;
+      const fy = this.offsetY + pos.y * TILE_SIZE + TILE_SIZE / 2 - this.tileFaceLift;
 
-        // Draw character body (same as player but with X eyes)
-        const body = this.add.graphics();
+      // Create container for the failure marker
+      const container = this.add.container(fx, fy);
+      container.setDepth(6);
+      container.setAlpha(0);
+      this.analysisObjects.push(container);
 
-        // Shadow
-        body.fillStyle(0x000000, 0.25);
-        body.fillEllipse(0, 8 * s, 16 * s, 6 * s);
+      // Draw character body (same as player but with X eyes)
+      const body = this.add.graphics();
 
-        // Body
-        body.fillStyle(COLORS.PLAYER_FACE);
-        body.fillRoundedRect(-8 * s, -10 * s, 16 * s, 18 * s, 3 * s);
+      // Shadow
+      body.fillStyle(0x000000, 0.25);
+      body.fillEllipse(0, 8 * s, 16 * s, 6 * s);
 
-        // Outline
-        body.lineStyle(1.25 * s, COLORS.PLAYER_EDGE);
-        body.strokeRoundedRect(-8 * s, -10 * s, 16 * s, 18 * s, 3 * s);
+      // Body
+      body.fillStyle(COLORS.PLAYER_FACE);
+      body.fillRoundedRect(-8 * s, -10 * s, 16 * s, 18 * s, 3 * s);
 
-        // X eyes instead of normal eyes
-        body.lineStyle(1.5 * s, 0xffffff, 1);
-        // Left eye X
-        body.beginPath();
-        body.moveTo(-5 * s, -6 * s);
-        body.lineTo(-1 * s, -2 * s);
-        body.moveTo(-1 * s, -6 * s);
-        body.lineTo(-5 * s, -2 * s);
-        body.strokePath();
-        // Right eye X
-        body.beginPath();
-        body.moveTo(1 * s, -6 * s);
-        body.lineTo(5 * s, -2 * s);
-        body.moveTo(5 * s, -6 * s);
-        body.lineTo(1 * s, -2 * s);
-        body.strokePath();
+      // Outline
+      body.lineStyle(1.25 * s, COLORS.PLAYER_EDGE);
+      body.strokeRoundedRect(-8 * s, -10 * s, 16 * s, 18 * s, 3 * s);
 
-        container.add(body);
+      // X eyes instead of normal eyes
+      body.lineStyle(1.5 * s, 0xffffff, 1);
+      // Left eye X
+      body.beginPath();
+      body.moveTo(-5 * s, -6 * s);
+      body.lineTo(-1 * s, -2 * s);
+      body.moveTo(-1 * s, -6 * s);
+      body.lineTo(-5 * s, -2 * s);
+      body.strokePath();
+      // Right eye X
+      body.beginPath();
+      body.moveTo(1 * s, -6 * s);
+      body.lineTo(5 * s, -2 * s);
+      body.moveTo(5 * s, -6 * s);
+      body.lineTo(1 * s, -2 * s);
+      body.strokePath();
 
-        // Attempt number badge in corner
+      container.add(body);
+
+      // Draw attempt number badges in corners
+      // Priority positions: TR, TL, BR, BL, Center
+      const positions = [
+        { x: 10 * s, y: -12 * s }, // Top-Right
+        { x: -10 * s, y: -12 * s }, // Top-Left
+        { x: 10 * s, y: 10 * s },   // Bottom-Right
+        { x: -10 * s, y: 10 * s },  // Bottom-Left
+        { x: 0, y: 0 }              // Center
+      ];
+
+      indices.slice(0, 5).forEach((attemptNum, i) => {
+        const badgePos = positions[i];
+        
         const badgeG = this.add.graphics();
         badgeG.fillStyle(0xffffff, 1);
-        badgeG.fillCircle(10 * s, -12 * s, 6 * s);
+        badgeG.fillCircle(badgePos.x, badgePos.y, 6 * s);
         badgeG.lineStyle(1 * s, COLORS.PLAYER_FACE, 1);
-        badgeG.strokeCircle(10 * s, -12 * s, 6 * s);
+        badgeG.strokeCircle(badgePos.x, badgePos.y, 6 * s);
         container.add(badgeG);
 
         const numSprite = this.createNumberSprite(
-          10 * s,
-          -12 * s,
-          idx + 1,
+          badgePos.x,
+          badgePos.y,
+          attemptNum,
           'red',
           0.5,
           0.5
         );
         container.add(numSprite);
+      });
 
-        // Fade in
-        const fadeInTween = this.tweens.add({
-          targets: container,
-          alpha: 1,
-          duration: 400,
-          ease: 'Quad.easeOut',
-        });
-        this.analysisTweens.push(fadeInTween);
-      }
+      // Fade in
+      const fadeInTween = this.tweens.add({
+        targets: container,
+        alpha: 1,
+        duration: 400,
+        ease: 'Quad.easeOut',
+      });
+      this.analysisTweens.push(fadeInTween);
     });
   }
 
@@ -1852,6 +1878,243 @@ export class GameScene extends Phaser.Scene {
     // Tile colors
     const faceColor = hintLevel === 2 ? COLORS.HINT_TILE_FACE : COLORS.HINT_PATH_FACE;
     const edgeColor = hintLevel === 2 ? COLORS.HINT_TILE_EDGE : COLORS.HINT_PATH_EDGE;
+
+    // Edge
+    g.fillStyle(edgeColor);
+    g.fillRoundedRect(x, y, w, h, radius);
+
+    // Face
+    g.fillStyle(faceColor);
+    g.fillRoundedRect(x, y, w, h - depth, radius);
+
+    // Ice reflection lines
+    if (tile === TileType.ICE) {
+      const inset = 4 * s;
+      const faceX = x + inset;
+      const faceY = y + inset;
+      const faceW = w - inset * 2;
+      const faceH = h - depth - inset * 2;
+
+      g.lineStyle(1 * s, 0xffffff, 0.65);
+
+      // Primary reflection
+      g.beginPath();
+      g.moveTo(faceX + faceW * 0.2, faceY + faceH * 0.8);
+      g.lineTo(faceX + faceW * 0.8, faceY + faceH * 0.2);
+      g.strokePath();
+
+      // Secondary small reflection
+      g.beginPath();
+      g.moveTo(faceX + faceW * 0.6, faceY + faceH * 0.9);
+      g.lineTo(faceX + faceW * 0.9, faceY + faceH * 0.6);
+      g.strokePath();
+    }
+
+    // Ledge arrows
+    if (tile === TileType.LEDGE_UP || tile === TileType.LEDGE_DOWN ||
+      tile === TileType.LEDGE_LEFT || tile === TileType.LEDGE_RIGHT) {
+      const cx = 0;
+      const cy = -depth / 2;
+      const baseWidth = size * 0.32;
+      const baseHeight = size * 0.20;
+      const shrink = 1 * s;
+      const lift = depth * 0.6;
+      const halfW = baseWidth / 2;
+      const halfH = Math.max(baseHeight / 2 - shrink, 1);
+
+      g.fillStyle(COLORS.LEDGE_ARROW);
+
+      const upA = { x: 0, y: -halfH - lift };
+      const upB = { x: -halfW, y: halfH };
+      const upC = { x: halfW, y: halfH };
+
+      const rotate = (p: { x: number; y: number }, dir: 'up' | 'down' | 'left' | 'right') => {
+        switch (dir) {
+          case 'up': return { x: p.x, y: p.y };
+          case 'down': return { x: p.x, y: -p.y };
+          case 'right': return { x: -p.y, y: p.x };
+          case 'left': return { x: p.y, y: -p.x };
+        }
+      };
+
+      const dir =
+        tile === TileType.LEDGE_UP ? 'down' :
+          tile === TileType.LEDGE_DOWN ? 'up' :
+            tile === TileType.LEDGE_RIGHT ? 'right' : 'left';
+
+      const A = rotate(upA, dir);
+      const B = rotate(upB, dir);
+      const C = rotate(upC, dir);
+
+      g.fillTriangle(cx + A.x, cy + A.y, cx + B.x, cy + B.y, cx + C.x, cy + C.y);
+    }
+  }
+
+  // Show a specific attempt's path (for review mode)
+  public showSingleAttemptPath(attemptIndex: number | null) {
+    // Clear previous review overlay
+    this.reviewTileTweens.forEach(t => t.stop());
+    this.reviewTileTweens = [];
+    this.reviewTileContainers.forEach(c => c.destroy());
+    this.reviewTileContainers = [];
+
+    // If clearing (null index) or invalid index, stop here
+    if (attemptIndex === null || attemptIndex < 0 || !this.gameState.attempts[attemptIndex]) {
+      return;
+    }
+
+    const attempt = this.gameState.attempts[attemptIndex];
+    const path = attempt.path;
+    if (!path || path.length === 0) return;
+
+    const s = TILE_SIZE / 32;
+
+    // Identify tiles: stops vs intermediates
+    const stopTiles = new Set<string>();
+    const intermediateTiles = new Set<string>();
+    const moveIndices = new Map<string, number>();
+
+    // Mark stops
+    path.forEach((p, i) => {
+      const key = positionKey(p);
+      stopTiles.add(key);
+      if (!moveIndices.has(key)) {
+        moveIndices.set(key, i);
+      }
+    });
+
+    // Calculate intermediates between stops
+    for (let i = 0; i < path.length - 1; i++) {
+      const from = path[i];
+      const to = path[i + 1];
+
+      const dx = Math.sign(to.x - from.x);
+      const dy = Math.sign(to.y - from.y);
+      let cx = from.x + dx;
+      let cy = from.y + dy;
+
+      while (cx !== to.x || cy !== to.y) {
+        const key = positionKey({ x: cx, y: cy });
+        // Only mark as intermediate if it's not already a stop (though overlapping shouldn't happen in valid slides)
+        if (!stopTiles.has(key)) {
+          intermediateTiles.add(key);
+        }
+        cx += dx;
+        cy += dy;
+      }
+    }
+
+    // Prepare data for drawing
+    const reviewTileData: { x: number; y: number; tile: TileType; level: number; moveNum?: number }[] = [];
+
+    // We only need to draw tiles that are part of the path
+    // Iterate over all map tiles to check matches
+    for (let y = 0; y < this.puzzle.height; y++) {
+      for (let x = 0; x < this.puzzle.width; x++) {
+        const key = positionKey({ x, y });
+        let level = 0;
+        let moveNum = undefined;
+
+        if (stopTiles.has(key)) {
+          level = 2;
+          moveNum = moveIndices.get(key);
+        } else if (intermediateTiles.has(key)) {
+          level = 1;
+        }
+
+        if (level > 0) {
+          const tile = this.puzzle.tiles[y][x];
+          reviewTileData.push({ x, y, tile, level, moveNum });
+        }
+      }
+    }
+
+    // Sort: level 1 first, then level 2
+    reviewTileData.sort((a, b) => a.level - b.level);
+
+    // Create containers
+    for (const data of reviewTileData) {
+      const px = this.offsetX + data.x * TILE_SIZE;
+      const py = this.offsetY + data.y * TILE_SIZE;
+
+      const container = this.add.container(px + TILE_SIZE / 2, py + TILE_SIZE / 2);
+      container.setDepth(1.5); // Slightly above hints (1.0), below player
+
+      const g = this.add.graphics();
+      this.drawReviewTileGraphics(g, data.tile, data.level);
+      container.add(g);
+
+      // Add move number for stops (level 2)
+      if (data.level === 2 && data.moveNum !== undefined && data.moveNum > 0) {
+        const isGoal = data.x === this.puzzle.goal.x && data.y === this.puzzle.goal.y;
+        if (!isGoal) {
+          const numSprite = this.createNumberSprite(
+            -TILE_SIZE / 2 + 5 * s,
+            -TILE_SIZE / 2 + 5 * s - this.tileFaceLift,
+            data.moveNum,
+            'white',
+            0,
+            0
+          );
+          container.add(numSprite);
+        }
+      }
+
+      this.reviewTileContainers.push(container);
+
+      // Animation
+      const wiggleAmount = data.level === 2 ? .6 : .5;
+      const duration = data.level === 2 ? 135 : 110;
+      const delay = Math.random() * 50;
+
+      const tween = this.tweens.add({
+        targets: container,
+        x: { from: container.x - wiggleAmount, to: container.x + wiggleAmount },
+        duration,
+        delay,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut',
+      });
+      this.reviewTileTweens.push(tween);
+    }
+  }
+
+  // Same as drawHintedTileGraphics but with ATTEMPT colors
+  private drawReviewTileGraphics(g: Phaser.GameObjects.Graphics, tile: TileType, level: number) {
+    const size = TILE_SIZE;
+    const s = size / 32;
+    const padding = 2 * s;
+    const radius = 8 * s;
+    const depth = 4 * s;
+
+    const x = -size / 2 + padding;
+    const y = -size / 2 + padding;
+    const w = size - padding * 2;
+    const h = size - padding * 2;
+
+    const glowColor = COLORS.ATTEMPT_GLOW;
+    const layers = 2;
+    const maxExpand = 4 * s;
+    const baseAlpha = level === 2 ? 0.08 : 0.05;
+    const maxAlpha = level === 2 ? 0.2 : 0.12;
+
+    for (let i = layers; i >= 1; i--) {
+      const expand = (i / layers) * maxExpand;
+      const alpha = baseAlpha + (1 - i / layers) * (maxAlpha - baseAlpha);
+
+      g.fillStyle(glowColor, alpha);
+      g.fillRoundedRect(
+        x - expand,
+        y - expand,
+        w + expand * 2,
+        h + expand * 2,
+        radius + expand
+      );
+    }
+
+    const faceColor = level === 2 ? COLORS.ATTEMPT_TILE_FACE : COLORS.ATTEMPT_PATH_FACE;
+    const edgeColor = level === 2 ? COLORS.ATTEMPT_TILE_EDGE : COLORS.ATTEMPT_PATH_EDGE;
 
     // Edge
     g.fillStyle(edgeColor);

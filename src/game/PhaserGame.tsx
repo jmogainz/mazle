@@ -16,6 +16,7 @@ export interface GameControls {
   setHintsEnabled: (enabled: boolean) => void;
   setMaxLives: (count: number) => void;
   getMaxLives: () => number;
+  showSingleAttemptPath: (attemptIndex: number | null) => void;
 }
 
 interface PhaserGameProps {
@@ -79,6 +80,10 @@ export default function PhaserGame({ puzzle, viewportWidth, viewportHeight, onRe
     getMaxLives: () => {
       const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;
       return scene?.getMaxLives() ?? 3;
+    },
+    showSingleAttemptPath: (attemptIndex: number | null) => {
+      const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;
+      scene?.showSingleAttemptPath(attemptIndex);
     },
   }), []);
 

@@ -108,7 +108,20 @@
   width: calc(16px * var(--ui-scale));
   height: calc(16px * var(--ui-scale));
   border-radius: 3px;
-  transition: all 0.3s ease, width 0.15s ease-out, height 0.15s ease-out;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  touch-action: manipulation;
+}
+
+/* Expand hit area for easier tapping on mobile */
+.lifeNode::before {
+  content: '';
+  position: absolute;
+  top: -12px;
+  bottom: -12px;
+  /* Avoid overlapping with neighbors (gap is 6px) */
+  left: -3px;
+  right: -3px;
 }
 
 .lifeActive {
@@ -120,6 +133,84 @@
   background: var(--color-border);
   transform: scale(0.8);
   opacity: 0.5;
+}
+
+/* Review Mode Styles */
+.lifeSelectable {
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .lifeSelectable:hover {
+    transform: scale(1.1);
+    background: #ffb3b3; /* Light red hover hint */
+    opacity: 1;
+  }
+}
+
+.lifeReviewing {
+  cursor: pointer;
+  background: #ff4d4d; /* Bright red for active review */
+  opacity: 1;
+  transform: scale(1.2);
+  box-shadow: 0 0 8px rgba(255, 77, 77, 0.4);
+  z-index: 10;
+}
+
+.lifeReturn {
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .lifeReturn:hover {
+    transform: scale(1.1);
+    filter: brightness(1.1);
+  }
+}
+
+/* Review Hint Animation */
+.lifeReviewHint {
+  animation: pulseBorder 1s infinite;
+  z-index: 20;
+}
+
+@keyframes pulseBorder {
+  0% { box-shadow: 0 0 0 0 rgba(255, 77, 77, 0.6); }
+  70% { box-shadow: 0 0 0 6px rgba(255, 77, 77, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 77, 77, 0); }
+}
+
+.selectTooltip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #ff4d4d;
+  color: white;
+  font-size: calc(0.6rem * var(--ui-scale));
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  animation: floatUp 0.3s ease-out;
+}
+
+.selectTooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -4px;
+  border-width: 4px;
+  border-style: solid;
+  border-color: #ff4d4d transparent transparent transparent;
+}
+
+@keyframes floatUp {
+  from { opacity: 0; transform: translate(-50%, 4px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
 }
 
 /* --- FOOTER VARIANT (Moves Remaining) --- */

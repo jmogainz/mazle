@@ -11,6 +11,7 @@ interface GenerateRequest {
   id: number;
   seed: string;
   mapType: string;
+  closenessThreshold?: number;
 }
 
 interface InitRequest {
@@ -84,7 +85,7 @@ async function initialize(): Promise<void> {
 /**
  * Generate a puzzle (synchronous, blocks this worker thread).
  */
-async function generate(id: number, seed: string, mapType: string): Promise<void> {
+async function generate(id: number, seed: string, mapType: string, closenessThreshold?: number): Promise<void> {
   if (!wasm || !initialized) {
     const response: ErrorResponse = {
       type: 'error',
@@ -100,7 +101,20 @@ async function generate(id: number, seed: string, mapType: string): Promise<void
     const startTime = performance.now();
     
     // Generate puzzle (this blocks until complete)
-    const puzzle = wasm.generate(seed, mapType);
+    let puzzle;
+    if (closenessThreshold !== undefined) {
+      // Create config object matching Rust's GenerationConfig
+      const config = {
+        closenessThreshold,
+        // Default other values as they aren't exposed yet
+        targetPsychologyScore: 2000,
+        parallel: false, // Worker is single-threaded
+        startBatch: 0,
+      };
+      puzzle = wasm.generateWithConfig(seed, mapType, config);
+    } else {
+      puzzle = wasm.generate(seed, mapType);
+    }
     
     const elapsed = performance.now() - startTime;
     console.log(`[Worker] Generated in ${elapsed.toFixed(0)}ms`);
@@ -132,7 +146,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       await initialize();
       break;
     case 'generate':
-      await generate(data.id, data.seed, data.mapType);
+      await generate(data.id, data.seed, data.mapType, data.closenessThreshold);
       break;
   }
 };

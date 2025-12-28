@@ -12,6 +12,10 @@ export const TAP_WINDOW_MS = 3000;
 // Game frame buffer
 export const GAME_BUFFER_PX = 16;
 
+// Closeness threshold configuration
+export const CLOSENESS_THRESHOLD_DEV = 0.97;
+export const CLOSENESS_THRESHOLD_PROD = 1.0;
+
 // Local storage keys
 export const STORAGE_KEYS = {
   HINTS_ENABLED: 'mazle_hints_enabled',

@@ -12,6 +12,8 @@ import {
   GAME_BUFFER_PX,
   STORAGE_KEYS,
   isCheatCode,
+  CLOSENESS_THRESHOLD_DEV,
+  CLOSENESS_THRESHOLD_PROD,
 } from '@/constants';
 import {
   getPuzzleNumber,
@@ -91,6 +93,9 @@ export default function Home() {
     maxLives?: number;
   } | null>(null);
   const [startBatchInput, setStartBatchInput] = useState('');
+  const [closenessThreshold, setClosenessThreshold] = useState<number>(
+    IS_PROD ? CLOSENESS_THRESHOLD_PROD : CLOSENESS_THRESHOLD_DEV
+  );
   const [adStatus, setAdStatus] = useState<{ top: 'filled' | 'unfilled' | null; bottom: 'filled' | 'unfilled' | null }>({
     top: null,
     bottom: null,
@@ -890,6 +895,7 @@ export default function Home() {
             selectedBackend,
             startBatch,
             abortController,
+            closenessThreshold
           );
           debugModeRef.current = true;
           setPuzzle(datedPuzzle);
@@ -936,6 +942,7 @@ export default function Home() {
           selectedBackend,
           startBatch,
           abortController,
+          closenessThreshold
         );
         debugModeRef.current = true;
         setPuzzle(newPuzzle);
@@ -963,7 +970,7 @@ export default function Home() {
         inFlightSeedRef.current = null;
       }
     },
-    [selectedMapType, selectedBackend, startBatchInput],
+    [selectedMapType, selectedBackend, startBatchInput, closenessThreshold],
   );
 
   const handleLoadDaily = useCallback(() => {
@@ -1161,6 +1168,8 @@ export default function Home() {
               onStopGeneration={handleStopGeneration}
               onClose={() => setShowDevTools(false)}
               canStopGeneration={!!generationAbortRef.current}
+              closenessThreshold={closenessThreshold}
+              onClosenessThresholdChange={setClosenessThreshold}
             />
           )}
 

@@ -29,6 +29,8 @@ interface DevToolsProps {
   onStopGeneration: () => void;
   onClose: () => void;
   canStopGeneration: boolean;
+  closenessThreshold: number;
+  onClosenessThresholdChange: (value: number) => void;
 }
 
 export default function DevTools({
@@ -56,6 +58,8 @@ export default function DevTools({
   onStopGeneration,
   onClose,
   canStopGeneration,
+  closenessThreshold,
+  onClosenessThresholdChange,
 }: DevToolsProps) {
   const progressPercent = generationProgress
     ? Math.round((generationProgress.workersComplete / generationProgress.totalWorkers) * 100)
@@ -111,6 +115,22 @@ export default function DevTools({
             max="5"
             value={maxLives}
             onChange={(e) => onMaxLivesChange(parseInt(e.target.value, 10))}
+            className={styles.devRangeInput}
+            disabled={isGenerating}
+          />
+        </div>
+
+        <div className={styles.devToggleRow}>
+          <label className={styles.devToggleLabel}>
+            Threshold %: {closenessThreshold.toFixed(3)}
+          </label>
+          <input
+            type="range"
+            min="0.900"
+            max="1.000"
+            step="0.001"
+            value={closenessThreshold}
+            onChange={(e) => onClosenessThresholdChange(parseFloat(e.target.value))}
             className={styles.devRangeInput}
             disabled={isGenerating}
           />

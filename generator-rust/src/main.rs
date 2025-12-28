@@ -91,6 +91,8 @@ struct GenerateQuery {
     start_batch: usize,
     #[serde(default)]
     no_cache: bool,
+    #[serde(default)]
+    closeness_threshold: Option<f64>,
 }
 
 /// Health check endpoint
@@ -189,11 +191,14 @@ async fn generate_by_seed(
     
     // 3. Spawn generation as a detached task so it completes even if client disconnects
     let gen_start = Instant::now();
-    let config = GenerationConfig {
+    let mut config = GenerationConfig {
         parallel: query.parallel,
         start_batch: query.start_batch,
         ..Default::default()
     };
+    if let Some(threshold) = query.closeness_threshold {
+        config.closeness_threshold = threshold;
+    }
 
     let map_type = query.map_type.clone();
     let seed_for_task = seed.clone();

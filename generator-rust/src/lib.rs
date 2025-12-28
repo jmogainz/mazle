@@ -134,6 +134,31 @@ pub fn wasm_generate(seed: &str, map_type: &str) -> Result<JsValue, JsValue> {
     serde_wasm_bindgen::to_value(&puzzle).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
+/// Generate a puzzle by map type with custom configuration.
+///
+/// # Arguments
+/// * `seed` - The seed string for deterministic generation
+/// * `map_type` - "ice" or "ground"
+/// * `config_js` - JavaScript object with generation configuration
+///
+/// # Returns
+/// A JavaScript object containing the puzzle data
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(js_name = generateWithConfig)]
+pub fn wasm_generate_with_config(
+    seed: &str,
+    map_type: &str,
+    config_js: JsValue,
+) -> Result<JsValue, JsValue> {
+    let config: GenerationConfig = serde_wasm_bindgen::from_value(config_js)
+        .map_err(|e| JsValue::from_str(&format!("Invalid config: {}", e)))?;
+    let puzzle = match map_type {
+        "ground" => generate_ground_puzzle(seed, &config),
+        _ => generate_ice_puzzle(seed, &config),
+    };
+    serde_wasm_bindgen::to_value(&puzzle).map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
 /// Get the library version.
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(js_name = getVersion)]

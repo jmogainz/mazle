@@ -160,7 +160,8 @@ async function initGenerationWorker(): Promise<void> {
 async function generateFromWasm(
   seed: string,
   mapType?: MapType,
-  onProgress?: (progress: GenerationProgress) => void
+  onProgress?: (progress: GenerationProgress) => void,
+  closenessThreshold?: number
 ): Promise<PuzzleData> {
   // Ensure worker is ready
   await initGenerationWorker();
@@ -243,6 +244,7 @@ async function generateFromWasm(
       id,
       seed,
       mapType: type,
+      closenessThreshold,
     });
   });
 }
@@ -349,6 +351,7 @@ async function generateFromRustBackend(
   onProgress?: (progress: GenerationProgress) => void,
   startBatch?: number,
   abortController?: AbortController,
+  closenessThreshold?: number
 ): Promise<PuzzleData> {
   if (!RUST_BACKEND_URL) {
     throw new Error('Rust backend URL not configured');
@@ -358,6 +361,9 @@ async function generateFromRustBackend(
   let url = `${RUST_BACKEND_URL}/api/generate/${encodeURIComponent(seed)}?map_type=${type}&parallel=true`;
   if (startBatch !== undefined && startBatch > 0) {
     url += `&start_batch=${startBatch}`;
+  }
+  if (closenessThreshold !== undefined) {
+    url += `&closeness_threshold=${closenessThreshold}`;
   }
   
   console.log(`[Rust] Fetching puzzle from ${url}`);
@@ -473,6 +479,7 @@ interface RustRetryOptions {
   startBatch?: number;
   abortController?: AbortController;
   logLabel: string; // e.g., '[Engine]' or '[Daily]'
+  closenessThreshold?: number;
 }
 
 async function generateFromRustWithRetries({
@@ -482,6 +489,7 @@ async function generateFromRustWithRetries({
   startBatch,
   abortController,
   logLabel,
+  closenessThreshold,
 }: RustRetryOptions): Promise<PuzzleData | null> {
   // Quick health preflight (cached after first success/fail)
   await testRustBackend(onProgress);
@@ -493,7 +501,7 @@ async function generateFromRustWithRetries({
 
   while (true) {
     try {
-      return await generateFromRustBackend(seed, mapType, onProgress, startBatch, abortController);
+      return await generateFromRustBackend(seed, mapType, onProgress, startBatch, abortController, closenessThreshold);
     } catch (error) {
       console.warn(`${logLabel} Rust backend failed:`, error);
 
@@ -576,6 +584,7 @@ export async function preloadWasm(): Promise<void> {
  * @param forceMapType - Force a specific map type
  * @param forceBackend - Force a specific engine ('auto' uses priority: rust > wasm)
  * @param startBatch - Start generation at a specific batch number (for deterministic replay)
+ * @param closenessThreshold - Threshold for puzzle closeness (0.97 - 1.0)
  */
 export async function generatePuzzleParallel(
   seed: string,
@@ -583,7 +592,8 @@ export async function generatePuzzleParallel(
   forceMapType?: MapType,
   forceBackend: GeneratorBackend = 'auto',
   startBatch?: number,
-  abortController?: AbortController
+  abortController?: AbortController,
+  closenessThreshold?: number
 ): Promise<PuzzleData> {
   
   // ─────────────────────────────────────────────────────────────────────────
@@ -596,7 +606,7 @@ export async function generatePuzzleParallel(
     
     // One quick health check; if it fails, surface error (no fallback in force mode)
     await testRustBackend(onProgress);
-    return await generateFromRustBackend(seed, forceMapType, onProgress, startBatch, abortController);
+    return await generateFromRustBackend(seed, forceMapType, onProgress, startBatch, abortController, closenessThreshold);
   }
   
   // ─────────────────────────────────────────────────────────────────────────
@@ -613,7 +623,7 @@ export async function generatePuzzleParallel(
     
     // Progress is now tracked via worker messages
     // Note: WASM doesn't support startBatch yet
-    const puzzle = await generateFromWasm(seed, forceMapType, onProgress);
+    const puzzle = await generateFromWasm(seed, forceMapType, onProgress, closenessThreshold);
     
     return puzzle;
   }
@@ -634,6 +644,7 @@ export async function generatePuzzleParallel(
       startBatch,
       abortController,
       logLabel: '[Engine]',
+      closenessThreshold,
     });
 
     if (rustPuzzle) {
@@ -668,7 +679,7 @@ export async function generatePuzzleParallel(
   
   // Progress is now tracked via worker messages
   // Note: WASM doesn't support startBatch yet
-  const puzzle = await generateFromWasm(seed, forceMapType, onProgress);
+  const puzzle = await generateFromWasm(seed, forceMapType, onProgress, closenessThreshold);
   
   return puzzle;
 }

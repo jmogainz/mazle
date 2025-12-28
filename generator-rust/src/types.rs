@@ -96,10 +96,26 @@ pub struct GenerationConfig {
     pub parallel: bool,
     #[serde(default)]
     pub start_batch: usize,
+    #[serde(default = "default_closeness_threshold")]
+    pub closeness_threshold: f64,
 }
 
 fn default_target_score() -> i32 {
     2000
+}
+
+fn default_closeness_threshold() -> f64 {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        match std::env::var("ENV").unwrap_or_else(|_| "dev-test".to_string()).as_str() {
+            "dev" => 0.97,
+            _ => 1.0,
+        }
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        1.0
+    }
 }
 
 impl Default for GenerationConfig {
@@ -108,6 +124,7 @@ impl Default for GenerationConfig {
             target_psychology_score: default_target_score(),
             parallel: true,
             start_batch: 0,
+            closeness_threshold: default_closeness_threshold(),
         }
     }
 }

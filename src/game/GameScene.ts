@@ -662,7 +662,7 @@ export class GameScene extends Phaser.Scene {
 
   private handleLifeLost(finalPos: Position) {
     this.gameState.lives--;
-    this.gameState.penaltyTimeMs += 15000; // 15s penalty
+    this.gameState.penaltyTimeMs += 30000; // 30s penalty
 
     if (this.hintsEnabled) {
       this.mergeHintsForNextLife();
@@ -686,7 +686,7 @@ export class GameScene extends Phaser.Scene {
       emitGameEvent('stateUpdate', { ...this.gameState });
       emitGameEvent('lifeLost', {
         lives: this.gameState.lives,
-        penaltyMs: 15000
+        penaltyMs: 30000
       });
       this.handleGameOver();
       return;
@@ -707,7 +707,7 @@ export class GameScene extends Phaser.Scene {
     emitGameEvent('stateUpdate', { ...this.gameState });
     emitGameEvent('lifeLost', {
       lives: this.gameState.lives,
-      penaltyMs: 15000
+      penaltyMs: 30000
     });
 
     // Block input during respawn sequence

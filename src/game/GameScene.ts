@@ -667,6 +667,9 @@ export class GameScene extends Phaser.Scene {
 
     if (this.hintsEnabled) {
       this.mergeHintsForNextLife();
+      if (this.gameState.lives > 0) {
+        this.unlockNextHintEdge();
+      }
     }
 
     // Calculate deviation index
@@ -1686,12 +1689,35 @@ export class GameScene extends Phaser.Scene {
     this.nextHintEdgeIndex = idx;
   }
 
-  private recordHintProgress(fromPos: Position, toPos: Position) {
-    if (!this.solutionIndexByKey || !this.solutionNextByKey || !this.solutionEdges) return;
-    if (this.gameState.isComplete) return;
+  private unlockNextHintEdge() {
+    const path = this.puzzle.solutionPath;
+    if (!path || path.length < 2) return;
+    if (this.nextHintEdgeIndex >= path.length - 1) return;
+
+    const from = path[this.nextHintEdgeIndex];
+    const to = path[this.nextHintEdgeIndex + 1];
+    const fromKey = positionKey(from);
+    const toKey = positionKey(to);
+    const edgeKey = `${fromKey}->${toKey}`;
+
+    if (this.unlockedHintEdges.has(edgeKey)) {
+      this.recomputeNextHintEdgeIndex();
+      return;
+    }
 
     const startKey = positionKey(this.puzzle.start);
     const goalKey = positionKey(this.puzzle.goal);
+
+    this.unlockedHintEdges.add(edgeKey);
+    if (fromKey !== startKey && fromKey !== goalKey) this.unlockedHintTiles.add(fromKey);
+    if (toKey !== startKey && toKey !== goalKey) this.unlockedHintTiles.add(toKey);
+
+    this.recomputeNextHintEdgeIndex();
+  }
+
+  private recordHintProgress(fromPos: Position, toPos: Position) {
+    if (!this.solutionIndexByKey || !this.solutionNextByKey || !this.solutionEdges) return;
+    if (this.gameState.isComplete) return;
 
     const fromKey = positionKey(fromPos);
     const toKey = positionKey(toPos);
@@ -1700,27 +1726,6 @@ export class GameScene extends Phaser.Scene {
     // 1) Check if this move is ANY correct move in the solution (for scoring)
     if (this.solutionEdges.has(edgeKey)) {
       this.gameState.currentAttemptCorrectMoves++;
-    }
-
-    // Visual hint unlocking (only if hints enabled)
-    if (this.hintsEnabled) {
-      // Reveal at most one new correct edge per life, in order.
-      if (this.unlockedThisLifeEdges.size > 0) return;
-
-      const path = this.puzzle.solutionPath;
-      if (!path || path.length < 2) return;
-      if (this.nextHintEdgeIndex >= path.length - 1) return;
-
-      const expectedFromKey = positionKey(path[this.nextHintEdgeIndex]);
-      const expectedNextKey = this.solutionNextByKey.get(expectedFromKey);
-      if (!expectedNextKey) return;
-
-      if (fromKey === expectedFromKey && expectedNextKey === toKey && toKey !== goalKey) {
-        const expectedEdgeKey = `${expectedFromKey}->${expectedNextKey}`;
-        this.unlockedThisLifeEdges.add(expectedEdgeKey);
-        if (fromKey !== startKey && fromKey !== goalKey) this.unlockedThisLifeTiles.add(fromKey);
-        if (toKey !== startKey && toKey !== goalKey) this.unlockedThisLifeTiles.add(toKey);
-      }
     }
   }
 

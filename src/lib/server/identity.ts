@@ -78,7 +78,7 @@ async function displayNameExists(name: string): Promise<boolean> {
      limit 1`,
     [name]
   );
-  return res.rowCount > 0;
+  return (res.rowCount ?? 0) > 0;
 }
 
 async function generateUniqueDisplayName(): Promise<string> {
@@ -146,6 +146,8 @@ async function ensureUserDisplayName(userId: string, preferredName: string | nul
 async function linkGuestToUser(userId: string, guestId: string): Promise<void> {
   await ensureDbSchema();
   const pool = getDbPool();
+  if (!isUuid(userId)) return;
+  await pool.query('insert into users (id) values ($1) on conflict do nothing', [userId]);
   await pool.query('insert into user_links (user_id, guest_id) values ($1, $2) on conflict do nothing', [userId, guestId]);
 
   const guest = await pool.query<{ display_name: string }>('select display_name from guest_profiles where id=$1', [guestId]);
@@ -162,7 +164,10 @@ export async function getEntitlementsForUser(userId: string): Promise<{ archiveA
 
   await ensureDbSchema();
   const pool = getDbPool();
-  const res = await pool.query<{ key: string }>('select key from entitlements where user_id=$1', [userId]);
+  const res = await pool.query<{ key: string }>(
+    "select key from entitlements where user_id=$1 and (expires_at is null or expires_at > now())",
+    [userId]
+  );
   const keys = new Set(res.rows.map((r) => r.key));
   return {
     archiveAccess: keys.has('archive_access'),
@@ -228,7 +233,7 @@ async function migrateTodayLeaderboardIfPresent(identity: { userId: string; gues
   const existingUser = await redis.hget<string>(indexKey, userKey);
   if (existingUser) return;
 
-  const score = await redis.zscore<number>(zkey, guestMember);
+  const score = await redis.zscore(zkey, guestMember);
   if (score == null) return;
 
   const submittedAtPrefix = guestMember.split(':', 1)[0] ?? '';
@@ -264,7 +269,7 @@ async function migrateTodayLeaderboardIfPresent(identity: { userId: string; gues
       [date, identity.userId]
     );
 
-    if (guestRow.rowCount && hasUser.rowCount === 0) {
+    if ((guestRow.rowCount ?? 0) > 0 && (hasUser.rowCount ?? 0) === 0) {
       const g = guestRow.rows[0];
       await client.query(
         `insert into leaderboard_submissions (date, subject_type, subject_id, time_ms, attempts_used, submitted_at)

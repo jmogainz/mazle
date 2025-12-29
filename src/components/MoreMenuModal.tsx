@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import styles from './MoreMenuModal.module.css';
 
@@ -9,13 +9,30 @@ type MoreMenuModalProps = {
   onClose: () => void;
 };
 
+const DEVTOOLS_PREVIEW_FEATURES_KEY = 'mazle_devtools_preview_features_v1';
+
 export default function MoreMenuModal({ open, onClose }: MoreMenuModalProps) {
   const router = useRouter();
   const firstButtonRef = useRef<HTMLButtonElement | null>(null);
+  const [previewFeaturesEnabled, setPreviewFeaturesEnabled] = useState(false);
+
+  const showLockedFeatures = useMemo(() => {
+    if (process.env.NODE_ENV !== 'production') return true;
+    return previewFeaturesEnabled;
+  }, [previewFeaturesEnabled]);
 
   useEffect(() => {
     if (!open) return;
     firstButtonRef.current?.focus();
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    try {
+      setPreviewFeaturesEnabled(localStorage.getItem(DEVTOOLS_PREVIEW_FEATURES_KEY) === '1');
+    } catch {
+      setPreviewFeaturesEnabled(false);
+    }
   }, [open]);
 
   useEffect(() => {
@@ -44,20 +61,29 @@ export default function MoreMenuModal({ open, onClose }: MoreMenuModalProps) {
           </button>
         </div>
         <div className={styles.list}>
+          {showLockedFeatures && (
+            <>
+              <button
+                ref={firstButtonRef}
+                type="button"
+                className={styles.menuButton}
+                onClick={() => nav('/leaderboard')}
+              >
+                <span>Leaderboard</span>
+                <span aria-hidden="true">›</span>
+              </button>
+              <button type="button" className={styles.menuButton} onClick={() => nav('/archive')}>
+                <span>Archive</span>
+                <span aria-hidden="true">›</span>
+              </button>
+            </>
+          )}
           <button
-            ref={firstButtonRef}
+            ref={showLockedFeatures ? undefined : firstButtonRef}
             type="button"
             className={styles.menuButton}
-            onClick={() => nav('/leaderboard')}
+            onClick={() => nav('/account')}
           >
-            <span>Leaderboard</span>
-            <span aria-hidden="true">›</span>
-          </button>
-          <button type="button" className={styles.menuButton} onClick={() => nav('/archive')}>
-            <span>Archive</span>
-            <span aria-hidden="true">›</span>
-          </button>
-          <button type="button" className={styles.menuButton} onClick={() => nav('/account')}>
             <span>Account</span>
             <span aria-hidden="true">›</span>
           </button>
@@ -67,4 +93,3 @@ export default function MoreMenuModal({ open, onClose }: MoreMenuModalProps) {
     </div>
   );
 }
-

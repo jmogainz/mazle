@@ -25,10 +25,15 @@ export type ClaimResponse = {
 };
 
 export type ArchiveOfferResponse = {
-  priceId: string;
-  formattedPrice: string;
-  currency: string;
-  purchaseType: 'one_time';
+  plans: Array<{
+    id: 'monthly' | 'lifetime';
+    priceId: string;
+    formattedPrice: string;
+    currency: string;
+    purchaseType: 'subscription' | 'one_time';
+    interval?: 'month';
+  }>;
+  defaultPlanId: 'monthly' | 'lifetime';
   grants: Array<'archive_access' | 'ads_removed'>;
 };
 

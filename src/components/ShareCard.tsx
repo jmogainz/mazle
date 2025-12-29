@@ -406,29 +406,31 @@ ${generateProgressBlocks()}
         : null;
 
     const mePanel = () => {
-      if (leaderboardMeState.status === 'loading') {
-        return <div className={styles.leaderboardHint}>Loading your rank…</div>;
-      }
-      if (leaderboardMeState.status === 'error') {
-        return <div className={styles.leaderboardHint}>Unable to load your rank.</div>;
-      }
+      switch (leaderboardMeState.status) {
+        case 'idle':
+        case 'loading':
+          return <div className={styles.leaderboardHint}>Loading your rank…</div>;
+        case 'error':
+          return <div className={styles.leaderboardHint}>Unable to load your rank.</div>;
+        case 'loaded': {
+          const me = leaderboardMeState.data;
+          if (!me) {
+            return <div className={styles.leaderboardHint}>Not submitted for this day.</div>;
+          }
 
-      const me = leaderboardMeState.data;
-      if (!me) {
-        return <div className={styles.leaderboardHint}>Not submitted for this day.</div>;
-      }
-
-      return (
-        <div className={styles.meRow}>
-          <div className={styles.meMetaLeft}>
-            <div className={styles.meName}>{me.displayName}</div>
-            <div className={styles.meMeta}>
-              {formatTime(me.timeMs)} • {me.attemptsUsed}/3 tries
+          return (
+            <div className={styles.meRow}>
+              <div className={styles.meMetaLeft}>
+                <div className={styles.meName}>{me.displayName}</div>
+                <div className={styles.meMeta}>
+                  {formatTime(me.timeMs)} • {me.attemptsUsed}/3 tries
+                </div>
+              </div>
+              <div className={styles.meRank}>#{me.rank}</div>
             </div>
-          </div>
-          <div className={styles.meRank}>#{me.rank}</div>
-        </div>
-      );
+          );
+        }
+      }
     };
 
     const submitPanel = () => {
@@ -491,15 +493,22 @@ ${generateProgressBlocks()}
 
         <div className={styles.leaderboardCard}>
           <div className={styles.leaderboardSectionTitle}>Top</div>
-          {leaderboardTopState.status === 'idle' || leaderboardTopState.status === 'loading' ? (
-            <div className={styles.leaderboardHint}>Loading…</div>
-          ) : leaderboardTopState.status === 'error' ? (
-            <div className={styles.leaderboardError}>{leaderboardTopState.message}</div>
-          ) : leaderboardTopState.data.entries.length === 0 ? (
-            <div className={styles.leaderboardHint}>No submissions yet.</div>
-          ) : (
-            renderLeaderboardRows(leaderboardTopState.data.entries)
-          )}
+          {(() => {
+            switch (leaderboardTopState.status) {
+              case 'idle':
+              case 'loading':
+                return <div className={styles.leaderboardHint}>Loading…</div>;
+              case 'error':
+                return <div className={styles.leaderboardError}>{leaderboardTopState.message}</div>;
+              case 'loaded': {
+                const entries = leaderboardTopState.data.entries;
+                if (entries.length === 0) {
+                  return <div className={styles.leaderboardHint}>No submissions yet.</div>;
+                }
+                return renderLeaderboardRows(entries);
+              }
+            }
+          })()}
 
           <div className={styles.leaderboardHint} style={{ marginTop: '0.75rem' }}>
             Ranking: time • tries • submitted

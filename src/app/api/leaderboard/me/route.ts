@@ -46,7 +46,7 @@ export async function GET(request: Request) {
       return res;
     }
 
-    const score = await redis.zscore<number>(zkey, member);
+    const score = await redis.zscore(zkey, member);
     const rank0 = await redis.zrank(zkey, member);
     if (score == null || rank0 == null) {
       const res = NextResponse.json(null, { headers: { 'Cache-Control': 'no-store' } });
@@ -79,4 +79,3 @@ export async function GET(request: Request) {
     return jsonError(500, 'LEADERBOARD_FAILED', message);
   }
 }
-

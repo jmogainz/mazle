@@ -54,6 +54,8 @@ const PhaserGame = dynamic(() => import('@/game/PhaserGame'), {
 const _DEVTOOLS_BUILD_FLAG =
   process.env.NEXT_PUBLIC_DEVTOOLS_ENABLED === 'true';
 
+const DEVTOOLS_PREVIEW_FEATURES_KEY = 'mazle_devtools_preview_features_v1';
+
 const IS_PROD = process.env.NEXT_PUBLIC_ENV === 'prod';
 const HELP_SEEN_KEY = `mazle_seen_help_${HELP_MENU_HASH}`;
 const ADSENSE_TOP_SLOT = process.env.NEXT_PUBLIC_ADSENSE_SLOT_MOBILE_TOP ?? (!IS_PROD ? 'DEV_TOP' : '');
@@ -74,6 +76,7 @@ export default function Home() {
   const [showStats, setShowStats] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showDevTools, setShowDevTools] = useState(false);
+  const [previewFeaturesEnabled, setPreviewFeaturesEnabled] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [selectedBackend, setSelectedBackend] = useState<GeneratorBackend>('auto');
   const [lastUsedBackend, setLastUsedBackend] = useState<'rust-backend' | 'wasm' | null>(null);
@@ -120,6 +123,25 @@ export default function Home() {
   const devToolsTapTargetRef = useRef<HTMLDivElement | null>(null);
   const pendingRestoreRef = useRef<Parameters<GameControls['restoreState']>[0] | null>(null);
   const hintsEnabledRef = useRef(hintsEnabled);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(DEVTOOLS_PREVIEW_FEATURES_KEY);
+      setPreviewFeaturesEnabled(stored === '1');
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const onPreviewFeaturesToggle = useCallback((enabled: boolean) => {
+    setPreviewFeaturesEnabled(enabled);
+    try {
+      if (enabled) localStorage.setItem(DEVTOOLS_PREVIEW_FEATURES_KEY, '1');
+      else localStorage.removeItem(DEVTOOLS_PREVIEW_FEATURES_KEY);
+    } catch {
+      // ignore
+    }
+  }, []);
 
   // Sync CSS custom property to the real visual viewport height (iOS-safe)
   useEffect(() => {
@@ -210,11 +232,11 @@ export default function Home() {
   // The --ui-scale CSS variable controls all UI element sizes
   useEffect(() => {
     let rafId: number | null = null;
-    
+
     const updateScale = () => {
       const viewportHeight = window.visualViewport?.height || window.innerHeight;
       const viewportWidth = window.innerWidth;
-      
+
       // Fixed UI heights at scale=1 (approximate values)
       const HEADER_HEIGHT = 56;      // MAZLE logo + icons
       const PUZZLE_NUM_HEIGHT = 32;  // Puzzle number banner
@@ -223,42 +245,42 @@ export default function Home() {
       const FOOTER_HEIGHT = viewportWidth > 768 ? 32 : 0; // Desktop footer
       const AD_HEIGHT = (showTopAd ? AD_BANNER_HEIGHT + 8 : 0) + (showBottomAd ? AD_BANNER_HEIGHT + 8 : 0);
       const PADDING = 24;            // Various padding/gaps
-      
-      const totalUIHeight = HEADER_HEIGHT + PUZZLE_NUM_HEIGHT + SCOREBOARD_HEIGHT + 
-                           CONTROLS_HEIGHT + FOOTER_HEIGHT + AD_HEIGHT + PADDING;
-      
+
+      const totalUIHeight = HEADER_HEIGHT + PUZZLE_NUM_HEIGHT + SCOREBOARD_HEIGHT +
+        CONTROLS_HEIGHT + FOOTER_HEIGHT + AD_HEIGHT + PADDING;
+
       // Available height for the maze
       const availableForMaze = viewportHeight - totalUIHeight;
-      
+
       // Maximum maze size (don't let it grow infinitely on large screens)
       const MAX_MAZE_SIZE = 520;
       const MIN_MAZE_SIZE = 200;
-      
+
       // Scale limits for UI
       const UI_SCALE_MIN = 0.75;
       const UI_SCALE_MAX = 1.0;
-      
+
       // Calculate ideal maze size (constrained by width too)
       const maxMazeByWidth = Math.min(viewportWidth - 32, MAX_MAZE_SIZE); // 16px padding each side
       const idealMazeSize = Math.min(baseWidth, baseHeight, maxMazeByWidth, MAX_MAZE_SIZE);
-      
+
       // How much height do we need for the ideal maze?
       const neededForIdealMaze = idealMazeSize;
-      
+
       let uiScale = UI_SCALE_MAX;
       let mazeSize = idealMazeSize;
-      
+
       if (availableForMaze < neededForIdealMaze) {
         // Not enough space - try scaling down UI first
         // Calculate how much UI space we can save by scaling
         const uiScalableHeight = HEADER_HEIGHT + PUZZLE_NUM_HEIGHT + SCOREBOARD_HEIGHT + CONTROLS_HEIGHT;
-        
+
         // How much extra space do we need?
         const deficit = neededForIdealMaze - availableForMaze;
-        
+
         // How much can we save by scaling UI to minimum?
         const maxUISavings = uiScalableHeight * (1 - UI_SCALE_MIN);
-        
+
         if (deficit <= maxUISavings) {
           // We can fit the ideal maze by just scaling down UI
           // Calculate the exact scale needed
@@ -273,15 +295,15 @@ export default function Home() {
           mazeSize = Math.max(MIN_MAZE_SIZE, viewportHeight - minUIHeight);
         }
       }
-      
+
       // Apply the UI scale to CSS custom property
       document.documentElement.style.setProperty('--ui-scale', uiScale.toFixed(3));
-      
+
       // Also update maze frame size
       const mazeScale = Math.min(1, mazeSize / baseWidth, mazeSize / baseHeight);
       const width = Math.max(1, Math.floor(baseWidth * mazeScale));
       const height = Math.max(1, Math.floor(baseHeight * mazeScale));
-      
+
       setGameFrameSizePx((prev) => {
         if (prev && prev.width === width && prev.height === height) return prev;
         return { width, height };
@@ -937,6 +959,7 @@ export default function Home() {
   const isPostGame = !isPlaying && (!!gameResult || !!previousResult);
   const shouldBlur = showShareCard || (!isPlaying && isGameReady && !showInlineResult);
   const showResultsButton = showInlineResult;
+  const showMenuButton = process.env.NODE_ENV !== 'production' || previewFeaturesEnabled;
   const isAdVisible = (status: 'filled' | 'unfilled' | null) => canRequestAds && status === 'filled';
 
   return (
@@ -966,7 +989,7 @@ export default function Home() {
           puzzleInfo={puzzleLabel ?? `#${puzzleNumber}`}
           onHelpClick={() => setShowHelp(true)}
           onStatsClick={() => setShowStats(true)}
-          onMenuClick={() => setShowMenu(true)}
+          onMenuClick={showMenuButton ? () => setShowMenu(true) : undefined}
           logoRef={devToolsTapTargetRef}
           logoClassName={styles.devToolsTapTarget}
         />
@@ -994,6 +1017,8 @@ export default function Home() {
               onGenerate={handleDevSeedGenerate}
               onLoadDaily={handleLoadDaily}
               onStopGeneration={handleStopGeneration}
+              previewFeaturesEnabled={previewFeaturesEnabled}
+              onPreviewFeaturesToggle={onPreviewFeaturesToggle}
               onClose={() => setShowDevTools(false)}
               canStopGeneration={!!generationAbortRef.current}
             />
@@ -1113,7 +1138,11 @@ export default function Home() {
             failed={gameResult.failed}
             attempts={gameResult.attempts}
             mapType={puzzle.mapType}
-            leaderboardDate={!debugModeRef.current ? getNewYorkDateString() : undefined}
+            leaderboardDate={
+              (process.env.NODE_ENV !== 'production' || previewFeaturesEnabled) && !debugModeRef.current
+                ? getNewYorkDateString()
+                : undefined
+            }
             onClose={handleCloseShareCard}
           />
         )}

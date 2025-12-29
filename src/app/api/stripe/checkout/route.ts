@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { isDevMode } from '@/lib/server/env';
 import { getEntitlementsForUser, getSessionUserId } from '@/lib/server/identity';
 import { jsonError, readJsonBody } from '@/lib/server/responses';
-import { getStripe, stripePriceId } from '@/lib/server/stripe';
+import { getStripe, stripeLifetimePriceId, stripeMonthlyPriceId } from '@/lib/server/stripe';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -41,10 +41,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ url: body.successUrl }, { headers: { 'Cache-Control': 'no-store' } });
     }
 
-    const expected = stripePriceId();
-    if (body.priceId !== expected) {
+    const lifetimePriceId = stripeLifetimePriceId();
+    const monthlyPriceId = stripeMonthlyPriceId();
+    const allowed = new Set([lifetimePriceId, monthlyPriceId].filter((v): v is string => !!v));
+    if (!allowed.has(body.priceId)) {
       return jsonError(400, 'INVALID_PRICE', 'Unknown priceId.');
     }
+    const plan: 'monthly' | 'lifetime' = body.priceId === monthlyPriceId ? 'monthly' : 'lifetime';
+    const mode: 'subscription' | 'payment' = plan === 'monthly' ? 'subscription' : 'payment';
 
     const entitlements = await getEntitlementsForUser(userId);
     if (entitlements.archiveAccess || entitlements.adsRemoved) {
@@ -53,14 +57,26 @@ export async function POST(request: Request) {
 
     const stripe = getStripe();
     const checkout = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      line_items: [{ price: expected, quantity: 1 }],
+      mode,
+      line_items: [{ price: body.priceId, quantity: 1 }],
       success_url: body.successUrl,
       cancel_url: body.cancelUrl,
       allow_promotion_codes: true,
+      ...(mode === 'subscription'
+        ? {
+            subscription_data: {
+              metadata: {
+                user_id: userId,
+                plan,
+                price_id: body.priceId,
+              },
+            },
+          }
+        : {}),
       metadata: {
         user_id: userId,
-        price_id: expected,
+        plan,
+        price_id: body.priceId,
       },
     });
 

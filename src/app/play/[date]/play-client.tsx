@@ -22,6 +22,8 @@ const PhaserGame = dynamic(() => import('@/game/PhaserGame'), {
   ),
 });
 
+const DEVTOOLS_PREVIEW_FEATURES_KEY = 'mazle_devtools_preview_features_v1';
+
 function isValidNyDateString(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
@@ -38,6 +40,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
   const [showStats, setShowStats] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [previewFeaturesEnabled, setPreviewFeaturesEnabled] = useState(false);
   const [gameResult, setGameResult] = useState<{ moveCount: number; timeMs: number; failed?: boolean; attempts?: any[] } | null>(null);
   const [isGameReady, setIsGameReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -59,6 +62,14 @@ export default function ArchivePlayClient({ date }: { date: string }) {
   const isRouteOverlayOpen = expectedPath != null && pathname !== expectedPath;
   const isModalOpen = showHelp || showStats || showShareCard || showMenu;
   const shouldPause = isRouteOverlayOpen || isModalOpen;
+
+  useEffect(() => {
+    try {
+      setPreviewFeaturesEnabled(localStorage.getItem(DEVTOOLS_PREVIEW_FEATURES_KEY) === '1');
+    } catch {
+      setPreviewFeaturesEnabled(false);
+    }
+  }, []);
 
   // Sync CSS custom property to the real visual viewport height (iOS-safe)
   useEffect(() => {
@@ -268,6 +279,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
   const isPostGame = !isPlaying && !!gameResult;
   const shouldBlur = showShareCard || (!isPlaying && isGameReady && !showInlineResult);
   const showResultsButton = showInlineResult;
+  const showMenuButton = process.env.NODE_ENV !== 'production' || previewFeaturesEnabled;
 
   const onBackToToday = useCallback(() => {
     router.push('/');
@@ -289,7 +301,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
           streak={stats.currentStreak || 0}
           onHelpClick={() => setShowHelp(true)}
           onStatsClick={() => setShowStats(true)}
-          onMenuClick={() => setShowMenu(true)}
+          onMenuClick={showMenuButton ? () => setShowMenu(true) : undefined}
         />
         <MoreMenuModal open={showMenu} onClose={() => setShowMenu(false)} />
         <div className={styles.errorCard}>
@@ -334,7 +346,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
           streak={stats.currentStreak || 0}
           onHelpClick={() => setShowHelp(true)}
           onStatsClick={() => setShowStats(true)}
-          onMenuClick={() => setShowMenu(true)}
+          onMenuClick={showMenuButton ? () => setShowMenu(true) : undefined}
         />
 
         <div className={baseStyles.gameWrapper}>
@@ -434,7 +446,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
             failed={gameResult.failed}
             attempts={gameResult.attempts}
             mapType={puzzle.mapType}
-            leaderboardDate={safeDate}
+            leaderboardDate={(process.env.NODE_ENV !== 'production' || previewFeaturesEnabled) ? safeDate : undefined}
             leaderboardAllowSubmit={false}
             secondaryActionLabel="Back to Archive"
             onSecondaryAction={onBackToArchive}

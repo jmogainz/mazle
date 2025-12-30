@@ -1,0 +1,161 @@
+.sectionTitle {
+  font-size: 0.85rem;
+  color: var(--color-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 800;
+  margin: 0 0 0.75rem 0;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+.panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 0.9rem;
+}
+
+.meRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.meLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.meName {
+  font-weight: 800;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.meMeta {
+  font-size: 0.85rem;
+  color: var(--color-secondary);
+}
+
+.meRight {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.rank {
+  font-weight: 900;
+  font-size: 1.15rem;
+  color: var(--color-text);
+}
+
+.buttonRow {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.primaryButton,
+.secondaryButton {
+  border: none;
+  border-radius: 10px;
+  padding: 0.75rem 0.9rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.06s ease, filter 0.2s;
+  width: 100%;
+}
+
+.primaryButton {
+  background: var(--color-primary);
+  color: #ffffff;
+}
+
+.secondaryButton {
+  background: var(--color-background);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+}
+
+.primaryButton:active,
+.secondaryButton:active {
+  transform: scale(0.99);
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 40px 1fr auto auto;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-background);
+  border-radius: 8px;
+}
+
+.rowMe {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px rgba(106, 170, 100, 0.2);
+}
+
+.rowRank {
+  font-weight: 900;
+  color: var(--color-secondary);
+}
+
+.rowName {
+  font-weight: 800;
+  color: var(--color-text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowTime {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  color: var(--color-text);
+}
+
+.rowAttempts {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-secondary);
+  font-weight: 800;
+}
+
+.hintText {
+  font-size: 0.85rem;
+  color: var(--color-secondary);
+  line-height: 1.35;
+}
+
+.error {
+  background: rgba(207, 102, 121, 0.12);
+  border: 1px solid rgba(207, 102, 121, 0.35);
+  color: var(--color-text);
+  padding: 0.75rem;
+  border-radius: 10px;
+}
+

@@ -1,0 +1,240 @@
+.headerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.monthNav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.navButton {
+  background: var(--color-background);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 0.55rem 0.7rem;
+  cursor: pointer;
+  font-weight: 800;
+  color: var(--color-text);
+}
+
+.navButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.monthLabel {
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+.subtle {
+  font-size: 0.85rem;
+  color: var(--color-secondary);
+  line-height: 1.3;
+}
+
+.calendar {
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--color-background);
+}
+
+.weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.weekday {
+  padding: 0.45rem 0.2rem;
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: var(--color-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.cell {
+  position: relative;
+  border-right: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cell:nth-child(7n) {
+  border-right: none;
+}
+
+.cell:nth-last-child(-n + 7) {
+  border-bottom: none;
+}
+
+.dayButton {
+  width: 100%;
+  height: 100%;
+  min-height: 46px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-weight: 900;
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  padding: 0.2rem;
+}
+
+.dayButton:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.lockedBadge {
+  position: absolute;
+  bottom: 4px;
+  right: 6px;
+  font-size: 0.8rem;
+  color: var(--color-secondary);
+}
+
+.hintBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0.85rem 0 0;
+  padding: 0.85rem;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+}
+
+.hintTitle {
+  font-weight: 900;
+}
+
+.hintButton {
+  background: var(--color-primary);
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  padding: 0.65rem 0.85rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.hintButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.paywallBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1300;
+  padding: 1rem;
+}
+
+.paywallCard {
+  width: 100%;
+  max-width: 420px;
+  border-radius: 14px;
+  border: 2px solid var(--color-border);
+  background: var(--color-background);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
+  padding: 1.25rem;
+  position: relative;
+}
+
+.paywallTitle {
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: center;
+  margin-bottom: 0.5rem;
+}
+
+.paywallSubtitle {
+  text-align: center;
+  color: var(--color-secondary);
+  line-height: 1.35;
+  margin-bottom: 1rem;
+}
+
+.paywallPrice {
+  font-weight: 900;
+  font-size: 1.3rem;
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.paywallActions {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.primary {
+  background: var(--color-primary);
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  padding: 0.8rem 1rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.secondary {
+  background: var(--color-background);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 0.8rem 1rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.secondary:disabled,
+.primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.inlineNotice {
+  margin-top: 0.75rem;
+  color: var(--color-secondary);
+  font-size: 0.85rem;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.banner {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  border-radius: 12px;
+  padding: 0.75rem 0.9rem;
+  margin-bottom: 0.75rem;
+  color: var(--color-secondary);
+  font-weight: 800;
+}
+

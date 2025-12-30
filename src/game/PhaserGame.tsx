@@ -17,6 +17,7 @@ export interface GameControls {
   setMaxLives: (count: number) => void;
   getMaxLives: () => number;
   showSingleAttemptPath: (attemptIndex: number | null) => void;
+  setPaused: (paused: boolean) => void;
 }
 
 interface PhaserGameProps {
@@ -36,6 +37,11 @@ export interface PhaserGameRef {
 export default function PhaserGame({ puzzle, viewportWidth, viewportHeight, onReady }: PhaserGameProps) {
   const gameContainerRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
+  const onReadyRef = useRef<PhaserGameProps['onReady']>(onReady);
+
+  useEffect(() => {
+    onReadyRef.current = onReady;
+  }, [onReady]);
 
   const baseWidth = viewportWidth ?? Math.max(420, puzzle.width * TILE_SIZE + 64);
   const baseHeight = viewportHeight ?? Math.max(520, puzzle.height * TILE_SIZE + 120);
@@ -84,6 +90,10 @@ export default function PhaserGame({ puzzle, viewportWidth, viewportHeight, onRe
     showSingleAttemptPath: (attemptIndex: number | null) => {
       const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;
       scene?.showSingleAttemptPath(attemptIndex);
+    },
+    setPaused: (paused: boolean) => {
+      const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;
+      scene?.setPaused(paused);
     },
   }), []);
 
@@ -150,7 +160,7 @@ export default function PhaserGame({ puzzle, viewportWidth, viewportHeight, onRe
 
     // Notify when ready (use a small delay to ensure scene is initialized)
     setTimeout(() => {
-      onReady?.(getControls());
+      onReadyRef.current?.(getControls());
     }, 100);
 
     return () => {
@@ -159,7 +169,7 @@ export default function PhaserGame({ puzzle, viewportWidth, viewportHeight, onRe
         gameRef.current = null;
       }
     };
-  }, [puzzle, onReady, getControls, baseWidth, baseHeight]);
+  }, [puzzle, getControls, baseWidth, baseHeight]);
 
   return (
     <div

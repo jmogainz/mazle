@@ -5,9 +5,11 @@ use axum::{
     Router,
 };
 use axum::http::StatusCode;
-use log::info;
+use log::{error, info};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::fs::File;
+use std::io::{BufWriter, Write};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tower_http::cors::{Any, CorsLayer};
@@ -15,7 +17,7 @@ use tower_http::cors::{Any, CorsLayer};
 // Import from library
 use mazle_generator::{
     cache::PuzzleCache, generate_ground_puzzle, generate_ice_puzzle_with_cancel, scheduler,
-    GenerationConfig, PuzzleData,
+    GenerationConfig, MapType, Position, PuzzleData, TileType,
 };
 
 /// Application state
@@ -68,6 +70,192 @@ fn generate_by_type(
         "ground" => Ok(generate_ground_puzzle(seed, config)),
         _ => generate_ice_puzzle_with_cancel(seed, config, cancel_flag), // Default to ice
     }
+}
+
+// =============================================================================
+// DATASET GENERATION (IMPLICIT PRETRAIN DATA)
+// =============================================================================
+
+const DEFAULT_DATASET_COUNT: usize = 100_000;
+const DEFAULT_DATASET_SEED_PREFIX: &str = "train";
+const DEFAULT_DATASET_MAP_TYPE: &str = "ice";
+const DEFAULT_DATASET_SIZE: usize = 15;
+const DEFAULT_DATASET_CLOSENESS_THRESHOLD: f64 = 0.90;
+const DATASET_PROGRESS_EVERY: usize = 1_000;
+const DATASET_SEED_MIN_WIDTH: usize = 6;
+
+#[derive(Clone, Debug)]
+struct DatasetConfig {
+    out_path: String,
+    count: usize,
+    seed_prefix: String,
+    map_type: String,
+    size: usize,
+    closeness_threshold: f64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DatasetRecord {
+    seed: String,
+    width: usize,
+    height: usize,
+    map_type: MapType,
+    tiles_interior: Vec<Vec<u8>>,
+    start: Position,
+    goal: Position,
+}
+
+fn dataset_config_from_env() -> Result<Option<DatasetConfig>, String> {
+    let out_path = match std::env::var("DATASET_OUT") {
+        Ok(path) => path,
+        Err(_) => return Ok(None),
+    };
+
+    let count = match std::env::var("DATASET_COUNT") {
+        Ok(value) => value
+            .parse::<usize>()
+            .map_err(|_| format!("Invalid DATASET_COUNT: {}", value))?,
+        Err(_) => DEFAULT_DATASET_COUNT,
+    };
+
+    let seed_prefix = std::env::var("DATASET_SEED_PREFIX")
+        .unwrap_or_else(|_| DEFAULT_DATASET_SEED_PREFIX.to_string());
+
+    let map_type =
+        std::env::var("DATASET_MAP_TYPE").unwrap_or_else(|_| DEFAULT_DATASET_MAP_TYPE.to_string());
+
+    let size = match std::env::var("DATASET_SIZE") {
+        Ok(value) => value
+            .parse::<usize>()
+            .map_err(|_| format!("Invalid DATASET_SIZE: {}", value))?,
+        Err(_) => DEFAULT_DATASET_SIZE,
+    };
+
+    Ok(Some(DatasetConfig {
+        out_path,
+        count,
+        seed_prefix,
+        map_type,
+        size,
+        closeness_threshold: DEFAULT_DATASET_CLOSENESS_THRESHOLD,
+    }))
+}
+
+fn dataset_record_from_puzzle(seed: &str, puzzle: &PuzzleData) -> DatasetRecord {
+    let width = puzzle.width;
+    let height = puzzle.height;
+
+    let mut tiles_interior = Vec::with_capacity(height.saturating_sub(2));
+    for y in 1..height.saturating_sub(1) {
+        let mut row = Vec::with_capacity(width.saturating_sub(2));
+        for x in 1..width.saturating_sub(1) {
+            let mut tile = puzzle.tiles[y][x];
+            if tile == TileType::Start as u8 || tile == TileType::Goal as u8 {
+                tile = TileType::Ice as u8;
+            }
+            row.push(tile);
+        }
+        tiles_interior.push(row);
+    }
+
+    DatasetRecord {
+        seed: seed.to_string(),
+        width,
+        height,
+        map_type: puzzle.map_type,
+        tiles_interior,
+        // Store interior coordinates (13x13) to match tilesInterior indexing.
+        start: Position {
+            x: puzzle.start.x - 1,
+            y: puzzle.start.y - 1,
+        },
+        goal: Position {
+            x: puzzle.goal.x - 1,
+            y: puzzle.goal.y - 1,
+        },
+    }
+}
+
+fn run_dataset_generation(config: DatasetConfig) -> Result<(), Box<dyn std::error::Error>> {
+    if config.count == 0 {
+        return Err("DATASET_COUNT must be > 0".into());
+    }
+
+    if config.size != DEFAULT_DATASET_SIZE {
+        return Err(format!(
+            "DATASET_SIZE={} not supported (only {} supported)",
+            config.size, DEFAULT_DATASET_SIZE
+        )
+        .into());
+    }
+
+    if config.map_type != "ice" && config.map_type != "ground" {
+        return Err(format!(
+            "DATASET_MAP_TYPE='{}' not supported (use 'ice' or 'ground')",
+            config.map_type
+        )
+        .into());
+    }
+
+    let mut gen_config = GenerationConfig::default();
+    gen_config.closeness_threshold = config.closeness_threshold;
+
+    info!("📦 Dataset generation mode enabled");
+    info!(
+        "📦 out={} count={} seed_prefix={} map_type={} closeness_threshold={:.2}",
+        config.out_path,
+        config.count,
+        config.seed_prefix,
+        config.map_type,
+        config.closeness_threshold
+    );
+
+    let file = File::create(&config.out_path)?;
+    let mut writer = BufWriter::new(file);
+
+    let seed_width = std::cmp::max(DATASET_SEED_MIN_WIDTH, config.count.to_string().len());
+    let start_time = Instant::now();
+
+    for idx in 1..=config.count {
+        let seed = format!(
+            "{}-{:0width$}",
+            config.seed_prefix,
+            idx,
+            width = seed_width
+        );
+
+        let puzzle =
+            generate_by_type(&seed, &gen_config, &config.map_type, None).map_err(|_| {
+                format!("generation cancelled for seed '{}'", seed)
+            })?;
+        let record = dataset_record_from_puzzle(&seed, &puzzle);
+
+        serde_json::to_writer(&mut writer, &record)?;
+        writer.write_all(b"\n")?;
+
+        if idx % DATASET_PROGRESS_EVERY == 0 || idx == config.count {
+            let elapsed = start_time.elapsed();
+            let avg_ms = (elapsed.as_secs_f64() * 1000.0) / idx as f64;
+            let remaining_s = avg_ms * (config.count - idx) as f64 / 1000.0;
+
+            info!(
+                "📦 progress {}/{} avg={:.1}ms eta={:.1}m",
+                idx,
+                config.count,
+                avg_ms,
+                remaining_s / 60.0
+            );
+        }
+    }
+
+    writer.flush()?;
+    info!(
+        "✅ Dataset generation complete ({} samples) -> {}",
+        config.count, config.out_path
+    );
+
+    Ok(())
 }
 
 /// Generation response
@@ -429,6 +617,21 @@ async fn main() {
         .or_else(|_| std::env::var("RUST_LOG"))
         .unwrap_or_else(|_| "info".to_string());
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(&log_level)).init();
+
+    let dataset_config = match dataset_config_from_env() {
+        Ok(config) => config,
+        Err(err) => {
+            error!("❌ Dataset config error: {}", err);
+            std::process::exit(1);
+        }
+    };
+    if let Some(config) = dataset_config {
+        if let Err(err) = run_dataset_generation(config) {
+            error!("❌ Dataset generation failed: {}", err);
+            std::process::exit(1);
+        }
+        return;
+    }
 
     info!("🧊 Mazle Generator Server starting...");
 

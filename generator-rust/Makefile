@@ -45,6 +45,8 @@ override APP_PORT := 8080
 
 # Rust-specific configuration
 RUST_BINARY_NAME := mazle-generator
+# Match Docker's native-CPU optimization for local cargo builds
+export RUSTFLAGS ?= -C target-cpu=native
 
 # Deploy target selection (prod/staging use Fly.io for this Rust app)
 PROD_DEPLOY_TARGET := fly
@@ -74,3 +76,120 @@ endif
 ifndef INCLUDED_COMPOSE_PROJECT_TARGETS
   include $(DEVOPS_TOOLKIT_PATH)/backend/make/compose/compose-project-targets/compose_project_targets.mk
 endif
+
+# -------------------------
+# ML / Python bridge + training
+# -------------------------
+.PHONY: ml-bridge
+ml-bridge: ml-venv
+	@if [ -z "$(UNIQUE_RUNNER_ID)" ]; then \
+		echo "UNIQUE_RUNNER_ID not set. Run: export UNIQUE_RUNNER_ID=\$$(whoami)"; \
+		exit 1; \
+	fi
+	CARGO_HOME=$(REPO_ROOT)/.cargo CARGO_TARGET_DIR=$(REPO_ROOT)/.cargo-target \
+		cd ml/bridge && $(CURDIR)/ml/.venv/bin/python -m maturin develop
+
+.PHONY: ml-venv
+ml-venv:
+	@if [ -z "$(UNIQUE_RUNNER_ID)" ]; then \
+		echo "UNIQUE_RUNNER_ID not set. Run: export UNIQUE_RUNNER_ID=\$$(whoami)"; \
+		exit 1; \
+	fi
+	@if [ ! -d "ml/.venv" ]; then \
+		python3 -m venv ml/.venv; \
+	fi
+	$(CURDIR)/ml/.venv/bin/python -m pip install -U pip
+	$(CURDIR)/ml/.venv/bin/python -m pip install -r ml/requirements.txt
+
+.PHONY: ml-setup
+ml-setup: ml-venv ml-bridge
+
+ML_CONFIG ?= $(REPO_ROOT)/generator-rust/ml/config/pretrain.yaml
+ML_DATA ?=
+ML_OUT ?=
+ML_DATA_COUNT ?=
+ML_EPOCHS ?=
+ML_BATCH_SIZE ?=
+ML_PRESET ?=
+ML_VAL_PCT ?=
+ML_TEST_PCT ?=
+ML_SHUFFLE_BUFFER ?=
+ML_EVAL_STEPS ?=
+ML_SOLVER_EVAL ?=
+ML_SOLVER_SAMPLES ?=
+ML_SOLVER_TARGET_MOVES ?=
+ML_AMP ?=
+ML_COMPILE ?=
+ML_EVAL_TEST ?=
+ML_EXTRA_ARGS ?=
+
+ML_TUNE_NUM_SAMPLES ?=
+ML_TUNE_ARCH ?=
+ML_TUNE_METRIC ?=
+ML_TUNE_MODE ?=
+ML_TUNE_MAX_CONCURRENT ?=
+ML_TUNE_CPUS ?=
+ML_TUNE_EXTRA_ARGS ?=
+
+ML_TUNE_NUM_SAMPLES_FLAG := $(if $(ML_TUNE_NUM_SAMPLES),--num-samples $(ML_TUNE_NUM_SAMPLES),)
+ML_TUNE_ARCH_FLAG := $(if $(ML_TUNE_ARCH),$(if $(filter 1,$(ML_TUNE_ARCH)),--tune-arch,),)
+ML_TUNE_METRIC_FLAG := $(if $(ML_TUNE_METRIC),--metric $(ML_TUNE_METRIC),)
+ML_TUNE_MODE_FLAG := $(if $(ML_TUNE_MODE),--mode $(ML_TUNE_MODE),)
+ML_TUNE_MAX_CONCURRENT_FLAG := $(if $(ML_TUNE_MAX_CONCURRENT),--max-concurrent $(ML_TUNE_MAX_CONCURRENT),)
+ML_TUNE_CPUS_FLAG := $(if $(ML_TUNE_CPUS),--cpus-per-trial $(ML_TUNE_CPUS),)
+
+.PHONY: ml-pretrain
+ml-pretrain: ml-venv ml-bridge
+	@if [ -z "$(UNIQUE_RUNNER_ID)" ]; then \
+		echo "UNIQUE_RUNNER_ID not set. Run: export UNIQUE_RUNNER_ID=\$$(whoami)"; \
+		exit 1; \
+	fi
+	ML_CONFIG=$(ML_CONFIG) \
+	ML_DATA=$(ML_DATA) \
+	ML_OUT=$(ML_OUT) \
+	ML_DATA_COUNT=$(ML_DATA_COUNT) \
+	ML_EPOCHS=$(ML_EPOCHS) \
+	ML_BATCH_SIZE=$(ML_BATCH_SIZE) \
+	ML_PRESET=$(ML_PRESET) \
+	ML_VAL_PCT=$(ML_VAL_PCT) \
+	ML_TEST_PCT=$(ML_TEST_PCT) \
+	ML_SHUFFLE_BUFFER=$(ML_SHUFFLE_BUFFER) \
+	ML_EVAL_STEPS=$(ML_EVAL_STEPS) \
+	ML_SOLVER_EVAL=$(ML_SOLVER_EVAL) \
+	ML_SOLVER_SAMPLES=$(ML_SOLVER_SAMPLES) \
+	ML_SOLVER_TARGET_MOVES=$(ML_SOLVER_TARGET_MOVES) \
+	ML_AMP=$(ML_AMP) \
+	ML_COMPILE=$(ML_COMPILE) \
+	ML_EVAL_TEST=$(ML_EVAL_TEST) \
+	ML_EXTRA_ARGS="$(ML_EXTRA_ARGS)" \
+	bash ml/scripts/run_pretrain.sh
+
+.PHONY: ml-tune
+ml-tune: ml-venv ml-bridge
+	@if [ -z "$(UNIQUE_RUNNER_ID)" ]; then \
+		echo "UNIQUE_RUNNER_ID not set. Run: export UNIQUE_RUNNER_ID=\$$(whoami)"; \
+		exit 1; \
+	fi
+	$(CURDIR)/ml/.venv/bin/python ml/tune.py \
+		$(ML_CONFIG_FLAG) \
+		$(ML_DATA_FLAG) \
+		$(ML_OUT_FLAG) \
+		$(ML_DATA_COUNT_FLAG) \
+		$(ML_EPOCHS_FLAG) \
+		$(ML_BATCH_SIZE_FLAG) \
+		$(ML_PRESET_FLAG) \
+		$(ML_VAL_PCT_FLAG) \
+		$(ML_TEST_PCT_FLAG) \
+		$(ML_SHUFFLE_BUFFER_FLAG) \
+		$(ML_EVAL_STEPS_FLAG) \
+		$(ML_AMP_FLAG) \
+		$(ML_COMPILE_FLAG) \
+		$(ML_EVAL_TEST_FLAG) \
+		$(ML_SOLVER_FLAGS) \
+		$(ML_TUNE_NUM_SAMPLES_FLAG) \
+		$(ML_TUNE_ARCH_FLAG) \
+		$(ML_TUNE_METRIC_FLAG) \
+		$(ML_TUNE_MODE_FLAG) \
+		$(ML_TUNE_MAX_CONCURRENT_FLAG) \
+		$(ML_TUNE_CPUS_FLAG) \
+		$(ML_TUNE_EXTRA_ARGS)

@@ -43,6 +43,16 @@ generator-rust/target/
 **/*.rs.bk
 *.pdb
 
+# Local datasets
+data/
+
+# Local cargo caches (used for Rust/PyO3 bridge builds)
+.cargo/
+.cargo-target/
+
+# Local Python venv for ML tooling
+generator-rust/ml/.venv/
+
 # WASM build marker (tracks rebuild state, not needed in repo)
 src/wasm/generator/.build-marker
 src/wasm/generator/.build-hash

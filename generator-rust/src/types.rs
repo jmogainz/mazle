@@ -16,6 +16,24 @@ pub enum TileType {
     Boulder = 9,
 }
 
+impl TileType {
+    pub fn from_u8(value: u8) -> Option<Self> {
+        match value {
+            0 => Some(TileType::Ground),
+            1 => Some(TileType::Wall),
+            2 => Some(TileType::Start),
+            3 => Some(TileType::Goal),
+            4 => Some(TileType::Ice),
+            5 => Some(TileType::LedgeUp),
+            6 => Some(TileType::LedgeDown),
+            7 => Some(TileType::LedgeLeft),
+            8 => Some(TileType::LedgeRight),
+            9 => Some(TileType::Boulder),
+            _ => None,
+        }
+    }
+}
+
 /// Cardinal directions
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Direction {

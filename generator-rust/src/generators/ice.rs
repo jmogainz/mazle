@@ -1053,6 +1053,121 @@ fn has_no_stuck_states(
 }
 
 // =============================================================================
+// PUBLIC VALIDATION (for Python bridge)
+// =============================================================================
+
+#[derive(Debug, Clone, Copy)]
+pub struct ValidationResult {
+    pub valid_tiles: bool,
+    pub solvable: bool,
+    pub optimal_moves: i32,
+    pub unique_optimal: bool,
+    pub no_stuck: bool,
+    pub meets_target_moves: bool,
+}
+
+/// Validate an ice puzzle from interior tiles (no border), using interior start/goal coords.
+pub fn validate_ice_puzzle_interior(
+    tiles_interior: &Vec<Vec<u8>>,
+    start: Position,
+    goal: Position,
+    target_moves: Option<i32>,
+) -> ValidationResult {
+    if tiles_interior.is_empty() || tiles_interior[0].is_empty() {
+        return ValidationResult {
+            valid_tiles: false,
+            solvable: false,
+            optimal_moves: -1,
+            unique_optimal: false,
+            no_stuck: false,
+            meets_target_moves: false,
+        };
+    }
+
+    let interior_h = tiles_interior.len();
+    let interior_w = tiles_interior[0].len();
+    if tiles_interior.iter().any(|row| row.len() != interior_w) {
+        return ValidationResult {
+            valid_tiles: false,
+            solvable: false,
+            optimal_moves: -1,
+            unique_optimal: false,
+            no_stuck: false,
+            meets_target_moves: false,
+        };
+    }
+
+    let mut valid_tiles = true;
+    let width = interior_w + 2;
+    let height = interior_h + 2;
+    let mut tiles = vec![vec![TileType::Wall; width]; height];
+
+    for y in 0..interior_h {
+        for x in 0..interior_w {
+            match TileType::from_u8(tiles_interior[y][x]) {
+                Some(tile) => tiles[y + 1][x + 1] = tile,
+                None => {
+                    valid_tiles = false;
+                    tiles[y + 1][x + 1] = TileType::Wall;
+                }
+            }
+        }
+    }
+
+    if start.x < 0
+        || start.y < 0
+        || goal.x < 0
+        || goal.y < 0
+        || start.x >= interior_w as i32
+        || start.y >= interior_h as i32
+        || goal.x >= interior_w as i32
+        || goal.y >= interior_h as i32
+    {
+        return ValidationResult {
+            valid_tiles: false,
+            solvable: false,
+            optimal_moves: -1,
+            unique_optimal: false,
+            no_stuck: false,
+            meets_target_moves: false,
+        };
+    }
+
+    let start_full = Position {
+        x: start.x + 1,
+        y: start.y + 1,
+    };
+    let goal_full = Position {
+        x: goal.x + 1,
+        y: goal.y + 1,
+    };
+
+    tiles[start_full.y as usize][start_full.x as usize] = TileType::Start;
+    tiles[goal_full.y as usize][goal_full.x as usize] = TileType::Goal;
+
+    let optimal_path = find_optimal_path(&tiles, &start_full, &goal_full, width, height);
+    let solvable = optimal_path.is_some();
+    let optimal_moves = if let Some(ref path) = optimal_path {
+        (path.len() as i32) - 1
+    } else {
+        -1
+    };
+    let no_stuck = solvable && has_no_stuck_states(&tiles, &start_full, &goal_full, width, height);
+    let unique_optimal = solvable
+        && has_unique_optimal_path(&tiles, &start_full, &goal_full, width, height, optimal_moves);
+    let meets_target_moves = target_moves.map_or(solvable, |t| optimal_moves == t);
+
+    ValidationResult {
+        valid_tiles,
+        solvable,
+        optimal_moves,
+        unique_optimal,
+        no_stuck,
+        meets_target_moves,
+    }
+}
+
+// =============================================================================
 // INTUITIVE DIRECTION HELPERS
 // =============================================================================
 

@@ -6,6 +6,8 @@ import { api, getApiMode } from '@/lib/api';
 import { getPrefs, setPrefs } from '@/lib/prefs';
 import styles from './AccountView.module.css';
 
+const DEVTOOLS_PREVIEW_FEATURES_KEY = 'mazle_devtools_preview_features_v1';
+
 type LoadState<T> =
   | { status: 'loading' }
   | { status: 'loaded'; data: T }
@@ -21,6 +23,7 @@ export default function AccountView() {
   const [meState, setMeState] = useState<LoadState<Awaited<ReturnType<typeof api.me>>>>({ status: 'loading' });
   const [busy, setBusy] = useState<'idle' | 'signin' | 'signout'>('idle');
   const [autoSubmitWins, setAutoSubmitWins] = useState(() => getPrefs().leaderboardAutoSubmitWins);
+  const [previewFeaturesEnabled, setPreviewFeaturesEnabled] = useState(false);
 
   const refreshMe = useCallback(async () => {
     setMeState({ status: 'loading' });
@@ -38,6 +41,19 @@ export default function AccountView() {
   useEffect(() => {
     refreshMe();
   }, [refreshMe]);
+
+  useEffect(() => {
+    try {
+      setPreviewFeaturesEnabled(localStorage.getItem(DEVTOOLS_PREVIEW_FEATURES_KEY) === '1');
+    } catch {
+      setPreviewFeaturesEnabled(false);
+    }
+  }, []);
+
+  const showLockedFeatures = useMemo(() => {
+    if (process.env.NODE_ENV !== 'production') return true;
+    return previewFeaturesEnabled;
+  }, [previewFeaturesEnabled]);
 
   const isSignedIn = useMemo(() => meState.status === 'loaded' && meState.data.mode === 'user', [meState]);
 
@@ -152,27 +168,29 @@ export default function AccountView() {
         )}
       </div>
 
-      <div className={styles.panel}>
-        <div className={styles.sectionTitle}>Settings</div>
-        <div className={styles.toggleRow}>
-          <div>
-            <div className={styles.toggleLabel}>Auto-submit wins</div>
-            <div className={styles.toggleHint}>
-              Automatically submits your daily win to the leaderboard.
+      {showLockedFeatures && (
+        <div className={styles.panel}>
+          <div className={styles.sectionTitle}>Settings</div>
+          <div className={styles.toggleRow}>
+            <div>
+              <div className={styles.toggleLabel}>Auto-submit wins</div>
+              <div className={styles.toggleHint}>
+                Automatically submits your daily win to the leaderboard.
+              </div>
+            </div>
+            <div className={styles.toggleControl}>
+              <input
+                className={styles.checkbox}
+                type="checkbox"
+                checked={autoSubmitWins}
+                onChange={handleToggleAutoSubmit}
+              />
             </div>
           </div>
-          <div className={styles.toggleControl}>
-            <input
-              className={styles.checkbox}
-              type="checkbox"
-              checked={autoSubmitWins}
-              onChange={handleToggleAutoSubmit}
-            />
-          </div>
         </div>
-      </div>
+      )}
 
-      {me && (
+      {me && showLockedFeatures && (
         <div className={styles.panel}>
           <div className={styles.sectionTitle}>Access</div>
           <div className={styles.entitlements}>
@@ -202,4 +220,3 @@ export default function AccountView() {
     </div>
   );
 }
-

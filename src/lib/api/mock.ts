@@ -358,10 +358,11 @@ export const mockApi = {
   },
 
   archiveOffer: async (): Promise<ArchiveOfferResponse> => ({
-    priceId: 'price_mock_archive',
-    formattedPrice: '$4.99',
-    currency: 'usd',
-    purchaseType: 'one_time',
+    plans: [
+      { id: 'monthly', priceId: 'price_mock_monthly', formattedPrice: '$1.99', currency: 'usd', purchaseType: 'subscription', interval: 'month' },
+      { id: 'lifetime', priceId: 'price_mock_lifetime', formattedPrice: '$9.99', currency: 'usd', purchaseType: 'one_time' },
+    ],
+    defaultPlanId: 'monthly',
     grants: ['archive_access', 'ads_removed'],
   }),
 

@@ -18,7 +18,11 @@ export function getStripe(): Stripe {
 }
 
 export function stripePriceId(): string {
-  return requireEnv('STRIPE_ARCHIVE_PRICE_ID');
+  const value = env('STRIPE_ARCHIVE_PRICE_ID_LIFETIME') || env('STRIPE_ARCHIVE_PRICE_ID');
+  if (!value) {
+    throw new Error('Missing required env var: STRIPE_ARCHIVE_PRICE_ID_LIFETIME (or STRIPE_ARCHIVE_PRICE_ID legacy)');
+  }
+  return value;
 }
 
 export function stripeWebhookSecret(): string {
@@ -26,6 +30,16 @@ export function stripeWebhookSecret(): string {
 }
 
 export function isStripeConfigured(): boolean {
-  return !!(env('STRIPE_SECRET_KEY') && env('STRIPE_ARCHIVE_PRICE_ID'));
+  const hasKey = !!env('STRIPE_SECRET_KEY');
+  const hasLifetime = !!(env('STRIPE_ARCHIVE_PRICE_ID_LIFETIME') || env('STRIPE_ARCHIVE_PRICE_ID'));
+  const hasMonthly = !!env('STRIPE_ARCHIVE_PRICE_ID_MONTHLY');
+  return hasKey && (hasLifetime || hasMonthly);
 }
 
+export function stripeLifetimePriceId(): string | undefined {
+  return env('STRIPE_ARCHIVE_PRICE_ID_LIFETIME') || env('STRIPE_ARCHIVE_PRICE_ID');
+}
+
+export function stripeMonthlyPriceId(): string | undefined {
+  return env('STRIPE_ARCHIVE_PRICE_ID_MONTHLY');
+}

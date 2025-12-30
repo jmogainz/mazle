@@ -14,12 +14,6 @@ if (envUrl && !process.env.NEXTAUTH_URL) {
   process.env.NEXTAUTH_URL = envUrl;
 }
 
-function applePrivateKey(): string | undefined {
-  const raw = env('APPLE_PRIVATE_KEY');
-  if (!raw) return undefined;
-  return raw.includes('\\n') ? raw.replace(/\\n/g, '\n') : raw;
-}
-
 const providers = [];
 
 if (env('GOOGLE_CLIENT_ID') && env('GOOGLE_CLIENT_SECRET')) {
@@ -31,16 +25,13 @@ if (env('GOOGLE_CLIENT_ID') && env('GOOGLE_CLIENT_SECRET')) {
   );
 }
 
-if (env('APPLE_CLIENT_ID') && env('APPLE_TEAM_ID') && env('APPLE_KEY_ID') && env('APPLE_PRIVATE_KEY')) {
+// NOTE: Apple provider expects a JWT client secret as a string (not a structured object).
+// We keep this optional and off by default until Apple auth is enabled.
+if (env('APPLE_CLIENT_ID') && env('APPLE_CLIENT_SECRET')) {
   providers.push(
     Apple({
       clientId: env('APPLE_CLIENT_ID')!,
-      clientSecret: {
-        appleId: env('APPLE_CLIENT_ID')!,
-        teamId: env('APPLE_TEAM_ID')!,
-        privateKey: applePrivateKey()!,
-        keyId: env('APPLE_KEY_ID')!,
-      },
+      clientSecret: env('APPLE_CLIENT_SECRET')!,
     })
   );
 }

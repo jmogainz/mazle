@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { LAUNCH_DATE_NY, getNewYorkDateString, getPuzzleNumberFromNyDateString } from '@/game/puzzleGenerator';
 import { resolveMeIdentity } from '@/lib/server/identity';
 import { jsonError } from '@/lib/server/responses';
@@ -12,8 +12,8 @@ function isValidNyDateString(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
-export async function GET(request: Request, { params }: { params: { date: string } }) {
-  const date = params.date;
+export async function GET(request: NextRequest, context: { params: Promise<{ date: string }> }) {
+  const { date } = await context.params;
   if (!isValidNyDateString(date)) {
     return jsonError(400, 'INVALID_DATE', 'Invalid date.');
   }

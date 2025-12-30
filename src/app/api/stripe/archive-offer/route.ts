@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { isDevMode } from '@/lib/server/env';
 import { jsonError } from '@/lib/server/responses';
-import { getStripe, isStripeConfigured, stripePriceId } from '@/lib/server/stripe';
+import { getStripe, isStripeConfigured, stripeLifetimePriceId, stripeMonthlyPriceId } from '@/lib/server/stripe';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -19,10 +19,24 @@ export async function GET() {
   if (isDevMode()) {
     return NextResponse.json(
       {
-        priceId: 'dev_price_archive',
-        formattedPrice: '$4.99',
-        currency: 'usd',
-        purchaseType: 'one_time',
+        plans: [
+          {
+            id: 'monthly',
+            priceId: 'dev_price_archive_monthly',
+            formattedPrice: '$1.99',
+            currency: 'usd',
+            purchaseType: 'subscription',
+            interval: 'month',
+          },
+          {
+            id: 'lifetime',
+            priceId: 'dev_price_archive_lifetime',
+            formattedPrice: '$9.99',
+            currency: 'usd',
+            purchaseType: 'one_time',
+          },
+        ],
+        defaultPlanId: 'monthly',
         grants: ['archive_access', 'ads_removed'],
       },
       { headers: { 'Cache-Control': 'no-store' } }
@@ -35,17 +49,53 @@ export async function GET() {
 
   try {
     const stripe = getStripe();
-    const priceId = stripePriceId();
-    const price = await stripe.prices.retrieve(priceId);
-    const unitAmount = price.unit_amount ?? 0;
-    const currency = price.currency ?? 'usd';
+    const monthlyPriceId = stripeMonthlyPriceId();
+    const lifetimePriceId = stripeLifetimePriceId();
 
-    return NextResponse.json(
-      {
-        priceId,
+    const plans: Array<{
+      id: 'monthly' | 'lifetime';
+      priceId: string;
+      formattedPrice: string;
+      currency: string;
+      purchaseType: 'subscription' | 'one_time';
+      interval?: 'month';
+    }> = [];
+
+    if (monthlyPriceId) {
+      const price = await stripe.prices.retrieve(monthlyPriceId);
+      const unitAmount = price.unit_amount ?? 0;
+      const currency = price.currency ?? 'usd';
+      plans.push({
+        id: 'monthly',
+        priceId: monthlyPriceId,
+        formattedPrice: formatPrice(currency, unitAmount),
+        currency,
+        purchaseType: 'subscription',
+        interval: 'month',
+      });
+    }
+
+    if (lifetimePriceId) {
+      const price = await stripe.prices.retrieve(lifetimePriceId);
+      const unitAmount = price.unit_amount ?? 0;
+      const currency = price.currency ?? 'usd';
+      plans.push({
+        id: 'lifetime',
+        priceId: lifetimePriceId,
         formattedPrice: formatPrice(currency, unitAmount),
         currency,
         purchaseType: 'one_time',
+      });
+    }
+
+    if (plans.length === 0) {
+      return jsonError(500, 'STRIPE_NOT_CONFIGURED', 'Stripe is not configured.');
+    }
+
+    return NextResponse.json(
+      {
+        plans,
+        defaultPlanId: plans.some((p) => p.id === 'monthly') ? 'monthly' : plans[0]!.id,
         grants: ['archive_access', 'ads_removed'],
       },
       { headers: { 'Cache-Control': 'no-store' } }
@@ -55,4 +105,3 @@ export async function GET() {
     return jsonError(500, 'STRIPE_OFFER_FAILED', message);
   }
 }
-

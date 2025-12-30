@@ -34,6 +34,11 @@ Notes:
 - The gateway port may not be `8080`. Watch the output line: `LAN URL: http://...:<PORT>`.
 - If you edited `nginx/nginx.conf.template`, re-run the command above to restart nginx.
 
+## (Optional) Preview-gated UI in prod
+
+In production deploys, the Archive + Leaderboard UI is hidden by default.
+To preview it for testing, open DevTools in-game and enable “Preview Features” (writes `localStorage['mazle_devtools_preview_features_v1']='1'`).
+
 ## 2) Confirm health (gateway + generator)
 
 Replace `APP_PORT` with the port you see in the Make output (example uses `8081`).
@@ -187,7 +192,8 @@ If you see `redirect_uri_mismatch` when signing in:
 
 Add to `.env.local`:
 - `STRIPE_SECRET_KEY=sk_test_...`
-- `STRIPE_ARCHIVE_PRICE_ID=price_...`
+- `STRIPE_ARCHIVE_PRICE_ID_LIFETIME=price_...`
+- (optional) `STRIPE_ARCHIVE_PRICE_ID_MONTHLY=price_...`
 
 Install Stripe CLI (one-time) and start webhook forwarding:
 
@@ -208,14 +214,14 @@ Verify the offer endpoint (UI uses this to display price):
 curl -s "http://localhost:$APP_PORT/api/stripe/archive-offer" | python3 -c "import sys,json; print(json.load(sys.stdin))"
 ```
 
-Expected: includes `priceId` and `formattedPrice`.
+Expected: includes `plans` (monthly + lifetime) and `defaultPlanId`.
 
 Checkout guardrails:
 
 - Guest checkout is blocked:
 ```bash
 APP_PORT=8081
-PRICE_ID=$(curl -s "http://localhost:$APP_PORT/api/stripe/archive-offer" | python3 -c "import sys,json; print(json.load(sys.stdin)['priceId'])")
+PRICE_ID=$(curl -s "http://localhost:$APP_PORT/api/stripe/archive-offer" | python3 -c "import sys,json; d=json.load(sys.stdin); default=d.get('defaultPlanId'); plans=d.get('plans') or []; p=next((x for x in plans if x.get('id')==default), plans[0]); print(p['priceId'])")
 
 GUEST_JAR=/tmp/mazle_guest_cookies.txt
 rm -f "$GUEST_JAR"

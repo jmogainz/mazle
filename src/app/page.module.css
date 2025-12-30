@@ -791,9 +791,7 @@
 }
 
 .startButton {
-  padding: calc(1.1rem * var(--ui-scale));
-  padding-left: calc(3.2rem * var(--ui-scale));
-  padding-right: calc(3.2rem * var(--ui-scale));
+  padding: calc(1.1rem * var(--ui-scale)) calc(3.2rem * var(--ui-scale));
   font-size: calc(1.3rem * var(--ui-scale));
   font-weight: 800;
   font-family: var(--font-main);
@@ -1048,3 +1046,19 @@
 }
 
 /* Puzzle Number Banner - sits between header and stats */
+.puzzleNumberBanner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: calc(0.35rem * var(--ui-scale)) 0;
+}
+
+.puzzleNumberText {
+  font-family: var(--font-main);
+  font-size: calc(1.05rem * var(--ui-scale));
+  font-weight: 800;
+  color: var(--color-text);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}

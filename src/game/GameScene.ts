@@ -35,6 +35,7 @@ export class GameScene extends Phaser.Scene {
   private goalSprite!: Phaser.GameObjects.Container;
   private flashOverlay!: Phaser.GameObjects.Graphics;
   private isAnimating = false;
+  private pauseStartedAtMs: number | null = null;
   private cursors: Phaser.Types.Input.Keyboard.CursorKeys | null = null;
   private wasd: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key } | null = null;
   private offsetX = 0;
@@ -183,6 +184,7 @@ export class GameScene extends Phaser.Scene {
       currentAttemptCorrectMoves: 0,
       lives: this.maxLives,
       penaltyTimeMs: 0,
+      isPaused: false,
       attempts: [],
       startTime: 0,
       endTime: null,
@@ -190,6 +192,7 @@ export class GameScene extends Phaser.Scene {
       isSliding: false,
       moveHistory: [{ ...this.puzzle.start }],
     };
+    this.pauseStartedAtMs = null;
 
     this.unlockedHintTiles = new Set();
     this.unlockedHintEdges = new Set();
@@ -620,6 +623,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
   update() {
+    if (this.gameState.isPaused) return;
     if (this.isAnimating || this.gameState.isComplete) return;
 
     // Skip keyboard input if user is typing in an input/textarea
@@ -643,6 +647,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private handleMove(dir: Direction) {
+    if (this.gameState.isPaused) return;
     if (this.isAnimating || this.gameState.isComplete || !this.isPlaying) return;
 
     const currentPos = { ...this.gameState.playerPos };
@@ -1552,7 +1557,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   public canAcceptMoveInput() {
-    return !(this.isAnimating || this.gameState.isComplete || !this.isPlaying);
+    return !(this.gameState.isPaused || this.isAnimating || this.gameState.isComplete || !this.isPlaying);
   }
 
   public startGame() {
@@ -1561,6 +1566,30 @@ export class GameScene extends Phaser.Scene {
       this.gameState.startTime = Date.now();
       emitGameEvent('stateUpdate', { ...this.gameState });
     }
+  }
+
+  public setPaused(paused: boolean) {
+    if (paused === this.gameState.isPaused) return;
+
+    if (paused) {
+      this.pauseStartedAtMs = Date.now();
+      this.gameState.isPaused = true;
+      this.time.paused = true;
+      this.tweens.pauseAll();
+      emitGameEvent('stateUpdate', { ...this.gameState });
+      return;
+    }
+
+    const now = Date.now();
+    if (this.pauseStartedAtMs != null && this.gameState.startTime > 0 && !this.gameState.isComplete) {
+      const delta = now - this.pauseStartedAtMs;
+      this.gameState.startTime += delta;
+    }
+    this.pauseStartedAtMs = null;
+    this.gameState.isPaused = false;
+    this.time.paused = false;
+    this.tweens.resumeAll();
+    emitGameEvent('stateUpdate', { ...this.gameState });
   }
 
   public setHintsEnabled(enabled: boolean) {
@@ -1603,6 +1632,7 @@ export class GameScene extends Phaser.Scene {
       currentAttemptCorrectMoves: 0,
       lives: this.maxLives,
       penaltyTimeMs: 0,
+      isPaused: false,
       attempts: [],
       startTime: 0,
       endTime: null,
@@ -1610,6 +1640,7 @@ export class GameScene extends Phaser.Scene {
       isSliding: false,
       moveHistory: [{ ...this.puzzle.start }],
     };
+    this.pauseStartedAtMs = null;
 
     this.unlockedHintTiles = new Set();
     this.unlockedHintEdges = new Set();
@@ -2206,9 +2237,8 @@ export class GameScene extends Phaser.Scene {
     unlockedThisLifeEdges?: string[];
   } {
     // Calculate elapsed time (frozen at current moment)
-    const elapsedTimeMs = this.gameState.startTime > 0
-      ? Date.now() - this.gameState.startTime
-      : 0;
+    const frozenNow = this.gameState.isPaused && this.pauseStartedAtMs != null ? this.pauseStartedAtMs : Date.now();
+    const elapsedTimeMs = this.gameState.startTime > 0 ? frozenNow - this.gameState.startTime : 0;
 
     return {
       playerPos: { ...this.gameState.playerPos },
@@ -2262,6 +2292,8 @@ export class GameScene extends Phaser.Scene {
     if (state.isPlaying) {
       this.gameState.startTime = Date.now() - (state.elapsedTimeMs ?? 0);
     }
+    this.gameState.isPaused = false;
+    this.pauseStartedAtMs = null;
 
     // Restore boulder positions if present
     if (state.boulderPositions) {

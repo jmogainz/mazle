@@ -121,8 +121,10 @@ export const viewport: Viewport = {
 
 export default function RootLayout({
   children,
+  overlay,
 }: {
   children: React.ReactNode;
+  overlay: React.ReactNode;
 }) {
   return (
     <html lang="en" className={`${pixelFont.variable} ${nunito.variable}`}>
@@ -202,6 +204,7 @@ export default function RootLayout({
           }}
         />
         {children}
+        {overlay}
         <Analytics />
       </body>
     </html>

@@ -7,11 +7,12 @@ interface HeaderProps {
   puzzleInfo?: string;
   onHelpClick: () => void;
   onStatsClick: () => void;
+  onMenuClick?: () => void;
   logoRef?: React.Ref<HTMLDivElement>;
   logoClassName?: string;
 }
 
-export default function Header({ streak, puzzleInfo, onHelpClick, onStatsClick, logoRef, logoClassName }: HeaderProps) {
+export default function Header({ streak, puzzleInfo, onHelpClick, onStatsClick, onMenuClick, logoRef, logoClassName }: HeaderProps) {
   return (
     <header className={styles.header}>
       <div className={styles.leftSection}>
@@ -26,12 +27,8 @@ export default function Header({ streak, puzzleInfo, onHelpClick, onStatsClick, 
       
       <div className={`${styles.logo} ${logoClassName ?? ''}`.trim()} ref={logoRef}>
         <h1 className={styles.logoText}>MAZLE</h1>
+        {puzzleInfo && <span className={styles.puzzleInfo}>{puzzleInfo}</span>}
       </div>
-      {puzzleInfo && (
-        <div className={styles.puzzleInfoRow}>
-          <span className={styles.puzzleInfo}>{puzzleInfo}</span>
-        </div>
-      )}
       
       <div className={styles.rightSection}>
         <button className={styles.iconButton} onClick={onStatsClick} aria-label="Statistics">
@@ -41,6 +38,15 @@ export default function Header({ streak, puzzleInfo, onHelpClick, onStatsClick, 
             <line x1="6" y1="20" x2="6" y2="14" />
           </svg>
         </button>
+        {onMenuClick && (
+          <button className={styles.iconButton} onClick={onMenuClick} aria-label="Menu">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+              <circle cx="5" cy="12" r="1.7" />
+              <circle cx="12" cy="12" r="1.7" />
+              <circle cx="19" cy="12" r="1.7" />
+            </svg>
+          </button>
+        )}
       </div>
     </header>
   );

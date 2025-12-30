@@ -333,7 +333,7 @@ const BASE_PREFILTER_MIN_DECISION_AMBIGUITY: f64 = 3.0;   // RELAXED from 3.2 to
 
 // Phase 2 thresholds (key difficulty metrics for 15x15)
 const BASE_PREFILTER_MIN_NEAR_OPTIMAL_PATHS: i32 = 60;    // Alternative paths within optimal+2 (ADJUSTED per user request)
-const BASE_PREFILTER_MAX_PATH_OVERLAP: f64 = 0.50;        // Best alternative must differ by 50%+ (RAISED from 0.60)
+const BASE_PREFILTER_MAX_PATH_OVERLAP: f64 = 0.30;        // Best alternative must differ by 70%+
 const BASE_PREFILTER_MAX_PATH_OVERLAP_AVG: f64 = 0.60;    // Average alternative overlap cap
 const BASE_PREFILTER_MIN_EARLY_DIVERGENCE: f64 = 0.55;    // Want early confusion (RAISED from 0.48)
 
@@ -356,7 +356,7 @@ const PREFILTER_ENABLE_DIR: bool = true;
 const PREFILTER_ENABLE_BT: bool = false;
 const PREFILTER_ENABLE_AMB: bool = true;
 const PREFILTER_ENABLE_PATHS: bool = true;
-const PREFILTER_ENABLE_OLAP_BEST: bool = false;
+const PREFILTER_ENABLE_OLAP_BEST: bool = true;
 const PREFILTER_ENABLE_OLAP_AVG: bool = true;
 const PREFILTER_ENABLE_EDIV: bool = true;
 
@@ -2285,7 +2285,8 @@ fn calculate_decision_ambiguity(
 // =============================================================================
 
 /// Count distinct paths that reach the goal within `tolerance` moves of optimal.
-/// Returns (total_near_optimal_count, exactly_optimal_count, avg_overlap).
+/// Returns (total_near_optimal_count, exactly_optimal_count, min_overlap, avg_overlap).
+/// min_overlap is computed across alternative paths only (excludes the exact optimal path).
 /// avg_overlap is computed across alternative paths only (excludes the exact optimal path).
 /// Paths are restricted to no revisits (simple paths).
 ///
@@ -2299,7 +2300,7 @@ fn count_near_optimal_paths(
     optimal_path: &[Position],
     optimal_moves: i32,
     tolerance: i32,
-) -> (i32, i32, f64) {
+) -> (i32, i32, f64, f64) {
     const MAX_PATHS: i64 = 1000;
     const MAX_OPT_PATHS: i64 = 100;
     let max_moves = optimal_moves + tolerance;
@@ -2359,6 +2360,7 @@ fn count_near_optimal_paths(
     let mut optimal_paths: i64 = 0;
     let mut sum_overlap_ratios = 0.0;
     let mut optimal_path_seen: i64 = 0;
+    let mut min_overlap = 1.0;
 
     let mut visited = vec![false; node_count];
     visited[start_idx] = true;
@@ -2381,6 +2383,7 @@ fn count_near_optimal_paths(
         optimal_paths: &mut i64,
         sum_overlap_ratios: &mut f64,
         optimal_path_seen: &mut i64,
+        min_overlap: &mut f64,
     ) {
         if *total_paths >= MAX_PATHS {
             return;
@@ -2396,9 +2399,12 @@ fn count_near_optimal_paths(
             if moves == optimal_moves {
                 *optimal_paths += 1;
             }
-            *sum_overlap_ratios += overlap_count as f64 / (moves as f64 + 1.0);
+            let overlap_ratio = overlap_count as f64 / (moves as f64 + 1.0);
+            *sum_overlap_ratios += overlap_ratio;
             if matches_optimal && moves == optimal_moves {
                 *optimal_path_seen += 1;
+            } else if overlap_ratio < *min_overlap {
+                *min_overlap = overlap_ratio;
             }
             return;
         }
@@ -2430,6 +2436,7 @@ fn count_near_optimal_paths(
                     optimal_paths,
                     sum_overlap_ratios,
                     optimal_path_seen,
+                    min_overlap,
                 );
                 visited[opt_next] = false;
                 visited_opt_first = true;
@@ -2467,6 +2474,7 @@ fn count_near_optimal_paths(
                 optimal_paths,
                 sum_overlap_ratios,
                 optimal_path_seen,
+                min_overlap,
             );
             visited[next] = false;
             if *total_paths >= MAX_PATHS {
@@ -2492,6 +2500,7 @@ fn count_near_optimal_paths(
         &mut optimal_paths,
         &mut sum_overlap_ratios,
         &mut optimal_path_seen,
+        &mut min_overlap,
     );
 
     let mut avg_overlap = 1.0;
@@ -2510,6 +2519,7 @@ fn count_near_optimal_paths(
     (
         total_paths.min(MAX_PATHS) as i32,
         optimal_paths.min(MAX_OPT_PATHS) as i32,
+        min_overlap,
         avg_overlap,
     )
 }
@@ -2778,7 +2788,7 @@ fn calculate_psychology_score(
 
     // Path diversity metrics (Phase 2 - NEW)
     let tolerance = 2; // Count paths within optimal+2 moves
-    let (near_optimal_paths, optimal_path_count, path_overlap_avg) = count_near_optimal_paths(
+    let (near_optimal_paths, optimal_path_count, path_overlap, path_overlap_avg) = count_near_optimal_paths(
         tiles,
         start,
         goal,
@@ -2788,7 +2798,6 @@ fn calculate_psychology_score(
         optimal_moves,
         tolerance,
     );
-    let path_overlap = 1.0;
     let early_divergence = calculate_early_divergence(tiles, &optimal_path, width, height);
 
     // Calculate final psychology score
@@ -2893,7 +2902,7 @@ fn calculate_psychology_score_timed(
     // Path diversity metrics (Phase 2 - NEW) - TIMED
     let tolerance = 2;
     let t1 = Instant::now();
-    let (near_optimal_paths, optimal_path_count, path_overlap_avg) = count_near_optimal_paths(
+    let (near_optimal_paths, optimal_path_count, path_overlap, path_overlap_avg) = count_near_optimal_paths(
         tiles,
         start,
         goal,
@@ -2905,7 +2914,6 @@ fn calculate_psychology_score_timed(
     );
     let count_paths_us = t1.elapsed().as_micros() as u64;
 
-    let path_overlap = 1.0;
     let overlap_us = 0;
     
     let early_divergence = calculate_early_divergence(tiles, &optimal_path, width, height);

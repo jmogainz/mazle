@@ -41,6 +41,8 @@ type ArchiveViewProps = {
   presentation?: 'overlay' | 'page';
 };
 
+const DEVTOOLS_PREVIEW_FEATURES_KEY = 'mazle_devtools_preview_features_v1';
+
 export default function ArchiveView({ presentation = 'overlay' }: ArchiveViewProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -62,12 +64,19 @@ export default function ArchiveView({ presentation = 'overlay' }: ArchiveViewPro
   }, [requestedDate, yesterdayNy]);
 
   const [monthId, setMonthId] = useState(initialMonthId);
+  const [previewFeaturesEnabled, setPreviewFeaturesEnabled] = useState(false);
   const [meState, setMeState] = useState<LoadState<Awaited<ReturnType<typeof api.me>>>>({ status: 'loading' });
   const [daysState, setDaysState] = useState<LoadState<Awaited<ReturnType<typeof api.archiveDays>>>>({ status: 'loading' });
   const [offerState, setOfferState] = useState<LoadState<Awaited<ReturnType<typeof api.archiveOffer>>>>({ status: 'loading' });
   const [paywallBusy, setPaywallBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [checkoutState, setCheckoutState] = useState<'idle' | 'unlocking' | 'failed'>('idle');
+  const [selectedPlanId, setSelectedPlanId] = useState<'monthly' | 'lifetime'>('monthly');
+
+  const showLockedFeatures = useMemo(() => {
+    if (process.env.NODE_ENV !== 'production') return true;
+    return previewFeaturesEnabled;
+  }, [previewFeaturesEnabled]);
 
   const paywallOpen = searchParams.get('paywall') === '1' && !!requestedDate;
   const checkoutParam = searchParams.get('checkout');
@@ -86,8 +95,9 @@ export default function ArchiveView({ presentation = 'overlay' }: ArchiveViewPro
   }, []);
 
   useEffect(() => {
+    if (!showLockedFeatures) return;
     refreshMe();
-  }, [refreshMe]);
+  }, [refreshMe, showLockedFeatures]);
 
   useEffect(() => {
     if (!requestedDate) return;
@@ -101,6 +111,7 @@ export default function ArchiveView({ presentation = 'overlay' }: ArchiveViewPro
   }, [monthId, minMonthId, maxMonthId]);
 
   useEffect(() => {
+    if (!showLockedFeatures) return;
     const from = clampDateToBounds(monthStart(monthId), LAUNCH_DATE_NY, yesterdayNy);
     const to = clampDateToBounds(monthEnd(monthId), LAUNCH_DATE_NY, yesterdayNy);
 
@@ -112,21 +123,26 @@ export default function ArchiveView({ presentation = 'overlay' }: ArchiveViewPro
         const message = err instanceof Error ? err.message : 'Failed to load archive';
         setDaysState({ status: 'error', message });
       });
-  }, [monthId, yesterdayNy]);
+  }, [monthId, showLockedFeatures, yesterdayNy]);
 
   useEffect(() => {
+    if (!showLockedFeatures) return;
     if (!paywallOpen) return;
     setOfferState({ status: 'loading' });
     api
       .archiveOffer()
-      .then((offer) => setOfferState({ status: 'loaded', data: offer }))
+      .then((offer) => {
+        setOfferState({ status: 'loaded', data: offer });
+        setSelectedPlanId(offer.defaultPlanId);
+      })
       .catch((err) => {
         const message = err instanceof Error ? err.message : 'Failed to load price';
         setOfferState({ status: 'error', message });
       });
-  }, [paywallOpen]);
+  }, [paywallOpen, showLockedFeatures]);
 
   useEffect(() => {
+    if (!showLockedFeatures) return;
     if (!checkoutParam) return;
 
     if (checkoutParam === 'canceled') {
@@ -177,7 +193,15 @@ export default function ArchiveView({ presentation = 'overlay' }: ArchiveViewPro
     return () => {
       cancelled = true;
     };
-  }, [checkoutParam, presentation, requestedDate, router]);
+  }, [checkoutParam, presentation, requestedDate, router, showLockedFeatures]);
+
+  useEffect(() => {
+    try {
+      setPreviewFeaturesEnabled(localStorage.getItem(DEVTOOLS_PREVIEW_FEATURES_KEY) === '1');
+    } catch {
+      setPreviewFeaturesEnabled(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!toast) return;
@@ -251,13 +275,19 @@ export default function ArchiveView({ presentation = 'overlay' }: ArchiveViewPro
     if (!requestedDate) return;
     if (offerState.status !== 'loaded') return;
 
+    const selectedPlan = offerState.data.plans.find((p) => p.id === selectedPlanId) ?? offerState.data.plans[0];
+    if (!selectedPlan) {
+      setToast('Unable to load plans.');
+      return;
+    }
+
     setPaywallBusy(true);
     try {
       const origin = window.location.origin;
       const successUrl = `${origin}/archive?checkout=success&d=${encodeURIComponent(requestedDate)}`;
       const cancelUrl = `${origin}/archive?checkout=canceled&d=${encodeURIComponent(requestedDate)}`;
       const { url, alreadyOwned } = await api.createCheckout({
-        priceId: offerState.data.priceId,
+        priceId: selectedPlan.priceId,
         successUrl,
         cancelUrl,
       });
@@ -275,7 +305,7 @@ export default function ArchiveView({ presentation = 'overlay' }: ArchiveViewPro
     } finally {
       setPaywallBusy(false);
     }
-  }, [offerState, requestedDate, refreshMe, router]);
+  }, [offerState, requestedDate, refreshMe, router, selectedPlanId]);
 
   const monthStartDate = monthStart(monthId);
   const leadingBlankDays = weekdayIndexOfDate(monthStartDate);
@@ -307,12 +337,32 @@ export default function ArchiveView({ presentation = 'overlay' }: ArchiveViewPro
   }, [count, dayLockByDate, daysState.status, leadingBlankDays, monthId, yesterdayNy]);
 
   const paywallSubtitle = offerState.status === 'loaded'
-    ? 'Play any past Mazle puzzle. Removes ads.'
-    : 'Loading price…';
+    ? 'Unlock the archive and remove ads. Choose monthly or lifetime.'
+    : 'Loading plans…';
+
+  const selectedPlan = offerState.status === 'loaded'
+    ? offerState.data.plans.find((p) => p.id === selectedPlanId) ?? offerState.data.plans[0] ?? null
+    : null;
 
   const selectedPuzzleNumber = requestedDate
     ? getPuzzleNumber(new Date(`${requestedDate}T00:00:00`))
     : null;
+
+  if (!showLockedFeatures) {
+    return (
+      <div>
+        <div className={styles.hintBar}>
+          <div>
+            <div className={styles.hintTitle}>Archive coming soon</div>
+            <div className={styles.subtle}>We’re still polishing this feature.</div>
+          </div>
+          <button type="button" className={styles.hintButton} onClick={onBackToToday}>
+            Back
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -381,7 +431,7 @@ export default function ArchiveView({ presentation = 'overlay' }: ArchiveViewPro
         <div className={styles.hintBar}>
           <div>
             <div className={styles.hintTitle}>Unlock the Archive</div>
-            <div className={styles.subtle}>One-time purchase • removes ads</div>
+            <div className={styles.subtle}>Monthly or lifetime • removes ads</div>
           </div>
           <button
             type="button"
@@ -407,7 +457,7 @@ export default function ArchiveView({ presentation = 'overlay' }: ArchiveViewPro
             </div>
 
             <div className={styles.paywallPrice}>
-              {offerState.status === 'loaded' ? offerState.data.formattedPrice : offerState.status === 'error' ? '—' : '…'}
+              {offerState.status === 'loaded' ? (selectedPlan?.formattedPrice ?? '—') : offerState.status === 'error' ? '—' : '…'}
             </div>
 
             <div className={styles.paywallActions}>
@@ -420,14 +470,47 @@ export default function ArchiveView({ presentation = 'overlay' }: ArchiveViewPro
                   Owned
                 </button>
               ) : (
-                <button
-                  type="button"
-                  className={styles.primary}
-                  onClick={handleCheckout}
-                  disabled={paywallBusy || offerState.status !== 'loaded'}
-                >
-                  {paywallBusy ? 'Opening checkout…' : `Unlock — ${offerState.status === 'loaded' ? offerState.data.formattedPrice : ''}`.trim()}
-                </button>
+                <>
+                  {offerState.status === 'loaded' && (
+                    <div style={{ display: 'grid', gap: '0.5rem' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                        <button
+                          type="button"
+                          className={selectedPlanId === 'monthly' ? styles.primary : styles.secondary}
+                          onClick={() => setSelectedPlanId('monthly')}
+                          disabled={!offerState.data.plans.some((p) => p.id === 'monthly') || paywallBusy}
+                        >
+                          Monthly
+                        </button>
+                        <button
+                          type="button"
+                          className={selectedPlanId === 'lifetime' ? styles.primary : styles.secondary}
+                          onClick={() => setSelectedPlanId('lifetime')}
+                          disabled={!offerState.data.plans.some((p) => p.id === 'lifetime') || paywallBusy}
+                        >
+                          Lifetime
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        className={styles.primary}
+                        onClick={handleCheckout}
+                        disabled={paywallBusy || offerState.status !== 'loaded' || !selectedPlan}
+                      >
+                        {paywallBusy
+                          ? 'Opening checkout…'
+                          : selectedPlan?.purchaseType === 'subscription'
+                            ? `Subscribe — ${selectedPlan.formattedPrice}/mo`
+                            : `Unlock lifetime — ${selectedPlan?.formattedPrice ?? ''}`.trim()}
+                      </button>
+                    </div>
+                  )}
+                  {offerState.status !== 'loaded' && (
+                    <button type="button" className={styles.primary} disabled>
+                      Loading…
+                    </button>
+                  )}
+                </>
               )}
 
               <button type="button" className={styles.secondary} onClick={closePaywall} disabled={paywallBusy}>

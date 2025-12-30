@@ -54,6 +54,9 @@ CREATE TABLE IF NOT EXISTS purchases (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+ALTER TABLE purchases ADD COLUMN IF NOT EXISTS stripe_subscription_id text;
+CREATE UNIQUE INDEX IF NOT EXISTS purchases_stripe_subscription_id_uidx ON purchases(stripe_subscription_id);
+
 CREATE TABLE IF NOT EXISTS stripe_events (
   id text PRIMARY KEY,
   type text NOT NULL,
@@ -92,4 +95,3 @@ export async function ensureSchema(pool: Pool): Promise<void> {
     client.release();
   }
 }
-

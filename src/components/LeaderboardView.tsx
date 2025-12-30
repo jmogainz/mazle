@@ -7,6 +7,8 @@ import { formatTime } from '@/utils/storage';
 import { getTodaysResult } from '@/utils/storage';
 import styles from './LeaderboardView.module.css';
 
+const DEVTOOLS_PREVIEW_FEATURES_KEY = 'mazle_devtools_preview_features_v1';
+
 type LoadState<T> =
   | { status: 'idle' | 'loading' }
   | { status: 'loaded'; data: T }
@@ -23,6 +25,12 @@ export default function LeaderboardView() {
   const todayDate = useMemo(() => getNewYorkDateString(), []);
   const puzzleNumber = useMemo(() => getPuzzleNumber(), []);
   const todayResult = useMemo(() => getTodaysResult(), []);
+  const [previewFeaturesEnabled, setPreviewFeaturesEnabled] = useState(false);
+
+  const showLockedFeatures = useMemo(() => {
+    if (process.env.NODE_ENV !== 'production') return true;
+    return previewFeaturesEnabled;
+  }, [previewFeaturesEnabled]);
 
   const [topState, setTopState] = useState<LoadState<Awaited<ReturnType<typeof api.leaderboardTop>>>>({
     status: 'loading',
@@ -36,6 +44,7 @@ export default function LeaderboardView() {
   const [submitState, setSubmitState] = useState<'idle' | 'submitting' | 'submitted' | 'failed'>('idle');
 
   const reload = useCallback(async () => {
+    if (!showLockedFeatures) return;
     setTopState({ status: 'loading' });
     setMeState({ status: 'loading' });
     setAroundState({ status: 'idle' });
@@ -55,11 +64,19 @@ export default function LeaderboardView() {
       setTopState({ status: 'error', message });
       setMeState({ status: 'error', message });
     }
-  }, [todayDate]);
+  }, [showLockedFeatures, todayDate]);
 
   useEffect(() => {
     reload();
   }, [reload]);
+
+  useEffect(() => {
+    try {
+      setPreviewFeaturesEnabled(localStorage.getItem(DEVTOOLS_PREVIEW_FEATURES_KEY) === '1');
+    } catch {
+      setPreviewFeaturesEnabled(false);
+    }
+  }, []);
 
   const attemptsUsed = computeAttemptsUsed(todayResult);
   const canSubmit = !!todayResult && todayResult.date === todayDate && !todayResult.failed && attemptsUsed != null;
@@ -80,38 +97,51 @@ export default function LeaderboardView() {
     }
   }, [canSubmit, todayResult, attemptsUsed, todayDate, reload]);
 
-  const mePanel = () => {
-    if (meState.status === 'loading') {
-      return <div className={styles.hintText}>Loading your rank…</div>;
-    }
-    if (meState.status === 'error') {
-      return <div className={styles.hintText}>Unable to load your rank.</div>;
-    }
-
-    const me = meState.data;
-    if (!me) {
-      if (!todayResult || todayResult.date !== todayDate) {
-        return <div className={styles.hintText}>Play today’s puzzle to join the leaderboard.</div>;
-      }
-      if (todayResult.failed) {
-        return <div className={styles.hintText}>Only successful solves can be submitted.</div>;
-      }
-      return <div className={styles.hintText}>Not submitted yet.</div>;
-    }
-
+  if (!showLockedFeatures) {
     return (
-      <div className={styles.meRow}>
-        <div className={styles.meLeft}>
-          <div className={styles.meName}>{me.displayName}</div>
-          <div className={styles.meMeta}>
-            {formatTime(me.timeMs)} • {me.attemptsUsed}/3 tries
-          </div>
-        </div>
-        <div className={styles.meRight}>
-          <div className={styles.rank}>#{me.rank}</div>
+      <div className={styles.grid}>
+        <div className={styles.panel}>
+          <div className={styles.sectionTitle}>Leaderboard coming soon</div>
+          <div className={styles.hintText}>We’re still polishing this feature.</div>
         </div>
       </div>
     );
+  }
+
+  const mePanel = () => {
+    switch (meState.status) {
+      case 'loading':
+      case 'idle':
+        return <div className={styles.hintText}>Loading your rank…</div>;
+      case 'error':
+        return <div className={styles.hintText}>Unable to load your rank.</div>;
+      case 'loaded': {
+        const me = meState.data;
+        if (!me) {
+          if (!todayResult || todayResult.date !== todayDate) {
+            return <div className={styles.hintText}>Play today’s puzzle to join the leaderboard.</div>;
+          }
+          if (todayResult.failed) {
+            return <div className={styles.hintText}>Only successful solves can be submitted.</div>;
+          }
+          return <div className={styles.hintText}>Not submitted yet.</div>;
+        }
+
+        return (
+          <div className={styles.meRow}>
+            <div className={styles.meLeft}>
+              <div className={styles.meName}>{me.displayName}</div>
+              <div className={styles.meMeta}>
+                {formatTime(me.timeMs)} • {me.attemptsUsed}/3 tries
+              </div>
+            </div>
+            <div className={styles.meRight}>
+              <div className={styles.rank}>#{me.rank}</div>
+            </div>
+          </div>
+        );
+      }
+    }
   };
 
   const submitPanel = () => {
@@ -184,4 +214,3 @@ export default function LeaderboardView() {
     </div>
   );
 }
-

@@ -3,3 +3,6 @@ generator-rust/
 devops-toolkit/
 logs/
 *.log
+data/
+.cargo/
+.cargo-target/

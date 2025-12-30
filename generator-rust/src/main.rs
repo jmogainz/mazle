@@ -77,6 +77,7 @@ fn generate_by_type(
 // =============================================================================
 
 const DEFAULT_DATASET_COUNT: usize = 100_000;
+const DEFAULT_DATASET_START_INDEX: usize = 1;
 const DEFAULT_DATASET_SEED_PREFIX: &str = "train";
 const DEFAULT_DATASET_MAP_TYPE: &str = "ice";
 const DEFAULT_DATASET_SIZE: usize = 15;
@@ -88,6 +89,7 @@ const DATASET_SEED_MIN_WIDTH: usize = 6;
 struct DatasetConfig {
     out_path: String,
     count: usize,
+    start_index: usize,
     seed_prefix: String,
     map_type: String,
     size: usize,
@@ -125,6 +127,13 @@ fn dataset_config_from_env() -> Result<Option<DatasetConfig>, String> {
     let map_type =
         std::env::var("DATASET_MAP_TYPE").unwrap_or_else(|_| DEFAULT_DATASET_MAP_TYPE.to_string());
 
+    let start_index = match std::env::var("DATASET_START_INDEX") {
+        Ok(value) => value
+            .parse::<usize>()
+            .map_err(|_| format!("Invalid DATASET_START_INDEX: {}", value))?,
+        Err(_) => DEFAULT_DATASET_START_INDEX,
+    };
+
     let size = match std::env::var("DATASET_SIZE") {
         Ok(value) => value
             .parse::<usize>()
@@ -135,6 +144,7 @@ fn dataset_config_from_env() -> Result<Option<DatasetConfig>, String> {
     Ok(Some(DatasetConfig {
         out_path,
         count,
+        start_index,
         seed_prefix,
         map_type,
         size,
@@ -182,6 +192,15 @@ fn run_dataset_generation(config: DatasetConfig) -> Result<(), Box<dyn std::erro
         return Err("DATASET_COUNT must be > 0".into());
     }
 
+    if config.start_index == 0 {
+        return Err("DATASET_START_INDEX must be > 0".into());
+    }
+
+    let end_index = config
+        .start_index
+        .checked_add(config.count - 1)
+        .ok_or_else(|| "DATASET_START_INDEX + DATASET_COUNT overflows usize".to_string())?;
+
     if config.size != DEFAULT_DATASET_SIZE {
         return Err(format!(
             "DATASET_SIZE={} not supported (only {} supported)",
@@ -203,9 +222,10 @@ fn run_dataset_generation(config: DatasetConfig) -> Result<(), Box<dyn std::erro
 
     info!("📦 Dataset generation mode enabled");
     info!(
-        "📦 out={} count={} seed_prefix={} map_type={} closeness_threshold={:.2}",
+        "📦 out={} count={} start_index={} seed_prefix={} map_type={} closeness_threshold={:.2}",
         config.out_path,
         config.count,
+        config.start_index,
         config.seed_prefix,
         config.map_type,
         config.closeness_threshold
@@ -214,16 +234,12 @@ fn run_dataset_generation(config: DatasetConfig) -> Result<(), Box<dyn std::erro
     let file = File::create(&config.out_path)?;
     let mut writer = BufWriter::new(file);
 
-    let seed_width = std::cmp::max(DATASET_SEED_MIN_WIDTH, config.count.to_string().len());
+    let seed_width = std::cmp::max(DATASET_SEED_MIN_WIDTH, end_index.to_string().len());
     let start_time = Instant::now();
 
-    for idx in 1..=config.count {
-        let seed = format!(
-            "{}-{:0width$}",
-            config.seed_prefix,
-            idx,
-            width = seed_width
-        );
+    for offset in 0..config.count {
+        let index = config.start_index + offset;
+        let seed = format!("{}-{:0width$}", config.seed_prefix, index, width = seed_width);
 
         let puzzle =
             generate_by_type(&seed, &gen_config, &config.map_type, None).map_err(|_| {
@@ -234,14 +250,15 @@ fn run_dataset_generation(config: DatasetConfig) -> Result<(), Box<dyn std::erro
         serde_json::to_writer(&mut writer, &record)?;
         writer.write_all(b"\n")?;
 
-        if idx % DATASET_PROGRESS_EVERY == 0 || idx == config.count {
+        let generated = offset + 1;
+        if generated % DATASET_PROGRESS_EVERY == 0 || generated == config.count {
             let elapsed = start_time.elapsed();
-            let avg_ms = (elapsed.as_secs_f64() * 1000.0) / idx as f64;
-            let remaining_s = avg_ms * (config.count - idx) as f64 / 1000.0;
+            let avg_ms = (elapsed.as_secs_f64() * 1000.0) / generated as f64;
+            let remaining_s = avg_ms * (config.count - generated) as f64 / 1000.0;
 
             info!(
                 "📦 progress {}/{} avg={:.1}ms eta={:.1}m",
-                idx,
+                generated,
                 config.count,
                 avg_ms,
                 remaining_s / 60.0

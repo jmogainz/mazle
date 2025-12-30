@@ -17,7 +17,9 @@ A daily Wordle-style puzzle game inspired by Pokémon ice gym puzzles. Players n
 - ❌ `vercel deploy`
 - ❌ `fly deploy`
 
-**ALWAYS use the Make targets provided below.** All build, test, and deployment workflows are orchestrated through the root `Makefile` and `generator-rust/Makefile`.
+**Exception:** You may use `cargo build` / `cargo run` **only for ML-related work inside `generator-rust/`** (e.g., `generator-rust/ml` or `generator-rust/ml/bridge`) when a Make target is not available.
+
+**ALWAYS use the Make targets provided below** for all other build, test, and deployment workflows. All orchestration runs through the root `Makefile` and `generator-rust/Makefile`.
 
 ---
 

@@ -109,6 +109,9 @@ struct DatasetRecord {
     tiles_interior: Vec<Vec<u8>>,
     start: Position,
     goal: Position,
+    generation_time_ms: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    difficulty_score: Option<i32>,
 }
 
 fn dataset_config_from_env() -> Result<Option<DatasetConfig>, String> {
@@ -137,10 +140,8 @@ fn dataset_config_from_env() -> Result<Option<DatasetConfig>, String> {
         Err(_) => DEFAULT_DATASET_START_INDEX,
     };
 
-    let append = match std::env::var("DATASET_APPEND") {
-        Ok(value) => parse_env_bool("DATASET_APPEND", value)?,
-        Err(_) => DEFAULT_DATASET_APPEND,
-    };
+    // Always append, ignore env var if set to false, or just default to true
+    let append = true;
 
     let size = match std::env::var("DATASET_SIZE") {
         Ok(value) => value
@@ -170,7 +171,7 @@ fn parse_env_bool(name: &str, value: String) -> Result<bool, String> {
     }
 }
 
-fn dataset_record_from_puzzle(seed: &str, puzzle: &PuzzleData) -> DatasetRecord {
+fn dataset_record_from_puzzle(seed: &str, puzzle: &PuzzleData, duration_ms: u64) -> DatasetRecord {
     let width = puzzle.width;
     let height = puzzle.height;
 
@@ -202,6 +203,8 @@ fn dataset_record_from_puzzle(seed: &str, puzzle: &PuzzleData) -> DatasetRecord 
             x: puzzle.goal.x - 1,
             y: puzzle.goal.y - 1,
         },
+        generation_time_ms: duration_ms,
+        difficulty_score: puzzle.difficulty_score,
     }
 }
 
@@ -288,17 +291,15 @@ fn run_dataset_generation(config: DatasetConfig) -> Result<(), Box<dyn std::erro
         config.closeness_threshold
     );
 
-    let file = if config.append {
-        if trim_incomplete_jsonl(&config.out_path)? {
-            info!("📦 trimmed incomplete record from {}", config.out_path);
-        }
-        OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&config.out_path)?
-    } else {
-        File::create(&config.out_path)?
-    };
+    // Always append
+    if trim_incomplete_jsonl(&config.out_path)? {
+        info!("📦 trimmed incomplete record from {}", config.out_path);
+    }
+    let file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&config.out_path)?;
+        
     let mut writer = BufWriter::new(file);
 
     let seed_width = std::cmp::max(DATASET_SEED_MIN_WIDTH, end_index.to_string().len());
@@ -308,11 +309,14 @@ fn run_dataset_generation(config: DatasetConfig) -> Result<(), Box<dyn std::erro
         let index = config.start_index + offset;
         let seed = format!("{}-{:0width$}", config.seed_prefix, index, width = seed_width);
 
+        let gen_start = Instant::now();
         let puzzle =
             generate_by_type(&seed, &gen_config, &config.map_type, None).map_err(|_| {
                 format!("generation cancelled for seed '{}'", seed)
             })?;
-        let record = dataset_record_from_puzzle(&seed, &puzzle);
+        let gen_duration = gen_start.elapsed().as_millis() as u64;
+
+        let record = dataset_record_from_puzzle(&seed, &puzzle, gen_duration);
 
         serde_json::to_writer(&mut writer, &record)?;
         writer.write_all(b"\n")?;

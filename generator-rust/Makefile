@@ -45,8 +45,6 @@ override APP_PORT := 8080
 
 # Rust-specific configuration
 RUST_BINARY_NAME := mazle-generator
-# Match Docker's native-CPU optimization for local cargo builds
-export RUSTFLAGS ?= -C target-cpu=native
 
 # Deploy target selection (prod/staging use Fly.io for this Rust app)
 PROD_DEPLOY_TARGET := fly
@@ -208,13 +206,13 @@ DATASET_MAP_TYPE ?= ice
 DATASET_SIZE ?= 15
 
 .PHONY: dataset-gen
-dataset-gen:
+dataset-gen: RUST_BUILD_PROFILE := release
+dataset-gen: cargo-build
 	@if [ -z "$(UNIQUE_RUNNER_ID)" ]; then \
 		echo "UNIQUE_RUNNER_ID not set. Run: export UNIQUE_RUNNER_ID=\$$(whoami)"; \
 		exit 1; \
 	fi
 	@mkdir -p "$(dir $(DATASET_OUT))"
-	cargo build --release
 	@if command -v setsid >/dev/null 2>&1; then \
 		DATASET_OUT="$(DATASET_OUT)" \
 		DATASET_COUNT="$(DATASET_COUNT)" \

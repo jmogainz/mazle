@@ -89,6 +89,7 @@ services:
     profiles:
       - app
 
+
 networks:
   app_network:
     external: true

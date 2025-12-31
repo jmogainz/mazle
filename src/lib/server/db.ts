@@ -1,6 +1,5 @@
 import { Pool } from 'pg';
 import { env, requireEnv } from './env';
-import { ensureSchema } from './schema';
 
 declare global {
   // eslint-disable-next-line no-var
@@ -28,7 +27,11 @@ export async function ensureDbSchema(): Promise<void> {
     throw new Error('DATABASE_URL is not set');
   }
   const pool = getDbPool();
-  await ensureSchema(pool);
+  try {
+    await pool.query('select 1 from schema_version limit 1');
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    throw new Error(`Database schema not initialized. Run migrations. (${message})`);
+  }
   global.__mazleSchemaEnsured = true;
 }
-

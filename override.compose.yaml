@@ -1,0 +1,16 @@
+services:
+  db:
+    profiles:
+      - db
+
+  migrate:
+    profiles:
+      - migrate
+
+  redis:
+    profiles:
+      - db
+
+  redis-rest:
+    profiles:
+      - db

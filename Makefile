@@ -19,11 +19,16 @@ ENV ?= dev-test
 COMPOSE_PROJECT_NAME := mazle
 COMPOSE_NETWORK_NAME ?= mazle_network
 
-COMPOSE_FILE := mazle.compose.yaml:mazle.wasm.compose.yaml
+COMPOSE_FILE := mazle.compose.yaml:mazle.wasm.compose.yaml:$(DEVOPS_TOOLKIT_PATH)/backend/docker/db.compose.yaml:override.compose.yaml
 
 # Backend configuration (like worker-app pattern)
 BACKEND_GATEWAY_PATH := generator-rust
 APP_NAME := mazle
+
+# Database + migrations (devops-toolkit)
+export COMPOSE_DB_NAME := mazle_pg_db
+export MIGRATIONS_PATH := $(REPO_ROOT)/migrations
+export BWS_PROJECT_NAME_FOR_DB_SECRETS := $(APP_NAME)-$(ENV)
 
 # Include env configuration early so we can use DEV_TEST_ENV, PROD_ENV etc.
 ifndef INCLUDED_ENV_CONFIGURATION
@@ -150,6 +155,16 @@ endif
 ifndef INCLUDED_NEXTJS_APP_TARGETS
   include $(DEVOPS_TOOLKIT_PATH)/frontend/make/utils/nextjs_app_targets.mk
 endif
+
+# --------------------------------
+# Local Env (BWS)
+# --------------------------------
+
+ifndef INCLUDED_ENV_LOCAL_UTILS
+  include $(DEVOPS_TOOLKIT_PATH)/shared/make/utils/env_local.mk
+endif
+
+up:: env-local
 
 # --------------------------------
 # Targets (toolkit includes)

@@ -1,6 +1,4 @@
-import type { Pool } from 'pg';
-
-const SCHEMA_SQL = `
+-- 000001_initial.up.sql
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 CREATE TABLE IF NOT EXISTS users (
@@ -51,10 +49,9 @@ CREATE TABLE IF NOT EXISTS purchases (
   stripe_checkout_session_id text UNIQUE,
   stripe_payment_intent_id text UNIQUE,
   stripe_price_id text,
+  stripe_subscription_id text,
   created_at timestamptz NOT NULL DEFAULT now()
 );
-
-ALTER TABLE purchases ADD COLUMN IF NOT EXISTS stripe_subscription_id text;
 CREATE UNIQUE INDEX IF NOT EXISTS purchases_stripe_subscription_id_uidx ON purchases(stripe_subscription_id);
 
 CREATE TABLE IF NOT EXISTS stripe_events (
@@ -80,18 +77,16 @@ CREATE TABLE IF NOT EXISTS leaderboard_submissions (
   PRIMARY KEY (date, subject_type, subject_id)
 );
 CREATE INDEX IF NOT EXISTS leaderboard_submissions_date_idx ON leaderboard_submissions(date);
-`;
 
-export async function ensureSchema(pool: Pool): Promise<void> {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    await client.query(SCHEMA_SQL);
-    await client.query('COMMIT');
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
-}
+---- create above / drop below ----
+
+-- 000001_initial.down.sql
+DROP TABLE IF EXISTS leaderboard_submissions;
+DROP TABLE IF EXISTS daily_puzzles;
+DROP TABLE IF EXISTS stripe_events;
+DROP TABLE IF EXISTS purchases;
+DROP TABLE IF EXISTS entitlements;
+DROP TABLE IF EXISTS user_links;
+DROP TABLE IF EXISTS guest_profiles;
+DROP TABLE IF EXISTS oidc_accounts;
+DROP TABLE IF EXISTS users;

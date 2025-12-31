@@ -193,3 +193,46 @@ ml-tune: ml-venv ml-bridge
 		$(ML_TUNE_MAX_CONCURRENT_FLAG) \
 		$(ML_TUNE_CPUS_FLAG) \
 		$(ML_TUNE_EXTRA_ARGS)
+
+# -------------------------
+# Dataset generation (native, outside Docker)
+# -------------------------
+DATASET_OUT ?= $(CURDIR)/data/mazle-train.jsonl
+DATASET_LOG ?= $(CURDIR)/data/mazle-train.log
+DATASET_PID ?= $(CURDIR)/data/mazle-train.pid
+DATASET_COUNT ?= 100000
+DATASET_START_INDEX ?= 1
+DATASET_APPEND ?= 0
+DATASET_SEED_PREFIX ?= train
+DATASET_MAP_TYPE ?= ice
+DATASET_SIZE ?= 15
+
+.PHONY: dataset-gen
+dataset-gen:
+	@if [ -z "$(UNIQUE_RUNNER_ID)" ]; then \
+		echo "UNIQUE_RUNNER_ID not set. Run: export UNIQUE_RUNNER_ID=\$$(whoami)"; \
+		exit 1; \
+	fi
+	@mkdir -p "$(dir $(DATASET_OUT))"
+	cargo build --release
+	@if command -v setsid >/dev/null 2>&1; then \
+		DATASET_OUT="$(DATASET_OUT)" \
+		DATASET_COUNT="$(DATASET_COUNT)" \
+		DATASET_START_INDEX="$(DATASET_START_INDEX)" \
+		DATASET_APPEND="$(DATASET_APPEND)" \
+		DATASET_SEED_PREFIX="$(DATASET_SEED_PREFIX)" \
+		DATASET_MAP_TYPE="$(DATASET_MAP_TYPE)" \
+		DATASET_SIZE="$(DATASET_SIZE)" \
+		setsid ./target/release/mazle-generator </dev/null > "$(DATASET_LOG)" 2>&1 & \
+		echo $$! | tee "$(DATASET_PID)"; \
+	else \
+		DATASET_OUT="$(DATASET_OUT)" \
+		DATASET_COUNT="$(DATASET_COUNT)" \
+		DATASET_START_INDEX="$(DATASET_START_INDEX)" \
+		DATASET_APPEND="$(DATASET_APPEND)" \
+		DATASET_SEED_PREFIX="$(DATASET_SEED_PREFIX)" \
+		DATASET_MAP_TYPE="$(DATASET_MAP_TYPE)" \
+		DATASET_SIZE="$(DATASET_SIZE)" \
+		nohup ./target/release/mazle-generator </dev/null > "$(DATASET_LOG)" 2>&1 & \
+		echo $$! | tee "$(DATASET_PID)"; \
+	fi

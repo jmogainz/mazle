@@ -8,8 +8,9 @@ use axum::http::StatusCode;
 use log::{error, info};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::fs::File;
-use std::io::{BufWriter, Write};
+use std::fs::{File, OpenOptions};
+use std::io::{BufWriter, Read, Seek, SeekFrom, Write};
+use std::path::Path as FsPath;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tower_http::cors::{Any, CorsLayer};
@@ -78,6 +79,7 @@ fn generate_by_type(
 
 const DEFAULT_DATASET_COUNT: usize = 100_000;
 const DEFAULT_DATASET_START_INDEX: usize = 1;
+const DEFAULT_DATASET_APPEND: bool = false;
 const DEFAULT_DATASET_SEED_PREFIX: &str = "train";
 const DEFAULT_DATASET_MAP_TYPE: &str = "ice";
 const DEFAULT_DATASET_SIZE: usize = 15;
@@ -90,6 +92,7 @@ struct DatasetConfig {
     out_path: String,
     count: usize,
     start_index: usize,
+    append: bool,
     seed_prefix: String,
     map_type: String,
     size: usize,
@@ -134,6 +137,11 @@ fn dataset_config_from_env() -> Result<Option<DatasetConfig>, String> {
         Err(_) => DEFAULT_DATASET_START_INDEX,
     };
 
+    let append = match std::env::var("DATASET_APPEND") {
+        Ok(value) => parse_env_bool("DATASET_APPEND", value)?,
+        Err(_) => DEFAULT_DATASET_APPEND,
+    };
+
     let size = match std::env::var("DATASET_SIZE") {
         Ok(value) => value
             .parse::<usize>()
@@ -145,11 +153,21 @@ fn dataset_config_from_env() -> Result<Option<DatasetConfig>, String> {
         out_path,
         count,
         start_index,
+        append,
         seed_prefix,
         map_type,
         size,
         closeness_threshold: DEFAULT_DATASET_CLOSENESS_THRESHOLD,
     }))
+}
+
+fn parse_env_bool(name: &str, value: String) -> Result<bool, String> {
+    let normalized = value.trim().to_lowercase();
+    match normalized.as_str() {
+        "1" | "true" | "yes" | "y" => Ok(true),
+        "0" | "false" | "no" | "n" => Ok(false),
+        _ => Err(format!("Invalid {}: {}", name, value)),
+    }
 }
 
 fn dataset_record_from_puzzle(seed: &str, puzzle: &PuzzleData) -> DatasetRecord {
@@ -187,6 +205,44 @@ fn dataset_record_from_puzzle(seed: &str, puzzle: &PuzzleData) -> DatasetRecord 
     }
 }
 
+fn trim_incomplete_jsonl(path: &str) -> Result<bool, Box<dyn std::error::Error>> {
+    let file_path = FsPath::new(path);
+    if !file_path.exists() {
+        return Ok(false);
+    }
+
+    let mut file = OpenOptions::new().read(true).write(true).open(file_path)?;
+    let len = file.metadata()?.len();
+    if len == 0 {
+        return Ok(false);
+    }
+
+    file.seek(SeekFrom::End(-1))?;
+    let mut last_byte = [0u8; 1];
+    file.read_exact(&mut last_byte)?;
+    if last_byte[0] == b'\n' {
+        return Ok(false);
+    }
+
+    let mut pos = len;
+    let mut buf = vec![0u8; 8192];
+    while pos > 0 {
+        let read_size = std::cmp::min(buf.len() as u64, pos) as usize;
+        pos -= read_size as u64;
+        file.seek(SeekFrom::Start(pos))?;
+        file.read_exact(&mut buf[..read_size])?;
+
+        if let Some(idx) = buf[..read_size].iter().rposition(|&b| b == b'\n') {
+            let new_len = pos + idx as u64 + 1;
+            file.set_len(new_len)?;
+            return Ok(true);
+        }
+    }
+
+    file.set_len(0)?;
+    Ok(true)
+}
+
 fn run_dataset_generation(config: DatasetConfig) -> Result<(), Box<dyn std::error::Error>> {
     if config.count == 0 {
         return Err("DATASET_COUNT must be > 0".into());
@@ -222,16 +278,27 @@ fn run_dataset_generation(config: DatasetConfig) -> Result<(), Box<dyn std::erro
 
     info!("📦 Dataset generation mode enabled");
     info!(
-        "📦 out={} count={} start_index={} seed_prefix={} map_type={} closeness_threshold={:.2}",
+        "📦 out={} count={} start_index={} append={} seed_prefix={} map_type={} closeness_threshold={:.2}",
         config.out_path,
         config.count,
         config.start_index,
+        config.append,
         config.seed_prefix,
         config.map_type,
         config.closeness_threshold
     );
 
-    let file = File::create(&config.out_path)?;
+    let file = if config.append {
+        if trim_incomplete_jsonl(&config.out_path)? {
+            info!("📦 trimmed incomplete record from {}", config.out_path);
+        }
+        OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&config.out_path)?
+    } else {
+        File::create(&config.out_path)?
+    };
     let mut writer = BufWriter::new(file);
 
     let seed_width = std::cmp::max(DATASET_SEED_MIN_WIDTH, end_index.to_string().len());

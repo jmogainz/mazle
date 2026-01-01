@@ -14,3 +14,11 @@ services:
   redis-rest:
     profiles:
       - db
+
+  stripe-listener:
+    profiles:
+      - app_pre_async
+
+  stripe-webhook-check:
+    profiles:
+      - app_post_check

@@ -40,11 +40,11 @@ This is required for all Make commands. Set it once per session.
 **NOTE:** `make up` automatically builds before starting. You do NOT need to run `make build` first.
 
 ```bash
-# Quick start (WASM fallback, no backend) - DEFAULT
+# Full stack (frontend + Rust backend) - DEFAULT
 make up
 
-# Full stack (frontend + Rust backend) - BUILDS AND STARTS
-make up ENV=dev
+# Quick start (WASM fallback, no backend)
+make up ENV=dev-test
 
 # Dev mode, frontend only (backend must already be running)
 make up ENV=dev WITH_DEPS=0
@@ -193,15 +193,15 @@ EOF
 
 | ENV | WITH_DEPS | Notes |
 |-----|-----------|-------|
-| `dev-test` (default) | 0 | WASM fallback, fast iteration |
-| `dev` | 1 (override with =0) | Full local stack |
+| `dev` (default) | 1 (override with =0) | Full local stack |
+| `dev-test` | 0 | WASM fallback, fast iteration |
 | `staging` | 1 | Pre-prod (Fly.io) |
 | `prod` | 1 (override with =0) | Deploy backend to Fly.io, frontend to Vercel |
 
 **Environment Selection Rules:**
-- **Default (no ENV)**: Use `dev-test` with WASM fallback
-- **Local full stack**: Use `ENV=dev`
-- **Skip backend**: Add `WITH_DEPS=0` to any environment
+- **Default (no ENV)**: Use `dev` with full local stack (Rust backend)
+- **WASM Fallback**: Use `ENV=dev-test` to skip backend
+- **Skip backend in dev**: Add `WITH_DEPS=0` to `ENV=dev`
 - **Production**: Only use `ENV=prod` when explicitly deploying
 
 ---
@@ -400,9 +400,10 @@ make clean && make build
 2. ✅ **ALWAYS** set `UNIQUE_RUNNER_ID=$(whoami)` before any make command
 3. ✅ **ALWAYS** test with curl + Python parsing after changes
 4. ✅ **ALWAYS** check fail rates in logs when tuning thresholds
-5. ❌ **NEVER** deploy to production unless explicitly requested
-6. ❌ **NEVER** run full test suites unless explicitly requested
-7. ❌ **NEVER** fix unrelated bugs or "improve" code beyond the request
-8. ❌ **NEVER** use `npm install`, `cargo build`, or direct Docker commands
+5. ✅ **ALWAYS** edit the existing migration file (assume not deployed yet); **NEVER** create a new migration file
+6. ❌ **NEVER** deploy to production unless explicitly requested
+7. ❌ **NEVER** run full test suites unless explicitly requested
+8. ❌ **NEVER** fix unrelated bugs or "improve" code beyond the request
+9. ❌ **NEVER** use `npm install`, `cargo build`, or direct Docker commands
 
 **When in doubt:** Check this file, or ask the user for clarification.

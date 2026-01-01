@@ -20,19 +20,6 @@ CREATE TABLE IF NOT EXISTS oidc_accounts (
 );
 CREATE INDEX IF NOT EXISTS oidc_accounts_user_id_idx ON oidc_accounts(user_id);
 
-CREATE TABLE IF NOT EXISTS guest_profiles (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  display_name text NOT NULL UNIQUE,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS user_links (
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  guest_id uuid NOT NULL REFERENCES guest_profiles(id) ON DELETE CASCADE,
-  claimed_at timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (user_id, guest_id)
-);
-
 CREATE TABLE IF NOT EXISTS entitlements (
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   key text NOT NULL,
@@ -86,7 +73,5 @@ DROP TABLE IF EXISTS daily_puzzles;
 DROP TABLE IF EXISTS stripe_events;
 DROP TABLE IF EXISTS purchases;
 DROP TABLE IF EXISTS entitlements;
-DROP TABLE IF EXISTS user_links;
-DROP TABLE IF EXISTS guest_profiles;
 DROP TABLE IF EXISTS oidc_accounts;
 DROP TABLE IF EXISTS users;

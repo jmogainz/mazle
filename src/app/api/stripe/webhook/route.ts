@@ -78,6 +78,20 @@ export async function POST(request: Request) {
     return jsonError(400, 'INVALID_SIGNATURE', message);
   }
 
+  // Filter out events from other dev instances
+  const generatedBy = (event.data.object as any).metadata?.generated_by;
+  if (generatedBy) {
+    const appName = process.env.APP_NAME;
+    const runnerId = process.env.UNIQUE_RUNNER_ID;
+    const runNumber = process.env.UNIQUE_RUN_NUMBER;
+    const expected = `webhook_check-${appName}-${runnerId}-${runNumber}`;
+
+    if (generatedBy !== expected) {
+      console.log(`[Stripe Webhook] Skipping event ${event.id} from another instance (generated_by=${generatedBy}, expected=${expected})`);
+      return NextResponse.json({ received: true, ignored: true });
+    }
+  }
+
   try {
     await ensureDbSchema();
     const pool = getDbPool();

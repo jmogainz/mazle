@@ -4,6 +4,7 @@ import { ensureDbSchema, getDbPool } from '@/lib/server/db';
 import { jsonError, readJsonBody } from '@/lib/server/responses';
 import { getLeaderboardRedis } from '@/lib/server/redis';
 import { LB_NAMES_KEY } from '@/lib/server/leaderboard';
+import { guestDisplayNameExists } from '@/lib/server/guestStore';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -39,18 +40,18 @@ export async function POST(request: Request) {
     }
 
     if (requested) {
-      const taken = await pool.query(
+      const takenByUser = await pool.query(
         `select 1
-         from (
-           select display_name from guest_profiles where lower(display_name)=lower($1)
-           union all
-           select display_name from users where display_name is not null and lower(display_name)=lower($1) and id <> $2
-         ) t
+         from users
+         where display_name is not null
+           and lower(display_name)=lower($1)
+           and id <> $2
          limit 1`,
         [requested, userId]
       );
+      const takenByGuest = await guestDisplayNameExists(requested);
 
-      if (taken.rowCount) {
+      if ((takenByUser.rowCount ?? 0) > 0 || takenByGuest) {
         return jsonError(409, 'NAME_TAKEN', 'That name is already taken.');
       }
 

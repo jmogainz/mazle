@@ -4,6 +4,7 @@ import { ensureDbSchema, getDbPool } from './db';
 import { env, isDevMode } from './env';
 import { getLeaderboardRedis } from './redis';
 import { LB_NAMES_KEY } from './leaderboard';
+import { getGuestProfile, guestDisplayNameExists, reserveGuestDisplayName, saveGuestProfile } from './guestStore';
 
 export type MeIdentity = {
   mode: 'guest' | 'user';
@@ -66,29 +67,53 @@ function randomDisplayNameCandidate(): string {
   return `${adjective}${noun}${num}`.slice(0, DISPLAY_NAME_MAX_LEN);
 }
 
-async function displayNameExists(name: string): Promise<boolean> {
+async function isUserDisplayNameTaken(name: string, excludeUserId?: string | null): Promise<boolean> {
   const pool = getDbPool();
   const res = await pool.query(
-    `select 1 as exists
-     from (
-       select display_name from guest_profiles where lower(display_name)=lower($1)
-       union all
-       select display_name from users where display_name is not null and lower(display_name)=lower($1)
-     ) t
+    `select 1
+     from users
+     where display_name is not null
+       and lower(display_name)=lower($1)
+       and ($2::uuid is null or id <> $2)
      limit 1`,
-    [name]
+    [name, excludeUserId ?? null]
   );
   return (res.rowCount ?? 0) > 0;
 }
 
-async function generateUniqueDisplayName(): Promise<string> {
+async function generateUniqueDisplayNameForUser(): Promise<string> {
   for (let i = 0; i < 30; i++) {
     const candidate = randomDisplayNameCandidate();
     // eslint-disable-next-line no-await-in-loop
-    const exists = await displayNameExists(candidate);
-    if (!exists) return candidate;
+    const userTaken = await isUserDisplayNameTaken(candidate);
+    if (userTaken) continue;
+    // eslint-disable-next-line no-await-in-loop
+    const guestTaken = await guestDisplayNameExists(candidate);
+    if (!guestTaken) return candidate;
   }
   return `Player${crypto.randomBytes(3).toString('hex')}`;
+}
+
+async function generateUniqueDisplayNameForGuest(guestId: string): Promise<string> {
+  for (let i = 0; i < 30; i++) {
+    const candidate = randomDisplayNameCandidate();
+    // eslint-disable-next-line no-await-in-loop
+    const userTaken = await isUserDisplayNameTaken(candidate);
+    if (userTaken) continue;
+    // eslint-disable-next-line no-await-in-loop
+    const reserved = await reserveGuestDisplayName(candidate, guestId);
+    if (reserved) return candidate;
+  }
+  for (let i = 0; i < 10; i++) {
+    const fallback = `Player${crypto.randomBytes(3).toString('hex')}`;
+    // eslint-disable-next-line no-await-in-loop
+    const userTaken = await isUserDisplayNameTaken(fallback);
+    if (userTaken) continue;
+    // eslint-disable-next-line no-await-in-loop
+    const reserved = await reserveGuestDisplayName(fallback, guestId);
+    if (reserved) return fallback;
+  }
+  throw new Error('Failed to allocate guest display name');
 }
 
 export async function getSessionUserId(request: Request): Promise<string | null> {
@@ -104,23 +129,16 @@ export function subjectKeyFor(identity: { userId: string | null; guestId: string
 }
 
 async function getOrCreateGuest(guestIdCandidate: string | null): Promise<{ guestId: string; displayName: string; setCookie: boolean }> {
-  await ensureDbSchema();
-  const pool = getDbPool();
-
   if (guestIdCandidate && isUuid(guestIdCandidate)) {
-    const existing = await pool.query<{ id: string; display_name: string }>(
-      'select id, display_name from guest_profiles where id=$1',
-      [guestIdCandidate]
-    );
-    if (existing.rowCount) {
-      const row = existing.rows[0];
-      return { guestId: row.id, displayName: row.display_name, setCookie: false };
+    const existing = await getGuestProfile(guestIdCandidate);
+    if (existing) {
+      return { guestId: existing.guestId, displayName: existing.displayName, setCookie: false };
     }
   }
 
   const guestId = crypto.randomUUID();
-  const displayName = await generateUniqueDisplayName();
-  await pool.query('insert into guest_profiles (id, display_name) values ($1, $2)', [guestId, displayName]);
+  const displayName = await generateUniqueDisplayNameForGuest(guestId);
+  await saveGuestProfile(guestId, displayName);
   return { guestId, displayName, setCookie: true };
 }
 
@@ -138,7 +156,7 @@ async function ensureUserDisplayName(userId: string, preferredName: string | nul
   const current = await getUserDisplayName(userId);
   if (current) return current;
 
-  const next = preferredName ?? (await generateUniqueDisplayName());
+  const next = preferredName ?? (await generateUniqueDisplayNameForUser());
   await pool.query('update users set display_name=$2, updated_at=now() where id=$1 and display_name is null', [userId, next]);
   return (await getUserDisplayName(userId)) ?? next;
 }
@@ -148,10 +166,9 @@ async function linkGuestToUser(userId: string, guestId: string): Promise<void> {
   const pool = getDbPool();
   if (!isUuid(userId)) return;
   await pool.query('insert into users (id) values ($1) on conflict do nothing', [userId]);
-  await pool.query('insert into user_links (user_id, guest_id) values ($1, $2) on conflict do nothing', [userId, guestId]);
 
-  const guest = await pool.query<{ display_name: string }>('select display_name from guest_profiles where id=$1', [guestId]);
-  const guestName = guest.rows[0]?.display_name ?? null;
+  const guest = await getGuestProfile(guestId);
+  const guestName = guest?.displayName ?? null;
   const userDisplayName = guestName ? await ensureUserDisplayName(userId, guestName) : await ensureUserDisplayName(userId, null);
 
   await migrateTodayLeaderboardIfPresent({ userId, guestId, userDisplayName }).catch(() => null);

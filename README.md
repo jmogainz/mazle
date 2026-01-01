@@ -8,7 +8,7 @@ A daily Pokémon-inspired puzzle game where players navigate compact, gym-style 
 # Required: Set your runner ID (add to shell profile)
 export UNIQUE_RUNNER_ID=$(whoami)
 
-# Start dev server (WASM fallback, no backend)
+# Start dev server (Full stack: frontend + Rust backend)
 make up
 
 # Open http://localhost:8080 (port may vary - check console output)
@@ -18,8 +18,9 @@ make up
 
 | Command | Description |
 |---------|-------------|
-| `make up` | Start frontend (ENV=dev-test default, WASM fallback) |
-| `make up ENV=dev` | Start with Rust backend auto-launching |
+| `make up` | Start full stack (ENV=dev default, includes Rust backend) |
+| `make up ENV=dev-test` | Start with WASM fallback (no backend) |
+| `make up FRONTEND_ONLY=1` | Restart frontend only (skips backend deps) |
 | `make up ENV=dev WITH_DEPS=0` | Dev mode, frontend only |
 | `make up FRONTEND_RELEASE_MODE=1` | Run prod-style Next.js build (no hot reload) |
 | `make up ENV=prod` | Deploy backend (Fly.io) + frontend (Vercel) |
@@ -42,8 +43,8 @@ This keeps the rest of your Make/ENV flags intact while letting you benchmark th
 
 | ENV | WITH_DEPS | Backend | Use Case |
 |-----|-----------|---------|----------|
-| `dev-test` | 0 | WASM fallback | Default, quick iteration |
-| `dev` | 1 | Auto-starts (port 8080) | Full stack local dev |
+| `dev` | 1 | Auto-starts (port 8080) | Default, full stack local dev |
+| `dev-test` | 0 | WASM fallback | Quick iteration, no backend needed |
 | `staging` | 1 | Fly.io | Pre-prod testing |
 | `prod` | 1 | Fly.io | Production |
 

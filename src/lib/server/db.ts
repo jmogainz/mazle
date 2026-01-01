@@ -10,7 +10,7 @@ declare global {
 
 export function getDbPool(): Pool {
   if (global.__mazleDbPool) return global.__mazleDbPool;
-  const connectionString = requireEnv('DATABASE_URL');
+  const connectionString = requireEnv('DB_URL');
   const pool = new Pool({
     connectionString,
     max: 5,
@@ -23,8 +23,8 @@ export function getDbPool(): Pool {
 
 export async function ensureDbSchema(): Promise<void> {
   if (global.__mazleSchemaEnsured) return;
-  if (!env('DATABASE_URL')) {
-    throw new Error('DATABASE_URL is not set');
+  if (!env('DB_URL')) {
+    throw new Error('DB_URL is not set');
   }
   const pool = getDbPool();
   try {

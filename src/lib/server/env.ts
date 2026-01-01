@@ -1,5 +1,5 @@
 export type EnvName =
-  | 'DATABASE_URL'
+  | 'DB_URL'
   | 'KV_REST_API_URL'
   | 'KV_REST_API_TOKEN'
   | 'UPSTASH_REDIS_REST_URL'
@@ -26,7 +26,6 @@ export type EnvName =
   | 'APPLE_KEY_ID'
   | 'APPLE_PRIVATE_KEY'
   | 'ADMIN_SECRET'
-  | 'MAZLE_DEV_MODE'
   | 'NEXT_PUBLIC_ENV';
 
 export function env(name: EnvName): string | undefined {
@@ -42,7 +41,6 @@ export function requireEnv(name: EnvName): string {
 }
 
 export function isDevMode(): boolean {
-  if (env('MAZLE_DEV_MODE') === '1') return true;
   const publicEnv = env('NEXT_PUBLIC_ENV');
   if (!publicEnv) return false;
   return publicEnv === 'dev' || publicEnv === 'dev-test' || publicEnv === 'dev-local';

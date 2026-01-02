@@ -31,7 +31,7 @@ const GENERATOR_URL = process.env.GENERATOR_URL || process.env.NEXT_PUBLIC_GENER
  * Flow:
  * 1. Calculate tomorrow's date (since we run at 11 PM ET, generate for next day)
  * 2. Call Rust backend to generate puzzle
- * 3. Store in Vercel KV with no TTL (supports archive calendar)
+ * 3. Store in Vercel KV with no TTL
  */
 export async function GET(request: NextRequest) {
   try {

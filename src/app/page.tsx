@@ -2,16 +2,8 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
-import { usePathname, useRouter } from 'next/navigation';
 import { Header, GameUI, ShareCard, StatsModal, HelpModal, ErrorBoundary, Loader, DevTools, AdSlot } from '@/components';
 import { HELP_MENU_HASH } from '@/components/helpMenuHash';
-import MoreMenuModal from '@/components/MoreMenuModal';
-import OverlayShell from '@/components/OverlayShell';
-import AccountView from '@/components/AccountView';
-import LeaderboardView from '@/components/LeaderboardView';
-import { api } from '@/lib/api';
-import { prefetchAccount, prefetchLeaderboard } from '@/lib/api/cached';
-import { getPrefs } from '@/lib/prefs';
 import {
   CHEAT_TIMEOUT_MS,
   CHEAT_CODE_LENGTH,
@@ -25,7 +17,6 @@ import {
 } from '@/constants';
 import {
   getPuzzleNumber,
-  getNewYorkDateString,
   onGameEvent,
   PuzzleData,
   MapType,
@@ -59,8 +50,6 @@ const PhaserGame = dynamic(() => import('@/game/PhaserGame'), {
 const _DEVTOOLS_BUILD_FLAG =
   process.env.NEXT_PUBLIC_DEVTOOLS_ENABLED === 'true';
 
-const DEVTOOLS_PREVIEW_FEATURES_KEY = 'mazle_devtools_preview_features_v1';
-
 const IS_PROD = process.env.NEXT_PUBLIC_ENV === 'prod';
 const HELP_SEEN_KEY = `mazle_seen_help_${HELP_MENU_HASH}`;
 const ADSENSE_TOP_SLOT = process.env.NEXT_PUBLIC_ADSENSE_SLOT_MOBILE_TOP ?? (!IS_PROD ? 'DEV_TOP' : '');
@@ -68,9 +57,6 @@ const ADSENSE_BOTTOM_SLOT = process.env.NEXT_PUBLIC_ADSENSE_SLOT_BOTTOM ?? (!IS_
 const AD_BANNER_HEIGHT = 50;
 
 export default function Home() {
-  const router = useRouter();
-  const pathname = usePathname();
-  const todayNy = useMemo(() => getNewYorkDateString(), []);
   const [puzzle, setPuzzle] = useState<PuzzleData | null>(null);
   const [puzzleNumber, setPuzzleNumber] = useState(0);
   const [puzzleLabel, setPuzzleLabel] = useState<string | null>(null);
@@ -83,10 +69,6 @@ export default function Home() {
   const [showStats, setShowStats] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showDevTools, setShowDevTools] = useState(false);
-  const [previewFeaturesEnabled, setPreviewFeaturesEnabled] = useState(false);
-  const [showMenu, setShowMenu] = useState(false);
-  const [showLeaderboard, setShowLeaderboard] = useState(false);
-  const [showAccount, setShowAccount] = useState(false);
   const [selectedBackend, setSelectedBackend] = useState<GeneratorBackend>('auto');
   const [lastUsedBackend, setLastUsedBackend] = useState<'rust-backend' | 'wasm' | null>(null);
   const [gameResult, setGameResult] = useState<{ moveCount: number; timeMs: number; failed?: boolean; attempts?: any[] } | null>(null);
@@ -145,41 +127,6 @@ export default function Home() {
   useEffect(() => {
     devMaxLivesRef.current = devMaxLives;
   }, [devMaxLives]);
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(DEVTOOLS_PREVIEW_FEATURES_KEY);
-      setPreviewFeaturesEnabled(stored === '1');
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  const onPreviewFeaturesToggle = useCallback((enabled: boolean) => {
-    setPreviewFeaturesEnabled(enabled);
-    try {
-      if (enabled) localStorage.setItem(DEVTOOLS_PREVIEW_FEATURES_KEY, '1');
-      else localStorage.removeItem(DEVTOOLS_PREVIEW_FEATURES_KEY);
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'production' && !previewFeaturesEnabled) return;
-    const runPrefetch = () => {
-      prefetchAccount();
-      prefetchLeaderboard(todayNy, 50);
-    };
-
-    if ('requestIdleCallback' in window) {
-      const id = window.requestIdleCallback(runPrefetch, { timeout: 1500 });
-      return () => window.cancelIdleCallback(id);
-    }
-
-    const id = window.setTimeout(runPrefetch, 800);
-    return () => window.clearTimeout(id);
-  }, [todayNy, previewFeaturesEnabled]);
 
   // Sync CSS custom property to the real visual viewport height (iOS-safe)
   useEffect(() => {
@@ -258,10 +205,9 @@ export default function Home() {
   const showBottomAd = !!ADSENSE_BOTTOM_SLOT;
   const canRequestAds = adsReady && consentReady;
 
-  const isRouteOverlayOpen = pathname !== '/';
   const isModalOpen =
-    showHelp || showStats || showShareCard || showDevTools || showMenu || showLeaderboard || showAccount;
-  const shouldPause = isRouteOverlayOpen || isModalOpen;
+    showHelp || showStats || showShareCard || showDevTools;
+  const shouldPause = isModalOpen;
 
   useEffect(() => {
     gameControlsRef.current?.setPaused?.(shouldPause);
@@ -688,13 +634,6 @@ export default function Home() {
         setPreviousResult(dailyResult);
         console.log('[SAVE] Result saved, previousResult updated');
 
-        if (!result.failed && getPrefs().leaderboardAutoSubmitWins) {
-          const failedAttempts = result.attempts?.length ?? 0;
-          const attemptsUsed = Math.min(3, Math.max(1, failedAttempts + 1));
-          api.leaderboardSubmit({ date: todayDateStr, timeMs: result.timeMs, attemptsUsed }).catch(() => {
-            // Ignore: manual submit remains available via the leaderboard overlay.
-          });
-        }
       } else {
         console.log('[SAVE] Skipped - previousResult already exists:', previousResult);
       }
@@ -1046,7 +985,6 @@ export default function Home() {
   const isPostGame = !isPlaying && (!!gameResult || !!previousResult);
   const shouldBlur = showShareCard || (!isPlaying && isGameReady && !showInlineResult);
   const showResultsButton = showInlineResult;
-  const showMenuButton = process.env.NODE_ENV !== 'production' || previewFeaturesEnabled;
   const isAdVisible = (status: 'filled' | 'unfilled' | null) => canRequestAds && status === 'filled';
 
   return (
@@ -1076,7 +1014,6 @@ export default function Home() {
           puzzleInfo={puzzleLabel ?? `#${puzzleNumber}`}
           onHelpClick={() => setShowHelp(true)}
           onStatsClick={() => setShowStats(true)}
-          onMenuClick={showMenuButton ? () => setShowMenu(true) : undefined}
           logoRef={devToolsTapTargetRef}
           logoClassName={styles.devToolsTapTarget}
         />
@@ -1106,8 +1043,6 @@ export default function Home() {
               onGenerate={handleDevSeedGenerate}
               onLoadDaily={handleLoadDaily}
               onStopGeneration={handleStopGeneration}
-              previewFeaturesEnabled={previewFeaturesEnabled}
-              onPreviewFeaturesToggle={onPreviewFeaturesToggle}
               onClose={() => setShowDevTools(false)}
               canStopGeneration={!!generationAbortRef.current}
               closenessThreshold={closenessThreshold}
@@ -1221,38 +1156,6 @@ export default function Home() {
         </footer>
 
         {/* Modals */}
-        <MoreMenuModal
-          open={showMenu}
-          onClose={() => setShowMenu(false)}
-          onOpenLeaderboard={() => setShowLeaderboard(true)}
-          onOpenAccount={() => setShowAccount(true)}
-          onOpenArchive={() => router.push('/archive')}
-        />
-
-        {showLeaderboard && (
-          <OverlayShell
-            title="Leaderboard"
-            subtitle="Today"
-            variant="overlay"
-            onClose={() => setShowLeaderboard(false)}
-          >
-            <LeaderboardView />
-            <AdSlot placement="leaderboard" />
-          </OverlayShell>
-        )}
-
-        {showAccount && (
-          <OverlayShell
-            title="Account"
-            subtitle="Name, sign-in, settings"
-            variant="overlay"
-            onClose={() => setShowAccount(false)}
-          >
-            <AccountView />
-            <AdSlot placement="account" />
-          </OverlayShell>
-        )}
-
         {showShareCard && gameResult && (
           <ShareCard
             puzzleNumber={puzzleNumber}
@@ -1264,11 +1167,6 @@ export default function Home() {
             attempts={gameResult.attempts}
             maxLives={devMaxLives}
             mapType={puzzle.mapType}
-            leaderboardDate={
-              (process.env.NODE_ENV !== 'production' || previewFeaturesEnabled) && !debugModeRef.current
-                ? getNewYorkDateString()
-                : undefined
-            }
             onClose={handleCloseShareCard}
           />
         )}

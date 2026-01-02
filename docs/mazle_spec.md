@@ -3,7 +3,7 @@
 ## 1. Overview
 A daily, Pokémon-inspired puzzle where players navigate a compact, gym-style maze using step movement, sliding on ice, and one-way ledges.  
 The puzzle is designed to be quick, satisfying, solvable, and optimized for **move count** (primary metric) and **completion time** (secondary metric).  
-A new puzzle is available globally each day with shareable results and leaderboards.
+A new puzzle is available globally each day with shareable results.
 
 ---
 
@@ -12,7 +12,7 @@ A new puzzle is available globally each day with shareable results and leaderboa
 - **Pixel-art aesthetic** with crisp rendering and simple animations.  
 - Puzzle solves in **~20 effective moves**, and typical players complete in **under 3 minutes**.  
 - Small, readable puzzle rooms instead of large wandering mazes.  
-- Viral and social: share card, daily streak, competitive metrics.
+- Viral and social: share card, daily streak.
 
 ---
 
@@ -29,8 +29,8 @@ A new puzzle is available globally each day with shareable results and leaderboa
 ### Likely Tech Choices (Flexible)
 - **TypeScript**  
 - **Phaser 3** for game rendering + tilemap handling  
-- **Optional React** for UI components (leaderboard, stats, share card)  
-- Backend: lightweight serverless routes for daily seed + leaderboard submissions.
+- **Optional React** for UI components (stats, share card)  
+- Backend: lightweight serverless routes for daily seed.
 
 ---
 
@@ -140,7 +140,6 @@ A new puzzle is available globally each day with shareable results and leaderboa
 - Resets at **midnight (UTC or PST, TBD)**  
 - **Daily streak** system  
 - Optional: weekly recap or trends (v2)  
-- Optional: non-competitive archive of past puzzles
 
 ---
 
@@ -153,19 +152,9 @@ A new puzzle is available globally each day with shareable results and leaderboa
   - Completion time  
   - Simple emoji/minimap representation
 
-- **Leaderboards**
-  - Global  
-  - Regional (country/locale)  
-  - Friends-only  
-
-- **Friends List**
-  - Share code or friend link  
-  - Compare stats for the day
-
 ### v2
 - Ghost runs (friend or global top player)  
 - “Beat my time / moves” challenge link  
-- Weekly leaderboards
 
 ---
 

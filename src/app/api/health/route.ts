@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { ensureDbSchema } from '@/lib/server/db';
-import { getKvRedis, getLeaderboardRedis } from '@/lib/server/redis';
+import { getKvRedis } from '@/lib/server/redis';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -30,14 +30,6 @@ export async function GET() {
   } catch (err) {
     ok = false;
     checks.kv = { ok: false, error: err instanceof Error ? err.message : 'KV check failed' };
-  }
-
-  try {
-    await checkRedis('leaderboard', getLeaderboardRedis());
-    checks.leaderboard = { ok: true };
-  } catch (err) {
-    ok = false;
-    checks.leaderboard = { ok: false, error: err instanceof Error ? err.message : 'Leaderboard check failed' };
   }
 
   return NextResponse.json(

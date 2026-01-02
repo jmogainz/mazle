@@ -6,7 +6,7 @@ type AdFormat = 'auto' | 'rectangle' | 'horizontal' | 'vertical';
 
 interface AdSlotProps {
   slot?: string;
-  placement?: 'postGame' | 'leaderboard' | 'archive' | 'account';
+  placement?: 'postGame';
   className?: string;
   style?: React.CSSProperties;
   format?: AdFormat;

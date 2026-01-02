@@ -1,16 +1,16 @@
 services:
-  db:
-    profiles:
-      - db
+  # db:
+  #   profiles:
+  #     - db
 
-  migrate:
-    profiles:
-      - migrate
+  # migrate:
+  #   profiles:
+  #     - migrate
 
-  redis:
-    profiles:
-      - db
+  # redis:
+  #   profiles:
+  #     - db
 
-  redis-rest:
-    profiles:
-      - db
+  # redis-rest:
+  #   profiles:
+  #     - db

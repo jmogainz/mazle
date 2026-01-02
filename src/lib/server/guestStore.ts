@@ -25,10 +25,10 @@ export async function getGuestProfile(guestId: string): Promise<{ guestId: strin
   if (!displayName) return null;
 
   const nameKey = guestNameKey(displayName.toLowerCase());
-  await redis.multi()
-    .expire(guestKey(guestId), GUEST_TTL_SECONDS)
-    .expire(nameKey, GUEST_TTL_SECONDS)
-    .exec();
+  await Promise.allSettled([
+    redis.expire(guestKey(guestId), GUEST_TTL_SECONDS),
+    redis.expire(nameKey, GUEST_TTL_SECONDS),
+  ]);
 
   return { guestId, displayName };
 }

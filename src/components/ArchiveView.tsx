@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { api, getApiMode } from '@/lib/api';
-import { LAUNCH_DATE_NY, getNewYorkDateString, getPuzzleNumber } from '@/game/puzzleGenerator';
+import { api } from '@/lib/api';
+import { cachedApi, fetchMeFresh, readCachedMe } from '@/lib/api/cached';
+import { LAUNCH_DATE_NY, getPuzzleNumber } from '@/game/puzzleGenerator';
 import {
   addDays,
   daysInMonth,
@@ -39,15 +40,16 @@ function monthIdToDate(monthId: string, day: number): string {
 
 type ArchiveViewProps = {
   presentation?: 'overlay' | 'page';
+  initialTodayNy: string;
 };
 
 const DEVTOOLS_PREVIEW_FEATURES_KEY = 'mazle_devtools_preview_features_v1';
 
-export default function ArchiveView({ presentation = 'overlay' }: ArchiveViewProps) {
+export default function ArchiveView({ presentation = 'overlay', initialTodayNy }: ArchiveViewProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const todayNy = useMemo(() => getNewYorkDateString(), []);
+  const todayNy = initialTodayNy;
   const yesterdayNy = useMemo(() => addDays(todayNy, -1), [todayNy]);
 
   const minMonthId = useMemo(() => monthIdFromDate(LAUNCH_DATE_NY), []);
@@ -65,7 +67,10 @@ export default function ArchiveView({ presentation = 'overlay' }: ArchiveViewPro
 
   const [monthId, setMonthId] = useState(initialMonthId);
   const [previewFeaturesEnabled, setPreviewFeaturesEnabled] = useState(false);
-  const [meState, setMeState] = useState<LoadState<Awaited<ReturnType<typeof api.me>>>>({ status: 'loading' });
+  const cachedMe = useMemo(() => readCachedMe(), []);
+  const [meState, setMeState] = useState<LoadState<Awaited<ReturnType<typeof api.me>>>>(
+    cachedMe ? { status: 'loaded', data: cachedMe } : { status: 'loading' }
+  );
   const [daysState, setDaysState] = useState<LoadState<Awaited<ReturnType<typeof api.archiveDays>>>>({ status: 'loading' });
   const [offerState, setOfferState] = useState<LoadState<Awaited<ReturnType<typeof api.archiveOffer>>>>({ status: 'loading' });
   const [paywallBusy, setPaywallBusy] = useState(false);
@@ -81,10 +86,12 @@ export default function ArchiveView({ presentation = 'overlay' }: ArchiveViewPro
   const paywallOpen = searchParams.get('paywall') === '1' && !!requestedDate;
   const checkoutParam = searchParams.get('checkout');
 
-  const refreshMe = useCallback(async () => {
-    setMeState({ status: 'loading' });
+  const refreshMe = useCallback(async (silent = false, force = false) => {
+    if (!silent) {
+      setMeState({ status: 'loading' });
+    }
     try {
-      const me = await api.me();
+      const me = force ? await fetchMeFresh() : await cachedApi.me();
       setMeState({ status: 'loaded', data: me });
       return me;
     } catch (err) {
@@ -96,8 +103,8 @@ export default function ArchiveView({ presentation = 'overlay' }: ArchiveViewPro
 
   useEffect(() => {
     if (!showLockedFeatures) return;
-    refreshMe();
-  }, [refreshMe, showLockedFeatures]);
+    refreshMe(!!cachedMe);
+  }, [refreshMe, showLockedFeatures, cachedMe]);
 
   useEffect(() => {
     if (!requestedDate) return;
@@ -161,7 +168,7 @@ export default function ArchiveView({ presentation = 'overlay' }: ArchiveViewPro
       let delayMs = 250;
 
       while (!cancelled && Date.now() - startedAt < 15_000) {
-        const me = await api.me().catch(() => null);
+        const me = await fetchMeFresh().catch(() => null);
         if (me) {
           setMeState({ status: 'loaded', data: me });
           if (me.entitlements.archiveAccess) {
@@ -256,15 +263,6 @@ export default function ArchiveView({ presentation = 'overlay' }: ArchiveViewPro
   }, [router]);
 
   const handleSignIn = useCallback(() => {
-    if (getApiMode() === 'mock') {
-      setPaywallBusy(true);
-      api
-        .claim({})
-        .then(() => refreshMe())
-        .finally(() => setPaywallBusy(false));
-      return;
-    }
-
     const callbackUrl = requestedDate
       ? `/archive?paywall=1&d=${encodeURIComponent(requestedDate)}`
       : '/archive?paywall=1';

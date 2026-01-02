@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { isDevMode } from '@/lib/server/env';
 import { jsonError } from '@/lib/server/responses';
 import { getStripe, isStripeConfigured, stripeLifetimePriceId, stripeMonthlyPriceId } from '@/lib/server/stripe';
 
@@ -16,33 +15,6 @@ function formatPrice(currency: string, unitAmount: number): string {
 }
 
 export async function GET() {
-  if (isDevMode()) {
-    return NextResponse.json(
-      {
-        plans: [
-          {
-            id: 'monthly',
-            priceId: 'dev_price_archive_monthly',
-            formattedPrice: '$1.99',
-            currency: 'usd',
-            purchaseType: 'subscription',
-            interval: 'month',
-          },
-          {
-            id: 'lifetime',
-            priceId: 'dev_price_archive_lifetime',
-            formattedPrice: '$9.99',
-            currency: 'usd',
-            purchaseType: 'one_time',
-          },
-        ],
-        defaultPlanId: 'monthly',
-        grants: ['archive_access', 'ads_removed'],
-      },
-      { headers: { 'Cache-Control': 'no-store' } }
-    );
-  }
-
   if (!isStripeConfigured()) {
     return jsonError(500, 'STRIPE_NOT_CONFIGURED', 'Stripe is not configured.');
   }

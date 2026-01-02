@@ -2,6 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
+import {
+  cachedApi,
+  fetchLeaderboardAroundFresh,
+  fetchLeaderboardMeFresh,
+  fetchLeaderboardTopFresh,
+  readCachedLeaderboardAround,
+  readCachedLeaderboardMe,
+  readCachedLeaderboardTop,
+} from '@/lib/api/cached';
 import { getNewYorkDateString, getPuzzleNumber } from '@/game/puzzleGenerator';
 import { formatTime } from '@/utils/storage';
 import { getTodaysResult } from '@/utils/storage';
@@ -26,38 +35,55 @@ export default function LeaderboardView() {
   const puzzleNumber = useMemo(() => getPuzzleNumber(), []);
   const todayResult = useMemo(() => getTodaysResult(), []);
   const [previewFeaturesEnabled, setPreviewFeaturesEnabled] = useState(false);
+  const cachedTop = useMemo(() => readCachedLeaderboardTop(todayDate, 50), [todayDate]);
+  const cachedMe = useMemo(() => readCachedLeaderboardMe(todayDate), [todayDate]);
+  const cachedAround = useMemo(() => {
+    if (!cachedMe?.rank) return null;
+    return readCachedLeaderboardAround(todayDate, cachedMe.rank, 5);
+  }, [todayDate, cachedMe?.rank]);
 
   const showLockedFeatures = useMemo(() => {
     if (process.env.NODE_ENV !== 'production') return true;
     return previewFeaturesEnabled;
   }, [previewFeaturesEnabled]);
 
-  const [topState, setTopState] = useState<LoadState<Awaited<ReturnType<typeof api.leaderboardTop>>>>({
-    status: 'loading',
-  });
-  const [meState, setMeState] = useState<LoadState<Awaited<ReturnType<typeof api.leaderboardMe>>>>({
-    status: 'loading',
-  });
-  const [aroundState, setAroundState] = useState<LoadState<Awaited<ReturnType<typeof api.leaderboardAround>>>>({
-    status: 'idle',
-  });
+  const [topState, setTopState] = useState<LoadState<Awaited<ReturnType<typeof api.leaderboardTop>>>>(
+    cachedTop ? { status: 'loaded', data: cachedTop } : { status: 'loading' }
+  );
+  const [meState, setMeState] = useState<LoadState<Awaited<ReturnType<typeof api.leaderboardMe>>>>(
+    cachedMe ? { status: 'loaded', data: cachedMe } : { status: 'loading' }
+  );
+  const [aroundState, setAroundState] = useState<LoadState<Awaited<ReturnType<typeof api.leaderboardAround>>>>(
+    cachedAround ? { status: 'loaded', data: cachedAround } : { status: 'idle' }
+  );
   const [submitState, setSubmitState] = useState<'idle' | 'submitting' | 'submitted' | 'failed'>('idle');
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (silent = false, force = false) => {
     if (!showLockedFeatures) return;
-    setTopState({ status: 'loading' });
-    setMeState({ status: 'loading' });
-    setAroundState({ status: 'idle' });
+    if (!silent) {
+      setTopState({ status: 'loading' });
+      setMeState({ status: 'loading' });
+      setAroundState({ status: 'idle' });
+    }
 
     try {
-      const [top, me] = await Promise.all([api.leaderboardTop(todayDate, 50), api.leaderboardMe(todayDate)]);
+      const [top, me] = await Promise.all([
+        force ? fetchLeaderboardTopFresh(todayDate, 50) : cachedApi.leaderboardTop(todayDate, 50),
+        force ? fetchLeaderboardMeFresh(todayDate) : cachedApi.leaderboardMe(todayDate),
+      ]);
       setTopState({ status: 'loaded', data: top });
       setMeState({ status: 'loaded', data: me });
 
       if (me?.rank) {
-        setAroundState({ status: 'loading' });
-        const around = await api.leaderboardAround(todayDate, me.rank, 5);
+        if (!silent) {
+          setAroundState({ status: 'loading' });
+        }
+        const around = force
+          ? await fetchLeaderboardAroundFresh(todayDate, me.rank, 5)
+          : await cachedApi.leaderboardAround(todayDate, me.rank, 5);
         setAroundState({ status: 'loaded', data: around });
+      } else if (!silent) {
+        setAroundState({ status: 'idle' });
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load leaderboard';
@@ -67,8 +93,8 @@ export default function LeaderboardView() {
   }, [showLockedFeatures, todayDate]);
 
   useEffect(() => {
-    reload();
-  }, [reload]);
+    reload(!!cachedTop || !!cachedMe);
+  }, [reload, cachedTop, cachedMe]);
 
   useEffect(() => {
     try {
@@ -91,7 +117,7 @@ export default function LeaderboardView() {
         attemptsUsed,
       });
       setSubmitState('submitted');
-      await reload();
+      await reload(false, true);
     } catch {
       setSubmitState('failed');
     }

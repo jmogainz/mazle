@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, getApiMode } from '@/lib/api';
+import { cachedApi, fetchMeFresh, readCachedMe } from '@/lib/api/cached';
 import { getPrefs, setPrefs } from '@/lib/prefs';
 import styles from './AccountView.module.css';
 
@@ -20,15 +21,20 @@ function isAppleEnabled(): boolean {
 
 export default function AccountView() {
   const router = useRouter();
-  const [meState, setMeState] = useState<LoadState<Awaited<ReturnType<typeof api.me>>>>({ status: 'loading' });
+  const cachedMe = useMemo(() => readCachedMe(), []);
+  const [meState, setMeState] = useState<LoadState<Awaited<ReturnType<typeof api.me>>>>(
+    cachedMe ? { status: 'loaded', data: cachedMe } : { status: 'loading' }
+  );
   const [busy, setBusy] = useState<'idle' | 'signin' | 'signout'>('idle');
   const [autoSubmitWins, setAutoSubmitWins] = useState(() => getPrefs().leaderboardAutoSubmitWins);
   const [previewFeaturesEnabled, setPreviewFeaturesEnabled] = useState(false);
 
-  const refreshMe = useCallback(async () => {
-    setMeState({ status: 'loading' });
+  const refreshMe = useCallback(async (silent = false, force = false) => {
+    if (!silent) {
+      setMeState({ status: 'loading' });
+    }
     try {
-      const me = await api.me();
+      const me = force ? await fetchMeFresh() : await cachedApi.me();
       setMeState({ status: 'loaded', data: me });
       return me;
     } catch (err) {
@@ -39,8 +45,8 @@ export default function AccountView() {
   }, []);
 
   useEffect(() => {
-    refreshMe();
-  }, [refreshMe]);
+    refreshMe(!!cachedMe);
+  }, [refreshMe, cachedMe]);
 
   useEffect(() => {
     try {
@@ -71,7 +77,7 @@ export default function AccountView() {
         setBusy('signin');
         api
           .claim({})
-          .then(() => refreshMe())
+          .then(() => refreshMe(false, true))
           .finally(() => setBusy('idle'));
         return;
       }
@@ -91,7 +97,7 @@ export default function AccountView() {
       } catch {
         // ignore
       }
-      refreshMe().finally(() => setBusy('idle'));
+      refreshMe(false, true).finally(() => setBusy('idle'));
       return;
     }
 

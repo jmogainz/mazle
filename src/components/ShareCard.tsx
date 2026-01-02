@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MapType } from '@/game/types';
 import { api } from '@/lib/api';
+import { cachedApi, fetchLeaderboardMeFresh, fetchLeaderboardTopFresh } from '@/lib/api/cached';
 import type { LeaderboardEntry, LeaderboardMeResponse, LeaderboardTopResponse } from '@/lib/api/types';
 import { formatTime } from '@/utils/storage';
 import styles from './ShareCard.module.css';
@@ -188,13 +189,16 @@ ${generateProgressBlocks()}
 ${generateProgressBlocks()}
 ⏱️ ${formatTime(timeMs)}`;
 
-  const reloadLeaderboard = useCallback(async () => {
+  const reloadLeaderboard = useCallback(async (force = false) => {
     if (!leaderboardDate) return;
     setLeaderboardTopState({ status: 'loading' });
     setLeaderboardMeState({ status: 'loading' });
 
     try {
-      const [top, me] = await Promise.all([api.leaderboardTop(leaderboardDate, 20), api.leaderboardMe(leaderboardDate)]);
+      const [top, me] = await Promise.all([
+        force ? fetchLeaderboardTopFresh(leaderboardDate, 20) : cachedApi.leaderboardTop(leaderboardDate, 20),
+        force ? fetchLeaderboardMeFresh(leaderboardDate) : cachedApi.leaderboardMe(leaderboardDate),
+      ]);
       setLeaderboardTopState({ status: 'loaded', data: top });
       setLeaderboardMeState({ status: 'loaded', data: me });
     } catch (err) {
@@ -230,7 +234,7 @@ ${generateProgressBlocks()}
     try {
       await api.leaderboardSubmit({ date: leaderboardDate, timeMs, attemptsUsed });
       setLeaderboardSubmitState('submitted');
-      await reloadLeaderboard();
+      await reloadLeaderboard(true);
     } catch {
       setLeaderboardSubmitState('failed');
     }
@@ -472,7 +476,7 @@ ${generateProgressBlocks()}
           <button
             type="button"
             className={styles.leaderboardRefreshButton}
-            onClick={reloadLeaderboard}
+            onClick={() => reloadLeaderboard(true)}
             disabled={leaderboardTopState.status === 'loading'}
             aria-label="Refresh leaderboard"
             title="Refresh"

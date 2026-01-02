@@ -1,12 +1,16 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { Header, GameUI, ShareCard, StatsModal, HelpModal, ErrorBoundary, Loader, DevTools, AdSlot } from '@/components';
 import { HELP_MENU_HASH } from '@/components/helpMenuHash';
 import MoreMenuModal from '@/components/MoreMenuModal';
+import OverlayShell from '@/components/OverlayShell';
+import AccountView from '@/components/AccountView';
+import LeaderboardView from '@/components/LeaderboardView';
 import { api } from '@/lib/api';
+import { prefetchAccount, prefetchLeaderboard } from '@/lib/api/cached';
 import { getPrefs } from '@/lib/prefs';
 import {
   CHEAT_TIMEOUT_MS,
@@ -64,7 +68,9 @@ const ADSENSE_BOTTOM_SLOT = process.env.NEXT_PUBLIC_ADSENSE_SLOT_BOTTOM ?? (!IS_
 const AD_BANNER_HEIGHT = 50;
 
 export default function Home() {
+  const router = useRouter();
   const pathname = usePathname();
+  const todayNy = useMemo(() => getNewYorkDateString(), []);
   const [puzzle, setPuzzle] = useState<PuzzleData | null>(null);
   const [puzzleNumber, setPuzzleNumber] = useState(0);
   const [puzzleLabel, setPuzzleLabel] = useState<string | null>(null);
@@ -79,6 +85,8 @@ export default function Home() {
   const [showDevTools, setShowDevTools] = useState(false);
   const [previewFeaturesEnabled, setPreviewFeaturesEnabled] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [showAccount, setShowAccount] = useState(false);
   const [selectedBackend, setSelectedBackend] = useState<GeneratorBackend>('auto');
   const [lastUsedBackend, setLastUsedBackend] = useState<'rust-backend' | 'wasm' | null>(null);
   const [gameResult, setGameResult] = useState<{ moveCount: number; timeMs: number; failed?: boolean; attempts?: any[] } | null>(null);
@@ -156,6 +164,22 @@ export default function Home() {
       // ignore
     }
   }, []);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production' && !previewFeaturesEnabled) return;
+    const runPrefetch = () => {
+      prefetchAccount();
+      prefetchLeaderboard(todayNy, 50);
+    };
+
+    if ('requestIdleCallback' in window) {
+      const id = window.requestIdleCallback(runPrefetch, { timeout: 1500 });
+      return () => window.cancelIdleCallback(id);
+    }
+
+    const id = window.setTimeout(runPrefetch, 800);
+    return () => window.clearTimeout(id);
+  }, [todayNy, previewFeaturesEnabled]);
 
   // Sync CSS custom property to the real visual viewport height (iOS-safe)
   useEffect(() => {
@@ -235,7 +259,8 @@ export default function Home() {
   const canRequestAds = adsReady && consentReady;
 
   const isRouteOverlayOpen = pathname !== '/';
-  const isModalOpen = showHelp || showStats || showShareCard || showDevTools || showMenu;
+  const isModalOpen =
+    showHelp || showStats || showShareCard || showDevTools || showMenu || showLeaderboard || showAccount;
   const shouldPause = isRouteOverlayOpen || isModalOpen;
 
   useEffect(() => {
@@ -1196,7 +1221,37 @@ export default function Home() {
         </footer>
 
         {/* Modals */}
-        <MoreMenuModal open={showMenu} onClose={() => setShowMenu(false)} />
+        <MoreMenuModal
+          open={showMenu}
+          onClose={() => setShowMenu(false)}
+          onOpenLeaderboard={() => setShowLeaderboard(true)}
+          onOpenAccount={() => setShowAccount(true)}
+          onOpenArchive={() => router.push('/archive')}
+        />
+
+        {showLeaderboard && (
+          <OverlayShell
+            title="Leaderboard"
+            subtitle="Today"
+            variant="overlay"
+            onClose={() => setShowLeaderboard(false)}
+          >
+            <LeaderboardView />
+            <AdSlot placement="leaderboard" />
+          </OverlayShell>
+        )}
+
+        {showAccount && (
+          <OverlayShell
+            title="Account"
+            subtitle="Name, sign-in, settings"
+            variant="overlay"
+            onClose={() => setShowAccount(false)}
+          >
+            <AccountView />
+            <AdSlot placement="account" />
+          </OverlayShell>
+        )}
 
         {showShareCard && gameResult && (
           <ShareCard

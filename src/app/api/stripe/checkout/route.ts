@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { isDevMode } from '@/lib/server/env';
 import { getEntitlementsForUser, getSessionUserId } from '@/lib/server/identity';
 import { jsonError, readJsonBody } from '@/lib/server/responses';
 import { getStripe, stripeLifetimePriceId, stripeMonthlyPriceId } from '@/lib/server/stripe';
@@ -35,10 +34,6 @@ export async function POST(request: Request) {
     }
     if (!isAbsoluteUrl(body.successUrl) || !isAbsoluteUrl(body.cancelUrl)) {
       return jsonError(400, 'INVALID_REQUEST', 'successUrl/cancelUrl must be absolute URLs.');
-    }
-
-    if (isDevMode()) {
-      return NextResponse.json({ url: body.successUrl }, { headers: { 'Cache-Control': 'no-store' } });
     }
 
     const lifetimePriceId = stripeLifetimePriceId();

@@ -11,6 +11,7 @@ type OverlayShellProps = {
   variant?: 'overlay' | 'page';
   closeHref?: string;
   ariaLabel?: string;
+  onClose?: () => void;
 };
 
 export default function OverlayShell({
@@ -20,14 +21,16 @@ export default function OverlayShell({
   variant = 'overlay',
   closeHref,
   ariaLabel,
+  onClose,
 }: OverlayShellProps) {
   const router = useRouter();
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const defaultClose = useMemo(() => {
+    if (onClose) return onClose;
     if (variant === 'overlay') return () => router.back();
     return () => router.push(closeHref ?? '/');
-  }, [router, variant, closeHref]);
+  }, [router, variant, closeHref, onClose]);
 
   useEffect(() => {
     closeButtonRef.current?.focus();
@@ -74,4 +77,3 @@ export default function OverlayShell({
     </div>
   );
 }
-

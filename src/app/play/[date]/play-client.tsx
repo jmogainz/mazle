@@ -3,11 +3,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { usePathname, useRouter } from 'next/navigation';
-import { ErrorBoundary, Header, HelpModal, Loader, ShareCard, StatsModal, GameUI } from '@/components';
+import { ErrorBoundary, Header, HelpModal, Loader, ShareCard, StatsModal, GameUI, AdSlot } from '@/components';
 import MoreMenuModal from '@/components/MoreMenuModal';
-import { onGameEvent, TILE_SIZE, type Direction, type PuzzleData } from '@/game';
+import OverlayShell from '@/components/OverlayShell';
+import AccountView from '@/components/AccountView';
+import LeaderboardView from '@/components/LeaderboardView';
+import { onGameEvent, TILE_SIZE, getNewYorkDateString, type Direction, type PuzzleData } from '@/game';
 import type { GameControls } from '@/game/PhaserGame';
 import { api } from '@/lib/api';
+import { prefetchAccount, prefetchLeaderboard } from '@/lib/api/cached';
 import { getPlayerStats } from '@/utils/storage';
 import { useGlobalSwipeMoves } from '@/game/useGlobalSwipeMoves';
 import baseStyles from '@/app/page.module.css';
@@ -40,6 +44,8 @@ export default function ArchivePlayClient({ date }: { date: string }) {
   const [showStats, setShowStats] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [showAccount, setShowAccount] = useState(false);
   const [previewFeaturesEnabled, setPreviewFeaturesEnabled] = useState(false);
   const [gameResult, setGameResult] = useState<{ moveCount: number; timeMs: number; failed?: boolean; attempts?: any[] } | null>(null);
   const [isGameReady, setIsGameReady] = useState(false);
@@ -60,7 +66,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
   const safeDate = useMemo(() => (isValidNyDateString(date) ? date : null), [date]);
   const expectedPath = safeDate ? `/play/${safeDate}` : null;
   const isRouteOverlayOpen = expectedPath != null && pathname !== expectedPath;
-  const isModalOpen = showHelp || showStats || showShareCard || showMenu;
+  const isModalOpen = showHelp || showStats || showShareCard || showMenu || showLeaderboard || showAccount;
   const shouldPause = isRouteOverlayOpen || isModalOpen;
 
   useEffect(() => {
@@ -70,6 +76,23 @@ export default function ArchivePlayClient({ date }: { date: string }) {
       setPreviewFeaturesEnabled(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production' && !previewFeaturesEnabled) return;
+    const todayNy = getNewYorkDateString();
+    const runPrefetch = () => {
+      prefetchAccount();
+      prefetchLeaderboard(todayNy, 50);
+    };
+
+    if ('requestIdleCallback' in window) {
+      const id = window.requestIdleCallback(runPrefetch, { timeout: 1500 });
+      return () => window.cancelIdleCallback(id);
+    }
+
+    const id = window.setTimeout(runPrefetch, 800);
+    return () => window.clearTimeout(id);
+  }, [previewFeaturesEnabled]);
 
   // Sync CSS custom property to the real visual viewport height (iOS-safe)
   useEffect(() => {
@@ -303,7 +326,13 @@ export default function ArchivePlayClient({ date }: { date: string }) {
           onStatsClick={() => setShowStats(true)}
           onMenuClick={showMenuButton ? () => setShowMenu(true) : undefined}
         />
-        <MoreMenuModal open={showMenu} onClose={() => setShowMenu(false)} />
+        <MoreMenuModal
+          open={showMenu}
+          onClose={() => setShowMenu(false)}
+          onOpenLeaderboard={() => setShowLeaderboard(true)}
+          onOpenAccount={() => setShowAccount(true)}
+          onOpenArchive={onBackToArchive}
+        />
         <div className={styles.errorCard}>
           <div className={styles.errorTitle}>
             {loadError.kind === 'locked' ? 'Locked day' : loadError.kind === 'invalid' ? 'Invalid date' : 'Unavailable'}
@@ -434,7 +463,37 @@ export default function ArchivePlayClient({ date }: { date: string }) {
           <p>Use arrow keys or swipe to move</p>
         </footer>
 
-        <MoreMenuModal open={showMenu} onClose={() => setShowMenu(false)} />
+        <MoreMenuModal
+          open={showMenu}
+          onClose={() => setShowMenu(false)}
+          onOpenLeaderboard={() => setShowLeaderboard(true)}
+          onOpenAccount={() => setShowAccount(true)}
+          onOpenArchive={onBackToArchive}
+        />
+
+        {showLeaderboard && (
+          <OverlayShell
+            title="Leaderboard"
+            subtitle="Today"
+            variant="overlay"
+            onClose={() => setShowLeaderboard(false)}
+          >
+            <LeaderboardView />
+            <AdSlot placement="leaderboard" />
+          </OverlayShell>
+        )}
+
+        {showAccount && (
+          <OverlayShell
+            title="Account"
+            subtitle="Name, sign-in, settings"
+            variant="overlay"
+            onClose={() => setShowAccount(false)}
+          >
+            <AccountView />
+            <AdSlot placement="account" />
+          </OverlayShell>
+        )}
 
         {showShareCard && gameResult && (
           <ShareCard

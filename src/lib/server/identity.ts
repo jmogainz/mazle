@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { getToken } from 'next-auth/jwt';
 import { ensureDbSchema, getDbPool } from './db';
-import { env, isDevMode } from './env';
+import { env } from './env';
 import { getLeaderboardRedis } from './redis';
 import { LB_NAMES_KEY } from './leaderboard';
 import { getGuestProfile, guestDisplayNameExists, reserveGuestDisplayName, saveGuestProfile } from './guestStore';
@@ -175,10 +175,6 @@ async function linkGuestToUser(userId: string, guestId: string): Promise<void> {
 }
 
 export async function getEntitlementsForUser(userId: string): Promise<{ archiveAccess: boolean; adsRemoved: boolean }> {
-  if (isDevMode()) {
-    return { archiveAccess: true, adsRemoved: true };
-  }
-
   await ensureDbSchema();
   const pool = getDbPool();
   const res = await pool.query<{ key: string }>(
@@ -203,7 +199,7 @@ export async function resolveMeIdentity(request: Request): Promise<MeIdentity> {
     return {
       mode: 'guest',
       displayName: guest.displayName,
-      entitlements: isDevMode() ? { archiveAccess: true, adsRemoved: true } : { archiveAccess: false, adsRemoved: false },
+      entitlements: { archiveAccess: false, adsRemoved: false },
       userId: null,
       guestId: guest.guestId,
       setGuestCookie: guest.setCookie,

@@ -1,17 +1,26 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import styles from './MoreMenuModal.module.css';
 
 type MoreMenuModalProps = {
   open: boolean;
   onClose: () => void;
+  onOpenLeaderboard?: () => void;
+  onOpenAccount?: () => void;
+  onOpenArchive?: () => void;
 };
 
 const DEVTOOLS_PREVIEW_FEATURES_KEY = 'mazle_devtools_preview_features_v1';
 
-export default function MoreMenuModal({ open, onClose }: MoreMenuModalProps) {
+export default function MoreMenuModal({
+  open,
+  onClose,
+  onOpenLeaderboard,
+  onOpenAccount,
+  onOpenArchive,
+}: MoreMenuModalProps) {
   const router = useRouter();
   const firstButtonRef = useRef<HTMLButtonElement | null>(null);
   const [previewFeaturesEnabled, setPreviewFeaturesEnabled] = useState(false);
@@ -35,6 +44,19 @@ export default function MoreMenuModal({ open, onClose }: MoreMenuModalProps) {
     }
   }, [open]);
 
+  const nav = useCallback(
+    (href: string, onOpen?: () => void) => {
+      if (onOpen) {
+        onOpen();
+        onClose();
+        return;
+      }
+      onClose();
+      router.push(href);
+    },
+    [onClose, router],
+  );
+
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -45,11 +67,6 @@ export default function MoreMenuModal({ open, onClose }: MoreMenuModalProps) {
   }, [open, onClose]);
 
   if (!open) return null;
-
-  const nav = (href: string) => {
-    onClose();
-    router.push(href);
-  };
 
   return (
     <div className={styles.overlay} role="dialog" aria-modal="true" aria-label="Menu" onClick={onClose}>
@@ -67,12 +84,12 @@ export default function MoreMenuModal({ open, onClose }: MoreMenuModalProps) {
                 ref={firstButtonRef}
                 type="button"
                 className={styles.menuButton}
-                onClick={() => nav('/leaderboard')}
+                onClick={() => nav('/leaderboard', onOpenLeaderboard)}
               >
                 <span>Leaderboard</span>
                 <span aria-hidden="true">›</span>
               </button>
-              <button type="button" className={styles.menuButton} onClick={() => nav('/archive')}>
+              <button type="button" className={styles.menuButton} onClick={() => nav('/archive', onOpenArchive)}>
                 <span>Archive</span>
                 <span aria-hidden="true">›</span>
               </button>
@@ -82,7 +99,7 @@ export default function MoreMenuModal({ open, onClose }: MoreMenuModalProps) {
             ref={showLockedFeatures ? undefined : firstButtonRef}
             type="button"
             className={styles.menuButton}
-            onClick={() => nav('/account')}
+            onClick={() => nav('/account', onOpenAccount)}
           >
             <span>Account</span>
             <span aria-hidden="true">›</span>

@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { ensureDbSchema } from '@/lib/server/db';
 import { getKvRedis } from '@/lib/server/redis';
 
 export const dynamic = 'force-dynamic';
@@ -15,14 +14,6 @@ async function checkRedis(label: string, redis: ReturnType<typeof getKvRedis>) {
 export async function GET() {
   const checks: Record<string, { ok: boolean; error?: string }> = {};
   let ok = true;
-
-  try {
-    await ensureDbSchema();
-    checks.db = { ok: true };
-  } catch (err) {
-    ok = false;
-    checks.db = { ok: false, error: err instanceof Error ? err.message : 'DB check failed' };
-  }
 
   try {
     await checkRedis('kv', getKvRedis());

@@ -1,5 +1,50 @@
 import { NextResponse } from 'next/server';
+import { ensureDbSchema } from '@/lib/server/db';
+import { getKvRedis, getLeaderboardRedis } from '@/lib/server/redis';
 
-export function GET() {
-  return NextResponse.json({ status: 'ok' });
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
+async function checkRedis(label: string, redis: ReturnType<typeof getKvRedis>) {
+  if (!redis) {
+    throw new Error(`${label} not configured`);
+  }
+  await redis.get('__health');
+}
+
+export async function GET() {
+  const checks: Record<string, { ok: boolean; error?: string }> = {};
+  let ok = true;
+
+  try {
+    await ensureDbSchema();
+    checks.db = { ok: true };
+  } catch (err) {
+    ok = false;
+    checks.db = { ok: false, error: err instanceof Error ? err.message : 'DB check failed' };
+  }
+
+  try {
+    await checkRedis('kv', getKvRedis());
+    checks.kv = { ok: true };
+  } catch (err) {
+    ok = false;
+    checks.kv = { ok: false, error: err instanceof Error ? err.message : 'KV check failed' };
+  }
+
+  try {
+    await checkRedis('leaderboard', getLeaderboardRedis());
+    checks.leaderboard = { ok: true };
+  } catch (err) {
+    ok = false;
+    checks.leaderboard = { ok: false, error: err instanceof Error ? err.message : 'Leaderboard check failed' };
+  }
+
+  return NextResponse.json(
+    { ok, checks },
+    {
+      status: ok ? 200 : 503,
+      headers: { 'Cache-Control': 'no-store' },
+    }
+  );
 }

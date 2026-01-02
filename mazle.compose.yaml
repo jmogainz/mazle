@@ -45,6 +45,9 @@ services:
       - HOSTNAME=0.0.0.0
       - CHOKIDAR_USEPOLLING=${FRONTEND_CHOKIDAR_USEPOLLING:-1}
       - WATCHPACK_POLLING=${FRONTEND_WATCHPACK_POLLING:-1}
+      - APP_NAME=${APP_NAME}
+      - UNIQUE_RUNNER_ID=${UNIQUE_RUNNER_ID}
+      - UNIQUE_RUN_NUMBER=${UNIQUE_RUN_NUMBER}
     entrypoint: ["/usr/local/bin/dev-env-entrypoint.sh"]
     # Internal port only, accessed via Nginx
     # ports:
@@ -88,6 +91,7 @@ services:
     <<: *networks
     profiles:
       - app
+
 
 networks:
   app_network:

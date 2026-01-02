@@ -47,7 +47,7 @@ FROM base AS builder
 SHELL ["/bin/bash","-c"]
 
 # Build-time environment indicator (used to optionally skip wasm build when artifacts already exist)
-ARG BUILD_ENV=dev-test
+ARG BUILD_ENV=dev
 
 # Copy any pre-built artifacts from the workspace so we can reuse them in non-prod builds
 COPY src/wasm/generator ./prebuilt-wasm

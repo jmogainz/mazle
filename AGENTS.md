@@ -8,24 +8,26 @@ A daily Wordle-style puzzle game inspired by Pokémon ice gym puzzles. Players n
 
 ---
 
-## 🚨 CRITICAL: Use Make Commands Only
+## ✅ Preferred: Use Make for Build/Run/Deploy
 
-**DO NOT use these commands directly:**
-- ❌ `npm install` / `npm run build` / `npm run dev`
-- ❌ `cargo build` / `cargo run`
-- ❌ `docker build` / `docker compose`
-- ❌ `vercel deploy`
-- ❌ `fly deploy`
+**Make is the preferred path for build, run, and deploy workflows.** Use the root `Makefile` and `generator-rust/Makefile` whenever a suitable target exists.
+
+**Direct CLI commands are allowed** when:
+- You are inspecting, debugging, or querying local services (e.g., `docker ps`, `docker logs`, `psql`).
+- There is no Make target for the task.
+- You need a one-off command that does not replace the normal build/run/deploy flow.
 
 **Exception:** You may use `cargo build` / `cargo run` **only for ML-related work inside `generator-rust/`** (e.g., `generator-rust/ml` or `generator-rust/ml/bridge`) when a Make target is not available.
 
 **ALWAYS use the Make targets provided below** for all other build, test, and deployment workflows. All orchestration runs through the root `Makefile` and `generator-rust/Makefile`.
 
+If you choose a direct command for build/run/deploy, call it out explicitly and explain why Make isn’t used.
+
 ---
 
 ## Required Setup
 
-Before ANY command, you MUST export:
+Before any **Make** command, you MUST export:
 
 ```bash
 export UNIQUE_RUNNER_ID=$(whoami)
@@ -42,11 +44,11 @@ This is required for all Make commands. Set it once per session.
 **NOTE:** `make up` automatically builds before starting. You do NOT need to run `make build` first.
 
 ```bash
-# Quick start (WASM fallback, no backend) - DEFAULT
+# Full stack (frontend + Rust backend) - DEFAULT
 make up
 
-# Full stack (frontend + Rust backend) - BUILDS AND STARTS
-make up ENV=dev
+# Quick start (WASM fallback, no backend)
+make up ENV=dev-test
 
 # Dev mode, frontend only (backend must already be running)
 make up ENV=dev WITH_DEPS=0
@@ -195,15 +197,15 @@ EOF
 
 | ENV | WITH_DEPS | Notes |
 |-----|-----------|-------|
-| `dev-test` (default) | 0 | WASM fallback, fast iteration |
-| `dev` | 1 (override with =0) | Full local stack |
+| `dev` (default) | 1 (override with =0) | Full local stack |
+| `dev-test` | 0 | WASM fallback, fast iteration |
 | `staging` | 1 | Pre-prod (Fly.io) |
 | `prod` | 1 (override with =0) | Deploy backend to Fly.io, frontend to Vercel |
 
 **Environment Selection Rules:**
-- **Default (no ENV)**: Use `dev-test` with WASM fallback
-- **Local full stack**: Use `ENV=dev`
-- **Skip backend**: Add `WITH_DEPS=0` to any environment
+- **Default (no ENV)**: Use `dev` with full local stack (Rust backend)
+- **WASM Fallback**: Use `ENV=dev-test` to skip backend
+- **Skip backend in dev**: Add `WITH_DEPS=0` to `ENV=dev`
 - **Production**: Only use `ENV=prod` when explicitly deploying
 
 ---
@@ -228,11 +230,11 @@ mazle/
 ## Key Files Reference
 
 **Build & Deploy:**
-- `Makefile` - Root build targets, WASM build, orchestration (USE THIS)
-- `generator-rust/Makefile` - Backend build/deploy (USE THIS for backend)
+- `Makefile` - Root build targets, WASM build, orchestration (PREFERRED for build/run/deploy)
+- `generator-rust/Makefile` - Backend build/deploy (PREFERRED for backend build/run/deploy)
 - `mazle.compose.yaml` - Docker Compose for frontend
-- `package.json` - Frontend deps (DO NOT use npm directly)
-- `generator-rust/Cargo.toml` - Rust deps (DO NOT use cargo directly)
+- `package.json` - Frontend deps (prefer Make for build/run; npm ok for tooling when needed)
+- `generator-rust/Cargo.toml` - Rust deps (prefer Make for build/run; cargo ok for tooling when needed)
 
 **Game Logic:**
 - `src/game/GameScene.ts` - Main Phaser game scene
@@ -398,13 +400,14 @@ make clean && make build
 
 ## Summary of Rules
 
-1. ✅ **ALWAYS** use `make up` to build AND start (not `make build` then `make up`)
+1. ✅ **PREFER** `make up` to build AND start (not `make build` then `make up`)
 2. ✅ **ALWAYS** set `UNIQUE_RUNNER_ID=$(whoami)` before any make command
 3. ✅ **ALWAYS** test with curl + Python parsing after changes
 4. ✅ **ALWAYS** check fail rates in logs when tuning thresholds
-5. ❌ **NEVER** deploy to production unless explicitly requested
-6. ❌ **NEVER** run full test suites unless explicitly requested
-7. ❌ **NEVER** fix unrelated bugs or "improve" code beyond the request
-8. ❌ **NEVER** use `npm install`, `cargo build`, or direct Docker commands
+5. ✅ **ALWAYS** edit the existing migration file (assume not deployed yet); **NEVER** create a new migration file
+6. ❌ **NEVER** deploy to production unless explicitly requested
+7. ❌ **NEVER** run full test suites unless explicitly requested
+8. ❌ **NEVER** fix unrelated bugs or "improve" code beyond the request
+9. ✅ **ALLOWED** to use direct CLI (npm/cargo/docker/psql/etc.) for inspection/debugging or when no Make target exists; **prefer Make** for build/run/deploy
 
 **When in doubt:** Check this file, or ask the user for clarification.

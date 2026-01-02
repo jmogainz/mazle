@@ -108,7 +108,7 @@
   width: calc(16px * var(--ui-scale));
   height: calc(16px * var(--ui-scale));
   border-radius: 3px;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1), width 0.15s ease-out, height 0.15s ease-out;
   position: relative;
   touch-action: manipulation;
 }

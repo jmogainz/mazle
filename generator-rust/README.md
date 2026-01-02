@@ -86,7 +86,7 @@ wasm-pack build --target web --out-dir ../src/wasm/generator
 
 The WASM output goes to `src/wasm/generator/` and is automatically used by the frontend when:
 1. The Rust backend is unavailable
-2. No backend URL is configured (dev-test mode)
+2. No backend URL is configured (e.g. in dev-test mode)
 
 **Performance comparison:**
 | Target | Single Puzzle | Notes |

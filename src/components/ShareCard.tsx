@@ -1,9 +1,17 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MapType } from '@/game/types';
+import { api } from '@/lib/api';
+import { cachedApi, fetchLeaderboardMeFresh, fetchLeaderboardTopFresh } from '@/lib/api/cached';
+import type { LeaderboardEntry, LeaderboardMeResponse, LeaderboardTopResponse } from '@/lib/api/types';
 import { formatTime } from '@/utils/storage';
 import styles from './ShareCard.module.css';
+
+type LoadState<T> =
+  | { status: 'idle' | 'loading' }
+  | { status: 'loaded'; data: T }
+  | { status: 'error'; message: string };
 
 interface ShareCardProps {
   puzzleNumber: number;
@@ -17,6 +25,11 @@ interface ShareCardProps {
   maxLives?: number; // Dynamic lives count (default 3)
   onClose: () => void;
   inline?: boolean;
+  secondaryActionLabel?: string;
+  onSecondaryAction?: () => void;
+  footerText?: string;
+  leaderboardDate?: string; // NY YYYY-MM-DD
+  leaderboardAllowSubmit?: boolean;
 }
 
 // Get emoji for map type
@@ -69,6 +82,11 @@ export default function ShareCard({
   maxLives = 3,
   onClose,
   inline = false,
+  secondaryActionLabel,
+  onSecondaryAction,
+  footerText = 'Come back tomorrow for a new puzzle!',
+  leaderboardDate,
+  leaderboardAllowSubmit = true,
 }: ShareCardProps) {
   const [shareState, setShareState] = useState<'idle' | 'copied' | 'failed'>('idle');
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
@@ -77,9 +95,24 @@ export default function ShareCard({
   const [feedbackRating, setFeedbackRating] = useState<number | null>(null);
   const [feedbackState, setFeedbackState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
 
+  const hasLeaderboard = !!leaderboardDate;
+  const [activeTab, setActiveTab] = useState<'share' | 'leaderboard'>('share');
+  const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const swipeIgnoreRef = useRef(false);
+
+  const [leaderboardTopState, setLeaderboardTopState] = useState<LoadState<LeaderboardTopResponse>>({ status: 'idle' });
+  const [leaderboardMeState, setLeaderboardMeState] = useState<LoadState<LeaderboardMeResponse>>({ status: 'idle' });
+  const [leaderboardSubmitState, setLeaderboardSubmitState] = useState<'idle' | 'submitting' | 'submitted' | 'failed'>('idle');
+
   const displayLabel = puzzleLabel ?? `#${puzzleNumber}`;
   const mapEmoji = getMapEmoji(mapType);
   const maxBlocks = Math.max(optimalMoves, 1);
+
+  const attemptsUsed = useMemo(() => {
+    if (failed) return null;
+    const failedAttempts = attempts?.length ?? 0;
+    return Math.min(3, Math.max(1, failedAttempts + 1));
+  }, [attempts, failed]);
 
   // Calculate best attempt for failed runs (using correctMoves if available)
   const bestAttempt = attempts && attempts.length > 0
@@ -155,6 +188,57 @@ ${generateProgressBlocks()}
 
 ${generateProgressBlocks()}
 ⏱️ ${formatTime(timeMs)}`;
+
+  const reloadLeaderboard = useCallback(async (force = false) => {
+    if (!leaderboardDate) return;
+    setLeaderboardTopState({ status: 'loading' });
+    setLeaderboardMeState({ status: 'loading' });
+
+    try {
+      const [top, me] = await Promise.all([
+        force ? fetchLeaderboardTopFresh(leaderboardDate, 20) : cachedApi.leaderboardTop(leaderboardDate, 20),
+        force ? fetchLeaderboardMeFresh(leaderboardDate) : cachedApi.leaderboardMe(leaderboardDate),
+      ]);
+      setLeaderboardTopState({ status: 'loaded', data: top });
+      setLeaderboardMeState({ status: 'loaded', data: me });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load leaderboard';
+      setLeaderboardTopState({ status: 'error', message });
+      setLeaderboardMeState({ status: 'error', message });
+    }
+  }, [leaderboardDate]);
+
+  useEffect(() => {
+    if (!hasLeaderboard) {
+      setActiveTab('share');
+      return;
+    }
+    setLeaderboardTopState({ status: 'idle' });
+    setLeaderboardMeState({ status: 'idle' });
+    setLeaderboardSubmitState('idle');
+  }, [hasLeaderboard, leaderboardDate]);
+
+  useEffect(() => {
+    if (!hasLeaderboard) return;
+    if (activeTab !== 'leaderboard') return;
+    if (leaderboardTopState.status !== 'idle') return;
+    reloadLeaderboard();
+  }, [activeTab, hasLeaderboard, leaderboardTopState.status, reloadLeaderboard]);
+
+  const canSubmitLeaderboard = hasLeaderboard && leaderboardAllowSubmit && attemptsUsed != null;
+  const alreadySubmitted = leaderboardMeState.status === 'loaded' && !!leaderboardMeState.data;
+
+  const handleLeaderboardSubmit = useCallback(async () => {
+    if (!leaderboardDate || !canSubmitLeaderboard || attemptsUsed == null || failed) return;
+    setLeaderboardSubmitState('submitting');
+    try {
+      await api.leaderboardSubmit({ date: leaderboardDate, timeMs, attemptsUsed });
+      setLeaderboardSubmitState('submitted');
+      await reloadLeaderboard(true);
+    } catch {
+      setLeaderboardSubmitState('failed');
+    }
+  }, [attemptsUsed, canSubmitLeaderboard, failed, leaderboardDate, reloadLeaderboard, timeMs]);
 
   const handleCopy = async (): Promise<boolean> => {
     // Try modern clipboard API first
@@ -300,9 +384,181 @@ ${generateProgressBlocks()}
 
   const bars = attemptBars();
 
+  const renderLeaderboardRows = (entries: LeaderboardEntry[]) => {
+    return (
+      <div className={styles.leaderboardList}>
+        {entries.map((e) => (
+          <div
+            key={`${e.rank}-${e.displayName}`}
+            className={`${styles.leaderboardRow} ${e.isMe ? styles.leaderboardRowMe : ''}`.trim()}
+          >
+            <div className={styles.leaderboardRank}>#{e.rank}</div>
+            <div className={styles.leaderboardName}>{e.displayName}</div>
+            <div className={styles.leaderboardTime}>{formatTime(e.timeMs)}</div>
+            <div className={styles.leaderboardTries}>{e.attemptsUsed}/3</div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const leaderboardTab = () => {
+    if (!leaderboardDate) return null;
+
+    const submissionNote = !leaderboardAllowSubmit
+      ? 'Archive plays don’t submit to the leaderboard.'
+      : failed
+        ? 'Only successful solves can be submitted.'
+        : null;
+
+    const mePanel = () => {
+      switch (leaderboardMeState.status) {
+        case 'idle':
+        case 'loading':
+          return <div className={styles.leaderboardHint}>Loading your rank…</div>;
+        case 'error':
+          return <div className={styles.leaderboardHint}>Unable to load your rank.</div>;
+        case 'loaded': {
+          const me = leaderboardMeState.data;
+          if (!me) {
+            return <div className={styles.leaderboardHint}>Not submitted for this day.</div>;
+          }
+
+          return (
+            <div className={styles.meRow}>
+              <div className={styles.meMetaLeft}>
+                <div className={styles.meName}>{me.displayName}</div>
+                <div className={styles.meMeta}>
+                  {formatTime(me.timeMs)} • {me.attemptsUsed}/3 tries
+                </div>
+              </div>
+              <div className={styles.meRank}>#{me.rank}</div>
+            </div>
+          );
+        }
+      }
+    };
+
+    const submitPanel = () => {
+      if (!leaderboardAllowSubmit) return null;
+      if (!canSubmitLeaderboard) return null;
+      if (alreadySubmitted) return null;
+      if (leaderboardMeState.status !== 'loaded') return null;
+
+      const label =
+        leaderboardSubmitState === 'submitting'
+          ? 'Submitting…'
+          : leaderboardSubmitState === 'submitted'
+            ? 'Submitted ✓'
+            : 'Submit my time';
+
+      return (
+        <button
+          type="button"
+          className={styles.leaderboardSubmitButton}
+          onClick={handleLeaderboardSubmit}
+          disabled={leaderboardSubmitState === 'submitting'}
+        >
+          {label}
+        </button>
+      );
+    };
+
+    return (
+      <div className={styles.leaderboardPanel}>
+        <div className={styles.leaderboardHeader}>
+          <div>
+            <div className={styles.leaderboardTitle}>Leaderboard</div>
+            <div className={styles.leaderboardSubtitle}>
+              Mazle #{puzzleNumber} • {leaderboardDate} (ET)
+            </div>
+          </div>
+          <button
+            type="button"
+            className={styles.leaderboardRefreshButton}
+            onClick={() => reloadLeaderboard(true)}
+            disabled={leaderboardTopState.status === 'loading'}
+            aria-label="Refresh leaderboard"
+            title="Refresh"
+          >
+            ↻
+          </button>
+        </div>
+
+        <div className={styles.leaderboardCard}>
+          <div className={styles.leaderboardSectionTitle}>Me</div>
+          {mePanel()}
+          {submitPanel()}
+          {leaderboardSubmitState === 'failed' && <div className={styles.leaderboardError}>Couldn’t submit. Try again.</div>}
+          {submissionNote && (
+            <div className={styles.leaderboardHint} style={{ marginTop: '0.6rem' }}>
+              {submissionNote}
+            </div>
+          )}
+        </div>
+
+        <div className={styles.leaderboardCard}>
+          <div className={styles.leaderboardSectionTitle}>Top</div>
+          {(() => {
+            switch (leaderboardTopState.status) {
+              case 'idle':
+              case 'loading':
+                return <div className={styles.leaderboardHint}>Loading…</div>;
+              case 'error':
+                return <div className={styles.leaderboardError}>{leaderboardTopState.message}</div>;
+              case 'loaded': {
+                const entries = leaderboardTopState.data.entries;
+                if (entries.length === 0) {
+                  return <div className={styles.leaderboardHint}>No submissions yet.</div>;
+                }
+                return renderLeaderboardRows(entries);
+              }
+            }
+          })()}
+
+          <div className={styles.leaderboardHint} style={{ marginTop: '0.75rem' }}>
+            Ranking: time • tries • submitted
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className={inline ? styles.inlineContainer : styles.overlay} onClick={!inline ? onClose : undefined}>
-      <div className={`${styles.card} ${failed ? styles.cardFailed : styles.cardSuccess} ${inline ? styles.cardInline : ''}`} onClick={(e) => e.stopPropagation()}>
+      <div
+        className={`${styles.card} ${failed ? styles.cardFailed : styles.cardSuccess} ${inline ? styles.cardInline : ''}`}
+        onClick={(e) => e.stopPropagation()}
+        onPointerDown={(e) => {
+          if (!hasLeaderboard) return;
+          const target = e.target as HTMLElement | null;
+          if (target?.closest('textarea, input, select')) {
+            swipeIgnoreRef.current = true;
+            swipeStartRef.current = null;
+            return;
+          }
+          swipeIgnoreRef.current = false;
+          swipeStartRef.current = { x: e.clientX, y: e.clientY };
+        }}
+        onPointerCancel={() => {
+          swipeIgnoreRef.current = false;
+          swipeStartRef.current = null;
+        }}
+        onPointerUp={(e) => {
+          if (!hasLeaderboard) return;
+          const start = swipeStartRef.current;
+          swipeStartRef.current = null;
+          if (!start || swipeIgnoreRef.current) return;
+
+          const dx = e.clientX - start.x;
+          const dy = e.clientY - start.y;
+          if (Math.abs(dx) < 60) return;
+          if (Math.abs(dx) < Math.abs(dy) * 1.2) return;
+
+          if (dx < 0) setActiveTab('leaderboard');
+          if (dx > 0) setActiveTab('share');
+        }}
+      >
         {!inline && (
           <button className={styles.closeButton} onClick={onClose}>
             ✕
@@ -314,138 +570,171 @@ ${generateProgressBlocks()}
           <span className={styles.puzzleNumber}>{mapEmoji} Mazle {displayLabel}</span>
         </div>
 
-        <div className={styles.mainStat}>
-          <span className={styles.mainStatValue}>{formatTime(timeMs)}</span>
-          <span className={styles.mainStatLabel}>TOTAL TIME</span>
-        </div>
-
-        {failed && (
-          <div className={styles.subStat}>
-            <span>Best Attempt: {bestAttempt}/{optimalMoves} moves</span>
+        {hasLeaderboard && (
+          <div className={styles.tabBar} role="tablist" aria-label="Share or leaderboard">
+            <button
+              type="button"
+              className={`${styles.tabButton} ${activeTab === 'share' ? styles.tabButtonActive : ''}`.trim()}
+              role="tab"
+              aria-selected={activeTab === 'share'}
+              onClick={() => setActiveTab('share')}
+            >
+              Share
+            </button>
+            <button
+              type="button"
+              className={`${styles.tabButton} ${activeTab === 'leaderboard' ? styles.tabButtonActive : ''}`.trim()}
+              role="tab"
+              aria-selected={activeTab === 'leaderboard'}
+              onClick={() => setActiveTab('leaderboard')}
+            >
+              Leaderboard
+            </button>
           </div>
         )}
 
-        <div className={styles.progressSection}>
-          <div className={styles.progressHeader}>Attempts</div>
-          <div className={styles.progressList}>
-            {bars.map((bar, idx) => (
-              <div className={styles.progressRow} key={idx}>
-                <span className={styles.progressLabel}>
-                  {bar.status === 'success' ? 'Win' : `${idx + 1}`}
-                </span>
-                <div className={styles.progressBar}>
-                  <div
-                    className={`
-                      ${styles.progressFill}
-                      ${bar.status === 'success' ? styles.progressFillSuccess : ''}
-                      ${bar.status === 'fail' ? styles.progressFillFail : ''}
-                      ${bar.status === 'empty' ? styles.progressFillEmpty : ''}
-                    `}
-                    style={{ width: `${Math.max(0, Math.min((bar.progress / maxBlocks) * 100, 100))}%` }}
-                  />
-                </div>
-                <span className={styles.progressValue}>
-                  {bar.progress}/{optimalMoves}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className={styles.actions}>
-          <button
-            className={`${styles.shareButton} ${shareState === 'copied' ? styles.copied : ''} ${shareState === 'failed' ? styles.failed : ''}`}
-            onClick={handleShare}
-          >
-            {getShareButtonText()}
-          </button>
-          {showSeparateCopyButton && (
-            <button
-              className={`${styles.copyButton} ${copyState === 'copied' ? styles.copied : ''} ${copyState === 'failed' ? styles.failed : ''}`}
-              onClick={async () => {
-                const success = await handleCopy();
-                if (success) {
-                  setCopyState('copied');
-                  setTimeout(() => setCopyState('idle'), 2500);
-                } else {
-                  setCopyState('failed');
-                  setTimeout(() => setCopyState('idle'), 2500);
-                }
-              }}
-            >
-              {getCopyButtonText()}
-            </button>
-          )}
-        </div>
-
-        {/* Feedback Button - outline style, same width as Share */}
-        {!feedbackOpen && (
+        {activeTab === 'leaderboard' && hasLeaderboard ? (
+          leaderboardTab()
+        ) : (
           <>
-            <p className={styles.feedbackHelper}>Help the developers improve the game:</p>
-            <button
-              className={styles.feedbackButton}
-              onClick={() => setFeedbackOpen(true)}
-            >
-              💬 Send Feedback
-            </button>
-          </>
-        )}
+            <div className={styles.mainStat}>
+              <span className={styles.mainStatValue}>{formatTime(timeMs)}</span>
+              <span className={styles.mainStatLabel}>TOTAL TIME</span>
+            </div>
 
-        {/* Feedback Form - shows when expanded */}
-        {feedbackOpen && (
-          <div className={styles.feedbackForm}>
-            {/* Star Rating - optional */}
-            <div className={styles.starRating}>
-              <span className={styles.starLabel}>Rate your experience (optional):</span>
-              <div className={styles.stars}>
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <button
-                    key={star}
-                    type="button"
-                    className={`${styles.star} ${feedbackRating && feedbackRating >= star ? styles.starFilled : ''}`}
-                    onClick={() => setFeedbackRating(feedbackRating === star ? null : star)}
-                    disabled={feedbackState === 'sending' || feedbackState === 'sent'}
-                  >
-                    ★
-                  </button>
+            {failed && (
+              <div className={styles.subStat}>
+                <span>Best Attempt: {bestAttempt}/{optimalMoves} moves</span>
+              </div>
+            )}
+
+            <div className={styles.progressSection}>
+              <div className={styles.progressHeader}>Attempts</div>
+              <div className={styles.progressList}>
+                {bars.map((bar, idx) => (
+                  <div className={styles.progressRow} key={idx}>
+                    <span className={styles.progressLabel}>
+                      {bar.status === 'success' ? 'Win' : `${idx + 1}`}
+                    </span>
+                    <div className={styles.progressBar}>
+                      <div
+                        className={`
+                          ${styles.progressFill}
+                          ${bar.status === 'success' ? styles.progressFillSuccess : ''}
+                          ${bar.status === 'fail' ? styles.progressFillFail : ''}
+                          ${bar.status === 'empty' ? styles.progressFillEmpty : ''}
+                        `}
+                        style={{ width: `${Math.max(0, Math.min((bar.progress / maxBlocks) * 100, 100))}%` }}
+                      />
+                    </div>
+                    <span className={styles.progressValue}>
+                      {bar.progress}/{optimalMoves}
+                    </span>
+                  </div>
                 ))}
               </div>
             </div>
-            <textarea
-              className={styles.feedbackTextarea}
-              placeholder="Bug report, suggestion, or just say hi..."
-              value={feedbackText}
-              onChange={(e) => setFeedbackText(e.target.value)}
-              maxLength={1000}
-              disabled={feedbackState === 'sending' || feedbackState === 'sent'}
-            />
-            <div className={styles.feedbackActions}>
-              <button
-                className={`${styles.feedbackSubmit} ${styles[feedbackState]}`}
-                onClick={handleFeedback}
-                disabled={!feedbackText.trim() || feedbackState === 'sending' || feedbackState === 'sent'}
-              >
-                {getFeedbackButtonText()}
-              </button>
-              <button
-                className={styles.feedbackCancel}
-                onClick={() => {
-                  setFeedbackOpen(false);
-                  setFeedbackText('');
-                  setFeedbackRating(null);
-                  setFeedbackState('idle');
-                }}
-                disabled={feedbackState === 'sending'}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
 
-        <p className={styles.comeback}>Come back tomorrow for a new puzzle!</p>
+            <div className={styles.actions}>
+              <button
+                className={`${styles.shareButton} ${shareState === 'copied' ? styles.copied : ''} ${shareState === 'failed' ? styles.failed : ''}`}
+                onClick={handleShare}
+              >
+                {getShareButtonText()}
+              </button>
+              {secondaryActionLabel && onSecondaryAction && (
+                <button className={styles.secondaryActionButton} onClick={onSecondaryAction}>
+                  {secondaryActionLabel}
+                </button>
+              )}
+              {showSeparateCopyButton && (
+                <button
+                  className={`${styles.copyButton} ${copyState === 'copied' ? styles.copied : ''} ${copyState === 'failed' ? styles.failed : ''}`}
+                  onClick={async () => {
+                    const success = await handleCopy();
+                    if (success) {
+                      setCopyState('copied');
+                      setTimeout(() => setCopyState('idle'), 2500);
+                    } else {
+                      setCopyState('failed');
+                      setTimeout(() => setCopyState('idle'), 2500);
+                    }
+                  }}
+                >
+                  {getCopyButtonText()}
+                </button>
+              )}
+            </div>
+
+            {/* Feedback Button - outline style, same width as Share */}
+            {!feedbackOpen && (
+              <>
+                <p className={styles.feedbackHelper}>Help the developers improve the game:</p>
+                <button
+                  className={styles.feedbackButton}
+                  onClick={() => setFeedbackOpen(true)}
+                >
+                  💬 Send Feedback
+                </button>
+              </>
+            )}
+
+            {/* Feedback Form - shows when expanded */}
+            {feedbackOpen && (
+              <div className={styles.feedbackForm}>
+                {/* Star Rating - optional */}
+                <div className={styles.starRating}>
+                  <span className={styles.starLabel}>Rate your experience (optional):</span>
+                  <div className={styles.stars}>
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        className={`${styles.star} ${feedbackRating && feedbackRating >= star ? styles.starFilled : ''}`}
+                        onClick={() => setFeedbackRating(feedbackRating === star ? null : star)}
+                        disabled={feedbackState === 'sending' || feedbackState === 'sent'}
+                      >
+                        ★
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <textarea
+                  className={styles.feedbackTextarea}
+                  placeholder="Bug report, suggestion, or just say hi..."
+                  value={feedbackText}
+                  onChange={(e) => setFeedbackText(e.target.value)}
+                  maxLength={1000}
+                  disabled={feedbackState === 'sending' || feedbackState === 'sent'}
+                />
+                <div className={styles.feedbackActions}>
+                  <button
+                    className={`${styles.feedbackSubmit} ${styles[feedbackState]}`}
+                    onClick={handleFeedback}
+                    disabled={!feedbackText.trim() || feedbackState === 'sending' || feedbackState === 'sent'}
+                  >
+                    {getFeedbackButtonText()}
+                  </button>
+                  <button
+                    className={styles.feedbackCancel}
+                    onClick={() => {
+                      setFeedbackOpen(false);
+                      setFeedbackText('');
+                      setFeedbackRating(null);
+                      setFeedbackState('idle');
+                    }}
+                    disabled={feedbackState === 'sending'}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {footerText && <p className={styles.comeback}>{footerText}</p>}
+          </>
+        )}
       </div>
     </div>
   );
 }
-

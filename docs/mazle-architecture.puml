@@ -19,10 +19,10 @@ rectangle "Vercel" as VERCEL {
   component "Daily Cache Backfill\nPOST /api/daily/cache" as DAILY_CACHE_API
   component "Cron Generate\nGET /api/cron/generate" as CRON_API
   component "Vercel Cron\n(11 PM ET)" as VERCEL_CRON
-  component "Auth.js OIDC\n(planned)" as AUTH
-  component "Stripe Webhook\n(planned)" as STRIPE_WEBHOOK
-  component "Leaderboard API\n(planned)" as LB_API
-  component "Archive API\n(planned)" as ARCHIVE_API
+  component "Auth.js OIDC" as AUTH
+  component "Stripe Webhook" as STRIPE_WEBHOOK
+  component "Leaderboard API" as LB_API
+  component "Archive API" as ARCHIVE_API
 }
 
 rectangle "External Identity" as OIDC {
@@ -33,7 +33,7 @@ rectangle "External Identity" as OIDC {
 rectangle "Data Stores" as DATA {
   database "Upstash Redis\n(Daily Puzzle Cache)\n(DB 1)" as REDIS_KV
   database "Upstash Redis Global\n(Daily Leaderboard)\n(DB 2)" as REDIS_LB
-  database "Neon Postgres\n(accounts, entitlements, archive)\n(planned)" as DB
+  database "Neon Postgres\n(accounts, entitlements, archive)" as DB
 }
 
 rectangle "Payments" as PAY {

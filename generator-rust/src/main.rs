@@ -550,17 +550,47 @@ async fn generate_by_seed(
             }),
         )
             .into_response();
-    } else {
-        // Cancelled or failed; ensure state cleanup
-        state.cache.finish_generating(&seed);
+    }
+
+    // Generation didn't complete within wait window. It might still be running.
+    if let Some(cached) = state.cache.get(&seed) {
+        let total_time = request_start.elapsed().as_millis() as u64;
+        info!(
+            "✓ Returning '{}' after timeout (generated in {}ms, total request: {}ms)",
+            seed, cached.generation_time_ms, total_time
+        );
+
+        return (
+            StatusCode::OK,
+            Json(GenerateResponse {
+                puzzle: cached.puzzle,
+                generation_time_ms: cached.generation_time_ms,
+                cached: true,
+            }),
+        )
+            .into_response();
+    }
+
+    if state.cache.is_generating(&seed) {
+        info!("⏳ Generation still in progress for '{}' after wait timeout", seed);
         return (
             StatusCode::REQUEST_TIMEOUT, // best available match for client-cancelled semantics
             Json(json!({
-                "error": "generation_cancelled"
+                "error": "generation_in_progress"
             })),
         )
             .into_response();
     }
+
+    // Cancelled or failed; ensure state cleanup
+    state.cache.finish_generating(&seed);
+    return (
+        StatusCode::REQUEST_TIMEOUT, // best available match for client-cancelled semantics
+        Json(json!({
+            "error": "generation_cancelled"
+        })),
+    )
+        .into_response();
 
     // Unreachable
 }

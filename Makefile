@@ -2,7 +2,7 @@
 # Root Makefile for "mazle"
 # -------------------------
 
-SHELL := /bin/bash
+SHELL := bash
 
 # Connect devops-toolkit
 REPO_ROOT      := $(shell git -C $(CURDIR) rev-parse --show-toplevel)
@@ -15,15 +15,32 @@ endif
 # Internal Variable Declaration
 # ------------------------------
 
-ENV ?= dev-test
+ENV ?= dev
 COMPOSE_PROJECT_NAME := mazle
 COMPOSE_NETWORK_NAME ?= mazle_network
 
-COMPOSE_FILE := mazle.compose.yaml:mazle.wasm.compose.yaml
+COMPOSE_FILE := mazle.compose.yaml:mazle.wasm.compose.yaml:$(DEVOPS_TOOLKIT_PATH)/backend/docker/db.compose.yaml:$(DEVOPS_TOOLKIT_PATH)/backend/docker/stripe.compose.yaml:override.compose.yaml
 
 # Backend configuration (like worker-app pattern)
 BACKEND_GATEWAY_PATH := generator-rust
 APP_NAME := mazle
+
+# Database + migrations (devops-toolkit)
+export COMPOSE_DB_NAME := mazle_pg_db
+export MIGRATIONS_PATH := $(REPO_ROOT)/migrations
+export BWS_PROJECT_NAME_FOR_DB_SECRETS := $(APP_NAME)-$(ENV)
+
+# stripe.compose.yaml configurations
+export STRIPE_WEBHOOK_CONNECTED_EVENTS := payment_intent.created
+export STRIPE_WEBHOOK_PLATFORM_EVENTS := checkout.session.completed,customer.subscription.updated,customer.subscription.deleted
+export STRIPE_WEBHOOK_ROUTE := /api/stripe/webhook
+export STRIPE_WEBHOOK_CHECK_ROUTE := /api/stripe/webhook/check
+STRIPE_WEBHOOK_CHECK_MODE ?= platform
+export STRIPE_WEBHOOK_CHECK_MODE
+STRIPE_LISTENER_BWS_PROJECT_NAME ?= $(APP_NAME)-$(ENV)
+export STRIPE_LISTENER_BWS_PROJECT_NAME
+STRIPE_WEBHOOK_CHECK_BWS_PROJECT_NAME ?= $(APP_NAME)-$(ENV)
+export STRIPE_WEBHOOK_CHECK_BWS_PROJECT_NAME
 
 # Include env configuration early so we can use DEV_TEST_ENV, PROD_ENV etc.
 ifndef INCLUDED_ENV_CONFIGURATION
@@ -37,10 +54,14 @@ endif
 #   dev-test: WITH_DEPS=0 (WASM fallback, no backend needed)
 #   others:   WITH_DEPS=1 (backend auto-starts/deploys)
 #
-# Override with: make up WITH_DEPS=0
+# Override with:
+#   make up WITH_DEPS=0      # Manual override
+#   make up FRONTEND_ONLY=1  # Convenience flag (keeps backend up if running)
 # --------------------------------
 ifeq ($(ENV),$(DEV_TEST_ENV))
   WITH_DEPS ?= 0
+else ifeq ($(FRONTEND_ONLY),1)
+  WITH_DEPS := 0
 else
   WITH_DEPS ?= 1
 endif
@@ -150,6 +171,16 @@ endif
 ifndef INCLUDED_NEXTJS_APP_TARGETS
   include $(DEVOPS_TOOLKIT_PATH)/frontend/make/utils/nextjs_app_targets.mk
 endif
+
+# --------------------------------
+# Local Env (BWS)
+# --------------------------------
+
+ifndef INCLUDED_ENV_LOCAL_UTILS
+  include $(DEVOPS_TOOLKIT_PATH)/shared/make/utils/env_local.mk
+endif
+
+up:: env-local
 
 # --------------------------------
 # Targets (toolkit includes)

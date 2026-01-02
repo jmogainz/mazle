@@ -1,9 +1,17 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
+import { usePathname, useRouter } from 'next/navigation';
 import { Header, GameUI, ShareCard, StatsModal, HelpModal, ErrorBoundary, Loader, DevTools, AdSlot } from '@/components';
 import { HELP_MENU_HASH } from '@/components/helpMenuHash';
+import MoreMenuModal from '@/components/MoreMenuModal';
+import OverlayShell from '@/components/OverlayShell';
+import AccountView from '@/components/AccountView';
+import LeaderboardView from '@/components/LeaderboardView';
+import { api } from '@/lib/api';
+import { prefetchAccount, prefetchLeaderboard } from '@/lib/api/cached';
+import { getPrefs } from '@/lib/prefs';
 import {
   CHEAT_TIMEOUT_MS,
   CHEAT_CODE_LENGTH,
@@ -17,6 +25,7 @@ import {
 } from '@/constants';
 import {
   getPuzzleNumber,
+  getNewYorkDateString,
   onGameEvent,
   PuzzleData,
   MapType,
@@ -31,9 +40,9 @@ import {
 } from '@/game';
 import { getPlayerStats, saveTodaysResult, getTodaysResult, getCachedPuzzle, cachePuzzle, saveInProgressState, getInProgressState, clearInProgressState } from '@/utils/storage';
 import { useAdConsent } from '@/utils/consent';
-import { PlayerStats, DailyStats, GameState } from '@/game/types';
+import type { PlayerStats, DailyStats, GameState, Direction } from '@/game/types';
 import type { GameControls } from '@/game/PhaserGame';
-import { getSwipeDirection, SWIPE_MIN_DISTANCE_PX } from '@/game/swipe';
+import { useGlobalSwipeMoves } from '@/game/useGlobalSwipeMoves';
 import styles from './page.module.css';
 
 // Dynamic import for Phaser (client-side only)
@@ -50,6 +59,8 @@ const PhaserGame = dynamic(() => import('@/game/PhaserGame'), {
 const _DEVTOOLS_BUILD_FLAG =
   process.env.NEXT_PUBLIC_DEVTOOLS_ENABLED === 'true';
 
+const DEVTOOLS_PREVIEW_FEATURES_KEY = 'mazle_devtools_preview_features_v1';
+
 const IS_PROD = process.env.NEXT_PUBLIC_ENV === 'prod';
 const HELP_SEEN_KEY = `mazle_seen_help_${HELP_MENU_HASH}`;
 const ADSENSE_TOP_SLOT = process.env.NEXT_PUBLIC_ADSENSE_SLOT_MOBILE_TOP ?? (!IS_PROD ? 'DEV_TOP' : '');
@@ -57,6 +68,9 @@ const ADSENSE_BOTTOM_SLOT = process.env.NEXT_PUBLIC_ADSENSE_SLOT_BOTTOM ?? (!IS_
 const AD_BANNER_HEIGHT = 50;
 
 export default function Home() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const todayNy = useMemo(() => getNewYorkDateString(), []);
   const [puzzle, setPuzzle] = useState<PuzzleData | null>(null);
   const [puzzleNumber, setPuzzleNumber] = useState(0);
   const [puzzleLabel, setPuzzleLabel] = useState<string | null>(null);
@@ -69,6 +83,10 @@ export default function Home() {
   const [showStats, setShowStats] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showDevTools, setShowDevTools] = useState(false);
+  const [previewFeaturesEnabled, setPreviewFeaturesEnabled] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [showAccount, setShowAccount] = useState(false);
   const [selectedBackend, setSelectedBackend] = useState<GeneratorBackend>('auto');
   const [lastUsedBackend, setLastUsedBackend] = useState<'rust-backend' | 'wasm' | null>(null);
   const [gameResult, setGameResult] = useState<{ moveCount: number; timeMs: number; failed?: boolean; attempts?: any[] } | null>(null);
@@ -127,6 +145,41 @@ export default function Home() {
   useEffect(() => {
     devMaxLivesRef.current = devMaxLives;
   }, [devMaxLives]);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(DEVTOOLS_PREVIEW_FEATURES_KEY);
+      setPreviewFeaturesEnabled(stored === '1');
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const onPreviewFeaturesToggle = useCallback((enabled: boolean) => {
+    setPreviewFeaturesEnabled(enabled);
+    try {
+      if (enabled) localStorage.setItem(DEVTOOLS_PREVIEW_FEATURES_KEY, '1');
+      else localStorage.removeItem(DEVTOOLS_PREVIEW_FEATURES_KEY);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production' && !previewFeaturesEnabled) return;
+    const runPrefetch = () => {
+      prefetchAccount();
+      prefetchLeaderboard(todayNy, 50);
+    };
+
+    if ('requestIdleCallback' in window) {
+      const id = window.requestIdleCallback(runPrefetch, { timeout: 1500 });
+      return () => window.cancelIdleCallback(id);
+    }
+
+    const id = window.setTimeout(runPrefetch, 800);
+    return () => window.clearTimeout(id);
+  }, [todayNy, previewFeaturesEnabled]);
 
   // Sync CSS custom property to the real visual viewport height (iOS-safe)
   useEffect(() => {
@@ -205,15 +258,24 @@ export default function Home() {
   const showBottomAd = !!ADSENSE_BOTTOM_SLOT;
   const canRequestAds = adsReady && consentReady;
 
+  const isRouteOverlayOpen = pathname !== '/';
+  const isModalOpen =
+    showHelp || showStats || showShareCard || showDevTools || showMenu || showLeaderboard || showAccount;
+  const shouldPause = isRouteOverlayOpen || isModalOpen;
+
+  useEffect(() => {
+    gameControlsRef.current?.setPaused?.(shouldPause);
+  }, [shouldPause]);
+
   // Dynamic UI scaling system - maximizes maze size while keeping UI readable
   // The --ui-scale CSS variable controls all UI element sizes
   useEffect(() => {
     let rafId: number | null = null;
-    
+
     const updateScale = () => {
       const viewportHeight = window.visualViewport?.height || window.innerHeight;
       const viewportWidth = window.innerWidth;
-      
+
       // Fixed UI heights at scale=1 (approximate values)
       const HEADER_HEIGHT = 56;      // MAZLE logo + icons
       const PUZZLE_NUM_HEIGHT = 32;  // Puzzle number banner
@@ -222,42 +284,42 @@ export default function Home() {
       const FOOTER_HEIGHT = viewportWidth > 768 ? 32 : 0; // Desktop footer
       const AD_HEIGHT = (showTopAd ? AD_BANNER_HEIGHT + 8 : 0) + (showBottomAd ? AD_BANNER_HEIGHT + 8 : 0);
       const PADDING = 24;            // Various padding/gaps
-      
-      const totalUIHeight = HEADER_HEIGHT + PUZZLE_NUM_HEIGHT + SCOREBOARD_HEIGHT + 
-                           CONTROLS_HEIGHT + FOOTER_HEIGHT + AD_HEIGHT + PADDING;
-      
+
+      const totalUIHeight = HEADER_HEIGHT + PUZZLE_NUM_HEIGHT + SCOREBOARD_HEIGHT +
+        CONTROLS_HEIGHT + FOOTER_HEIGHT + AD_HEIGHT + PADDING;
+
       // Available height for the maze
       const availableForMaze = viewportHeight - totalUIHeight;
-      
+
       // Maximum maze size (don't let it grow infinitely on large screens)
       const MAX_MAZE_SIZE = 520;
       const MIN_MAZE_SIZE = 200;
-      
+
       // Scale limits for UI
       const UI_SCALE_MIN = 0.75;
       const UI_SCALE_MAX = 1.0;
-      
+
       // Calculate ideal maze size (constrained by width too)
       const maxMazeByWidth = Math.min(viewportWidth - 32, MAX_MAZE_SIZE); // 16px padding each side
       const idealMazeSize = Math.min(baseWidth, baseHeight, maxMazeByWidth, MAX_MAZE_SIZE);
-      
+
       // How much height do we need for the ideal maze?
       const neededForIdealMaze = idealMazeSize;
-      
+
       let uiScale = UI_SCALE_MAX;
       let mazeSize = idealMazeSize;
-      
+
       if (availableForMaze < neededForIdealMaze) {
         // Not enough space - try scaling down UI first
         // Calculate how much UI space we can save by scaling
         const uiScalableHeight = HEADER_HEIGHT + PUZZLE_NUM_HEIGHT + SCOREBOARD_HEIGHT + CONTROLS_HEIGHT;
-        
+
         // How much extra space do we need?
         const deficit = neededForIdealMaze - availableForMaze;
-        
+
         // How much can we save by scaling UI to minimum?
         const maxUISavings = uiScalableHeight * (1 - UI_SCALE_MIN);
-        
+
         if (deficit <= maxUISavings) {
           // We can fit the ideal maze by just scaling down UI
           // Calculate the exact scale needed
@@ -272,15 +334,15 @@ export default function Home() {
           mazeSize = Math.max(MIN_MAZE_SIZE, viewportHeight - minUIHeight);
         }
       }
-      
+
       // Apply the UI scale to CSS custom property
       document.documentElement.style.setProperty('--ui-scale', uiScale.toFixed(3));
-      
+
       // Also update maze frame size
       const mazeScale = Math.min(1, mazeSize / baseWidth, mazeSize / baseHeight);
       const width = Math.max(1, Math.floor(baseWidth * mazeScale));
       const height = Math.max(1, Math.floor(baseHeight * mazeScale));
-      
+
       setGameFrameSizePx((prev) => {
         if (prev && prev.width === width && prev.height === height) return prev;
         return { width, height };
@@ -446,155 +508,18 @@ export default function Home() {
     };
   }, [handleDevToolsTap]);
 
-  // Mobile swipe anywhere (outside the Phaser canvas) to move.
-  // Keep the swipe feel identical to the in-canvas Phaser handler.
-  useEffect(() => {
-    const isTouchCapable =
-      'ontouchstart' in window ||
-      (typeof navigator !== 'undefined' && (navigator as any).maxTouchPoints > 0);
+  const canAcceptMove = useCallback(() => gameControlsRef.current?.canAcceptMoveInput?.() ?? false, []);
+  const onMove = useCallback((dir: Direction) => gameControlsRef.current?.movePlayer(dir), []);
 
-    if (!isTouchCapable) return;
-    if (!isGameReady || !isPlaying) return;
-    if (showHelp || showStats || showShareCard || showDevTools) return;
-
-    let active: { kind: 'touch' | 'pointer'; id: number } | null = null;
-    let startX = 0;
-    let startY = 0;
-    let consumed = false;
-    let lastTouchTs = 0;
-
-    const canAcceptMove = () => gameControlsRef.current?.canAcceptMoveInput?.() ?? false;
-
-    const getScale = () => {
-      const rect = gameFrameRef.current?.getBoundingClientRect();
-      const scaleX = rect && rect.width > 0 ? rect.width / baseWidth : 1;
-      const scaleY = rect && rect.height > 0 ? rect.height / baseHeight : 1;
-      return {
-        scaleX: Math.max(scaleX, 1e-6),
-        scaleY: Math.max(scaleY, 1e-6),
-      };
-    };
-
-    const capture = { capture: true } as const;
-    const capturePassive = { capture: true, passive: true } as const;
-
-    const onTouchStartCapture = (e: TouchEvent) => {
-      lastTouchTs = Date.now();
-      if (active) return;
-      if (!gameControlsRef.current) return;
-      const touch = e.changedTouches[0];
-      if (!touch) return;
-
-      active = { kind: 'touch', id: touch.identifier };
-      startX = touch.clientX;
-      startY = touch.clientY;
-      consumed = false;
-    };
-
-    const onTouchMoveCapture = (e: TouchEvent) => {
-      lastTouchTs = Date.now();
-      if (!active || active.kind !== 'touch') return;
-      if (consumed) return;
-      if (!gameControlsRef.current) return;
-
-      const t = Array.from(e.touches).find((touch) => touch.identifier === active!.id);
-      if (!t) return;
-
-      const { scaleX, scaleY } = getScale();
-      const dx = (t.clientX - startX) / scaleX;
-      const dy = (t.clientY - startY) / scaleY;
-      const dir = getSwipeDirection(dx, dy, SWIPE_MIN_DISTANCE_PX);
-      if (!dir) return;
-      if (!canAcceptMove()) return;
-
-      gameControlsRef.current.movePlayer(dir);
-      consumed = true;
-    };
-
-    const onTouchEndCapture = (e: TouchEvent) => {
-      lastTouchTs = Date.now();
-      if (!active || active.kind !== 'touch') return;
-      for (const touch of Array.from(e.changedTouches)) {
-        if (touch.identifier === active.id) {
-          active = null;
-          consumed = false;
-          return;
-        }
-      }
-    };
-
-    const onTouchCancelCapture = (e: TouchEvent) => {
-      lastTouchTs = Date.now();
-      if (!active || active.kind !== 'touch') return;
-      for (const touch of Array.from(e.changedTouches)) {
-        if (touch.identifier === active.id) {
-          active = null;
-          consumed = false;
-          return;
-        }
-      }
-    };
-
-    // Pointer events fallback (some browsers / WebViews)
-    const onPointerDownCapture = (e: PointerEvent) => {
-      if (e.pointerType !== 'touch') return;
-      if (Date.now() - lastTouchTs < 700) return;
-      if (active) return;
-      if (!gameControlsRef.current) return;
-
-      active = { kind: 'pointer', id: e.pointerId };
-      startX = e.clientX;
-      startY = e.clientY;
-      consumed = false;
-    };
-
-    const onPointerMoveCapture = (e: PointerEvent) => {
-      if (!active || active.kind !== 'pointer' || active.id !== e.pointerId) return;
-      if (consumed) return;
-      if (!gameControlsRef.current) return;
-
-      const { scaleX, scaleY } = getScale();
-      const dx = (e.clientX - startX) / scaleX;
-      const dy = (e.clientY - startY) / scaleY;
-      const dir = getSwipeDirection(dx, dy, SWIPE_MIN_DISTANCE_PX);
-      if (!dir) return;
-      if (!canAcceptMove()) return;
-
-      gameControlsRef.current.movePlayer(dir);
-      consumed = true;
-    };
-
-    const onPointerUpCapture = (e: PointerEvent) => {
-      if (!active || active.kind !== 'pointer' || active.id !== e.pointerId) return;
-      active = null;
-      consumed = false;
-    };
-
-    const onPointerCancelCapture = (e: PointerEvent) => {
-      if (!active || active.kind !== 'pointer' || active.id !== e.pointerId) return;
-      active = null;
-      consumed = false;
-    };
-
-    document.addEventListener('touchstart', onTouchStartCapture, capturePassive);
-    document.addEventListener('touchmove', onTouchMoveCapture, capturePassive);
-    document.addEventListener('touchend', onTouchEndCapture, capture);
-    document.addEventListener('touchcancel', onTouchCancelCapture, capture);
-    document.addEventListener('pointerdown', onPointerDownCapture, capture);
-    document.addEventListener('pointermove', onPointerMoveCapture, capture);
-    document.addEventListener('pointerup', onPointerUpCapture, capture);
-    document.addEventListener('pointercancel', onPointerCancelCapture, capture);
-    return () => {
-      document.removeEventListener('touchstart', onTouchStartCapture, capturePassive as any);
-      document.removeEventListener('touchmove', onTouchMoveCapture, capturePassive as any);
-      document.removeEventListener('touchend', onTouchEndCapture, capture as any);
-      document.removeEventListener('touchcancel', onTouchCancelCapture, capture as any);
-      document.removeEventListener('pointerdown', onPointerDownCapture, capture as any);
-      document.removeEventListener('pointermove', onPointerMoveCapture, capture as any);
-      document.removeEventListener('pointerup', onPointerUpCapture, capture as any);
-      document.removeEventListener('pointercancel', onPointerCancelCapture, capture as any);
-    };
-  }, [isGameReady, isPlaying, showHelp, showStats, showShareCard, showDevTools, baseWidth, baseHeight]);
+  useGlobalSwipeMoves({
+    enabled: isGameReady && isPlaying,
+    blocked: shouldPause,
+    baseWidth,
+    baseHeight,
+    gameFrameRef,
+    canAcceptMove,
+    onMove,
+  });
 
   const loadDailyPuzzle = useCallback(async () => {
     const today = new Date();
@@ -616,11 +541,12 @@ export default function Home() {
     setShowInlineResult(false);
     setIsPlaying(false);
 
-    // Helper to set scoreboard stats for completed game once we have puzzle
-    const setCompletedStats = (optimalMoves: number) => {
-      if (!existingResult?.completed) return;
-      const attemptsCount = existingResult.attempts?.length ?? 1;
-      const livesRemaining = existingResult.failed ? 0 : 3 - (attemptsCount - 1);
+    // Helper to set scoreboard stats for a finished game once we have the puzzle.
+    const setResultStats = (optimalMoves: number) => {
+      if (!existingResult) return;
+      const failed = existingResult.failed ?? !existingResult.completed;
+      const failedAttempts = existingResult.attempts?.length ?? 0;
+      const livesRemaining = failed ? 0 : 3 - failedAttempts;
       setInitialStats({
         lives: livesRemaining,
         currentAttemptMoves: optimalMoves, // Shows 0 moves remaining
@@ -629,12 +555,12 @@ export default function Home() {
       });
     };
 
-    if (existingResult?.completed) {
+    if (existingResult) {
       setGameResult({
         moveCount: existingResult.moveCount,
         timeMs: existingResult.timeMs,
         attempts: existingResult.attempts,
-        failed: existingResult.failed,
+        failed: existingResult.failed ?? !existingResult.completed,
       });
       // initialStats will be set after puzzle loads (need optimalMoves)
       // Keep overlay prompt; let user choose to view results
@@ -667,7 +593,7 @@ export default function Home() {
     const cachedPuzzle = getCachedPuzzle(todaySeed);
     if (cachedPuzzle) {
       setPuzzle(cachedPuzzle);
-      setCompletedStats(cachedPuzzle.optimalMoves);
+      setResultStats(cachedPuzzle.optimalMoves);
       setRenderKey((prev) => prev + 1);
       return;
     }
@@ -688,7 +614,7 @@ export default function Home() {
 
       console.log(`[Daily] Loaded puzzle from ${source}`);
       setPuzzle(todayPuzzle);
-      setCompletedStats(todayPuzzle.optimalMoves);
+      setResultStats(todayPuzzle.optimalMoves);
       setRenderKey((prev) => prev + 1);
 
       // Cache in localStorage for same-day revisits
@@ -728,8 +654,8 @@ export default function Home() {
       setIsPlaying(false); // Ensure game is marked as not playing to show blocked state
 
       // Set initialStats so scoreboard stays frozen at completion state
-      const attemptsCount = result.attempts?.length ?? 1;
-      const livesRemaining = result.failed ? 0 : 3 - (attemptsCount - 1);
+      const failedAttempts = result.attempts?.length ?? 0;
+      const livesRemaining = result.failed ? 0 : 3 - failedAttempts;
       setInitialStats({
         lives: livesRemaining,
         currentAttemptMoves: result.optimalMoves, // 0 moves remaining
@@ -747,9 +673,10 @@ export default function Home() {
       // Save result if not already saved today
       if (!previousResult) {
         console.log('[SAVE] Saving daily result:', result);
+        const todayDateStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
         const dailyResult: DailyStats = {
-          date: new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' }),
-          completed: true,
+          date: todayDateStr,
+          completed: !result.failed,
           moveCount: result.moveCount,
           timeMs: result.timeMs,
           puzzleNumber,
@@ -760,6 +687,14 @@ export default function Home() {
         setStats(getPlayerStats());
         setPreviousResult(dailyResult);
         console.log('[SAVE] Result saved, previousResult updated');
+
+        if (!result.failed && getPrefs().leaderboardAutoSubmitWins) {
+          const failedAttempts = result.attempts?.length ?? 0;
+          const attemptsUsed = Math.min(3, Math.max(1, failedAttempts + 1));
+          api.leaderboardSubmit({ date: todayDateStr, timeMs: result.timeMs, attemptsUsed }).catch(() => {
+            // Ignore: manual submit remains available via the leaderboard overlay.
+          });
+        }
       } else {
         console.log('[SAVE] Skipped - previousResult already exists:', previousResult);
       }
@@ -870,9 +805,9 @@ export default function Home() {
       const requestSeed = isDateSeed
         ? getDailySeed(new Date(trimmed))
         : (trimmed ||
-            `dev-${Date.now()}-${Math.floor(Math.random() * 10000)
-              .toString()
-              .padStart(4, '0')}`);
+          `dev-${Date.now()}-${Math.floor(Math.random() * 10000)
+            .toString()
+            .padStart(4, '0')}`);
       inFlightSeedRef.current = requestSeed;
 
       const progressHandler = (progress: GenerationProgress) => {
@@ -988,11 +923,13 @@ export default function Home() {
     gameControlsRef.current = controls;
     setIsGameReady(true);
     controls.setHintsEnabled(hintsEnabledRef.current);
-    
+
     // Sync dev tools maxLives setting if not default
     if (devMaxLivesRef.current !== 3) {
       controls.setMaxLives(devMaxLivesRef.current);
     }
+
+    controls.setPaused(shouldPause);
 
     // Show help on first visit
     try {
@@ -1036,7 +973,7 @@ export default function Home() {
       showAnalysis();
       setIsPlaying(false);
     }
-  }, [showAnalysis, showInlineResult]);
+  }, [showAnalysis, showInlineResult, shouldPause]);
 
   const handleViewResult = useCallback(() => {
     // Show analysis on the map; share card can be opened from the bottom button
@@ -1109,6 +1046,7 @@ export default function Home() {
   const isPostGame = !isPlaying && (!!gameResult || !!previousResult);
   const shouldBlur = showShareCard || (!isPlaying && isGameReady && !showInlineResult);
   const showResultsButton = showInlineResult;
+  const showMenuButton = process.env.NODE_ENV !== 'production' || previewFeaturesEnabled;
   const isAdVisible = (status: 'filled' | 'unfilled' | null) => canRequestAds && status === 'filled';
 
   return (
@@ -1138,6 +1076,7 @@ export default function Home() {
           puzzleInfo={puzzleLabel ?? `#${puzzleNumber}`}
           onHelpClick={() => setShowHelp(true)}
           onStatsClick={() => setShowStats(true)}
+          onMenuClick={showMenuButton ? () => setShowMenu(true) : undefined}
           logoRef={devToolsTapTargetRef}
           logoClassName={styles.devToolsTapTarget}
         />
@@ -1167,6 +1106,8 @@ export default function Home() {
               onGenerate={handleDevSeedGenerate}
               onLoadDaily={handleLoadDaily}
               onStopGeneration={handleStopGeneration}
+              previewFeaturesEnabled={previewFeaturesEnabled}
+              onPreviewFeaturesToggle={onPreviewFeaturesToggle}
               onClose={() => setShowDevTools(false)}
               canStopGeneration={!!generationAbortRef.current}
               closenessThreshold={closenessThreshold}
@@ -1213,7 +1154,11 @@ export default function Home() {
                 <div className={styles.startOverlay}>
                   {previousResult ? (
                     <div className={styles.previousResult}>
-                      <p>You already completed today&apos;s puzzle!</p>
+                      <p>
+                        {previousResult.completed
+                          ? 'You already completed today\u2019s puzzle!'
+                          : 'You already played today\u2019s puzzle!'}
+                      </p>
                       <button onClick={handleViewResult} className={styles.viewResultButton}>
                         View Result
                       </button>
@@ -1242,6 +1187,8 @@ export default function Home() {
               Share Score
             </button>
           </div>
+
+          {isPostGame && <AdSlot placement="postGame" />}
         </div>
 
         {showBottomAd && (
@@ -1274,6 +1221,38 @@ export default function Home() {
         </footer>
 
         {/* Modals */}
+        <MoreMenuModal
+          open={showMenu}
+          onClose={() => setShowMenu(false)}
+          onOpenLeaderboard={() => setShowLeaderboard(true)}
+          onOpenAccount={() => setShowAccount(true)}
+          onOpenArchive={() => router.push('/archive')}
+        />
+
+        {showLeaderboard && (
+          <OverlayShell
+            title="Leaderboard"
+            subtitle="Today"
+            variant="overlay"
+            onClose={() => setShowLeaderboard(false)}
+          >
+            <LeaderboardView />
+            <AdSlot placement="leaderboard" />
+          </OverlayShell>
+        )}
+
+        {showAccount && (
+          <OverlayShell
+            title="Account"
+            subtitle="Name, sign-in, settings"
+            variant="overlay"
+            onClose={() => setShowAccount(false)}
+          >
+            <AccountView />
+            <AdSlot placement="account" />
+          </OverlayShell>
+        )}
+
         {showShareCard && gameResult && (
           <ShareCard
             puzzleNumber={puzzleNumber}
@@ -1284,6 +1263,12 @@ export default function Home() {
             failed={gameResult.failed}
             attempts={gameResult.attempts}
             maxLives={devMaxLives}
+            mapType={puzzle.mapType}
+            leaderboardDate={
+              (process.env.NODE_ENV !== 'production' || previewFeaturesEnabled) && !debugModeRef.current
+                ? getNewYorkDateString()
+                : undefined
+            }
             onClose={handleCloseShareCard}
           />
         )}

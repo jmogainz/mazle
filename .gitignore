@@ -60,3 +60,4 @@ src/wasm/generator/.build-hash
 public/wasm/
 
 **/.shuttle_deploy_url
+bkp/

@@ -4,6 +4,7 @@ export { onGameEvent, emitGameEvent } from './events';
 // Puzzle seed utilities
 export {
   getPuzzleNumber,
+  getPuzzleNumberFromNyDateString,
   getDailySeed,
   getNewYorkDateString,
   MAP_REGISTRY,

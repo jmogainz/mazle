@@ -25,6 +25,7 @@ import {
 } from '@/constants';
 import {
   getPuzzleNumber,
+  getPuzzleNumberFromNyDateString,
   getNewYorkDateString,
   onGameEvent,
   PuzzleData,
@@ -803,7 +804,7 @@ export default function Home() {
 
       // Track which seed this request is for (used by Stop button)
       const requestSeed = isDateSeed
-        ? getDailySeed(new Date(trimmed))
+        ? trimmed
         : (trimmed ||
           `dev-${Date.now()}-${Math.floor(Math.random() * 10000)
             .toString()
@@ -819,8 +820,8 @@ export default function Home() {
         setIsGenerating(true);
         setGenerationProgress(null);
 
-        const targetDate = new Date(trimmed);
         const dailySeed = requestSeed;
+        const puzzleNumberForDate = getPuzzleNumberFromNyDateString(dailySeed);
 
         try {
           const datedPuzzle = await generatePuzzleParallel(
@@ -834,7 +835,7 @@ export default function Home() {
           );
           debugModeRef.current = true;
           setPuzzle(datedPuzzle);
-          setPuzzleNumber(getPuzzleNumber(targetDate));
+          setPuzzleNumber(puzzleNumberForDate);
           setPuzzleLabel(`DATE ${trimmed}`);
           setActiveSeed(dailySeed);
           setSeedInput(trimmed);

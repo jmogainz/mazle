@@ -55,10 +55,6 @@ export default function GameUI({
   const displayLabel = puzzleLabel ?? `#${puzzleNumber}`;
 
   // Track if we've shown the review hint this game
-  // We use a ref so it persists across renders but resets logic manually
-  const hasShownReviewHint = useState(false); // Using state actually better for reset logic? No, ref is fine. 
-  // Wait, I can't reset useState easily inside useEffect without triggering re-renders. 
-  // Let's use a ref for "has shown" flag.
   const hasShownReviewHintRef = useRef(false);
 
   // Sync maxLives and lives when prop changes (dev tools adjustment)
@@ -134,7 +130,7 @@ export default function GameUI({
       unsubscribeComplete();
       unsubscribeLifeLost();
     };
-  }, [frozen]);
+  }, [frozen, hintsEnabled]);
 
   // Timer
   useEffect(() => {

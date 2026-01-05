@@ -1162,13 +1162,13 @@ export default function Home() {
           <ShareCard
             puzzleNumber={puzzleNumber}
             puzzleLabel={puzzleLabel ?? undefined}
-            moveCount={gameResult.moveCount}
             timeMs={gameResult.timeMs}
             optimalMoves={puzzle.optimalMoves}
             failed={gameResult.failed}
             attempts={gameResult.attempts}
             maxLives={devMaxLives}
             mapType={puzzle.mapType}
+            solutionPath={puzzle.solutionPath}
             onClose={handleCloseShareCard}
           />
         )}

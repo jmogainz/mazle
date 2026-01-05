@@ -60,8 +60,10 @@ export class GameScene extends Phaser.Scene {
 
   private unlockedHintTiles: Set<string> = new Set();
   private unlockedHintEdges: Set<string> = new Set();
+  private unlockedPresentTiles: Set<string> = new Set();
   private unlockedThisLifeTiles: Set<string> = new Set();
   private unlockedThisLifeEdges: Set<string> = new Set();
+  private unlockedThisLifePresentTiles: Set<string> = new Set();
 
   /**
    * Generate pre-rendered number textures to avoid Canvas text rasterization artifacts.
@@ -196,8 +198,10 @@ export class GameScene extends Phaser.Scene {
 
     this.unlockedHintTiles = new Set();
     this.unlockedHintEdges = new Set();
+    this.unlockedPresentTiles = new Set();
     this.unlockedThisLifeTiles = new Set();
     this.unlockedThisLifeEdges = new Set();
+    this.unlockedThisLifePresentTiles = new Set();
     this.indexSolutionPath();
 
     // Initialize boulder positions from puzzle tiles
@@ -1509,6 +1513,16 @@ export class GameScene extends Phaser.Scene {
     // Hide player
     this.player.setVisible(false);
 
+    // Record winning attempt
+    const deviationIndex = this.findDeviationIndex(this.gameState.moveHistory, this.puzzle.solutionPath || []);
+    this.gameState.attempts.push({
+      moveCount: this.gameState.currentAttemptMoves,
+      correctMoves: this.gameState.currentAttemptCorrectMoves,
+      path: [...this.gameState.moveHistory],
+      failedAt: undefined,
+      deviationIndex,
+    });
+
     // Show analysis
     this.drawEndGameAnalysis();
 
@@ -1644,8 +1658,10 @@ export class GameScene extends Phaser.Scene {
 
     this.unlockedHintTiles = new Set();
     this.unlockedHintEdges = new Set();
+    this.unlockedPresentTiles = new Set();
     this.unlockedThisLifeTiles = new Set();
     this.unlockedThisLifeEdges = new Set();
+    this.unlockedThisLifePresentTiles = new Set();
     if (this.hintsEnabled) {
       this.redrawHintOverlays();
     }
@@ -1716,26 +1732,63 @@ export class GameScene extends Phaser.Scene {
 
     // Visual hint unlocking (only if hints enabled)
     if (this.hintsEnabled) {
-      // 2) Stopping on an optimal-path tile (landing positions only; not intermediate slide tiles)
+      // 2) Check if stopping on ANY optimal-path tile
       const toIndex = this.solutionIndexByKey.get(toKey);
+      
+      // 3) Check if this was a correct move along optimal path
+      const expectedNextKey = this.solutionNextByKey.get(fromKey);
+      const isCorrectEdge = expectedNextKey === toKey && toKey !== goalKey;
+      
       if (toIndex !== undefined && toKey !== startKey && toKey !== goalKey) {
-        this.unlockedThisLifeTiles.add(toKey);
+        if (isCorrectEdge) {
+          // Reached via correct path -> Green
+          this.unlockedThisLifeTiles.add(toKey);
+          // Remove from yellow if promoted
+          this.unlockedThisLifePresentTiles.delete(toKey);
+        } else {
+          // Reached via wrong path -> Yellow (unless already Green)
+          // Ensure we don't downgrade a Green tile to Yellow
+          const isAlreadyGreen = this.unlockedHintTiles.has(toKey) || this.unlockedThisLifeTiles.has(toKey);
+          if (!isAlreadyGreen) {
+            this.unlockedThisLifePresentTiles.add(toKey);
+          }
+        }
       }
 
-      // 3) Making a move along the optimal path (consecutive step) - for hint unlocking
-      const expectedNextKey = this.solutionNextByKey.get(fromKey);
-      if (expectedNextKey === toKey && toKey !== goalKey) {
+      if (isCorrectEdge) {
         this.unlockedThisLifeEdges.add(edgeKey);
-        if (fromKey !== startKey && fromKey !== goalKey) this.unlockedThisLifeTiles.add(fromKey);
-        if (toKey !== startKey && toKey !== goalKey) this.unlockedThisLifeTiles.add(toKey);
+        if (fromKey !== startKey && fromKey !== goalKey) {
+           this.unlockedThisLifeTiles.add(fromKey);
+           this.unlockedThisLifePresentTiles.delete(fromKey);
+        }
       }
     }
   }
 
   private mergeHintsForNextLife() {
-    for (const key of this.unlockedThisLifeTiles) this.unlockedHintTiles.add(key);
-    for (const key of this.unlockedThisLifeEdges) this.unlockedHintEdges.add(key);
+    // 1. Promote any new Greens (correct moves/stops) to permanent memory
+    for (const key of this.unlockedThisLifeTiles) {
+      this.unlockedHintTiles.add(key);
+      // If this tile was previously Yellow (in any life), it is now Green (corrected)
+      this.unlockedPresentTiles.delete(key);
+    }
+
+    // 2. Add any new Yellows (out of order stops) to permanent memory
+    // ONLY if they haven't been corrected to Green yet (in this life or previous)
+    for (const key of this.unlockedThisLifePresentTiles) {
+      if (!this.unlockedHintTiles.has(key)) {
+        this.unlockedPresentTiles.add(key);
+      }
+    }
+
+    // 3. Preserve correct edges
+    for (const key of this.unlockedThisLifeEdges) {
+      this.unlockedHintEdges.add(key);
+    }
+    
+    // Reset for the next life - previous life's data is now merged
     this.unlockedThisLifeTiles = new Set();
+    this.unlockedThisLifePresentTiles = new Set();
     this.unlockedThisLifeEdges = new Set();
   }
 
@@ -1774,7 +1827,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Skip redraw if no hints to show (avoids unnecessary tile redraw)
-    if (this.unlockedHintTiles.size === 0 && this.unlockedHintEdges.size === 0) {
+    if (this.unlockedHintTiles.size === 0 && this.unlockedHintEdges.size === 0 && this.unlockedPresentTiles.size === 0) {
       return;
     }
 
@@ -1816,10 +1869,12 @@ export class GameScene extends Phaser.Scene {
 
         const key = positionKey({ x, y });
 
-        // Determine hint level: 2 = stop tile, 1 = intermediate path, 0 = none
+        // Determine hint level: 2 = stop tile (green), 3 = present tile (yellow), 1 = intermediate path (light green), 0 = none
         let hintLevel = 0;
         if (this.unlockedHintTiles.has(key)) {
           hintLevel = 2;
+        } else if (this.unlockedPresentTiles.has(key)) {
+          hintLevel = 3;
         } else if (intermediateTiles.has(key)) {
           hintLevel = 1;
         }
@@ -1834,8 +1889,11 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // Sort so intermediate tiles (hintLevel 1) are drawn first, stopping tiles (hintLevel 2) on top
-    hintedTileData.sort((a, b) => a.hintLevel - b.hintLevel);
+    // Sort: Intermediate (1) -> Present (3) -> Stopping (2) on top
+    hintedTileData.sort((a, b) => {
+        const priority = (lvl: number) => lvl === 1 ? 0 : lvl === 3 ? 1 : 2;
+        return priority(a.hintLevel) - priority(b.hintLevel);
+    });
 
     // Create animated containers for hinted tiles
     for (const data of hintedTileData) {
@@ -1886,7 +1944,7 @@ export class GameScene extends Phaser.Scene {
     const h = size - padding * 2;
 
     // Glow
-    const glowColor = COLORS.HINT_GLOW;
+    const glowColor = hintLevel === 3 ? COLORS.HINT_PRESENT_GLOW : COLORS.HINT_GLOW;
     const layers = 2;
     const maxExpand = 4 * s;
     const baseAlpha = hintLevel === 2 ? 0.08 : 0.05;
@@ -1907,8 +1965,16 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Tile colors
-    const faceColor = hintLevel === 2 ? COLORS.HINT_TILE_FACE : COLORS.HINT_PATH_FACE;
-    const edgeColor = hintLevel === 2 ? COLORS.HINT_TILE_EDGE : COLORS.HINT_PATH_EDGE;
+    let faceColor = COLORS.HINT_PATH_FACE;
+    let edgeColor = COLORS.HINT_PATH_EDGE;
+
+    if (hintLevel === 2) {
+        faceColor = COLORS.HINT_TILE_FACE;
+        edgeColor = COLORS.HINT_TILE_EDGE;
+    } else if (hintLevel === 3) {
+        faceColor = COLORS.HINT_PRESENT_FACE;
+        edgeColor = COLORS.HINT_PRESENT_EDGE;
+    }
 
     // Edge
     g.fillStyle(edgeColor);

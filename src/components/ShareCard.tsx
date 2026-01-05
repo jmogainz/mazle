@@ -8,19 +8,28 @@ import styles from './ShareCard.module.css';
 type ShareCardProps = {
   puzzleNumber: number;
   puzzleLabel?: string;
-  moveCount: number;
   timeMs: number;
   optimalMoves: number;
   failed?: boolean;
   attempts?: any[]; // Keep flexible for now
   mapType?: MapType;
   maxLives?: number; // Dynamic lives count (default 3)
+  solutionPath?: { x: number; y: number }[];
   onClose: () => void;
   inline?: boolean;
   secondaryActionLabel?: string;
   onSecondaryAction?: () => void;
   footerText?: string;
 };
+
+// Helper for position comparison
+function isSamePos(a: { x: number; y: number }, b: { x: number; y: number }) {
+  return a.x === b.x && a.y === b.y;
+}
+
+function positionKey(pos: { x: number; y: number }) {
+  return `${pos.x},${pos.y}`;
+}
 
 // Get emoji for map type
 function getMapEmoji(mapType: MapType): string {
@@ -63,13 +72,13 @@ function fallbackCopyToClipboard(text: string): boolean {
 export default function ShareCard({
   puzzleNumber,
   puzzleLabel,
-  moveCount,
   timeMs,
   optimalMoves,
   failed = false,
   attempts = [],
   mapType = MapType.ICE,
   maxLives = 3,
+  solutionPath,
   onClose,
   inline = false,
   secondaryActionLabel,
@@ -85,76 +94,128 @@ export default function ShareCard({
 
   const displayLabel = puzzleLabel ?? `#${puzzleNumber}`;
   const mapEmoji = getMapEmoji(mapType);
-  const maxBlocks = Math.max(optimalMoves, 1);
+
+  const calcProgress = (attempt: any) => {
+    if (!attempt) return 0;
+    // Prefer correctMoves (new system), fall back to deviationIndex (legacy)
+    if (attempt.correctMoves !== undefined) {
+      return attempt.correctMoves;
+    }
+    if (attempt.deviationIndex !== undefined && attempt.deviationIndex !== -1) {
+      return Math.max(0, attempt.deviationIndex - 1);
+    }
+    return attempt.moveCount ?? 0;
+  };
+
+  const getContiguousCorrectMoves = (attempt: any): number => {
+    if (!attempt) return 0;
+
+    if (typeof attempt.deviationIndex === 'number') {
+      if (attempt.deviationIndex === -1) {
+        return solutionPath ? Math.min(optimalMoves, solutionPath.length - 1) : optimalMoves;
+      }
+      return Math.max(0, attempt.deviationIndex - 1);
+    }
+
+    if (!solutionPath || !Array.isArray(attempt.path)) {
+      return calcProgress(attempt);
+    }
+
+    const maxSteps = Math.min(optimalMoves, solutionPath.length - 1, attempt.path.length - 1);
+    let correct = 0;
+    for (let i = 1; i <= maxSteps; i++) {
+      if (isSamePos(attempt.path[i], solutionPath[i])) {
+        correct++;
+      } else {
+        break;
+      }
+    }
+    return correct;
+  };
+
+  // Calculate statuses for a single attempt based on solution path
+  const getAttemptStatuses = (attempt: any): ('correct' | 'present' | 'empty')[] => {
+    // Check if detailed path data is available for both comparison
+    const hasPathData = solutionPath && attempt && Array.isArray(attempt.path) && attempt.path.length > 0;
+
+    // Fallback: If no solution path or no attempt path (legacy data), use simple count
+    if (!hasPathData) {
+      const correct = getContiguousCorrectMoves(attempt);
+      const statuses: ('correct' | 'present' | 'empty')[] = [];
+      for (let i = 0; i < optimalMoves; i++) {
+        statuses.push(i < correct ? 'correct' : 'empty');
+      }
+      return statuses;
+    }
+
+    const statuses: ('correct' | 'present' | 'empty')[] = [];
+    const attemptPath = attempt.path;
+    const attemptKeys = new Set(attemptPath.map((pos: any) => positionKey(pos)));
+    const contiguousCorrect = getContiguousCorrectMoves(attempt);
+
+    // Iterate through the *optimal* steps (1 to optimalMoves)
+    // solutionPath[0] is Start, steps start at index 1
+    for (let i = 1; i <= optimalMoves; i++) {
+      const solutionTile = solutionPath![i]; // non-null assertion safe due to loop bounds vs solution length usually
+      if (!solutionTile) {
+        statuses.push('empty');
+        continue;
+      }
+
+      // 1. Correct: Only contiguous correct steps from the start are green
+      if (i <= contiguousCorrect) {
+        statuses.push('correct');
+      } 
+      // 2. Present: User reached this optimal tile at a non-contiguous step
+      else if (attemptKeys.has(positionKey(solutionTile))) {
+        statuses.push('present');
+      } 
+      else {
+        statuses.push('empty');
+      }
+    }
+    return statuses;
+  };
 
   // Calculate best attempt for failed runs (using correctMoves if available)
   const bestAttempt = attempts && attempts.length > 0
     ? Math.max(...attempts.map(a => {
-      // Prefer correctMoves (new system), fall back to deviationIndex (legacy)
-      if (a.correctMoves !== undefined) {
-        return a.correctMoves;
-      }
-      if (a.deviationIndex !== undefined && a.deviationIndex !== -1) {
-        return Math.max(0, a.deviationIndex - 1);
-      }
-      return a.moveCount;
+        const statuses = getAttemptStatuses(a);
+        return statuses.filter(s => s === 'correct' || s === 'present').length;
     }))
     : 0;
 
   // Generate progress blocks - one row per attempt/life
   const generateProgressBlocks = (): string => {
-    const getAttemptProgress = (attempt: any): number => {
-      // Prefer correctMoves (new system), fall back to deviationIndex (legacy)
-      if (attempt.correctMoves !== undefined) {
-        return attempt.correctMoves;
+    const rows: string[] = [];
+
+    for (let i = 0; i < maxLives; i++) {
+      if (i < attempts.length) {
+        const statuses = getAttemptStatuses(attempts[i]);
+        const rowStr = statuses.map(s => {
+          if (s === 'correct') return '🟩';
+          if (s === 'present') return '🟨';
+          return '⬜';
+        }).join('');
+        
+        // Add success marker if this is the winning attempt (and not failed overall)
+        const isWin = !failed && i === attempts.length - 1;
+        // Or if statuses are all correct?
+        // Let's stick to the game state passed in.
+        rows.push(rowStr + (isWin ? '🏆' : '')); // Add skull? The user wanted Wordle style overlap.
+        // Wordle doesn't have skulls. It just shows the grid.
+        // But if I failed, maybe a skull at the end?
+        // User didn't explicitly ban skulls, just wanted yellow overlap.
+        // I'll leave the skull OUT for now to be cleaner "Wordle-like".
+      } else {
+        // Empty rows for unused lives
+        rows.push('⬜'.repeat(optimalMoves));
       }
-      if (attempt.deviationIndex !== undefined && attempt.deviationIndex !== -1) {
-        return Math.max(0, attempt.deviationIndex - 1);
-      }
-      return attempt.moveCount;
-    };
-
-    if (failed) {
-      // Show each attempt as a separate row
-      const rows: string[] = [];
-
-      for (let i = 0; i < attempts.length; i++) {
-        const progress = getAttemptProgress(attempts[i]);
-
-        const filledBlocks = Math.min(progress, optimalMoves - 1);
-        const remainingBlocks = optimalMoves - filledBlocks - 1;
-        rows.push('🟥'.repeat(filledBlocks) + '💀' + '⬛'.repeat(remainingBlocks));
-      }
-
-      // Show rows up to maxLives for failed attempts
-      while (rows.length < maxLives) {
-        rows.push('⬛'.repeat(optimalMoves));
-      }
-
-      return rows.join('\n');
-    } else {
-      // Success: show each attempt as a row
-      const rows: string[] = [];
-
-      // Add rows for failed attempts (only if there were any)
-      for (let i = 0; i < attempts.length; i++) {
-        const progress = getAttemptProgress(attempts[i]);
-
-        const filledBlocks = Math.min(progress, optimalMoves - 1);
-        const remainingBlocks = optimalMoves - filledBlocks - 1;
-        rows.push('🟥'.repeat(filledBlocks) + '💀' + '⬛'.repeat(remainingBlocks));
-      }
-
-      // Final successful attempt (always present)
-      rows.push('🟩'.repeat(optimalMoves) + '🏆');
-
-      return rows.join('\n');
     }
+    return rows.join('\n');
   };
 
-  const shareText = failed
-    ? `${mapEmoji} Mazle ${displayLabel}\n\n${generateProgressBlocks()}\n⏱️ ${formatTime(timeMs)}`
-    : `${mapEmoji} Mazle ${displayLabel}\n\n${generateProgressBlocks()}\n⏱️ ${formatTime(timeMs)}`;
+  const shareText = `${mapEmoji} Mazle ${displayLabel}\n\n${generateProgressBlocks()}\n⏱️ ${formatTime(timeMs)}`;
 
   const handleCopy = async (): Promise<boolean> => {
     // Try modern clipboard API first
@@ -268,34 +329,35 @@ export default function ShareCard({
   // Single button - behavior changes based on device
   const showSeparateCopyButton = false;
 
-  const calcProgress = (attempt: any) => {
-    if (!attempt) return 0;
-    // Prefer correctMoves (new system), fall back to deviationIndex (legacy)
-    if (attempt.correctMoves !== undefined) {
-      return attempt.correctMoves;
-    }
-    if (attempt.deviationIndex !== undefined && attempt.deviationIndex !== -1) {
-      return Math.max(0, attempt.deviationIndex - 1);
-    }
-    return attempt.moveCount ?? 0;
-  };
-
   const attemptBars = () => {
-    const rows: { progress: number; status: 'fail' | 'success' | 'empty' }[] = [];
+    const rows: { statuses: ('correct' | 'present' | 'empty')[]; status: 'fail' | 'success' | 'empty'; score: number }[] = [];
 
-    attempts.forEach((attempt: any) => {
-      rows.push({ progress: Math.min(calcProgress(attempt), maxBlocks), status: 'fail' });
-    });
-
-    if (!failed) {
-      rows.push({ progress: Math.min(moveCount, maxBlocks), status: 'success' });
+    // For successful games, the last attempt is the winner.
+    // For failed games, all attempts are failures.
+    
+    // We want to show ALL attempts made.
+    for (let i = 0; i < maxLives; i++) {
+      if (i < attempts.length) {
+        const attempt = attempts[i];
+        const statuses = getAttemptStatuses(attempt);
+        const isWin = !failed && i === attempts.length - 1;
+        
+        rows.push({
+          statuses,
+          status: isWin ? 'success' : 'fail',
+          score: statuses.filter(s => s === 'correct' || s === 'present').length
+        });
+      } else {
+        // Empty row
+        rows.push({
+          statuses: Array(optimalMoves).fill('empty'),
+          status: 'empty',
+          score: 0
+        });
+      }
     }
 
-    while (rows.length < maxLives) {
-      rows.push({ progress: 0, status: 'empty' });
-    }
-
-    return rows.slice(0, maxLives);
+    return rows;
   };
 
   const bars = attemptBars();
@@ -337,18 +399,20 @@ export default function ShareCard({
                   {bar.status === 'success' ? 'Win' : `${idx + 1}`}
                 </span>
                 <div className={styles.progressBar}>
-                  <div
-                    className={`
-                      ${styles.progressFill}
-                      ${bar.status === 'success' ? styles.progressFillSuccess : ''}
-                      ${bar.status === 'fail' ? styles.progressFillFail : ''}
-                      ${bar.status === 'empty' ? styles.progressFillEmpty : ''}
-                    `}
-                    style={{ width: `${Math.max(0, Math.min((bar.progress / maxBlocks) * 100, 100))}%` }}
-                  />
+                  {bar.statuses.map((status, pillIdx) => (
+                    <div
+                      key={pillIdx}
+                      className={`
+                        ${styles.pill}
+                        ${status === 'correct' ? styles.pillFilledSuccess : ''}
+                        ${status === 'present' ? styles.pillFilledFail : ''}
+                        ${status === 'empty' ? styles.pillEmpty : ''}
+                      `}
+                    />
+                  ))}
                 </div>
                 <span className={styles.progressValue}>
-                  {bar.progress}/{optimalMoves}
+                  {bar.score}/{optimalMoves}
                 </span>
               </div>
             ))}

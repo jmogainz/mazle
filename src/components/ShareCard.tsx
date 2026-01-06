@@ -212,37 +212,24 @@ export default function ShareCard({
     }))
     : 0;
 
-  // Generate progress blocks - one row per attempt/life
+  // Generate progress blocks - only rows for attempts made
   const generateProgressBlocks = (): string => {
-    const rows: string[] = [];
-
-    for (let i = 0; i < maxLives; i++) {
-      if (i < attempts.length) {
-        const statuses = getAttemptStatuses(attempts[i]);
-        const rowStr = statuses.map(s => {
-          if (s === 'correct') return '🟩';
-          if (s === 'present') return '🟨';
-          return '⬜';
-        }).join('');
-        
-        // Add success marker if this is the winning attempt (and not failed overall)
-        const isWin = !failed && i === attempts.length - 1;
-        // Or if statuses are all correct?
-        // Let's stick to the game state passed in.
-        rows.push(rowStr + (isWin ? '🏆' : '')); // Add skull? The user wanted Wordle style overlap.
-        // Wordle doesn't have skulls. It just shows the grid.
-        // But if I failed, maybe a skull at the end?
-        // User didn't explicitly ban skulls, just wanted yellow overlap.
-        // I'll leave the skull OUT for now to be cleaner "Wordle-like".
-      } else {
-        // Empty rows for unused lives
-        rows.push('⬜'.repeat(optimalMoves));
-      }
-    }
-    return rows.join('\n');
+    return attempts.map((attempt, i) => {
+      const statuses = getAttemptStatuses(attempt);
+      const rowStr = statuses.map(s => {
+        if (s === 'correct') return '🟩';
+        if (s === 'present') return '🟨';
+        return '⬜';
+      }).join('');
+      
+      // Add success marker if this is the winning attempt (and not failed overall)
+      const isWin = !failed && i === attempts.length - 1;
+      return rowStr + (isWin ? '🏆' : '');
+    }).join('\n');
   };
 
-  const shareText = `${mapEmoji} Mazle ${displayLabel}\n\n${generateProgressBlocks()}\n⏱️ ${formatTime(timeMs)}`;
+  const scoreText = failed ? `X/${maxLives}` : `${attempts.length}/${maxLives}`;
+  const shareText = `${mapEmoji} Mazle ${displayLabel} ${scoreText}\n\n${generateProgressBlocks()}\n⏱️ ${formatTime(timeMs)}`;
 
   const reloadLeaderboard = useCallback(async (force = false) => {
     if (!leaderboardDate) return;

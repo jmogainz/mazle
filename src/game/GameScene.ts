@@ -21,6 +21,7 @@ import {
   createGroundState,
   GroundPuzzleState,
 } from './movement';
+import { PENALTY_MS } from '@/constants';
 
 export class GameScene extends Phaser.Scene {
   private puzzle!: PuzzleData;
@@ -671,7 +672,7 @@ export class GameScene extends Phaser.Scene {
 
   private handleLifeLost(finalPos: Position) {
     this.gameState.lives--;
-    this.gameState.penaltyTimeMs += 30000; // 30s penalty
+    this.gameState.penaltyTimeMs += PENALTY_MS; // 30s penalty
 
     if (this.hintsEnabled) {
       this.mergeHintsForNextLife();
@@ -695,7 +696,7 @@ export class GameScene extends Phaser.Scene {
       emitGameEvent('stateUpdate', { ...this.gameState });
       emitGameEvent('lifeLost', {
         lives: this.gameState.lives,
-        penaltyMs: 30000
+        penaltyMs: PENALTY_MS
       });
       this.handleGameOver();
       return;
@@ -716,7 +717,7 @@ export class GameScene extends Phaser.Scene {
     emitGameEvent('stateUpdate', { ...this.gameState });
     emitGameEvent('lifeLost', {
       lives: this.gameState.lives,
-      penaltyMs: 30000
+      penaltyMs: PENALTY_MS
     });
 
     // Block input during respawn sequence

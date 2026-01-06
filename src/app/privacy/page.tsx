@@ -159,7 +159,7 @@ export default function Privacy() {
           <h2>Contact Us</h2>
           <p>
             If you have any questions about this Privacy Policy, please contact us at:{' '}
-            <a href="mailto:privacy@mazle.io">privacy@mazle.io</a>
+            <a href="mailto:jmaullc@gmail.com">jmaullc@gmail.com</a>
           </p>
         </section>
 

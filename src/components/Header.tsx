@@ -1,10 +1,12 @@
 'use client';
 
+import Link from 'next/link';
 import styles from './Header.module.css';
 
 interface HeaderProps {
   streak: number;
   puzzleInfo?: string;
+  puzzleInfoLoading?: boolean;
   onHelpClick: () => void;
   onStatsClick: () => void;
   onMenuClick?: () => void;
@@ -12,25 +14,35 @@ interface HeaderProps {
   logoClassName?: string;
 }
 
-export default function Header({ streak, puzzleInfo, onHelpClick, onStatsClick, onMenuClick, logoRef, logoClassName }: HeaderProps) {
+export default function Header({ streak, puzzleInfo, puzzleInfoLoading, onHelpClick, onStatsClick, onMenuClick, logoRef, logoClassName }: HeaderProps) {
   return (
     <header className={styles.header}>
       <div className={styles.leftSection}>
-        <button className={styles.iconButton} onClick={onHelpClick} aria-label="Help">
+        <Link 
+          href="/how-to-play" 
+          className={styles.iconButton} 
+          onClick={(e) => {
+            e.preventDefault();
+            onHelpClick();
+          }}
+          aria-label="Help"
+        >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="10"></circle>
             <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
             <line x1="12" y1="17" x2="12.01" y2="17"></line>
           </svg>
-        </button>
+        </Link>
       </div>
-      
+
       <div className={`${styles.logo} ${logoClassName ?? ''}`.trim()} ref={logoRef}>
         <h1 className={styles.logoText}>MAZLE</h1>
       </div>
-      {puzzleInfo && (
+      {(puzzleInfo || puzzleInfoLoading) && (
         <div className={styles.puzzleInfoRow}>
-          <span className={styles.puzzleInfo}>{puzzleInfo}</span>
+          <span className={`${styles.puzzleInfo} ${puzzleInfoLoading ? styles.skeleton : ''}`}>
+            {puzzleInfoLoading ? '#000' : puzzleInfo}
+          </span>
         </div>
       )}
       

@@ -97,6 +97,7 @@ struct DatasetConfig {
     map_type: String,
     size: usize,
     closeness_threshold: f64,
+    target_moves: Option<i32>,
 }
 
 #[derive(Serialize)]
@@ -150,6 +151,13 @@ fn dataset_config_from_env() -> Result<Option<DatasetConfig>, String> {
         Err(_) => DEFAULT_DATASET_SIZE,
     };
 
+    let target_moves = match std::env::var("DATASET_TARGET_MOVES") {
+        Ok(value) => Some(value
+            .parse::<i32>()
+            .map_err(|_| format!("Invalid DATASET_TARGET_MOVES: {}", value))?),
+        Err(_) => None,
+    };
+
     Ok(Some(DatasetConfig {
         out_path,
         count,
@@ -159,6 +167,7 @@ fn dataset_config_from_env() -> Result<Option<DatasetConfig>, String> {
         map_type,
         size,
         closeness_threshold: DEFAULT_DATASET_CLOSENESS_THRESHOLD,
+        target_moves,
     }))
 }
 
@@ -278,17 +287,19 @@ fn run_dataset_generation(config: DatasetConfig) -> Result<(), Box<dyn std::erro
 
     let mut gen_config = GenerationConfig::default();
     gen_config.closeness_threshold = config.closeness_threshold;
+    gen_config.target_moves = config.target_moves;
 
     info!("📦 Dataset generation mode enabled");
     info!(
-        "📦 out={} count={} start_index={} append={} seed_prefix={} map_type={} closeness_threshold={:.2}",
+        "📦 out={} count={} start_index={} append={} seed_prefix={} map_type={} closeness_threshold={:.2} target_moves={:?}",
         config.out_path,
         config.count,
         config.start_index,
         config.append,
         config.seed_prefix,
         config.map_type,
-        config.closeness_threshold
+        config.closeness_threshold,
+        config.target_moves
     );
 
     // Always append

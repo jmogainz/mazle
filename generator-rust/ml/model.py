@@ -77,6 +77,10 @@ class FiLM(nn.Module):
 
     def forward(self, x: torch.Tensor, cond: torch.Tensor) -> torch.Tensor:
         gamma, beta = self.proj(cond).chunk(2, dim=-1)
+        if x.dim() == 4:
+            gamma = gamma[:, :, None, None]
+            beta = beta[:, :, None, None]
+            return x * (1.0 + gamma) + beta
         while gamma.dim() < x.dim():
             gamma = gamma.unsqueeze(1)
             beta = beta.unsqueeze(1)
@@ -132,6 +136,11 @@ class ConvResBlock(nn.Module):
 
 
 class MazleGeneratorModel(nn.Module):
+    """
+    Generates puzzle grids with tiles including START and GOAL as tile types.
+    Output is a single tile_logits tensor with vocab_size classes per position.
+    """
+
     def __init__(self, tile_vocab_size: int, config: ModelConfig):
         super().__init__()
         self.config = config
@@ -163,8 +172,6 @@ class MazleGeneratorModel(nn.Module):
         )
 
         self.tile_head = nn.Conv2d(config.model_dim, tile_vocab_size, kernel_size=1)
-        self.start_head = nn.Conv2d(config.model_dim, 1, kernel_size=1)
-        self.goal_head = nn.Conv2d(config.model_dim, 1, kernel_size=1)
 
     def forward(
         self, latent: torch.Tensor, width: int, height: int
@@ -194,13 +201,8 @@ class MazleGeneratorModel(nn.Module):
             feat = block(feat, cond)
 
         tile_logits = self.tile_head(feat)
-        start_logits = self.start_head(feat)
-        goal_logits = self.goal_head(feat)
-        return {
-            "tile_logits": tile_logits,
-            "start_logits": start_logits,
-            "goal_logits": goal_logits,
-        }
+
+        return {"tile_logits": tile_logits}
 
     def latent_from_seeds(self, seeds: List[str], device: torch.device) -> torch.Tensor:
         latents = [seed_to_latent(seed, self.config.latent_dim, device=device) for seed in seeds]

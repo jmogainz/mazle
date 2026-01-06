@@ -116,6 +116,9 @@ pub struct GenerationConfig {
     pub start_batch: usize,
     #[serde(default = "default_closeness_threshold")]
     pub closeness_threshold: f64,
+    /// Override target moves (None = auto-compute from map size)
+    #[serde(default)]
+    pub target_moves: Option<i32>,
 }
 
 fn default_target_score() -> i32 {
@@ -143,6 +146,7 @@ impl Default for GenerationConfig {
             parallel: true,
             start_batch: 0,
             closeness_threshold: default_closeness_threshold(),
+            target_moves: None,
         }
     }
 }

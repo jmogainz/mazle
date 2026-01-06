@@ -1,4 +1,4 @@
-use mazle_generator::generators::ice::{validate_ice_puzzle_interior, ValidationResult};
+use mazle_generator::generators::ice::{validate_ice_puzzle_interior, ValidationResult, find_optimal_path_public};
 use mazle_generator::types::Position;
 use pyo3::prelude::*;
 
@@ -16,19 +16,8 @@ struct ValidationResultPy {
     no_stuck: bool,
     #[pyo3(get)]
     meets_target_moves: bool,
-}
-
-impl From<ValidationResult> for ValidationResultPy {
-    fn from(result: ValidationResult) -> Self {
-        Self {
-            valid_tiles: result.valid_tiles,
-            solvable: result.solvable,
-            optimal_moves: result.optimal_moves,
-            unique_optimal: result.unique_optimal,
-            no_stuck: result.no_stuck,
-            meets_target_moves: result.meets_target_moves,
-        }
-    }
+    #[pyo3(get)]
+    optimal_path: Vec<(i32, i32)>,  // List of (x, y) stop positions
 }
 
 #[pyfunction]
@@ -42,8 +31,28 @@ fn validate_ice_interior(
 ) -> PyResult<ValidationResultPy> {
     let start = Position { x: start_x, y: start_y };
     let goal = Position { x: goal_x, y: goal_y };
+    
+    // Get validation result
     let result = validate_ice_puzzle_interior(&tiles_interior, start, goal, target_moves);
-    Ok(result.into())
+    
+    // Get optimal path if solvable
+    let optimal_path = if result.solvable {
+        find_optimal_path_public(&tiles_interior, start, goal)
+            .map(|path| path.into_iter().map(|p| (p.x, p.y)).collect())
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    
+    Ok(ValidationResultPy {
+        valid_tiles: result.valid_tiles,
+        solvable: result.solvable,
+        optimal_moves: result.optimal_moves,
+        unique_optimal: result.unique_optimal,
+        no_stuck: result.no_stuck,
+        meets_target_moves: result.meets_target_moves,
+        optimal_path,
+    })
 }
 
 #[pymodule]

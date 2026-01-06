@@ -10,7 +10,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from data import JsonlMazeDataset, TileVocab, collect_tile_ids, collate_batch
+from data import JsonlMazeDataset, TileVocab, collect_tile_ids, CollateFn
 from model import MazleGeneratorModel, ModelConfig, config_for_preset
 from utils import configure_torch_for_perf, select_device
 
@@ -169,8 +169,6 @@ def evaluate(
     total_loss = 0.0
     total_tiles = 0
     correct_tiles = 0
-    correct_start = 0
-    correct_goal = 0
     steps = 0
     total_samples = 0
 
@@ -181,37 +179,26 @@ def evaluate(
         height = int(batch["heights"][0].item())
         batch_size = len(seeds)
 
+        tiles = batch["tiles"].to(device)
+
         latents = model.latent_from_seeds(seeds, device)
         outputs = model(latents, width, height)
 
         tile_logits = outputs["tile_logits"]
-        start_logits = outputs["start_logits"].view(latents.shape[0], -1)
-        goal_logits = outputs["goal_logits"].view(latents.shape[0], -1)
-
-        loss_tiles = F.cross_entropy(tile_logits, batch["tiles"])
-        loss_start = F.cross_entropy(start_logits, batch["start_idx"])
-        loss_goal = F.cross_entropy(goal_logits, batch["goal_idx"])
-        loss = loss_tiles + loss_start + loss_goal
+        loss = F.cross_entropy(tile_logits, tiles)
 
         total_loss += loss.item() * batch_size
         total_samples += batch_size
         pred_tiles = tile_logits.argmax(dim=1)
-        correct_tiles += (pred_tiles == batch["tiles"]).sum().item()
-        total_tiles += batch["tiles"].numel()
-
-        correct_start += (
-            start_logits.argmax(dim=1) == batch["start_idx"]
-        ).sum().item()
-        correct_goal += (goal_logits.argmax(dim=1) == batch["goal_idx"]).sum().item()
+        correct_tiles += (pred_tiles == tiles).sum().item()
+        total_tiles += tiles.numel()
 
         if steps >= max_steps:
             break
 
     avg_loss = total_loss / max(total_samples, 1)
     tile_acc = correct_tiles / max(total_tiles, 1)
-    start_acc = correct_start / max(total_samples, 1)
-    goal_acc = correct_goal / max(total_samples, 1)
-    return avg_loss, tile_acc, start_acc, goal_acc
+    return avg_loss, tile_acc
 
 
 def run_training(
@@ -227,6 +214,24 @@ def run_training(
     if not isinstance(args.data, Path) or not isinstance(args.out, Path):
         raise ValueError("--data and --out must be paths")
 
+    args.out.mkdir(parents=True, exist_ok=True)
+    progress_path = args.out / "progress.log"
+    progress_fh = progress_path.open("a", encoding="utf-8")
+
+    def log_progress(message: str) -> None:
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        line = f"{timestamp} {message}"
+        tqdm.write(line)
+        try:
+            progress_fh.write(line + "\n")
+            progress_fh.flush()
+        except Exception:
+            pass
+
+    log_progress(f"device={device.type}")
+    if device.type == "mps":
+        log_progress(f"mps_available={torch.backends.mps.is_available()}")
+
     data_path = args.data
     if not data_path.exists():
         raise FileNotFoundError(data_path)
@@ -235,7 +240,9 @@ def run_training(
     if tile_ids is None:
         tile_ids = collect_tile_ids(data_path, max_lines=5000)
 
-    vocab = TileVocab(tile_ids=tile_ids)
+    # Import and use make_vocab_with_start_goal to add START/GOAL tile types
+    from data import make_vocab_with_start_goal
+    vocab = make_vocab_with_start_goal(tile_ids)
 
     data_count = args.data_count
     if data_count is None:
@@ -266,10 +273,30 @@ def run_training(
         config.mlp_ratio = args.mlp_ratio
     model = MazleGeneratorModel(vocab.size, config).to(device)
     param_count = sum(p.numel() for p in model.parameters())
-    print(f"model params: {param_count/1e6:.1f}M (preset={args.preset})")
+    log_progress(f"model params: {param_count/1e6:.1f}M (preset={args.preset})")
 
     if args.compile:
         model = torch.compile(model)  # type: ignore[assignment]
+
+    # Compute class weights for imbalanced tile distribution
+    # Using full inverse frequency weights (no dampening) to force learning of rare classes
+    # Frequencies: ice ~73%, wall ~18%, ledges ~2% each, floor ~0.5%, start/goal ~0.6% each
+    from data import START_TILE_ID, GOAL_TILE_ID
+    class_weights = torch.ones(vocab.size, device=device)
+    for i, tile_id in enumerate(vocab.tile_ids):
+        if tile_id == 4:  # ice - 72.8%
+            class_weights[i] = 1.0
+        elif tile_id == 1:  # wall - 17.8%
+            class_weights[i] = 4.0
+        elif tile_id in (5, 6, 7, 8):  # ledges - ~1.9% each
+            class_weights[i] = 38.0
+        elif tile_id == 0:  # floor - 0.54%
+            class_weights[i] = 135.0
+        elif tile_id == START_TILE_ID:  # START - 0.59%, must be exactly 1
+            class_weights[i] = 125.0
+        elif tile_id == GOAL_TILE_ID:  # GOAL - 0.59%, must be exactly 1
+            class_weights[i] = 125.0
+    log_progress(f"class weights: {class_weights.tolist()}")
 
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=args.lr, weight_decay=args.weight_decay
@@ -303,16 +330,19 @@ def run_training(
             dataset,
             batch_size=args.batch_size,
             num_workers=args.num_workers,
-            collate_fn=lambda batch: collate_batch(batch, vocab, device),
+            collate_fn=CollateFn(vocab),
         )
 
         model.train()
         t0 = time.time()
         epoch_loss = 0.0
         epoch_samples = 0
+        stop_after_eval = False
+        abort_training = False
         pbar = tqdm(loader, total=steps_per_epoch, desc=f"epoch {epoch+1}")
         for batch in pbar:
             if global_step >= max_steps:
+                stop_after_eval = True
                 break
 
             seeds = batch["seeds"]
@@ -320,6 +350,8 @@ def run_training(
             height = int(batch["heights"][0].item())
             if (batch["widths"] != width).any() or (batch["heights"] != height).any():
                 raise ValueError("mixed sizes in a batch are not supported yet")
+
+            tiles = batch["tiles"].to(device)
 
             latents = model.latent_from_seeds(seeds, device)
             batch_size = latents.shape[0]
@@ -329,13 +361,22 @@ def run_training(
             ):
                 outputs = model(latents, width, height)
                 tile_logits = outputs["tile_logits"]
-                start_logits = outputs["start_logits"].view(latents.shape[0], -1)
-                goal_logits = outputs["goal_logits"].view(latents.shape[0], -1)
+                loss = F.cross_entropy(tile_logits, tiles, weight=class_weights)
 
-                loss_tiles = F.cross_entropy(tile_logits, batch["tiles"])
-                loss_start = F.cross_entropy(start_logits, batch["start_idx"])
-                loss_goal = F.cross_entropy(goal_logits, batch["goal_idx"])
-                loss = loss_tiles + loss_start + loss_goal
+            if not torch.isfinite(loss):
+                nan_metrics = {
+                    "epoch": float(epoch + 1),
+                    "step": float(global_step),
+                    "train_loss": float("inf"),
+                    "val_loss": float("inf"),
+                    "nan_loss": 1.0,
+                }
+                log_progress(f"nan loss at step {global_step}; stopping trial")
+                if report_fn is not None:
+                    report_fn(nan_metrics)
+                last_metrics = nan_metrics
+                abort_training = True
+                break
 
             epoch_loss += loss.item() * batch_size
             epoch_samples += batch_size
@@ -354,17 +395,18 @@ def run_training(
             if global_step % args.log_every == 0:
                 dt = time.time() - t0
                 pbar.set_postfix(loss=f"{loss.item():.4f}", step=global_step, dt=f"{dt:.1f}s")
+                log_progress(f"step {global_step} loss={loss.item():.4f} dt={dt:.1f}s")
 
             if (
                 args.save_every > 0
                 and global_step % args.save_every == 0
                 and global_step > start_step
             ):
-                save_checkpoint(args.out, global_step, model, optimizer, config, tile_ids)
+                save_checkpoint(args.out, global_step, model, optimizer, config, vocab.tile_ids)
 
             global_step += 1
 
-        if global_step >= max_steps:
+        if abort_training:
             break
 
         val_dataset = JsonlMazeDataset(
@@ -380,9 +422,9 @@ def run_training(
             val_dataset,
             batch_size=args.batch_size,
             num_workers=0,
-            collate_fn=lambda batch: collate_batch(batch, vocab, device),
+            collate_fn=CollateFn(vocab),
         )
-        val_loss, tile_acc, start_acc, goal_acc = evaluate(
+        val_loss, tile_acc = evaluate(
             model, val_loader, device, args.eval_steps
         )
         train_loss = epoch_loss / max(epoch_samples, 1)
@@ -392,12 +434,9 @@ def run_training(
             "train_loss": float(train_loss),
             "val_loss": float(val_loss),
             "val_tile_acc": float(tile_acc),
-            "val_start_acc": float(start_acc),
-            "val_goal_acc": float(goal_acc),
         }
-        tqdm.write(
-            f"val loss={val_loss:.4f} tile_acc={tile_acc:.3f} "
-            f"start_acc={start_acc:.3f} goal_acc={goal_acc:.3f}"
+        log_progress(
+            f"val loss={val_loss:.4f} tile_acc={tile_acc:.3f}"
         )
         if args.solver_eval:
             from eval_solver import evaluate_solver
@@ -416,7 +455,7 @@ def run_training(
                 solver_dataset,
                 batch_size=args.batch_size,
                 num_workers=0,
-                collate_fn=lambda batch: collate_batch(batch, vocab, device),
+                collate_fn=CollateFn(vocab),
             )
             solver_metrics = evaluate_solver(
                 model,
@@ -428,7 +467,7 @@ def run_training(
             )
             for key, value in solver_metrics.to_dict().items():
                 metrics[f"solver_{key}"] = float(value)
-            tqdm.write(
+            log_progress(
                 "solver "
                 + " ".join(
                     f"{k}={v:.3f}" for k, v in solver_metrics.to_dict().items()
@@ -438,6 +477,9 @@ def run_training(
         if report_fn is not None:
             report_fn(metrics)
         last_metrics = metrics
+
+        if stop_after_eval:
+            break
 
     if args.eval_test:
         test_dataset = JsonlMazeDataset(
@@ -453,26 +495,24 @@ def run_training(
             test_dataset,
             batch_size=args.batch_size,
             num_workers=0,
-            collate_fn=lambda batch: collate_batch(batch, vocab, device),
+            collate_fn=CollateFn(vocab),
         )
-        test_loss, tile_acc, start_acc, goal_acc = evaluate(
+        test_loss, tile_acc = evaluate(
             model, test_loader, device, args.eval_steps
         )
         test_metrics = {
             "test_loss": float(test_loss),
             "test_tile_acc": float(tile_acc),
-            "test_start_acc": float(start_acc),
-            "test_goal_acc": float(goal_acc),
         }
-        tqdm.write(
-            f"test loss={test_loss:.4f} tile_acc={tile_acc:.3f} "
-            f"start_acc={start_acc:.3f} goal_acc={goal_acc:.3f}"
+        log_progress(
+            f"test loss={test_loss:.4f} tile_acc={tile_acc:.3f}"
         )
         if report_fn is not None:
             report_fn(test_metrics)
         last_metrics.update(test_metrics)
 
-    save_checkpoint(args.out, global_step, model, optimizer, config, tile_ids)
+    save_checkpoint(args.out, global_step, model, optimizer, config, vocab.tile_ids)
+    progress_fh.close()
     return last_metrics
 
 

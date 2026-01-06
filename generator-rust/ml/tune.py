@@ -180,21 +180,26 @@ def _build_base_args(args: argparse.Namespace) -> argparse.Namespace:
 
 def _build_search_space(args: argparse.Namespace) -> Dict[str, object]:
     space: Dict[str, object] = {
-        "lr": tune.loguniform(1e-4, 3e-3),
+        "lr": tune.loguniform(1e-4, 8e-4),
         "weight_decay": tune.loguniform(1e-4, 3e-2),
         "dropout": tune.uniform(0.05, 0.2),
-        "batch_size": tune.choice([32, 48, 64, 96]),
+        "batch_size": tune.choice([128, 192, 256, 320, 384]),
     }
 
     if args.tune_arch:
+        attn_choices = [
+            {"model_dim": 384, "num_heads": 8},
+            {"model_dim": 384, "num_heads": 12},
+            {"model_dim": 512, "num_heads": 8},
+            {"model_dim": 640, "num_heads": 8},
+        ]
         space.update(
             {
                 "latent_dim": tune.choice([384, 512, 640]),
                 "cond_dim": tune.choice([768, 1024, 1280]),
-                "model_dim": tune.choice([384, 512, 640]),
                 "num_layers": tune.choice([8, 10, 12]),
-                "num_heads": tune.choice([8, 12]),
                 "conv_blocks": tune.choice([6, 8, 10]),
+                "attn": tune.choice(attn_choices),
             }
         )
 
@@ -207,9 +212,12 @@ def main() -> None:
         raise ValueError("--data and --out are required (or provided via --config)")
     if not isinstance(args.data, Path) or not isinstance(args.out, Path):
         raise ValueError("--data and --out must be paths")
+    args.data = args.data.resolve()
+    args.out = args.out.resolve()
     base_args = _build_base_args(args)
 
     ray_out = args.ray_out or args.out
+    ray_storage = ray_out.resolve().as_uri()
     cpus_per_trial = args.cpus_per_trial or max(1, (os.cpu_count() or 4) // 2)
 
     scheduler = ASHAScheduler(
@@ -225,6 +233,10 @@ def main() -> None:
     def train_fn(config: Dict[str, object]) -> None:
         trial_args = copy.deepcopy(base_args)
         for key, value in config.items():
+            if isinstance(value, dict):
+                for subkey, subval in value.items():
+                    setattr(trial_args, subkey, subval)
+                continue
             setattr(trial_args, key, value)
 
         trial_dir = base_args.out / f"trial_{_trial_id()}"
@@ -237,11 +249,11 @@ def main() -> None:
         config=search_space,
         num_samples=args.num_samples,
         scheduler=scheduler,
-        metric=args.metric,
-        mode=args.mode,
-        local_dir=str(ray_out),
+        storage_path=ray_storage,
         resources_per_trial={"cpu": cpus_per_trial},
         max_concurrent_trials=args.max_concurrent,
+        log_to_file=True,
+        verbose=1,
     )
 
     best_config = analysis.get_best_config(metric=args.metric, mode=args.mode)

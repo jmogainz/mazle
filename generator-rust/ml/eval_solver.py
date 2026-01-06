@@ -5,7 +5,7 @@ from typing import Iterable, List
 
 import torch
 
-from data import TileVocab
+from data import TileVocab, START_TILE_ID, GOAL_TILE_ID
 
 try:
     from mazle_eval import validate_ice_interior
@@ -37,8 +37,13 @@ class SolverMetrics:
         }
 
 
-def _idx_to_xy(idx: int, width: int) -> tuple[int, int]:
-    return idx % width, idx // width
+def _find_position(grid: List[List[int]], tile_id: int) -> tuple[int, int]:
+    """Find (x, y) of the first occurrence of tile_id, or (-1, -1) if not found."""
+    for y, row in enumerate(grid):
+        for x, val in enumerate(row):
+            if val == tile_id:
+                return x, y
+    return -1, -1
 
 
 @torch.no_grad()
@@ -64,17 +69,24 @@ def evaluate_solver(
         outputs = model(latents, width, height)
 
         tile_logits = outputs["tile_logits"]
-        start_logits = outputs["start_logits"].view(latents.shape[0], -1)
-        goal_logits = outputs["goal_logits"].view(latents.shape[0], -1)
-
         tile_idx = tile_logits.argmax(dim=1).cpu().tolist()
-        start_idx = start_logits.argmax(dim=1).cpu().tolist()
-        goal_idx = goal_logits.argmax(dim=1).cpu().tolist()
 
         for i in range(len(seeds)):
-            tiles = vocab.decode_grid(tile_idx[i])
-            sx, sy = _idx_to_xy(start_idx[i], width)
-            gx, gy = _idx_to_xy(goal_idx[i], width)
+            # Decode grid - this gives raw tile IDs including START/GOAL
+            decoded = vocab.decode_grid(tile_idx[i])
+            
+            # Find start and goal positions
+            sx, sy = _find_position(decoded, START_TILE_ID)
+            gx, gy = _find_position(decoded, GOAL_TILE_ID)
+            
+            # Replace START/GOAL with floor (0) for validation
+            tiles = [[0 if v in (START_TILE_ID, GOAL_TILE_ID) else v for v in row] for row in decoded]
+            
+            # Skip if no start or goal found
+            if sx < 0 or gx < 0:
+                metrics.total += 1
+                continue
+                
             result = validate_ice_interior(tiles, sx, sy, gx, gy, target_moves)
 
             metrics.total += 1

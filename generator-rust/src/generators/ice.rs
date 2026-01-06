@@ -1167,6 +1167,55 @@ pub fn validate_ice_puzzle_interior(
     }
 }
 
+/// Public wrapper to get the optimal path for a puzzle.
+/// Returns None if not solvable, otherwise returns the list of stop positions.
+pub fn find_optimal_path_public(
+    tiles_interior: &Vec<Vec<u8>>,
+    start: Position,
+    goal: Position,
+) -> Option<Vec<Position>> {
+    if tiles_interior.is_empty() || tiles_interior[0].is_empty() {
+        return None;
+    }
+
+    let height = tiles_interior.len();
+    let width = tiles_interior[0].len();
+
+    // Convert to TileType with border
+    let full_width = width + 2;
+    let full_height = height + 2;
+    let mut tiles: Vec<Vec<TileType>> = Vec::with_capacity(full_height);
+
+    // Top border
+    tiles.push(vec![TileType::Wall; full_width]);
+
+    // Interior rows with side borders
+    for row in tiles_interior {
+        let mut tile_row = Vec::with_capacity(full_width);
+        tile_row.push(TileType::Wall);
+        for &tile_id in row {
+            tile_row.push(TileType::from_u8(tile_id).unwrap_or(TileType::Ground));
+        }
+        tile_row.push(TileType::Wall);
+        tiles.push(tile_row);
+    }
+
+    // Bottom border
+    tiles.push(vec![TileType::Wall; full_width]);
+
+    // Convert interior coords to full coords
+    let start_full = Position { x: start.x + 1, y: start.y + 1 };
+    let goal_full = Position { x: goal.x + 1, y: goal.y + 1 };
+
+    // Find path and convert back to interior coords
+    find_optimal_path(&tiles, &start_full, &goal_full, full_width, full_height)
+        .map(|path| {
+            path.into_iter()
+                .map(|p| Position { x: p.x - 1, y: p.y - 1 })
+                .collect()
+        })
+}
+
 // =============================================================================
 // INTUITIVE DIRECTION HELPERS
 // =============================================================================
@@ -3150,31 +3199,46 @@ impl PrefilterThresholds {
     }
 }
 
-fn compute_prefilter_thresholds(width: usize, height: usize) -> PrefilterThresholds {
+/// Reference target moves for 15x15 map (base thresholds are tuned for this)
+const REFERENCE_MOVES: f64 = 10.0;
+
+fn compute_prefilter_thresholds(width: usize, height: usize, target_moves: i32) -> PrefilterThresholds {
     let min_dim = width.min(height) as f64;
-    let scale = min_dim / REFERENCE_SIZE; // Reference: 15x15 base map size
+    let size_scale = min_dim / REFERENCE_SIZE; // Reference: 15x15 base map size
+    
+    // For move scaling: scale DOWN for fewer moves, but CAP at 1.0 for more moves
+    // This makes shorter puzzles easier to generate (relaxed thresholds)
+    // while keeping longer puzzles at the base difficulty (not harder to generate)
+    let move_scale = ((target_moves as f64) / REFERENCE_MOVES).min(1.0);
 
-    // Original thresholds (scaled for larger maps)
-    let ci = ((BASE_PREFILTER_MIN_COUNTER_INTUITIVE as f64 * scale).round() as i32)
-        .max(PREFILTER_FLOOR_COUNTER_INTUITIVE);
-    let _decoys = ((BASE_PREFILTER_MIN_ATTRACTIVE_DECOYS as f64 * scale).round() as i32)
+    // Original thresholds - scale down for shorter puzzles only
+    let ci = ((BASE_PREFILTER_MIN_COUNTER_INTUITIVE as f64 * move_scale).round() as i32)
+        .max(1); // Floor of 1 for short puzzles
+    let _decoys = ((BASE_PREFILTER_MIN_ATTRACTIVE_DECOYS as f64 * size_scale).round() as i32)
         .max(PREFILTER_FLOOR_ATTRACTIVE_DECOYS);
-    let _gates = ((BASE_PREFILTER_MIN_COMMITMENT_GATES as f64 * scale).round() as i32)
+    let _gates = ((BASE_PREFILTER_MIN_COMMITMENT_GATES as f64 * size_scale).round() as i32)
         .max(PREFILTER_FLOOR_COMMITMENT_GATES);
-    let fp = ((BASE_PREFILTER_MIN_FALSE_PROGRESS as f64 * scale).round() as i32)
-        .max(PREFILTER_FLOOR_FALSE_PROGRESS);
+    let fp = ((BASE_PREFILTER_MIN_FALSE_PROGRESS as f64 * move_scale).round() as i32)
+        .max(1); // Floor of 1 for short puzzles
 
-    // Phase 1 thresholds
-    let min_dir_changes = ((BASE_PREFILTER_MIN_DIRECTION_CHANGES as f64 * scale).round() as i32)
-        .max(PREFILTER_FLOOR_DIRECTION_CHANGES);
-    let _min_backtrack = ((BASE_PREFILTER_MIN_BACKTRACK_DEPTH as f64 * scale).round() as i32)
+    // Phase 1 thresholds - direction changes scale with moves (can't have more changes than moves-1)
+    let max_possible_dir_changes = (target_moves - 1).max(1);
+    let min_dir_changes = ((BASE_PREFILTER_MIN_DIRECTION_CHANGES as f64 * move_scale).round() as i32)
+        .max(2) // Floor of 2
+        .min(max_possible_dir_changes); // Can't exceed what's physically possible
+    let _min_backtrack = ((BASE_PREFILTER_MIN_BACKTRACK_DEPTH as f64 * size_scale).round() as i32)
         .max(PREFILTER_FLOOR_BACKTRACK_DEPTH);
-    let min_ambiguity = BASE_PREFILTER_MIN_DECISION_AMBIGUITY;
+    // Ambiguity scales with moves - shorter puzzles have fewer decision points
+    let min_ambiguity = (BASE_PREFILTER_MIN_DECISION_AMBIGUITY * move_scale).max(1.5);
 
-    // Phase 2 thresholds
-    let min_near_optimal = ((BASE_PREFILTER_MIN_NEAR_OPTIMAL_PATHS as f64 * scale).round() as i32)
-        .max(PREFILTER_FLOOR_NEAR_OPTIMAL_PATHS);
-    let max_overlap_best = BASE_PREFILTER_MAX_PATH_OVERLAP;
+    // Phase 2 thresholds - scale down for shorter puzzles only
+    let min_near_optimal = ((BASE_PREFILTER_MIN_NEAR_OPTIMAL_PATHS as f64 * move_scale).round() as i32)
+        .max(4); // Floor of 4 paths
+    // Overlap thresholds: relax for shorter puzzles (less room for divergence)
+    let overlap_relax = if target_moves < 10 { 1.0 + (10 - target_moves) as f64 * 0.03 } else { 1.0 };
+    let max_overlap_best = (BASE_PREFILTER_MAX_PATH_OVERLAP * overlap_relax).min(0.50);
+    let max_overlap_avg = (BASE_PREFILTER_MAX_PATH_OVERLAP_AVG * overlap_relax).min(0.80);
+    // Early divergence - keep constant
     let min_early_div = BASE_PREFILTER_MIN_EARLY_DIVERGENCE;
 
     PrefilterThresholds {
@@ -3194,7 +3258,7 @@ fn compute_prefilter_thresholds(width: usize, height: usize) -> PrefilterThresho
         // TIER 1 - Core difficulty
         min_near_optimal_paths: min_near_optimal,
         max_path_overlap_best: max_overlap_best,
-        max_path_overlap_avg: BASE_PREFILTER_MAX_PATH_OVERLAP_AVG,
+        max_path_overlap_avg: max_overlap_avg,
         min_early_divergence: min_early_div,
 
         // Enabled flags
@@ -4527,9 +4591,10 @@ pub fn generate_puzzle_with_cancel(
         pick_size(&mut rng)
     };
 
-    // Compute scaled parameters for this map size
-    let prefilter_thresholds = compute_prefilter_thresholds(width, height);
-    let required_optimal_moves = compute_required_moves(width, height);
+    // Use config override if set, otherwise compute from map size
+    let required_optimal_moves = config.target_moves.unwrap_or_else(|| compute_required_moves(width, height));
+    // Compute scaled parameters for this map size AND target moves
+    let prefilter_thresholds = compute_prefilter_thresholds(width, height, required_optimal_moves);
 
     info!(
         "[{}] map={}x{} target_moves={} batch_size={}",

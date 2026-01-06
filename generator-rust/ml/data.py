@@ -23,6 +23,11 @@ except Exception:
         return json.loads(line)
 
 
+# Special tile IDs for start/goal (not in normal tile range)
+START_TILE_ID = 100
+GOAL_TILE_ID = 101
+
+
 @dataclass(frozen=True)
 class TileVocab:
     tile_ids: List[int]
@@ -36,6 +41,16 @@ class TileVocab:
     @property
     def size(self) -> int:
         return len(self.tile_ids)
+
+    @property
+    def start_idx(self) -> int:
+        """Index of START tile in vocab."""
+        return self.tile_ids.index(START_TILE_ID)
+
+    @property
+    def goal_idx(self) -> int:
+        """Index of GOAL tile in vocab."""
+        return self.tile_ids.index(GOAL_TILE_ID)
 
     def build_lookup(self) -> List[int]:
         lookup = [-1] * 256
@@ -57,6 +72,12 @@ class TileVocab:
 
     def decode_grid(self, grid: List[List[int]]) -> List[List[int]]:
         return [[self.tile_ids[val] for val in row] for row in grid]
+
+
+def make_vocab_with_start_goal(base_tile_ids: List[int]) -> TileVocab:
+    """Create vocab with base tiles plus START and GOAL."""
+    all_ids = list(base_tile_ids) + [START_TILE_ID, GOAL_TILE_ID]
+    return TileVocab(tile_ids=all_ids)
 
 
 def collect_tile_ids(path: Path, max_lines: Optional[int] = None) -> List[int]:
@@ -133,32 +154,43 @@ class JsonlMazeDataset(IterableDataset):
 def collate_batch(
     batch: List[Dict],
     vocab: TileVocab,
-    device: torch.device,
 ):
     seeds = [item["seed"] for item in batch]
-    widths = [item["width"] for item in batch]
-    heights = [item["height"] for item in batch]
     tiles = [item["tilesInterior"] for item in batch]
     starts = [item["start"] for item in batch]
     goals = [item["goal"] for item in batch]
 
     h = len(tiles[0])
     w = len(tiles[0][0])
+    widths = [w for _ in batch]
+    heights = [h for _ in batch]
 
+    # Build grids with start/goal embedded as tile types
     tiles_idx = torch.empty((len(batch), h, w), dtype=torch.long)
     for i, grid in enumerate(tiles):
-        tiles_idx[i] = torch.tensor(vocab.encode_grid(grid), dtype=torch.long)
-
-    start_idx = torch.tensor(
-        [s["y"] * w + s["x"] for s in starts], dtype=torch.long
-    )
-    goal_idx = torch.tensor([g["y"] * w + g["x"] for g in goals], dtype=torch.long)
+        # First encode base tiles
+        encoded = vocab.encode_grid(grid)
+        t = torch.tensor(encoded, dtype=torch.long)
+        
+        # Overlay start and goal positions
+        sx, sy = starts[i]["x"], starts[i]["y"]
+        gx, gy = goals[i]["x"], goals[i]["y"]
+        t[sy, sx] = vocab.start_idx
+        t[gy, gx] = vocab.goal_idx
+        
+        tiles_idx[i] = t
 
     return {
         "seeds": seeds,
         "widths": torch.tensor(widths, dtype=torch.long),
         "heights": torch.tensor(heights, dtype=torch.long),
-        "tiles": tiles_idx.to(device),
-        "start_idx": start_idx.to(device),
-        "goal_idx": goal_idx.to(device),
+        "tiles": tiles_idx,
     }
+
+
+class CollateFn:
+    def __init__(self, vocab: TileVocab):
+        self.vocab = vocab
+
+    def __call__(self, batch: List[Dict]):
+        return collate_batch(batch, self.vocab)

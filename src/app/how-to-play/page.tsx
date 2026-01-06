@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { PENALTY_MS } from '@/constants';
 import styles from './page.module.css';
 
 export const metadata: Metadata = {
@@ -116,28 +117,38 @@ export default function HowToPlay() {
           <h2>🧊 Tile Types</h2>
           <div className={styles.tileList}>
             <div className={styles.tileItem}>
-              <div className={styles.tileSwatch} style={{ background: '#5dade2' }} />
+              <div className={styles.tileSwatchContainer}>
+                <div className={styles.tileIce} />
+              </div>
               <div>
                 <strong>Ice</strong>
                 <p>You slide until you hit something — walls, obstacles, or ground tiles stop you.</p>
               </div>
             </div>
             <div className={styles.tileItem}>
-              <div className={styles.tileSwatch} style={{ background: '#8b5a2b' }} />
+              <div className={styles.tileSwatchContainer}>
+                <div className={styles.tileFloor} />
+              </div>
               <div>
                 <strong>Ground</strong>
                 <p>Normal movement — you stop immediately after stepping onto ground.</p>
               </div>
             </div>
             <div className={styles.tileItem}>
-              <div className={styles.tileSwatch} style={{ background: '#4a4a4a' }} />
+              <div className={styles.tileSwatchContainer}>
+                <div className={styles.tileWall} />
+              </div>
               <div>
                 <strong>Wall</strong>
                 <p>Impassable obstacles that block your movement.</p>
               </div>
             </div>
             <div className={styles.tileItem}>
-              <div className={styles.tileSwatch} style={{ background: '#2ecc71' }} />
+              <div className={styles.tileSwatchContainer}>
+                <div className={styles.tileLedge}>
+                  <span className={styles.ledgeArrowDown}></span>
+                </div>
+              </div>
               <div>
                 <strong>Ledge</strong>
                 <p>One-way tiles — you can enter from any direction but only jump down from the ledge side.</p>
@@ -161,7 +172,7 @@ export default function HowToPlay() {
           <h2>📊 Scoring</h2>
           <p>
             Your time is recorded from when you press &quot;Begin&quot; until you reach the goal. 
-            Each life lost adds a <strong>10-second penalty</strong>. The fastest solvers 
+            Each life lost adds a <strong>{PENALTY_MS / 1000}-second penalty</strong>. The fastest solvers 
             complete puzzles in under 20 seconds!
           </p>
         </section>

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { PENALTY_MS } from '@/constants';
 import styles from './page.module.css';
 
 export const metadata: Metadata = {
@@ -122,8 +123,8 @@ export default function About() {
             navigating a character through ice tiles, ledges, and obstacles to reach the goal.
           </p>
           <p>
-            The twist? You have exactly <strong>10 moves</strong> to solve it, and you only get 
-            <strong>3 lives</strong>. Make a wrong move, lose a life, and get a time penalty. 
+            The twist? You have exactly <strong>10 moves</strong> to solve it, and you only get <strong>3 lives</strong>. 
+            Make a wrong move, lose a life, and get a time penalty. 
             It&apos;s simple to learn but challenging to master.
           </p>
         </section>
@@ -177,7 +178,7 @@ export default function About() {
           
           <div className={styles.faqItem}>
             <h3>How is my score calculated?</h3>
-            <p>Your score is based on time. Each life lost adds a 10-second penalty. 
+            <p>Your score is based on time. Each life lost adds a {PENALTY_MS / 1000}-second penalty. 
                Completing the puzzle perfectly (on your first attempt) gives the best score.</p>
           </div>
           

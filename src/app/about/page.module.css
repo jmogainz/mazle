@@ -1,5 +1,7 @@
 .main {
-  min-height: 100vh;
+  height: var(--vh);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 1.5rem 1rem 3rem;
   max-width: 720px;
   margin: 0 auto;
@@ -62,6 +64,18 @@
 
 .section p:last-child {
   margin-bottom: 0;
+}
+
+/* Standard lists (like in Privacy Policy) */
+.section ul:not(.featureList) {
+  padding-left: 1.5rem;
+  margin-bottom: 1rem;
+  list-style-type: disc;
+}
+
+.section ul:not(.featureList) li {
+  margin-bottom: 0.5rem;
+  color: var(--color-secondary);
 }
 
 .featureList {

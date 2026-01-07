@@ -1,8 +1,22 @@
 'use client';
 
-import { MapType, GenerationProgress, GeneratorBackend, isRustBackendConfigured } from '@/game';
+import { useState, useCallback } from 'react';
+import { MapType, GenerationProgress, GeneratorBackend, isRustBackendConfigured, getRustBackendUrl } from '@/game';
 import { PuzzleData } from '@/game';
 import styles from '../app/page.module.css';
+
+interface CachedSeed {
+  seed: string;
+  generationTimeMs: number;
+  ageSecs: number;
+}
+
+interface SeedsStatus {
+  generating: string[];
+  cached: CachedSeed[];
+  generatingCount: number;
+  cachedCount: number;
+}
 
 interface DevToolsProps {
   puzzle: PuzzleData;
@@ -67,6 +81,44 @@ export default function DevTools({
   onClosenessThresholdChange,
   isProd = false,
 }: DevToolsProps) {
+  const [seedsStatus, setSeedsStatus] = useState<SeedsStatus | null>(null);
+  const [isLoadingSeeds, setIsLoadingSeeds] = useState(false);
+  const [seedsError, setSeedsError] = useState<string | null>(null);
+
+  const fetchSeedsStatus = useCallback(async () => {
+    const backendUrl = getRustBackendUrl();
+    if (!backendUrl) {
+      setSeedsError('Backend not configured');
+      return;
+    }
+
+    setIsLoadingSeeds(true);
+    setSeedsError(null);
+
+    try {
+      const response = await fetch(`${backendUrl}/api/cache/seeds`, {
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data: SeedsStatus = await response.json();
+      setSeedsStatus(data);
+    } catch (err) {
+      setSeedsError(err instanceof Error ? err.message : 'Failed to fetch');
+    } finally {
+      setIsLoadingSeeds(false);
+    }
+  }, []);
+
+  const formatAge = (secs: number): string => {
+    if (secs < 60) return `${secs}s`;
+    if (secs < 3600) return `${Math.floor(secs / 60)}m`;
+    return `${Math.floor(secs / 3600)}h`;
+  };
+
   const progressPercent = generationProgress
     ? Math.round((generationProgress.workersComplete / generationProgress.totalWorkers) * 100)
     : 0;
@@ -318,6 +370,70 @@ export default function DevTools({
             </label>
           </div>
         </div>
+
+        {/* Backend Seeds Status */}
+        {isRustBackendConfigured() && (
+          <div className={styles.devSeedsSection}>
+            <div className={styles.devSeedsHeader}>
+              <span className={styles.devSeedsTitle}>Backend Seeds</span>
+              <button
+                type="button"
+                className={styles.devSeedsRefreshBtn}
+                onClick={fetchSeedsStatus}
+                disabled={isLoadingSeeds}
+              >
+                {isLoadingSeeds ? '...' : '↻ Refresh'}
+              </button>
+            </div>
+            <div className={styles.devSeedsContent}>
+              {seedsError ? (
+                <div className={styles.devSeedsEmpty}>{seedsError}</div>
+              ) : !seedsStatus ? (
+                <div className={styles.devSeedsEmpty}>Click refresh to load</div>
+              ) : (
+                <>
+                  {seedsStatus.generatingCount > 0 && (
+                    <div className={styles.devSeedsGroup}>
+                      <div className={styles.devSeedsGroupLabel}>
+                        Generating
+                        <span className={styles.devSeedsCount}>{seedsStatus.generatingCount}</span>
+                      </div>
+                      <div className={styles.devSeedsList}>
+                        {seedsStatus.generating.map((seed) => (
+                          <div key={seed} className={`${styles.devSeedItem} ${styles.devSeedGenerating}`}>
+                            <span className={styles.devSeedName}>{seed}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {seedsStatus.cachedCount > 0 && (
+                    <div className={styles.devSeedsGroup}>
+                      <div className={styles.devSeedsGroupLabel}>
+                        Cached
+                        <span className={styles.devSeedsCount}>{seedsStatus.cachedCount}</span>
+                      </div>
+                      <div className={styles.devSeedsList}>
+                        {seedsStatus.cached.map((item) => (
+                          <div key={item.seed} className={`${styles.devSeedItem} ${styles.devSeedCached}`}>
+                            <span className={styles.devSeedName}>{item.seed}</span>
+                            <span className={styles.devSeedMeta}>
+                              <span>{(item.generationTimeMs / 1000).toFixed(1)}s</span>
+                              <span>{formatAge(item.ageSecs)} ago</span>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {seedsStatus.generatingCount === 0 && seedsStatus.cachedCount === 0 && (
+                    <div className={styles.devSeedsEmpty}>No seeds in backend</div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Controls */}
         <div className={styles.devControls}>

@@ -2,6 +2,7 @@
 
 use crate::types::PuzzleData;
 use log::info;
+use serde_json;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
@@ -289,6 +290,36 @@ impl PuzzleCache {
             .read()
             .ok()
             .map(|e| e.keys().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    /// Get all seeds currently being generated
+    pub fn generating_seeds(&self) -> Vec<String> {
+        self.in_progress
+            .read()
+            .ok()
+            .map(|s| s.iter().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    /// Get all cached seeds with metadata for DevTools display
+    pub fn cached_seeds_with_metadata(&self) -> Vec<serde_json::Value> {
+        self.entries
+            .read()
+            .ok()
+            .map(|entries| {
+                entries
+                    .iter()
+                    .map(|(seed, cached)| {
+                        let age_secs = cached.generated_at.elapsed().as_secs();
+                        serde_json::json!({
+                            "seed": seed,
+                            "generationTimeMs": cached.generation_time_ms,
+                            "ageSecs": age_secs,
+                        })
+                    })
+                    .collect()
+            })
             .unwrap_or_default()
     }
 

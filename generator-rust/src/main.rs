@@ -115,6 +115,19 @@ async fn cache_status(State(state): State<AppState>) -> Json<serde_json::Value> 
     }))
 }
 
+/// Detailed seeds status endpoint for DevTools
+async fn seeds_status(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let generating = state.cache.generating_seeds();
+    let cached = state.cache.cached_seeds_with_metadata();
+
+    Json(json!({
+        "generating": generating,
+        "cached": cached,
+        "generatingCount": generating.len(),
+        "cachedCount": cached.len(),
+    }))
+}
+
 /// Generate puzzle by seed (GET)
 async fn generate_by_seed(
     Path(seed): Path<String>,
@@ -497,6 +510,7 @@ fn build_router(cache: Arc<PuzzleCache>) -> Router {
         .route("/api/generate", post(generate_post))
         .route("/api/generate/batch", post(generate_batch))
         .route("/api/cache/status", get(cache_status))
+        .route("/api/cache/seeds", get(seeds_status))
         .layer(cors)
         .with_state(state)
 }

@@ -33,6 +33,7 @@ interface DevToolsProps {
   canStopGeneration: boolean;
   closenessThreshold: number;
   onClosenessThresholdChange: (value: number) => void;
+  isProd?: boolean;
 }
 
 export default function DevTools({
@@ -64,6 +65,7 @@ export default function DevTools({
   canStopGeneration,
   closenessThreshold,
   onClosenessThresholdChange,
+  isProd = false,
 }: DevToolsProps) {
   const progressPercent = generationProgress
     ? Math.round((generationProgress.workersComplete / generationProgress.totalWorkers) * 100)
@@ -319,54 +321,62 @@ export default function DevTools({
 
         {/* Controls */}
         <div className={styles.devControls}>
-          <input
-            value={seedInput}
-            onChange={(e) => onSeedInputChange(e.target.value)}
-            placeholder="Custom seed or YYYY-MM-DD"
-            className={styles.devInput}
-            disabled={isGenerating}
-          />
-          <div className={styles.devInputRow}>
-            <select
-              value={selectedMapType}
-              onChange={(e) => onMapTypeChange(e.target.value as MapType | 'random')}
-              className={styles.devSelect}
-              disabled={isGenerating}
-            >
-              <option value="random">Random Map</option>
-              <option value={MapType.ICE}>Ice Map</option>
-              <option value={MapType.GROUND}>Ground Map</option>
-            </select>
-            <input
-              value={startBatchInput}
-              onChange={(e) => onStartBatchInputChange(e.target.value.replace(/\D/g, ''))}
-              placeholder="Start batch #"
-              className={styles.devInputSmall}
-              disabled={isGenerating}
-              title="Start generation at a specific batch number (deterministic)"
-            />
-          </div>
+          {!isProd && (
+            <>
+              <input
+                value={seedInput}
+                onChange={(e) => onSeedInputChange(e.target.value)}
+                placeholder="Custom seed or YYYY-MM-DD"
+                className={styles.devInput}
+                disabled={isGenerating}
+              />
+              <div className={styles.devInputRow}>
+                <select
+                  value={selectedMapType}
+                  onChange={(e) => onMapTypeChange(e.target.value as MapType | 'random')}
+                  className={styles.devSelect}
+                  disabled={isGenerating}
+                >
+                  <option value="random">Random Map</option>
+                  <option value={MapType.ICE}>Ice Map</option>
+                  <option value={MapType.GROUND}>Ground Map</option>
+                </select>
+                <input
+                  value={startBatchInput}
+                  onChange={(e) => onStartBatchInputChange(e.target.value.replace(/\D/g, ''))}
+                  placeholder="Start batch #"
+                  className={styles.devInputSmall}
+                  disabled={isGenerating}
+                  title="Start generation at a specific batch number (deterministic)"
+                />
+              </div>
+            </>
+          )}
           <div className={styles.devButtonRow}>
-            <button
-              type="button"
-              className={styles.devButton}
-              onClick={() => onGenerate(seedInput)}
-              disabled={isGenerating}
-            >
-              Load
-            </button>
-            <button
-              type="button"
-              className={styles.devButtonSecondary}
-              onClick={() => onGenerate()}
-              disabled={isGenerating}
-            >
-              {isGenerating ? (
-                <span className={styles.buttonSpinner} />
-              ) : (
-                '🎲 Random'
-              )}
-            </button>
+            {!isProd && (
+              <>
+                <button
+                  type="button"
+                  className={styles.devButton}
+                  onClick={() => onGenerate(seedInput)}
+                  disabled={isGenerating}
+                >
+                  Load
+                </button>
+                <button
+                  type="button"
+                  className={styles.devButtonSecondary}
+                  onClick={() => onGenerate()}
+                  disabled={isGenerating}
+                >
+                  {isGenerating ? (
+                    <span className={styles.buttonSpinner} />
+                  ) : (
+                    '🎲 Random'
+                  )}
+                </button>
+              </>
+            )}
             <button
               type="button"
               className={styles.devButtonGhost}

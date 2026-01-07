@@ -617,6 +617,137 @@
   opacity: 0.7;
 }
 
+/* Seeds Status Section */
+.devSeedsSection {
+  margin-bottom: 0.75rem;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.devSeedsHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.devSeedsTitle {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  color: var(--color-secondary);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.devSeedsRefreshBtn {
+  font-size: 0.6rem;
+  padding: 0.25rem 0.5rem;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: var(--color-text);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.devSeedsRefreshBtn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: var(--color-primary);
+}
+
+.devSeedsRefreshBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.devSeedsContent {
+  padding: 0.5rem 0.75rem;
+}
+
+.devSeedsEmpty {
+  font-size: 0.65rem;
+  color: var(--color-secondary);
+  text-align: center;
+  padding: 0.5rem;
+  opacity: 0.7;
+}
+
+.devSeedsGroup {
+  margin-bottom: 0.5rem;
+}
+
+.devSeedsGroup:last-child {
+  margin-bottom: 0;
+}
+
+.devSeedsGroupLabel {
+  font-size: 0.55rem;
+  text-transform: uppercase;
+  color: var(--color-secondary);
+  margin-bottom: 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.devSeedsCount {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+  font-size: 0.5rem;
+}
+
+.devSeedsList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-height: 100px;
+  overflow-y: auto;
+}
+
+.devSeedItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.25rem 0.5rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  font-size: 0.6rem;
+}
+
+.devSeedName {
+  font-family: monospace;
+  color: var(--color-text);
+}
+
+.devSeedMeta {
+  display: flex;
+  gap: 0.5rem;
+  color: var(--color-secondary);
+  font-size: 0.5rem;
+}
+
+.devSeedGenerating {
+  border-left: 2px solid var(--color-warning);
+}
+
+.devSeedGenerating .devSeedName::before {
+  content: '⏳';
+  margin-right: 0.25rem;
+}
+
+.devSeedCached {
+  border-left: 2px solid var(--color-success);
+}
+
+.devSeedCached .devSeedName::before {
+  content: '✓';
+  margin-right: 0.25rem;
+  color: var(--color-success);
+}
+
 .buttonSpinner {
   display: inline-block;
   width: 12px;

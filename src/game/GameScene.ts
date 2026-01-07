@@ -1510,16 +1510,6 @@ export class GameScene extends Phaser.Scene {
     // Hide player
     this.player.setVisible(false);
 
-    // Record winning attempt
-    const deviationIndex = this.findDeviationIndex(this.gameState.moveHistory, this.puzzle.solutionPath || []);
-    this.gameState.attempts.push({
-      moveCount: this.gameState.currentAttemptMoves,
-      correctMoves: this.gameState.currentAttemptCorrectMoves,
-      path: [...this.gameState.moveHistory],
-      failedAt: undefined,
-      deviationIndex,
-    });
-
     // Show analysis
     this.drawEndGameAnalysis();
 

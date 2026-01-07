@@ -57,7 +57,6 @@ export class GameScene extends Phaser.Scene {
   private solutionIndexByKey: Map<string, number> | null = null;
   private solutionNextByKey: Map<string, string> | null = null;
   private solutionPosByKey: Map<string, Position> | null = null;
-  private solutionEdges: Set<string> | null = null; // All edges in solution for correct move counting
 
   private unlockedHintTiles: Set<string> = new Set();
   private unlockedHintEdges: Set<string> = new Set();
@@ -183,6 +182,7 @@ export class GameScene extends Phaser.Scene {
       moveCount: 0,
       currentAttemptMoves: 0,
       currentAttemptCorrectMoves: 0,
+      currentAttemptVisitedSolutionTiles: new Set<string>(),
       lives: this.maxLives,
       penaltyTimeMs: 0,
       isPaused: false,
@@ -701,6 +701,7 @@ export class GameScene extends Phaser.Scene {
     // Reset for next life
     this.gameState.currentAttemptMoves = 0;
     this.gameState.currentAttemptCorrectMoves = 0;
+    this.gameState.currentAttemptVisitedSolutionTiles = new Set<string>();
     this.gameState.moveHistory = [{ ...this.puzzle.start }];
     this.gameState.playerPos = { ...this.puzzle.start };
 
@@ -1631,6 +1632,7 @@ export class GameScene extends Phaser.Scene {
       moveCount: 0,
       currentAttemptMoves: 0,
       currentAttemptCorrectMoves: 0,
+      currentAttemptVisitedSolutionTiles: new Set<string>(),
       lives: this.maxLives,
       penaltyTimeMs: 0,
       isPaused: false,
@@ -1673,14 +1675,12 @@ export class GameScene extends Phaser.Scene {
       this.solutionIndexByKey = null;
       this.solutionNextByKey = null;
       this.solutionPosByKey = null;
-      this.solutionEdges = null;
       return;
     }
 
     const indexByKey = new Map<string, number>();
     const nextByKey = new Map<string, string>();
     const posByKey = new Map<string, Position>();
-    const edges = new Set<string>();
 
     for (let i = 0; i < path.length; i++) {
       const key = positionKey(path[i]);
@@ -1689,18 +1689,16 @@ export class GameScene extends Phaser.Scene {
       if (i + 1 < path.length) {
         const nextKey = positionKey(path[i + 1]);
         nextByKey.set(key, nextKey);
-        edges.add(`${key}->${nextKey}`);
       }
     }
 
     this.solutionIndexByKey = indexByKey;
     this.solutionNextByKey = nextByKey;
     this.solutionPosByKey = posByKey;
-    this.solutionEdges = edges;
   }
 
   private recordHintProgress(fromPos: Position, toPos: Position) {
-    if (!this.solutionIndexByKey || !this.solutionNextByKey || !this.solutionEdges) return;
+    if (!this.solutionIndexByKey || !this.solutionNextByKey) return;
     if (this.gameState.isComplete) return;
 
     const startKey = positionKey(this.puzzle.start);
@@ -1710,9 +1708,13 @@ export class GameScene extends Phaser.Scene {
     const toKey = positionKey(toPos);
     const edgeKey = `${fromKey}->${toKey}`;
 
-    // 1) Check if this move is ANY correct move in the solution (for scoring)
-    if (this.solutionEdges.has(edgeKey)) {
-      this.gameState.currentAttemptCorrectMoves++;
+    // 1) Track unique solution tiles visited (for scoring)
+    const toIndex = this.solutionIndexByKey.get(toKey);
+    if (toIndex !== undefined && toKey !== startKey && toKey !== goalKey) {
+      if (!this.gameState.currentAttemptVisitedSolutionTiles.has(toKey)) {
+        this.gameState.currentAttemptVisitedSolutionTiles.add(toKey);
+        this.gameState.currentAttemptCorrectMoves = this.gameState.currentAttemptVisitedSolutionTiles.size;
+      }
     }
 
     // Visual hint unlocking (only if hints enabled)
@@ -2225,6 +2227,7 @@ export class GameScene extends Phaser.Scene {
     lives: number;
     currentAttemptMoves: number;
     currentAttemptCorrectMoves: number;
+    currentAttemptVisitedSolutionTiles?: string[];
     moveCount: number;
     elapsedTimeMs: number;
     penaltyTimeMs: number;
@@ -2246,6 +2249,7 @@ export class GameScene extends Phaser.Scene {
       lives: this.gameState.lives,
       currentAttemptMoves: this.gameState.currentAttemptMoves,
       currentAttemptCorrectMoves: this.gameState.currentAttemptCorrectMoves,
+      currentAttemptVisitedSolutionTiles: this.gameState.currentAttemptVisitedSolutionTiles.size > 0 ? Array.from(this.gameState.currentAttemptVisitedSolutionTiles) : undefined,
       moveCount: this.gameState.moveCount,
       elapsedTimeMs,
       penaltyTimeMs: this.gameState.penaltyTimeMs,
@@ -2266,6 +2270,7 @@ export class GameScene extends Phaser.Scene {
     lives: number;
     currentAttemptMoves: number;
     currentAttemptCorrectMoves: number;
+    currentAttemptVisitedSolutionTiles?: string[];
     moveCount: number;
     elapsedTimeMs: number;
     penaltyTimeMs: number;
@@ -2283,6 +2288,7 @@ export class GameScene extends Phaser.Scene {
     this.gameState.lives = state.lives;
     this.gameState.currentAttemptMoves = state.currentAttemptMoves;
     this.gameState.currentAttemptCorrectMoves = state.currentAttemptCorrectMoves;
+    this.gameState.currentAttemptVisitedSolutionTiles = new Set(state.currentAttemptVisitedSolutionTiles ?? []);
     this.gameState.moveCount = state.moveCount;
     this.gameState.penaltyTimeMs = state.penaltyTimeMs;
     this.gameState.attempts = state.attempts.map(a => ({ ...a, path: [...a.path] }));

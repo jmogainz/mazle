@@ -71,6 +71,7 @@ export interface GameState {
   moveCount: number;
   currentAttemptMoves: number;
   currentAttemptCorrectMoves: number;
+  currentAttemptVisitedSolutionTiles: Set<string>;
   lives: number;
   penaltyTimeMs: number;
   isPaused: boolean;

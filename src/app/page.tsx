@@ -1279,7 +1279,6 @@ export default function Home() {
           <ShareCard
             puzzleNumber={puzzleNumber}
             puzzleLabel={puzzleLabel ?? undefined}
-            moveCount={gameResult.moveCount}
             timeMs={gameResult.timeMs}
             optimalMoves={puzzle.optimalMoves}
             failed={gameResult.failed}

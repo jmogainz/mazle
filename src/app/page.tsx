@@ -83,6 +83,7 @@ export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState<GenerationProgress | null>(null);
   const [showInlineResult, setShowInlineResult] = useState(false);
+  const [isFreshCompletion, setIsFreshCompletion] = useState(false); // True when game completed this session (not loaded from storage)
   const [hintsEnabled, setHintsEnabled] = useState(true);
   const [devMaxLives, setDevMaxLives] = useState(3);
   const [lifeFlash, setLifeFlash] = useState(false);
@@ -491,6 +492,7 @@ export default function Home() {
     setShowShareCard(false);
     setShowInlineResult(false);
     setIsPlaying(false);
+    setIsFreshCompletion(false); // Reset - will be set true only by gameComplete event
 
     // Helper to set scoreboard stats for a finished game once we have the puzzle.
     const setResultStats = (optimalMoves: number) => {
@@ -603,6 +605,7 @@ export default function Home() {
       setGameResult(result);
       setShowShareCard(true);
       setIsPlaying(false); // Ensure game is marked as not playing to show blocked state
+      setIsFreshCompletion(true); // Mark as fresh completion (not loaded from storage)
 
       // Set initialStats so scoreboard stays frozen at completion state
       const failedAttempts = result.attempts?.length ?? 0;
@@ -614,34 +617,8 @@ export default function Home() {
         penaltyTimeMs: 0, // Already included in timeMs
       });
 
-      // Clear in-progress state since game is complete
-      clearInProgressState();
-
-      if (debugModeRef.current) {
-        return;
-      }
-
-      // Save result if not already saved today
-      if (!previousResult) {
-        console.log('[SAVE] Saving daily result:', result);
-        const todayDateStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-        const dailyResult: DailyStats = {
-          date: todayDateStr,
-          completed: !result.failed,
-          moveCount: result.moveCount,
-          timeMs: result.timeMs,
-          puzzleNumber,
-          attempts: result.attempts,
-          failed: result.failed,
-        };
-        saveTodaysResult(dailyResult);
-        setStats(getPlayerStats());
-        setPreviousResult(dailyResult);
-        console.log('[SAVE] Result saved, previousResult updated');
-
-      } else {
-        console.log('[SAVE] Skipped - previousResult already exists:', previousResult);
-      }
+      // Result is already saved in stateUpdate handler when isComplete becomes true
+      // This handler now only triggers UI updates after animation completes
     });
 
     const unsubscribeLifeLost = onGameEvent('lifeLost', (data) => {
@@ -662,8 +639,32 @@ export default function Home() {
       if (debugModeRef.current || previousResult) return;
 
       const serializableState = gameControlsRef.current?.getSerializableState();
-      if (serializableState && serializableState.isPlaying && activeSeed) {
-        saveInProgressState(activeSeed, serializableState);
+      if (serializableState && activeSeed) {
+        if (serializableState.isComplete) {
+          // Game just completed - save result immediately (before animation)
+          clearInProgressState();
+
+          const failed = serializableState.lives === 0;
+          const timeMs = serializableState.elapsedTimeMs + serializableState.penaltyTimeMs;
+          const todayDateStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+
+          const dailyResult: DailyStats = {
+            date: todayDateStr,
+            completed: !failed,
+            moveCount: serializableState.moveCount,
+            timeMs,
+            puzzleNumber,
+            attempts: serializableState.attempts,
+            failed,
+          };
+
+          saveTodaysResult(dailyResult);
+          setStats(getPlayerStats());
+          setPreviousResult(dailyResult);
+          console.log('[SAVE] Result saved immediately on completion');
+        } else if (serializableState.isPlaying) {
+          saveInProgressState(activeSeed, serializableState);
+        }
       }
     };
     const unsubscribeStateUpdate = onGameEvent('stateUpdate', persistInProgressState);
@@ -928,11 +929,14 @@ export default function Home() {
   }, [showAnalysis]);
 
   const handleShowShareCard = useCallback(() => {
-    showAnalysis();
-    setShowInlineResult(true);
+    // Only show analysis if already in inline result view
+    // (Don't transition if user is on "View Result" overlay - they can view analysis separately)
+    if (showInlineResult) {
+      showAnalysis();
+    }
     setIsPlaying(false);
     setShowShareCard(true);
-  }, [showAnalysis]);
+  }, [showAnalysis, showInlineResult]);
 
   const handleStopGeneration = useCallback(() => {
     const controller = generationAbortRef.current;
@@ -964,12 +968,18 @@ export default function Home() {
   }, []);
 
   const handleCloseShareCard = useCallback(() => {
-    // Hide the share card but keep inline analysis visible
     setShowShareCard(false);
-    setShowInlineResult(true);
     setReviewAttemptIndex(null);
-    showAnalysis();
-  }, [showAnalysis]);
+
+    // Only transition to inline result view if:
+    // 1. Already in inline result view, OR
+    // 2. This is a fresh game completion (not just returning to a previous result)
+    if (showInlineResult || isFreshCompletion) {
+      setShowInlineResult(true);
+      showAnalysis();
+    }
+    // Otherwise, return to "View Result" overlay state
+  }, [showAnalysis, showInlineResult, isFreshCompletion]);
 
   // Calculate progress percentage (works for both loading screen and dev tools)
   const progressPercent = generationProgress
@@ -985,7 +995,7 @@ export default function Home() {
   const displayOptimalMoves = puzzle?.optimalMoves ?? 10;
   const isPostGame = hasPuzzle && !isPlaying && (!!gameResult || !!previousResult);
   const shouldBlur = showShareCard || (hasPuzzle && !isPlaying && isGameReady && !showInlineResult);
-  const showResultsButton = showInlineResult;
+  const showResultsButton = showInlineResult || (!!previousResult && !isPlaying);
 
   return (
     <ErrorBoundary>

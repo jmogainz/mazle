@@ -9,6 +9,7 @@ import {
   leaderboardZsetKey,
   LB_NAMES_KEY,
 } from '@/lib/server/leaderboard';
+import { ensureDevLeaderboardSeed } from '@/lib/server/leaderboardSeed';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -32,6 +33,7 @@ export async function GET(request: Request) {
   }
 
   try {
+    await ensureDevLeaderboardSeed(redis, dateParam);
     const me = await resolveSubjectIdentity(request);
     const mySubjectKey = subjectKeyFor({ userId: me.subjectType === 'user' ? me.subjectId : null, guestId: me.guestId });
     const indexKey = leaderboardMemberIndexKey(dateParam);

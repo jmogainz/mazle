@@ -61,6 +61,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
   const gameControlsRef = useRef<GameControls | null>(null);
   const gameFrameRef = useRef<HTMLDivElement | null>(null);
   const gameStageRef = useRef<HTMLDivElement | null>(null);
+  const menuButtonRef = useRef<HTMLButtonElement | null>(null);
   const [gameFrameSizePx, setGameFrameSizePx] = useState<{ width: number; height: number } | null>(null);
 
   const safeDate = useMemo(() => (isValidNyDateString(date) ? date : null), [date]);
@@ -325,6 +326,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
           onHelpClick={() => setShowHelp(true)}
           onStatsClick={() => setShowStats(true)}
           onMenuClick={showMenuButton ? () => setShowMenu(true) : undefined}
+          menuButtonRef={menuButtonRef}
         />
         <MoreMenuModal
           open={showMenu}
@@ -332,6 +334,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
           onOpenLeaderboard={() => setShowLeaderboard(true)}
           onOpenAccount={() => setShowAccount(true)}
           onOpenArchive={onBackToArchive}
+          triggerButtonRef={menuButtonRef}
         />
         <div className={styles.errorCard}>
           <div className={styles.errorTitle}>
@@ -376,6 +379,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
           onHelpClick={() => setShowHelp(true)}
           onStatsClick={() => setShowStats(true)}
           onMenuClick={showMenuButton ? () => setShowMenu(true) : undefined}
+          menuButtonRef={menuButtonRef}
         />
 
         <div className={baseStyles.gameWrapper}>
@@ -469,6 +473,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
           onOpenLeaderboard={() => setShowLeaderboard(true)}
           onOpenAccount={() => setShowAccount(true)}
           onOpenArchive={onBackToArchive}
+          triggerButtonRef={menuButtonRef}
         />
 
         {showLeaderboard && (

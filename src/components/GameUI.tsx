@@ -203,14 +203,72 @@ export default function GameUI({
                 <div key={i} className={`${styles.lifeNode} ${styles.skeletonLife}`} />
               ))
             ) : (
-              // Real lives
-              Array.from({ length: maxLives }).map((_, i) => {
-                const isLost = i >= lives;
-                const isActive = i < lives;
-                const attemptIndex = (maxLives - 1) - i;
-                const canSelect = !hintsEnabled && onReviewAttempt;
-                const isSelected = reviewAttemptIndex === attemptIndex;
-                const isHintTarget = reviewHintTarget === i;
+	              // Real lives
+	              Array.from({ length: maxLives }).map((_, i) => {
+	                /*
+	                UI overhaul notes (preserved):
+
+	                // Logic:
+	                // i < lives: Active/Remaining lives (usually just one "current" unless we change logic, but let's assume lives=count)
+	                // i >= lives: Lost lives (history)
+	                //
+	                // Actually, standard logic:
+	                // lives = 3. i=0,1,2.
+	                // If lives=3 (start), all active.
+	                // If lives=2, index 0,1 active? Or index 2 lost?
+	                // Usually: 3 lives means we have 3 attempts.
+	                // If lives=2, we have used 1.
+	                // The visual is typically: "Remaining Lives".
+	                // So if lives=3: [X] [X] [X]
+	                // If lives=2: [X] [X] [ ]
+	                // So index < lives are active. index >= lives are lost.
+	                //
+	                // Mapping attempt index to life node:
+	                // Attempt 0 corresponds to the *first* lost life node?
+	                // Let's say maxLives=3.
+	                // Attempt 1 fails. lives -> 2. We have 1 attempt in history (index 0).
+	                // Which node represents attempt 0?
+	                // Standard approach: Right-to-left or Left-to-right loss?
+	                // Current CSS: i < lives ? lifeActive : lifeLost.
+	                // This implies "Active" ones are on the left (0..lives-1).
+	                // "Lost" ones are on the right (lives..maxLives-1).
+	                // Example: Start (lives=3): [0:Active] [1:Active] [2:Active]
+	                // Lose 1 (lives=2): [0:Active] [1:Active] [2:Lost] -> Attempt 0 stored.
+	                // So "Lost" node at index 2 corresponds to Attempt 0?
+	                // Lose another (lives=1): [0:Active] [1:Lost] [2:Lost] -> Attempt 1 stored.
+	                // So "Lost" node at index 1 corresponds to Attempt 1.
+	                // This reverse mapping is confusing for selection.
+	                //
+	                // Better Mapping:
+	                // Let's say attempts are pushed to an array: [Attempt0, Attempt1].
+	                // We have `maxLives` slots.
+	                // Slot 0: Attempt 0 (if lost) OR Current Life (if active).
+	                // Slot 1: Attempt 1 (if lost) OR Current Life (if active).
+	                // This suggests we should render slots based on *attempts made*.
+	                // But the current UI is "Lives Remaining".
+	                // Let's stick to the visual: "Lost lives are clickable".
+	                // If I have 3 lives, and I lose one, I have 2 left.
+	                // The "Lost" indicator is distinct.
+	                // Let's make *any* lost life clickable to see the attempt that *caused* that loss.
+	                //
+	                // Calculating the attempt index for a lost life node:
+	                // If we fill from right-to-left (standard for hearts/lives):
+	                // lives=3: [ ][ ][ ]
+	                // lives=2: [ ][ ][X] (X is index 2. Attempt #0).
+	                // lives=1: [ ][X][X] (Index 1 is Attempt #1. Index 2 is Attempt #0).
+	                // lives=0: [X][X][X] (Index 0 is Attempt #2).
+	                // Formula: attemptIndex = (maxLives - 1) - i
+	                // Check:
+	                // i=2, max=3 -> 2-2 = 0. Correct.
+	                // i=1, max=3 -> 2-1 = 1. Correct.
+	                // i=0, max=3 -> 2-0 = 2. Correct.
+	                */
+	                const isLost = i >= lives;
+	                const isActive = i < lives;
+	                const attemptIndex = (maxLives - 1) - i;
+	                const canSelect = !hintsEnabled && onReviewAttempt;
+	                const isSelected = reviewAttemptIndex === attemptIndex;
+	                const isHintTarget = reviewHintTarget === i;
 
                 const handleClick = () => {
                   if (!canSelect) return;

@@ -1,5 +1,6 @@
 import { realApi } from './real';
 import type {
+  ArchiveDaysResponse,
   LeaderboardAroundResponse,
   LeaderboardMeResponse,
   LeaderboardTopResponse,
@@ -15,8 +16,9 @@ const CACHE = new Map<string, CacheEntry<unknown>>();
 const INFLIGHT = new Map<string, { promise: Promise<unknown>; epoch: number }>();
 const EPOCH = new Map<string, number>();
 
-const ME_TTL_MS = 5 * 60 * 1000;
-const LEADERBOARD_TTL_MS = 20 * 1000;
+const ME_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const LEADERBOARD_TTL_MS = 5 * 60 * 1000; // 5 minutes (longer for better navigation UX)
+const ARCHIVE_DAYS_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 function nowMs(): number {
   return Date.now();
@@ -99,6 +101,10 @@ function leaderboardAroundKey(date: string, rank: number, window: number): strin
   return `lb:around:${date}:${rank}:${window}`;
 }
 
+function archiveDaysKey(from: string, to: string): string {
+  return `archive:days:${from}:${to}`;
+}
+
 export const cachedApi = {
   me: async (): Promise<MeResponse> => fetchCached('me', () => realApi.me(), ME_TTL_MS),
 
@@ -165,4 +171,16 @@ export function prefetchLeaderboard(date: string, limit = 50): void {
     },
     LEADERBOARD_TTL_MS
   );
+}
+
+export function prefetchArchiveDays(from: string, to: string): void {
+  primeCache(archiveDaysKey(from, to), () => realApi.archiveDays(from, to), ARCHIVE_DAYS_TTL_MS);
+}
+
+export function readCachedArchiveDays(from: string, to: string): ArchiveDaysResponse | null {
+  return readCache<ArchiveDaysResponse>(archiveDaysKey(from, to));
+}
+
+export async function getCachedArchiveDays(from: string, to: string): Promise<ArchiveDaysResponse> {
+  return fetchCached(archiveDaysKey(from, to), () => realApi.archiveDays(from, to), ARCHIVE_DAYS_TTL_MS);
 }

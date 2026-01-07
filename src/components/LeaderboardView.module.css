@@ -7,10 +7,90 @@
   margin: 0 0 0.75rem 0;
 }
 
+/* Grid now acts as a flex column container */
 .grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 1rem;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-height: 75vh;
+  gap: 0;
+  overflow: hidden;
+  position: relative;
+  /* For absolute positioning of header arrows */
+}
+
+/* Horizontal carousel with scroll-snap */
+.carousel {
+  display: flex;
+  flex: 1;
+  gap: 1.5rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  /* Hide scrollbar */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.carousel::-webkit-scrollbar {
+  display: none;
+}
+
+
+
+/* Each day panel takes full width */
+.dayPanel {
+  flex: 0 0 100%;
+  width: 100%;
+  min-width: 100%;
+  padding: 0 0.5rem;
+  box-sizing: border-box;
+  scroll-snap-align: center;
+  scroll-snap-stop: always;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  /* Custom Scrollbar for vertical scroll */
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.dayPanel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.dayPanel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dayPanel::-webkit-scrollbar-thumb {
+  background-color: var(--color-border);
+  border-radius: 20px;
+}
+
+/* Day title inside each panel - slides with content */
+.dayTitle {
+  text-align: center;
+  padding: 0.5rem 0 1rem;
+  flex-shrink: 0;
+}
+
+.dayTitleMain {
+  font-weight: 900;
+  font-size: 1.1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text);
+  line-height: 1.2;
+}
+
+.dayTitleSub {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-secondary);
+  margin-top: 0.1rem;
 }
 
 .panel {
@@ -18,6 +98,42 @@
   border: 1px solid var(--color-border);
   border-radius: 10px;
   padding: 0.9rem;
+}
+
+/* Scrollable container for the list */
+.scrollArea {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  /* Required for flex scrolling */
+  padding-bottom: 0.5rem;
+  /* Custom Scrollbar */
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.scrollArea::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollArea::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollArea::-webkit-scrollbar-thumb {
+  background-color: var(--color-border);
+  border-radius: 20px;
+}
+
+/* Sticky footer for user rank */
+.footer {
+  margin-top: auto;
+  border-top: 1px solid var(--color-border);
+  padding-top: 0.75rem;
+  padding-bottom: 0.25rem;
+  background: var(--color-background);
+  /* Ensure opaque background */
+  z-index: 10;
 }
 
 .meRow {
@@ -97,6 +213,31 @@
   cursor: not-allowed;
 }
 
+.submitButtonSmall {
+  background: var(--color-primary);
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.45rem 0.85rem;
+  font-weight: 800;
+  font-size: 0.75rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 0.06s ease;
+  font-family: var(--font-main);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.submitButtonSmall:active {
+  transform: scale(0.96);
+}
+
+.submitButtonSmall:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .list {
   display: flex;
   flex-direction: column;
@@ -159,3 +300,135 @@
   border-radius: 10px;
 }
 
+/* Header with navigation arrows - positioned over carousel */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: absolute;
+  top: 0.5rem;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.navButton {
+  background: transparent;
+  border: none;
+  padding: 0.5rem;
+  font-weight: 400;
+  font-size: 1.25rem;
+  cursor: pointer;
+  color: var(--color-secondary);
+  transition: color 0.15s, opacity 0.15s;
+  line-height: 1;
+  pointer-events: auto;
+}
+
+.navButton:hover {
+  color: var(--color-text);
+}
+
+.navButton:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+.headerCenter {
+  text-align: center;
+  flex: 1;
+}
+
+.headerTitle {
+  font-weight: 900;
+  font-size: 1.1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text);
+  line-height: 1.2;
+}
+
+.headerSubtitle {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-secondary);
+  margin-top: 0.1rem;
+}
+
+/* Podium */
+.podium {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding: 0.5rem 0;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.podiumColumn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 80px;
+  max-width: 100px;
+  width: 30%;
+}
+
+.podiumBar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border-radius: 10px 10px 0 0;
+  padding: 0.5rem 0.25rem;
+  width: 100%;
+  border-bottom-left-radius: 8px;
+  /* Slightly different look since it sits on line? Or keep rounded */
+  border-bottom-right-radius: 8px;
+  border-radius: 8px;
+  /* Match previous look */
+}
+
+.podiumGold {
+  background: linear-gradient(180deg, #FFD700 0%, #FFA500 100%);
+  height: 110px;
+}
+
+.podiumSilver {
+  background: linear-gradient(180deg, #E8E8E8 0%, #A0A0A0 100%);
+  height: 90px;
+}
+
+.podiumBronze {
+  background: linear-gradient(180deg, #CD7F32 0%, #8B4513 100%);
+  height: 70px;
+}
+
+.podiumRankBadge {
+  font-size: 1.3rem;
+  font-weight: 900;
+  color: rgba(0, 0, 0, 0.7);
+  margin-bottom: auto;
+}
+
+.podiumName {
+  font-weight: 800;
+  font-size: 0.75rem;
+  color: var(--color-text);
+  text-align: center;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 0.25rem;
+}
+
+.podiumTime {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: rgba(0, 0, 0, 0.6);
+  font-variant-numeric: tabular-nums;
+}

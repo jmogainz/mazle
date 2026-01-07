@@ -8,6 +8,9 @@
   transition: padding 0.15s ease-out;
   border-bottom: none;
   box-shadow: none;
+  /* Ensure header stacking context allows children to pop out if needed, but doesn't override modals */
+  position: relative;
+  z-index: 100;
 }
 
 .leftSection {
@@ -100,6 +103,17 @@
   align-items: center;
   justify-content: center;
   text-decoration: none;
+  position: relative;
+  /* Needed for z-index */
+}
+
+/* Elevated state for when menu is open */
+.iconButtonActive {
+  z-index: 1300;
+  /* Higher than dropdown (1250) */
+  background: var(--color-background);
+  /* Ensure opaque background if needed */
+  border-radius: 6px;
 }
 
 .iconButton svg {

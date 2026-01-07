@@ -1,6 +1,7 @@
 'use client';
 
-import { HINTS_ENABLED } from '@/game/types';
+import React from 'react';
+import { MapType, HINTS_ENABLED } from '@/game/types';
 import styles from './HelpModal.module.css';
 import { HELP_CONTENT } from './helpContent';
 
@@ -9,7 +10,7 @@ interface HelpModalProps {
   hintsEnabled?: boolean;
 }
 
-export default function HelpModal({
+function HelpModal({
   onClose,
   hintsEnabled = HINTS_ENABLED,
 }: HelpModalProps) {
@@ -21,7 +22,7 @@ export default function HelpModal({
             <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
           </svg>
         </button>
-        
+
         <h2 className={styles.title}>{HELP_CONTENT.title}</h2>
 
         <div className={styles.goalSection}>
@@ -167,3 +168,5 @@ export default function HelpModal({
     </div>
   );
 }
+
+export default React.memo(HelpModal);

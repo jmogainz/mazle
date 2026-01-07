@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { api } from '@/lib/api';
-import { cachedApi, fetchLeaderboardMeFresh, fetchLeaderboardTopFresh } from '@/lib/api/cached';
+import { cachedApi, fetchLeaderboardMeFresh, fetchLeaderboardTopFresh, prefetchLeaderboard } from '@/lib/api/cached';
 import type { LeaderboardEntry, LeaderboardMeResponse, LeaderboardTopResponse } from '@/lib/api/types';
+import { MapType } from '@/game/types';
 import { formatTime } from '@/utils/storage';
 import styles from './ShareCard.module.css';
 
@@ -21,6 +22,7 @@ interface ShareCardProps {
   failed?: boolean;
   attempts?: any[]; // Keep flexible for now
   maxLives?: number; // Dynamic lives count (default 3)
+  solutionPath?: { x: number; y: number }[];
   onClose: () => void;
   inline?: boolean;
   secondaryActionLabel?: string;
@@ -28,6 +30,26 @@ interface ShareCardProps {
   footerText?: string;
   leaderboardDate?: string; // NY YYYY-MM-DD
   leaderboardAllowSubmit?: boolean;
+}
+
+function isSamePos(a: { x: number; y: number }, b: { x: number; y: number }) {
+  return a.x === b.x && a.y === b.y;
+}
+
+function positionKey(pos: { x: number; y: number }) {
+  return `${pos.x},${pos.y}`;
+}
+
+// Get emoji for map type
+function getMapEmoji(mapType: MapType): string {
+  switch (mapType) {
+    case MapType.ICE:
+      return '🧊';
+    case MapType.GROUND:
+      return '🟤';
+    default:
+      return '🧩';
+  }
 }
 
 // Fallback copy method using execCommand for older browsers
@@ -64,6 +86,7 @@ export default function ShareCard({
   failed = false,
   attempts = [],
   maxLives = 3,
+  solutionPath,
   onClose,
   inline = false,
   secondaryActionLabel,
@@ -113,6 +136,83 @@ export default function ShareCard({
 
   // Generate progress blocks - one row per attempt/life
   const generateProgressBlocks = (): string => {
+    if (solutionPath) {
+      const getContiguousCorrectMoves = (attempt: any): number => {
+        if (!attempt) return 0;
+
+        if (typeof attempt.deviationIndex === 'number') {
+          if (attempt.deviationIndex === -1) {
+            return Math.min(optimalMoves, solutionPath.length - 1);
+          }
+          return Math.max(0, attempt.deviationIndex - 1);
+        }
+
+        if (!Array.isArray(attempt.path)) {
+          if (attempt.correctMoves !== undefined) return attempt.correctMoves;
+          if (attempt.moveCount !== undefined) return attempt.moveCount;
+          return 0;
+        }
+
+        const maxSteps = Math.min(optimalMoves, solutionPath.length - 1, attempt.path.length - 1);
+        let correct = 0;
+        for (let i = 1; i <= maxSteps; i++) {
+          if (isSamePos(attempt.path[i], solutionPath[i])) correct++;
+          else break;
+        }
+        return correct;
+      };
+
+      const getAttemptStatuses = (attempt: any): ('correct' | 'present' | 'empty')[] => {
+        const hasPathData = attempt && Array.isArray(attempt.path) && attempt.path.length > 0;
+
+        if (!hasPathData) {
+          const correct = getContiguousCorrectMoves(attempt);
+          const statuses: ('correct' | 'present' | 'empty')[] = [];
+          for (let i = 0; i < optimalMoves; i++) statuses.push(i < correct ? 'correct' : 'empty');
+          return statuses;
+        }
+
+        const attemptPath = attempt.path;
+        const attemptKeys = new Set(attemptPath.map((pos: any) => positionKey(pos)));
+        const contiguousCorrect = getContiguousCorrectMoves(attempt);
+
+        const statuses: ('correct' | 'present' | 'empty')[] = [];
+        for (let i = 1; i <= optimalMoves; i++) {
+          const solutionTile = solutionPath[i];
+          if (!solutionTile) {
+            statuses.push('empty');
+            continue;
+          }
+
+          if (i <= contiguousCorrect) statuses.push('correct');
+          else if (attemptKeys.has(positionKey(solutionTile))) statuses.push('present');
+          else statuses.push('empty');
+        }
+        return statuses;
+      };
+
+      const rows: string[] = [];
+      const hasWinRow = !failed;
+
+      for (let i = 0; i < maxLives; i++) {
+        if (i < attempts.length) {
+          const statuses = getAttemptStatuses(attempts[i]);
+          const rowStr = statuses.map((s) => {
+            if (s === 'correct') return '🟩';
+            if (s === 'present') return '🟨';
+            return '⬜';
+          }).join('');
+          rows.push(rowStr);
+        } else if (hasWinRow && i === attempts.length) {
+          rows.push('🟩'.repeat(optimalMoves) + '🏆');
+        } else {
+          rows.push('⬜'.repeat(optimalMoves));
+        }
+      }
+
+      return rows.join('\n');
+    }
+
     const getAttemptProgress = (attempt: any): number => {
       // Prefer correctMoves (new system), fall back to deviationIndex (legacy)
       if (attempt.correctMoves !== undefined) {
@@ -165,6 +265,12 @@ export default function ShareCard({
   const attemptsUsed = failed ? maxLives : Math.min(attempts.length + 1, maxLives);
   const scoreText = failed ? `X/${maxLives}` : `${attemptsUsed}/${maxLives}`;
   const shareText = `Mazle ${displayLabel}\n\n${generateProgressBlocks()}\n\n${formatTime(timeMs)} • ${scoreText}\nmazle.io`;
+
+  // UI overhaul: warm leaderboard cache for instant tab switching.
+  useEffect(() => {
+    if (!leaderboardDate) return;
+    prefetchLeaderboard(leaderboardDate, 20);
+  }, [leaderboardDate]);
 
   const reloadLeaderboard = useCallback(async (force = false) => {
     if (!leaderboardDate) return;

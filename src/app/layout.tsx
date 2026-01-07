@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { Analytics } from '@vercel/analytics/next';
-import { Nunito, Press_Start_2P } from 'next/font/google';
+import { Nunito, Press_Start_2P, Roboto } from 'next/font/google';
 import Script from 'next/script';
 import './globals.css';
 
@@ -21,6 +21,13 @@ const nunito = Nunito({
   weight: ['400', '600', '700', '800'],
   subsets: ['latin'],
   variable: '--font-nunito',
+  display: 'swap',
+});
+
+const roboto = Roboto({
+  weight: ['400', '500'],
+  subsets: ['latin'],
+  variable: '--font-roboto',
   display: 'swap',
 });
 
@@ -131,7 +138,7 @@ export default function RootLayout({
   overlay: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${pixelFont.variable} ${nunito.variable}`}>
+    <html lang="en" className={`${pixelFont.variable} ${nunito.variable} ${roboto.variable}`}>
       <head>
         {CMP_SCRIPT_SRC ? (
           <Script

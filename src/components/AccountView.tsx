@@ -1,7 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { signIn, signOut } from 'next-auth/react';
+import { api, getApiMode } from '@/lib/api';
 import { cachedApi, fetchMeFresh, readCachedMe } from '@/lib/api/cached';
 import { getPrefs, setPrefs } from '@/lib/prefs';
 import styles from './AccountView.module.css';
@@ -18,7 +20,7 @@ function isAppleEnabled(): boolean {
   return v === '1' || v === 'true';
 }
 
-export default function AccountView() {
+function AccountView() {
   const router = useRouter();
   const cachedMe = useMemo(() => readCachedMe(), []);
   const [meState, setMeState] = useState<LoadState<Awaited<ReturnType<typeof api.me>>>>(
@@ -71,16 +73,41 @@ export default function AccountView() {
   }, []);
 
   const startSignIn = useCallback(
-    (provider: 'google' | 'apple') => {
-      const callbackUrl = '/account';
-      window.location.href = `/api/auth/signin/${provider}?callbackUrl=${encodeURIComponent(callbackUrl)}`;
+    async (provider: 'google' | 'apple') => {
+      if (getApiMode() === 'mock') {
+        setBusy('signin');
+        api
+          .claim({})
+          .then(() => refreshMe(false, true))
+          .finally(() => setBusy('idle'));
+        return;
+      }
+
+      setBusy('signin');
+      const callbackUrl =
+        typeof window !== 'undefined' && window.location.pathname.startsWith('/account') ? '/account' : '/';
+      await signIn(provider, { callbackUrl });
     },
     [refreshMe],
   );
 
-  const handleSignOut = useCallback(() => {
+  const handleSignOut = useCallback(async () => {
     if (!isSignedIn) return;
-    window.location.href = `/api/auth/signout?callbackUrl=${encodeURIComponent('/')}`;
+    if (getApiMode() === 'mock') {
+      setBusy('signout');
+      try {
+        localStorage.removeItem('mazle_mock_me_v1');
+      } catch {
+        // ignore
+      }
+      refreshMe(false, true).finally(() => setBusy('idle'));
+      return;
+    }
+
+    setBusy('signout');
+    const callbackUrl =
+      typeof window !== 'undefined' && window.location.pathname.startsWith('/account') ? '/account' : '/';
+    await signOut({ callbackUrl });
   }, [isSignedIn, refreshMe]);
 
   const goToArchive = useCallback(() => {
@@ -117,11 +144,26 @@ export default function AccountView() {
                 <div className={styles.buttonRow}>
                   <button
                     type="button"
-                    className={styles.primaryButton}
+                    className={styles.googleButton}
                     onClick={() => startSignIn('google')}
                     disabled={busy !== 'idle'}
                   >
-                    {busy === 'signin' ? 'Signing in…' : 'Continue with Google'}
+                    <div className={styles.googleButtonState}></div>
+                    <div className={styles.googleButtonContentWrapper}>
+                      <div className={styles.googleButtonIcon}>
+                        <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" style={{ display: 'block' }}>
+                          <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
+                          <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
+                          <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
+                          <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
+                          <path fill="none" d="M0 0h48v48H0z"></path>
+                        </svg>
+                      </div>
+                      <span className={styles.googleButtonContents}>
+                        {busy === 'signin' ? 'Signing in…' : 'Continue with Google'}
+                      </span>
+                      <span style={{ display: 'none' }}>Continue with Google</span>
+                    </div>
                   </button>
                 </div>
                 {isAppleEnabled() && (
@@ -196,14 +238,17 @@ export default function AccountView() {
           </div>
 
           {!me.entitlements.archiveAccess && (
-            <div className={styles.buttonRow}>
+            <div className={styles.upsellContainer}>
               <button
                 type="button"
                 className={styles.primaryButton}
                 onClick={goToArchive}
               >
-                Unlock Archive
+                Get Mazle+
               </button>
+              <div className={styles.upsellText}>
+                Mazle+ includes access to the archive to play past mazes and removes ads.
+              </div>
             </div>
           )}
         </div>
@@ -211,3 +256,5 @@ export default function AccountView() {
     </div>
   );
 }
+
+export default React.memo(AccountView);

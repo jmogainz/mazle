@@ -9,8 +9,9 @@ import MoreMenuModal from '@/components/MoreMenuModal';
 import OverlayShell from '@/components/OverlayShell';
 import AccountView from '@/components/AccountView';
 import LeaderboardView from '@/components/LeaderboardView';
+import ArchiveView from '@/components/ArchiveView';
 import { api } from '@/lib/api';
-import { prefetchAccount, prefetchLeaderboard } from '@/lib/api/cached';
+import { prefetchAccount, prefetchArchiveDays, prefetchLeaderboard } from '@/lib/api/cached';
 import { getPrefs } from '@/lib/prefs';
 import {
   CHEAT_TIMEOUT_MS,
@@ -56,6 +57,7 @@ const _DEVTOOLS_BUILD_FLAG =
   process.env.NEXT_PUBLIC_DEVTOOLS_ENABLED === 'true';
 
 const DEVTOOLS_PREVIEW_FEATURES_KEY = 'mazle_devtools_preview_features_v1';
+const UI_OVERHAUL_EXPERIMENTAL = false;
 
 const IS_PROD = process.env.NEXT_PUBLIC_ENV === 'prod';
 const HELP_SEEN_KEY = `mazle_seen_help_${HELP_MENU_HASH}`;
@@ -82,6 +84,7 @@ export default function Home() {
   const [showMenu, setShowMenu] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
+  const [showArchive, setShowArchive] = useState(false);
   const [selectedBackend, setSelectedBackend] = useState<GeneratorBackend>('auto');
   const [lastUsedBackend, setLastUsedBackend] = useState<'rust-backend' | 'wasm' | null>(null);
   const [gameResult, setGameResult] = useState<{ moveCount: number; timeMs: number; failed?: boolean; attempts?: any[] } | null>(null);
@@ -132,6 +135,7 @@ export default function Home() {
   const tapTimestampsRef = useRef<number[]>([]);
   const lastDevToolsTouchTsRef = useRef<number>(0);
   const devToolsTapTargetRef = useRef<HTMLDivElement | null>(null);
+  const menuButtonRef = useRef<HTMLButtonElement | null>(null);
   const pendingRestoreRef = useRef<Parameters<GameControls['restoreState']>[0] | null>(null);
   const hintsEnabledRef = useRef(hintsEnabled);
   const devMaxLivesRef = useRef(devMaxLives);
@@ -158,6 +162,10 @@ export default function Home() {
     const runPrefetch = () => {
       prefetchAccount();
       prefetchLeaderboard(todayNy, 50);
+      if (UI_OVERHAUL_EXPERIMENTAL) {
+        const monthStart = `${todayNy.slice(0, 7)}-01`;
+        prefetchArchiveDays(monthStart, todayNy);
+      }
     };
 
     if ('requestIdleCallback' in window) {
@@ -248,7 +256,14 @@ export default function Home() {
 
   const isRouteOverlayOpen = pathname !== '/';
   const isModalOpen =
-    showHelp || showStats || showShareCard || showDevTools || showMenu || showLeaderboard || showAccount;
+    showHelp ||
+    showStats ||
+    showShareCard ||
+    showDevTools ||
+    showMenu ||
+    showLeaderboard ||
+    showAccount ||
+    (UI_OVERHAUL_EXPERIMENTAL && showArchive);
   const shouldPause = isRouteOverlayOpen || isModalOpen;
 
   useEffect(() => {
@@ -1068,6 +1083,14 @@ export default function Home() {
   const showResultsButton = showInlineResult || (!!previousResult && !isPlaying);
   const showMenuButton = process.env.NODE_ENV !== 'production' || previewFeaturesEnabled;
 
+  const handleOpenArchive = useCallback(() => {
+    if (UI_OVERHAUL_EXPERIMENTAL) {
+      setShowArchive(true);
+      return;
+    }
+    router.push('/archive');
+  }, [router]);
+
   return (
     <ErrorBoundary>
       <main className={`${styles.main} bg-pattern`}>
@@ -1097,9 +1120,11 @@ export default function Home() {
           puzzleInfoLoading={isGenerating || (!puzzle && !gameResult)}
           onHelpClick={() => setShowHelp(true)}
           onStatsClick={() => setShowStats(true)}
-          onMenuClick={showMenuButton ? () => setShowMenu(true) : undefined}
+          onMenuClick={showMenuButton ? () => setShowMenu(UI_OVERHAUL_EXPERIMENTAL ? !showMenu : true) : undefined}
           logoRef={devToolsTapTargetRef}
           logoClassName={styles.devToolsTapTarget}
+          isMenuOpen={UI_OVERHAUL_EXPERIMENTAL ? showMenu : undefined}
+          menuButtonRef={UI_OVERHAUL_EXPERIMENTAL ? menuButtonRef : undefined}
         />
 
         <div className={styles.gameWrapper}>
@@ -1269,7 +1294,8 @@ export default function Home() {
           onClose={() => setShowMenu(false)}
           onOpenLeaderboard={() => setShowLeaderboard(true)}
           onOpenAccount={() => setShowAccount(true)}
-          onOpenArchive={() => router.push('/archive')}
+          onOpenArchive={handleOpenArchive}
+          triggerButtonRef={UI_OVERHAUL_EXPERIMENTAL ? menuButtonRef : undefined}
         />
 
         {showLeaderboard && (
@@ -1293,6 +1319,18 @@ export default function Home() {
           >
             <AccountView />
             <AdSlot placement="account" />
+          </OverlayShell>
+        )}
+
+        {UI_OVERHAUL_EXPERIMENTAL && showArchive && (
+          <OverlayShell
+            title="Archive"
+            subtitle="Play past Mazles"
+            variant="overlay"
+            onClose={() => setShowArchive(false)}
+          >
+            <ArchiveView presentation="overlay" initialTodayNy={todayNy} onClose={() => setShowArchive(false)} />
+            <AdSlot placement="archive" />
           </OverlayShell>
         )}
 

@@ -1,6 +1,7 @@
 'use client';
 
-import { PlayerStats } from '@/game/types';
+import React from 'react';
+import { PlayerStats, MapType } from '@/game/types';
 import styles from './StatsModal.module.css';
 
 interface StatsModalProps {
@@ -8,9 +9,21 @@ interface StatsModalProps {
   onClose: () => void;
 }
 
-export default function StatsModal({ stats, onClose }: StatsModalProps) {
-  const winRate = stats.totalGamesPlayed > 0 
-    ? Math.round((stats.totalGamesWon / stats.totalGamesPlayed) * 100) 
+// Get emoji for map type (for history display)
+function getMapEmoji(mapType?: MapType): string {
+  switch (mapType) {
+    case MapType.ICE:
+      return '🧊';
+    case MapType.GROUND:
+      return '🟤';
+    default:
+      return ''; // Legacy entries without map type
+  }
+}
+
+function StatsModal({ stats, onClose }: StatsModalProps) {
+  const winRate = stats.totalGamesPlayed > 0
+    ? Math.round((stats.totalGamesWon / stats.totalGamesPlayed) * 100)
     : 0;
 
   return (
@@ -21,7 +34,7 @@ export default function StatsModal({ stats, onClose }: StatsModalProps) {
             <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
           </svg>
         </button>
-        
+
         <h2 className={styles.title}>Statistics</h2>
 
         <div className={styles.statsGrid}>
@@ -75,3 +88,5 @@ export default function StatsModal({ stats, onClose }: StatsModalProps) {
     </div>
   );
 }
+
+export default React.memo(StatsModal);

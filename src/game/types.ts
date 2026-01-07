@@ -180,11 +180,6 @@ export const COLORS = {
   HINT_TILE_EDGE: 0x538d4e,   // Match GOAL_EDGE - stopping points
   HINT_PATH_FACE: 0xa8d8a8,   // Lighter tint of goal green - intermediate path
   HINT_PATH_EDGE: 0x8fc98a,   // Light green edge - intermediate path
-  
-  // Present Hints (Yellow - "Wrong Path but Correct Tile")
-  HINT_PRESENT_FACE: 0xd7b74a, // Match START_FACE (Yellow/Gold)
-  HINT_PRESENT_EDGE: 0xbd9e3c, // Match START_EDGE
-  HINT_PRESENT_GLOW: 0xffd700, // Gold glow
 
   // Attempt Review (Red - similar to Hints but for failures)
   ATTEMPT_GLOW: 0xff4d4d,

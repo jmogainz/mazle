@@ -165,14 +165,14 @@ async fn generate_by_seed(
                     .into_response();
             }
             // If wait failed, fall through to generate ourselves
-            info!("⚠️ Wait failed for '{}', generating ourselves...", seed);
+            info!("⚠️ Wait failed for '{}', attempting to claim generation...", seed);
         }
         
         info!("✗ Cache MISS for '{}', generating on-demand...", seed);
     }
 
     // 2. Mark as generating (prevent duplicate work)
-    let we_are_generating = state.cache.start_generating(&seed);
+    let mut we_are_generating = state.cache.start_generating(&seed);
     if !we_are_generating {
         // Another request started generating between our check and now - wait for it
         info!("⏳ Race condition: waiting for '{}' generation...", seed);
@@ -187,6 +187,57 @@ async fn generate_by_seed(
             )
                 .into_response();
         }
+
+        // Generation may have finished after wait; check cache before giving up.
+        if let Some(cached) = state.cache.get(&seed) {
+            return (
+                StatusCode::OK,
+                Json(GenerateResponse {
+                    puzzle: cached.puzzle,
+                    generation_time_ms: cached.generation_time_ms,
+                    cached: true,
+                }),
+            )
+                .into_response();
+        }
+
+        // Try to claim generation if no longer in progress.
+        we_are_generating = state.cache.start_generating(&seed);
+        if !we_are_generating {
+            if state.cache.is_generating(&seed) {
+                info!("⏳ Generation still in progress for '{}' after wait timeout", seed);
+                return (
+                    StatusCode::REQUEST_TIMEOUT,
+                    Json(json!({
+                        "error": "generation_in_progress"
+                    })),
+                )
+                    .into_response();
+            }
+
+            info!("⚠️ Wait failed and no generation in progress for '{}'", seed);
+            return (
+                StatusCode::REQUEST_TIMEOUT,
+                Json(json!({
+                    "error": "generation_in_progress"
+                })),
+            )
+                .into_response();
+        }
+    }
+
+    // If we won the generation race but a cache entry appeared meanwhile, return it and clear state.
+    if let Some(cached) = state.cache.get(&seed) {
+        state.cache.finish_generating(&seed);
+        return (
+            StatusCode::OK,
+            Json(GenerateResponse {
+                puzzle: cached.puzzle,
+                generation_time_ms: cached.generation_time_ms,
+                cached: true,
+            }),
+        )
+            .into_response();
     }
     
     // 3. Spawn generation as a detached task so it completes even if client disconnects

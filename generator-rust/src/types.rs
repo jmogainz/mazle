@@ -109,7 +109,7 @@ fn default_closeness_threshold() -> f64 {
     {
         match std::env::var("ENV").unwrap_or_else(|_| "dev".to_string()).as_str() {
             "dev" => 0.97,
-            _ => 0.99,
+            _ => 0.97,
         }
     }
     #[cfg(target_arch = "wasm32")]

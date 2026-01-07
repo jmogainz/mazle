@@ -8,7 +8,6 @@ import styles from './ShareCard.module.css';
 type ShareCardProps = {
   puzzleNumber: number;
   puzzleLabel?: string;
-  moveCount: number;
   timeMs: number;
   optimalMoves: number;
   failed?: boolean;
@@ -63,7 +62,6 @@ function fallbackCopyToClipboard(text: string): boolean {
 export default function ShareCard({
   puzzleNumber,
   puzzleLabel,
-  moveCount,
   timeMs,
   optimalMoves,
   failed = false,
@@ -123,12 +121,12 @@ export default function ShareCard({
 
         const filledBlocks = Math.min(progress, optimalMoves - 1);
         const remainingBlocks = optimalMoves - filledBlocks - 1;
-        rows.push('🟥'.repeat(filledBlocks) + '💀' + '⬛'.repeat(remainingBlocks));
+        rows.push('🟥'.repeat(filledBlocks) + '💀' + '⬜'.repeat(remainingBlocks));
       }
 
       // Show rows up to maxLives for failed attempts
       while (rows.length < maxLives) {
-        rows.push('⬛'.repeat(optimalMoves));
+        rows.push('⬜'.repeat(optimalMoves));
       }
 
       return rows.join('\n');
@@ -142,7 +140,7 @@ export default function ShareCard({
 
         const filledBlocks = Math.min(progress, optimalMoves - 1);
         const remainingBlocks = optimalMoves - filledBlocks - 1;
-        rows.push('🟥'.repeat(filledBlocks) + '💀' + '⬛'.repeat(remainingBlocks));
+        rows.push('🟥'.repeat(filledBlocks) + '💀' + '⬜'.repeat(remainingBlocks));
       }
 
       // Final successful attempt (always present)
@@ -288,7 +286,7 @@ export default function ShareCard({
     });
 
     if (!failed) {
-      rows.push({ progress: Math.min(moveCount, maxBlocks), status: 'success' });
+      rows.push({ progress: optimalMoves, status: 'success' });
     }
 
     while (rows.length < maxLives) {

@@ -2235,6 +2235,7 @@ export class GameScene extends Phaser.Scene {
     moveHistory: Position[];
     boulderPositions?: string[];
     isPlaying: boolean;
+    isComplete: boolean;
     unlockedHintTiles?: string[];
     unlockedHintEdges?: string[];
     unlockedThisLifeTiles?: string[];
@@ -2257,6 +2258,7 @@ export class GameScene extends Phaser.Scene {
       moveHistory: [...this.gameState.moveHistory],
       boulderPositions: this.boulderPositions.size > 0 ? Array.from(this.boulderPositions) : undefined,
       isPlaying: this.isPlaying,
+      isComplete: this.gameState.isComplete,
       unlockedHintTiles: this.unlockedHintTiles.size > 0 ? Array.from(this.unlockedHintTiles) : undefined,
       unlockedHintEdges: this.unlockedHintEdges.size > 0 ? Array.from(this.unlockedHintEdges) : undefined,
       unlockedThisLifeTiles: this.unlockedThisLifeTiles.size > 0 ? Array.from(this.unlockedThisLifeTiles) : undefined,
@@ -2278,6 +2280,7 @@ export class GameScene extends Phaser.Scene {
     moveHistory: Position[];
     boulderPositions?: string[];
     isPlaying: boolean;
+    isComplete?: boolean;
     unlockedHintTiles?: string[];
     unlockedHintEdges?: string[];
     unlockedThisLifeTiles?: string[];
@@ -2299,6 +2302,7 @@ export class GameScene extends Phaser.Scene {
     if (state.isPlaying) {
       this.gameState.startTime = Date.now() - (state.elapsedTimeMs ?? 0);
     }
+    this.gameState.isComplete = state.isComplete ?? false;
     this.gameState.isPaused = false;
     this.pauseStartedAtMs = null;
 

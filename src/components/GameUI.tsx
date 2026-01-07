@@ -84,6 +84,28 @@ export default function GameUI({
     }
   }, [initialState?.elapsedTimeMs]);
 
+  // Sync state when initialState changes (for completed game reload)
+  // This handles the case where initialState is set asynchronously after mount
+  useEffect(() => {
+    if (initialState) {
+      if (initialState.lives !== undefined) {
+        setLives(initialState.lives);
+      }
+      if (initialState.currentAttemptMoves !== undefined) {
+        setCurrentAttemptMoves(initialState.currentAttemptMoves);
+      }
+      if (initialState.elapsedTimeMs !== undefined) {
+        setElapsedTime(initialState.elapsedTimeMs);
+      }
+      if (initialState.penaltyTimeMs !== undefined) {
+        setPenaltyTimeMs(initialState.penaltyTimeMs);
+      }
+      if (initialState.maxLives !== undefined) {
+        setMaxLives(initialState.maxLives);
+      }
+    }
+  }, [initialState]);
+
 
   useEffect(() => {
     // When frozen, don't subscribe to game events - scoreboard stays static

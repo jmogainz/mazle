@@ -39,6 +39,7 @@ const nextConfig = {
   productionBrowserSourceMaps: false,
   env: {
     NEXT_PUBLIC_HELP_MENU_HASH: HELP_MENU_HASH,
+    NEXT_PUBLIC_APPLE_OIDC_ENABLED: process.env.APPLE_CLIENT_ID ? '1' : '',
   },
   
   // Configure webpack for WASM
@@ -61,11 +62,12 @@ const nextConfig = {
   // Headers for WASM (cross-origin isolation required for shared memory features)
   // Using 'require-corp' for maximum browser compatibility
   // Note: External resources need CORS headers or crossorigin attribute
+  // Auth routes are excluded to allow OAuth callbacks (especially Apple's form_post)
   async headers() {
     return [
       {
-        // Apply to all routes
-        source: '/:path*',
+        // Apply to all routes except auth callbacks
+        source: '/((?!api/auth).*)',
         headers: [
           {
             key: 'Cross-Origin-Opener-Policy',

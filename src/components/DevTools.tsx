@@ -41,8 +41,6 @@ interface DevToolsProps {
   onGenerate: (seed?: string) => void;
   onLoadDaily: () => void;
   onStopGeneration: () => void;
-  previewFeaturesEnabled: boolean;
-  onPreviewFeaturesToggle: (enabled: boolean) => void;
   onClose: () => void;
   canStopGeneration: boolean;
   closenessThreshold: number;
@@ -73,8 +71,6 @@ export default function DevTools({
   onGenerate,
   onLoadDaily,
   onStopGeneration,
-  previewFeaturesEnabled,
-  onPreviewFeaturesToggle,
   onClose,
   canStopGeneration,
   closenessThreshold,
@@ -192,19 +188,6 @@ export default function DevTools({
             className={styles.devRangeInput}
             disabled={isGenerating}
           />
-        </div>
-
-        <div className={styles.devToggleRow}>
-          <label className={styles.devToggleLabel}>
-            <input
-              className={styles.devToggleInput}
-              type="checkbox"
-              checked={previewFeaturesEnabled}
-              onChange={(e) => onPreviewFeaturesToggle(e.target.checked)}
-            />
-            Preview Features
-          </label>
-          <span className={styles.devToggleHint}>Show Archive/Leaderboard buttons in prod.</span>
         </div>
 
         {/* Core Stats - 3x2 grid */}

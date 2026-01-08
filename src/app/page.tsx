@@ -158,16 +158,6 @@ export default function Home() {
     }
   }, []);
 
-  const onPreviewFeaturesToggle = useCallback((enabled: boolean) => {
-    setPreviewFeaturesEnabled(enabled);
-    try {
-      if (enabled) localStorage.setItem(DEVTOOLS_PREVIEW_FEATURES_KEY, '1');
-      else localStorage.removeItem(DEVTOOLS_PREVIEW_FEATURES_KEY);
-    } catch {
-      // ignore
-    }
-  }, []);
-
   useEffect(() => {
     if (process.env.NODE_ENV === 'production' && !previewFeaturesEnabled) return;
     const runPrefetch = () => {
@@ -1117,8 +1107,6 @@ export default function Home() {
               onGenerate={handleDevSeedGenerate}
               onLoadDaily={handleLoadDaily}
               onStopGeneration={handleStopGeneration}
-              previewFeaturesEnabled={previewFeaturesEnabled}
-              onPreviewFeaturesToggle={onPreviewFeaturesToggle}
               onClose={() => setShowDevTools(false)}
               canStopGeneration={!!generationAbortRef.current}
               closenessThreshold={closenessThreshold}

@@ -87,6 +87,44 @@
   color: var(--color-text);
 }
 
+.appleButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  width: 100%;
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1px solid #000000;
+  background: #000000;
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 0.95rem;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: transform 0.06s ease, filter 0.2s;
+}
+
+.appleButton:active {
+  transform: scale(0.99);
+}
+
+.appleButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.appleIcon {
+  display: inline-flex;
+}
+
+.appleIcon svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
 .primaryButton:active,
 .secondaryButton:active {
   transform: scale(0.99);
@@ -162,4 +200,3 @@
   padding: 0.75rem;
   border-radius: 10px;
 }
-

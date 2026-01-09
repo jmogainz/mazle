@@ -162,8 +162,8 @@ export default function ShareCard({
     }
   };
 
-  const livesRemaining = maxLives - attempts.length;
-  const scoreText = failed ? `X/${maxLives}` : `${livesRemaining}/${maxLives}`;
+  const attemptsUsed = failed ? maxLives : Math.min(attempts.length + 1, maxLives);
+  const scoreText = failed ? `X/${maxLives}` : `${attemptsUsed}/${maxLives}`;
   const shareText = `Mazle ${displayLabel}\n\n${generateProgressBlocks()}\n\n${formatTime(timeMs)} • ${scoreText}\nmazle.io`;
 
   const reloadLeaderboard = useCallback(async (force = false) => {

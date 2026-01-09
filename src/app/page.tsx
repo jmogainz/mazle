@@ -135,6 +135,7 @@ export default function Home() {
   const pendingRestoreRef = useRef<Parameters<GameControls['restoreState']>[0] | null>(null);
   const hintsEnabledRef = useRef(hintsEnabled);
   const devMaxLivesRef = useRef(devMaxLives);
+  const uiScaleRef = useRef<number | null>(null);
   const [liveAttempts, setLiveAttempts] = useState<GameState['attempts']>([]);
   const [reviewAttemptIndex, setReviewAttemptIndex] = useState<number | null>(null);
 
@@ -239,8 +240,8 @@ export default function Home() {
 
   const puzzleWidth = puzzle?.width ?? 15;
   const puzzleHeight = puzzle?.height ?? 15;
-  const baseWidth = puzzleWidth * TILE_SIZE + GAME_BUFFER_PX * 2;
-  const baseHeight = puzzleHeight * TILE_SIZE + GAME_BUFFER_PX * 2;
+  const baseWidth = puzzleWidth * TILE_SIZE; // No buffer
+  const baseHeight = puzzleHeight * TILE_SIZE; // No buffer
   const showTopAd = !!ADSENSE_TOP_SLOT;
   const showBottomAd = !!ADSENSE_BOTTOM_SLOT;
   const canRequestAds = adsReady && consentReady;
@@ -258,7 +259,22 @@ export default function Home() {
   // The --ui-scale CSS variable controls all UI element sizes
   // useLayoutEffect ensures scale is calculated before paint to prevent layout shift
   useLayoutEffect(() => {
-    let rafId: number | null = null;
+    const getGameAreaSize = () => {
+      const node = gameStageRef.current;
+      if (!node) return null;
+      const rect = node.getBoundingClientRect();
+      const styles = window.getComputedStyle(node);
+      const paddingLeft = Number.parseFloat(styles.paddingLeft) || 0;
+      const paddingRight = Number.parseFloat(styles.paddingRight) || 0;
+      const paddingTop = Number.parseFloat(styles.paddingTop) || 0;
+      const paddingBottom = Number.parseFloat(styles.paddingBottom) || 0;
+      const paddingX = paddingLeft + paddingRight;
+      const paddingY = paddingTop + paddingBottom;
+      const width = Math.max(0, rect.width - paddingX);
+      const height = Math.max(0, rect.height - paddingY);
+      if (width <= 0 || height <= 0) return null;
+      return { width, height };
+    };
 
     const updateScale = () => {
       const viewportHeight = window.visualViewport?.height || window.innerHeight;
@@ -281,21 +297,18 @@ export default function Home() {
 
       // Maximum maze size (don't let it grow infinitely on large screens)
       const MAX_MAZE_SIZE = 520;
-      const MIN_MAZE_SIZE = 200;
-
       // Scale limits for UI
-      const UI_SCALE_MIN = 0.75;
+      const UI_SCALE_MIN = 0.55;
       const UI_SCALE_MAX = 1.0;
 
       // Calculate ideal maze size (constrained by width too)
-      const maxMazeByWidth = Math.min(viewportWidth - 32, MAX_MAZE_SIZE); // 16px padding each side
-      const idealMazeSize = Math.min(baseWidth, baseHeight, maxMazeByWidth, MAX_MAZE_SIZE);
+      const maxMazeByWidth = Math.max(1, Math.min(viewportWidth - 4, MAX_MAZE_SIZE)); // 2px padding each side
+      const idealMazeSize = Math.min(maxMazeByWidth, MAX_MAZE_SIZE);
 
       // How much height do we need for the ideal maze?
       const neededForIdealMaze = idealMazeSize;
 
       let uiScale = UI_SCALE_MAX;
-      let mazeSize = idealMazeSize;
 
       if (availableForMaze < neededForIdealMaze) {
         // Not enough space - try scaling down UI first
@@ -313,23 +326,28 @@ export default function Home() {
           // Calculate the exact scale needed
           uiScale = 1 - (deficit / uiScalableHeight);
           uiScale = Math.max(UI_SCALE_MIN, Math.min(UI_SCALE_MAX, uiScale));
-          mazeSize = idealMazeSize;
         } else {
           // Even at minimum UI scale, we can't fit ideal maze
           // Scale UI to minimum and shrink maze
           uiScale = UI_SCALE_MIN;
-          const minUIHeight = totalUIHeight - uiScalableHeight * (1 - UI_SCALE_MIN);
-          mazeSize = Math.max(MIN_MAZE_SIZE, viewportHeight - minUIHeight);
         }
       }
 
-      // Apply the UI scale to CSS custom property
-      document.documentElement.style.setProperty('--ui-scale', uiScale.toFixed(3));
+      const uiScaleValue = Math.round(uiScale * 1000) / 1000;
+      if (uiScaleRef.current !== uiScaleValue) {
+        document.documentElement.style.setProperty('--ui-scale', uiScaleValue.toFixed(3));
+        uiScaleRef.current = uiScaleValue;
+      }
 
       // Also update maze frame size
-      const mazeScale = Math.min(1, mazeSize / baseWidth, mazeSize / baseHeight);
-      const width = Math.max(1, Math.round(baseWidth * mazeScale));
-      const height = Math.max(1, Math.round(baseHeight * mazeScale));
+      const area = getGameAreaSize();
+      const areaScale = area
+        ? Math.min(area.width / baseWidth, area.height / baseHeight)
+        : 1;
+      const maxScale = maxMazeByWidth / baseWidth;
+      const finalScale = Math.min(maxScale, areaScale);
+      const width = Math.max(1, Math.floor(baseWidth * finalScale));
+      const height = Math.max(1, Math.floor(baseHeight * finalScale));
 
       setGameFrameSizePx((prev) => {
         if (prev.width === width && prev.height === height) return prev;
@@ -337,23 +355,21 @@ export default function Home() {
       });
     };
 
-    const scheduleUpdate = () => {
-      if (rafId != null) cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(() => {
-        rafId = null;
-        updateScale();
-      });
-    };
-
     // Immediate call on mount to set scale before first paint
     updateScale();
-    window.visualViewport?.addEventListener('resize', scheduleUpdate);
-    window.addEventListener('resize', scheduleUpdate);
+    window.visualViewport?.addEventListener('resize', updateScale);
+    window.addEventListener('resize', updateScale);
+    const gameArea = gameStageRef.current;
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined' && gameArea
+        ? new ResizeObserver(updateScale)
+        : null;
+    resizeObserver?.observe(gameArea);
 
     return () => {
-      if (rafId != null) cancelAnimationFrame(rafId);
-      window.visualViewport?.removeEventListener('resize', scheduleUpdate);
-      window.removeEventListener('resize', scheduleUpdate);
+      window.visualViewport?.removeEventListener('resize', updateScale);
+      window.removeEventListener('resize', updateScale);
+      resizeObserver?.disconnect();
     };
   }, [baseWidth, baseHeight, showTopAd, showBottomAd]);
 
@@ -770,11 +786,15 @@ export default function Home() {
     setReviewAttemptIndex(null);
   }, []);
 
+  const [showSwipeHint, setShowSwipeHint] = useState(false);
+
   const handleBegin = useCallback(() => {
     setIsPlaying(true);
     gameControlsRef.current?.start();
     setLiveAttempts([]);
     setReviewAttemptIndex(null);
+    setShowSwipeHint(true);
+    setTimeout(() => setShowSwipeHint(false), 5000);
   }, []);
 
   const handleDevSeedGenerate = useCallback(
@@ -1188,14 +1208,19 @@ export default function Home() {
               className={styles.shareButton}
               onClick={handleShowShareCard}
               style={{
-                visibility: showResultsButton ? 'visible' : 'hidden',
-                opacity: showResultsButton ? 1 : 0,
-                transform: showResultsButton ? 'scale(1)' : 'scale(0.9)',
-                pointerEvents: showResultsButton ? 'auto' : 'none',
+                visibility: showResultsButton && !showSwipeHint ? 'visible' : 'hidden',
+                opacity: showResultsButton && !showSwipeHint ? 1 : 0,
+                transform: showResultsButton && !showSwipeHint ? 'scale(1)' : 'scale(0.9)',
+                pointerEvents: showResultsButton && !showSwipeHint ? 'auto' : 'none',
               }}
             >
               Share Score
             </button>
+            <div
+              className={`${styles.swipeHint} ${showSwipeHint ? styles.swipeHintVisible : styles.swipeHintHidden}`}
+            >
+              Swipe anywhere to move
+            </div>
           </div>
 
           {isPostGame && <AdSlot placement="postGame" />}
@@ -1224,7 +1249,6 @@ export default function Home() {
         <footer className={styles.footer}>
           <p>
             <span className={styles.footerTextDesktop}>Use arrow keys or swipe to move</span>
-            <span className={styles.footerTextMobile}>Swipe anywhere to move</span>
           </p>
           <p className={styles.footerLinks}>
             <a href="/about">About</a>

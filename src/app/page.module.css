@@ -1272,13 +1272,13 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
-  transition: opacity 0.15s ease-out;
+  transition: opacity 1s ease-out, visibility 1s;
 }
 
 .swipeHintVisible {
   opacity: 1;
   visibility: visible;
-  animation: flash 1s infinite alternate;
+  animation: flash 1s 5 alternate forwards;
 }
 
 .swipeHintHidden {

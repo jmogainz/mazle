@@ -1,4 +1,5 @@
 import { PlayerStats, DailyStats, PuzzleData, TileType, Position } from '@/game/types';
+import { addDays } from '@/lib/date';
 
 const STATS_KEY = 'mazle_stats';
 const DAILY_KEY = 'mazle_daily';
@@ -54,7 +55,33 @@ export function getPlayerStats(): PlayerStats {
   try {
     const stored = localStorage.getItem(STATS_KEY);
     if (stored) {
-      return JSON.parse(stored) as PlayerStats;
+      const parsed = JSON.parse(stored) as PlayerStats;
+      if (!parsed || typeof parsed !== 'object') return getDefaultStats();
+      if (!Array.isArray(parsed.history)) {
+        const next: PlayerStats = { ...getDefaultStats(), ...parsed, history: [] };
+        savePlayerStats(next);
+        return next;
+      }
+
+      // Sanitize legacy entries that stored full attempt paths in history (can get large).
+      // Keep the daily result fields, but drop attempts payloads.
+      let changed = false;
+      const sanitizedHistory: DailyStats[] = [];
+      for (const raw of parsed.history) {
+        if (!raw || typeof raw !== 'object') continue;
+        const entry = raw as DailyStats & { attempts?: unknown };
+        const { attempts, ...rest } = entry as any;
+        if (attempts != null) changed = true;
+        sanitizedHistory.push(rest as DailyStats);
+      }
+
+      if (changed) {
+        const next: PlayerStats = { ...parsed, history: sanitizedHistory };
+        savePlayerStats(next);
+        return next;
+      }
+
+      return parsed;
     }
   } catch {
     console.error('Failed to load stats');
@@ -126,7 +153,12 @@ export function saveTodaysResult(result: DailyStats): void {
     // Update overall stats
     const stats = getPlayerStats();
     const today = getTodayString();
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    const yesterday = addDays(today, -1);
+
+    const alreadyRecorded = stats.history.some((h) => h.date === today);
+    if (alreadyRecorded) {
+      return;
+    }
 
     stats.totalGamesPlayed++;
 
@@ -148,17 +180,60 @@ export function saveTodaysResult(result: DailyStats): void {
     }
 
     stats.lastPlayedDate = today;
-    stats.history.push(result);
+    const { attempts, ...rest } = result as any;
+    stats.history.push(rest as DailyStats);
 
-    // Keep only last 30 days of history
-    if (stats.history.length > 30) {
-      stats.history = stats.history.slice(-30);
+    if (stats.history.length > 2000) {
+      stats.history = stats.history.slice(-2000);
     }
 
     savePlayerStats(stats);
   } catch {
     console.error('Failed to save daily result');
   }
+}
+
+export function getGuestHistoryForAccountImport(): Array<{
+  date: string;
+  completed: boolean;
+  timeMs: number | null;
+  attemptsUsed: number | null;
+}> {
+  const stats = getPlayerStats();
+  const byDate = new Map<string, DailyStats>();
+  for (const entry of stats.history) {
+    if (!entry?.date || typeof entry.date !== 'string') continue;
+    if (!byDate.has(entry.date)) {
+      byDate.set(entry.date, entry);
+    }
+  }
+
+  const today = getTodayString();
+  const todayResult = getTodaysResult();
+  if (todayResult && todayResult.date === today) {
+    byDate.set(today, todayResult);
+  }
+
+  const rows = Array.from(byDate.values());
+  rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+  return rows.map((r) => {
+    const completed = !!r.completed;
+    const timeMs = completed && typeof r.timeMs === 'number' && Number.isFinite(r.timeMs) && r.timeMs > 0 ? Math.round(r.timeMs) : null;
+    const attemptsUsed = (() => {
+      const rawAttempts = (r as any).attempts;
+      if (!completed || !Array.isArray(rawAttempts)) return null;
+      const failedAttempts = rawAttempts.length ?? 0;
+      return Math.min(3, Math.max(1, failedAttempts + 1));
+    })();
+
+    return {
+      date: r.date,
+      completed,
+      timeMs,
+      attemptsUsed,
+    };
+  });
 }
 
 // Format time for display (mm:ss)

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { cachedApi, fetchLeaderboardMeFresh, fetchLeaderboardTopFresh, prefetchLeaderboard } from '@/lib/api/cached';
 import type { LeaderboardEntry, LeaderboardMeResponse, LeaderboardTopResponse } from '@/lib/api/types';
@@ -23,6 +24,7 @@ interface ShareCardProps {
   attempts?: any[]; // Keep flexible for now
   maxLives?: number; // Dynamic lives count (default 3)
   solutionPath?: { x: number; y: number }[];
+  mapType?: MapType;
   onClose: () => void;
   inline?: boolean;
   secondaryActionLabel?: string;
@@ -87,6 +89,7 @@ export default function ShareCard({
   attempts = [],
   maxLives = 3,
   solutionPath,
+  mapType,
   onClose,
   inline = false,
   secondaryActionLabel,
@@ -95,6 +98,7 @@ export default function ShareCard({
   leaderboardDate,
   leaderboardAllowSubmit = true,
 }: ShareCardProps) {
+  const router = useRouter();
   const [shareState, setShareState] = useState<'idle' | 'copied' | 'failed'>('idle');
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedbackText, setFeedbackText] = useState('');
@@ -106,6 +110,7 @@ export default function ShareCard({
   const [activeTab, setActiveTab] = useState<'share' | 'leaderboard'>('share');
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
   const swipeIgnoreRef = useRef(false);
+  const [viewerMode, setViewerMode] = useState<'unknown' | 'guest' | 'user'>('unknown');
 
   const [leaderboardTopState, setLeaderboardTopState] = useState<LoadState<LeaderboardTopResponse>>({ status: 'idle' });
   const [leaderboardMeState, setLeaderboardMeState] = useState<LoadState<LeaderboardMeResponse>>({ status: 'idle' });
@@ -264,7 +269,9 @@ export default function ShareCard({
 
   const attemptsUsed = failed ? maxLives : Math.min(attempts.length + 1, maxLives);
   const scoreText = failed ? `X/${maxLives}` : `${attemptsUsed}/${maxLives}`;
-  const shareText = `Mazle ${displayLabel}\n\n${generateProgressBlocks()}\n\n${formatTime(timeMs)} • ${scoreText}\nmazle.io`;
+  const mapEmoji = mapType ? getMapEmoji(mapType) : '';
+  const shareTitle = mapEmoji ? `Mazle ${displayLabel} ${mapEmoji}` : `Mazle ${displayLabel}`;
+  const shareText = `${shareTitle}\n\n${generateProgressBlocks()}\n\n${formatTime(timeMs)} • ${scoreText}\nmazle.io`;
 
   // UI overhaul: warm leaderboard cache for instant tab switching.
   useEffect(() => {
@@ -303,25 +310,40 @@ export default function ShareCard({
 
   useEffect(() => {
     if (!hasLeaderboard) return;
+    if (!leaderboardAllowSubmit) return;
+    cachedApi
+      .me()
+      .then((me) => setViewerMode(me.mode))
+      .catch(() => setViewerMode('unknown'));
+  }, [hasLeaderboard, leaderboardAllowSubmit]);
+
+  useEffect(() => {
+    if (!hasLeaderboard) return;
     if (activeTab !== 'leaderboard') return;
     if (leaderboardTopState.status !== 'idle') return;
     reloadLeaderboard();
   }, [activeTab, hasLeaderboard, leaderboardTopState.status, reloadLeaderboard]);
 
-  const canSubmitLeaderboard = hasLeaderboard && leaderboardAllowSubmit && attemptsUsed != null;
+  const canSubmitLeaderboard = hasLeaderboard && leaderboardAllowSubmit && attemptsUsed != null && viewerMode === 'user';
   const alreadySubmitted = leaderboardMeState.status === 'loaded' && !!leaderboardMeState.data;
 
   const handleLeaderboardSubmit = useCallback(async () => {
     if (!leaderboardDate || !canSubmitLeaderboard || attemptsUsed == null || failed) return;
     setLeaderboardSubmitState('submitting');
     try {
-      await api.leaderboardSubmit({ date: leaderboardDate, timeMs, attemptsUsed });
+      await api.resultsRecord({ date: leaderboardDate, completed: true, timeMs, attemptsUsed });
+      await api.leaderboardSubmit({ date: leaderboardDate });
       setLeaderboardSubmitState('submitted');
       await reloadLeaderboard(true);
     } catch {
       setLeaderboardSubmitState('failed');
     }
   }, [attemptsUsed, canSubmitLeaderboard, failed, leaderboardDate, reloadLeaderboard, timeMs]);
+
+  const handleOpenAccount = useCallback(() => {
+    onClose();
+    router.push('/account');
+  }, [onClose, router]);
 
   const handleCopy = async (): Promise<boolean> => {
     // Try modern clipboard API first
@@ -345,7 +367,7 @@ export default function ShareCard({
     if (isMobileDevice && navigator.share) {
       try {
         await navigator.share({
-          title: `Mazle ${displayLabel}`,
+          title: shareTitle,
           text: shareText,
         });
         return; // Native share succeeded, no need to show copied state
@@ -513,9 +535,18 @@ export default function ShareCard({
 
     const submitPanel = () => {
       if (!leaderboardAllowSubmit) return null;
-      if (!canSubmitLeaderboard) return null;
       if (alreadySubmitted) return null;
       if (leaderboardMeState.status !== 'loaded') return null;
+      if (failed) return null;
+      if (attemptsUsed == null) return null;
+
+      if (viewerMode !== 'user') {
+        return (
+          <button type="button" className={styles.leaderboardSubmitButton} onClick={handleOpenAccount}>
+            Sign in to submit
+          </button>
+        );
+      }
 
       const label =
         leaderboardSubmitState === 'submitting'

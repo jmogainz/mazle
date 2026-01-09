@@ -25,6 +25,21 @@
   --ui-scale-max: 1;    /* Maximum scale */
 }
 
+:root[data-theme='dark'] {
+  --color-background: #0f0f1a;
+  --color-surface: #1a1a26;
+  --color-border: #2a2a3a;
+  --color-primary: #6aaa64;
+  --color-secondary: #a4a6b3;
+  --color-text: #f2f3f7;
+  --color-success: #6aaa64;
+  --color-error: #cf6679;
+  --color-warning: #c9b458;
+
+  --color-surface-rgb: 26, 26, 38;
+  --color-text-rgb: 242, 243, 247;
+}
+
 * {
   box-sizing: border-box;
   padding: 0;

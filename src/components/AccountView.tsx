@@ -6,9 +6,14 @@ import { signIn, signOut } from 'next-auth/react';
 import { api, getApiMode } from '@/lib/api';
 import { cachedApi, fetchMeFresh, readCachedMe } from '@/lib/api/cached';
 import { getPrefs, setPrefs } from '@/lib/prefs';
+import { addDays } from '@/lib/date';
+import { getNewYorkDateString } from '@/game/puzzleGenerator';
+import { formatTime, getGuestHistoryForAccountImport } from '@/utils/storage';
+import CharacterIcon from './CharacterIcon';
 import styles from './AccountView.module.css';
 
 const DEVTOOLS_PREVIEW_FEATURES_KEY = 'mazle_devtools_preview_features_v1';
+const GUEST_IMPORT_PREFIX = 'mazle_guest_history_imported_v1:';
 
 type LoadState<T> =
   | { status: 'loading' }
@@ -20,6 +25,67 @@ function isAppleEnabled(): boolean {
   return v === '1' || v === 'true';
 }
 
+type LocalAccountStats = {
+  playedStreak: number;
+  winStreak: number;
+  totalPlayed: number;
+  totalWins: number;
+  avgSolveTimeMs: number | null;
+};
+
+function computePlayedStreak(datesDesc: string[], today: string): number {
+  if (datesDesc.length === 0) return 0;
+  const yesterday = addDays(today, -1);
+  const mostRecent = datesDesc[0]!;
+  if (mostRecent !== today && mostRecent !== yesterday) return 0;
+
+  let streak = 1;
+  let prev = mostRecent;
+  for (let i = 1; i < datesDesc.length; i += 1) {
+    const expected = addDays(prev, -1);
+    const next = datesDesc[i]!;
+    if (next !== expected) break;
+    streak += 1;
+    prev = next;
+  }
+  return streak;
+}
+
+function computeWinStreak(rowsDesc: Array<{ date: string; completed: boolean }>, today: string): number {
+  if (rowsDesc.length === 0) return 0;
+  const yesterday = addDays(today, -1);
+  const mostRecent = rowsDesc[0]!;
+  if (!mostRecent.completed) return 0;
+  if (mostRecent.date !== today && mostRecent.date !== yesterday) return 0;
+
+  let streak = 1;
+  let prev = mostRecent.date;
+  for (let i = 1; i < rowsDesc.length; i += 1) {
+    const row = rowsDesc[i]!;
+    const expected = addDays(prev, -1);
+    if (row.date !== expected) break;
+    if (!row.completed) break;
+    streak += 1;
+    prev = row.date;
+  }
+  return streak;
+}
+
+function computeLocalAccountStats(history: ReturnType<typeof getGuestHistoryForAccountImport>): LocalAccountStats {
+  const today = getNewYorkDateString();
+  const rowsDesc = [...history].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+
+  const totalPlayed = rowsDesc.length;
+  const totalWins = rowsDesc.filter((r) => r.completed).length;
+  const times = rowsDesc.filter((r) => r.completed && r.timeMs != null).map((r) => r.timeMs as number);
+  const avgSolveTimeMs = times.length > 0 ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : null;
+
+  const playedStreak = computePlayedStreak(rowsDesc.map((r) => r.date), today);
+  const winStreak = computeWinStreak(rowsDesc.map((r) => ({ date: r.date, completed: r.completed })), today);
+
+  return { playedStreak, winStreak, totalPlayed, totalWins, avgSolveTimeMs };
+}
+
 function AccountView() {
   const router = useRouter();
   const cachedMe = useMemo(() => readCachedMe(), []);
@@ -28,6 +94,11 @@ function AccountView() {
   );
   const [busy, setBusy] = useState<'idle' | 'signin' | 'signout'>('idle');
   const [autoSubmitWins, setAutoSubmitWins] = useState(() => getPrefs().leaderboardAutoSubmitWins);
+  const [themePreference, setThemePreference] = useState(() => getPrefs().themePreference);
+  const [nameDraft, setNameDraft] = useState('');
+  const [nameTouched, setNameTouched] = useState(false);
+  const [nameStatus, setNameStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [nameError, setNameError] = useState<string | null>(null);
   const [previewFeaturesEnabled, setPreviewFeaturesEnabled] = useState(false);
 
   const refreshMe = useCallback(async (silent = false, force = false) => {
@@ -50,6 +121,75 @@ function AccountView() {
   }, [refreshMe, cachedMe]);
 
   useEffect(() => {
+    if (meState.status !== 'loaded') return;
+    const me = meState.data;
+    if (me.mode !== 'user') return;
+    const serverValue = me.settings?.leaderboardAutoSubmit;
+    if (typeof serverValue !== 'boolean') return;
+    setAutoSubmitWins(serverValue);
+    setPrefs({ leaderboardAutoSubmitWins: serverValue });
+  }, [meState]);
+
+  useEffect(() => {
+    if (meState.status !== 'loaded') return;
+    const me = meState.data;
+    if (me.mode !== 'user') return;
+
+    const serverTheme = me.settings?.theme;
+    if (serverTheme === 'system' || serverTheme === 'light' || serverTheme === 'dark') {
+      setThemePreference(serverTheme);
+      setPrefs({ themePreference: serverTheme });
+    }
+  }, [meState]);
+
+  useEffect(() => {
+    if (meState.status !== 'loaded') return;
+    const me = meState.data;
+    if (!me) return;
+    if (nameTouched) return;
+    setNameDraft(me.displayName ?? '');
+  }, [meState, nameTouched]);
+
+  useEffect(() => {
+    if (meState.status !== 'loaded') return;
+    const me = meState.data;
+    if (me.mode !== 'user' || !me.userId) return;
+
+    const key = `${GUEST_IMPORT_PREFIX}${me.userId}`;
+    let alreadyImported = false;
+    try {
+      alreadyImported = localStorage.getItem(key) === '1';
+    } catch {
+      alreadyImported = false;
+    }
+    if (alreadyImported) return;
+
+    const history = getGuestHistoryForAccountImport();
+    if (history.length === 0) {
+      try {
+        localStorage.setItem(key, '1');
+      } catch {
+        // ignore
+      }
+      return;
+    }
+
+    api
+      .resultsImport({ history })
+      .then(() => refreshMe(true, true))
+      .then(() => {
+        try {
+          localStorage.setItem(key, '1');
+        } catch {
+          // ignore
+        }
+      })
+      .catch(() => {
+        // Ignore: can retry later (idempotent).
+      });
+  }, [meState, refreshMe]);
+
+  useEffect(() => {
     try {
       setPreviewFeaturesEnabled(localStorage.getItem(DEVTOOLS_PREVIEW_FEATURES_KEY) === '1');
     } catch {
@@ -68,9 +208,47 @@ function AccountView() {
     setAutoSubmitWins((prev) => {
       const next = !prev;
       setPrefs({ leaderboardAutoSubmitWins: next });
+      if (isSignedIn) {
+        api
+          .settingsUpdate({ leaderboardAutoSubmit: next })
+          .then(() => refreshMe(true, true))
+          .catch(() => null);
+      }
       return next;
     });
-  }, []);
+  }, [isSignedIn, refreshMe]);
+
+  const handleThemeChange = useCallback(
+    (value: 'system' | 'light' | 'dark') => {
+      setThemePreference(value);
+      setPrefs({ themePreference: value });
+      if (isSignedIn) {
+        api
+          .settingsUpdate({ theme: value })
+          .then(() => refreshMe(true, true))
+          .catch(() => null);
+      }
+    },
+    [isSignedIn, refreshMe]
+  );
+
+  const handleSaveName = useCallback(async () => {
+    if (!isSignedIn) return;
+    if (!nameDraft) return;
+    setNameStatus('saving');
+    setNameError(null);
+    try {
+      await api.claim({ displayName: nameDraft });
+      setNameTouched(false);
+      setNameStatus('saved');
+      await refreshMe(true, true);
+      window.setTimeout(() => setNameStatus('idle'), 1500);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to update name';
+      setNameStatus('error');
+      setNameError(message);
+    }
+  }, [isSignedIn, nameDraft, refreshMe]);
 
   const startSignIn = useCallback(
     async (provider: 'google' | 'apple') => {
@@ -115,6 +293,11 @@ function AccountView() {
   }, [router]);
 
   const me = meState.status === 'loaded' ? meState.data : null;
+  const localHistory = useMemo(() => getGuestHistoryForAccountImport(), []);
+  const localStats = useMemo(() => computeLocalAccountStats(localHistory), [localHistory]);
+  const stats = me?.stats ?? localStats;
+  const profile = me?.profile ?? { characterId: 'default', skinId: 'default' };
+  const avgTime = stats.avgSolveTimeMs != null ? formatTime(stats.avgSolveTimeMs) : '—';
 
   return (
     <div className={styles.grid}>
@@ -135,6 +318,51 @@ function AccountView() {
               </div>
               <div className={styles.chip}>{me.mode === 'guest' ? 'GUEST' : 'USER'}</div>
             </div>
+
+            <div className={styles.characterRow}>
+              <div className={styles.characterLeft}>
+                <div className={styles.characterLabel}>Character</div>
+                <div className={styles.characterHint}>
+                  {me.mode === 'guest' ? 'Default (sign in to save custom skins later)' : 'Equipped'}
+                </div>
+              </div>
+              <CharacterIcon characterId={profile.characterId} skinId={profile.skinId} size={36} />
+            </div>
+
+            <div className={styles.nameLabel}>Display name</div>
+            <input
+              className={styles.textInput}
+              value={nameDraft}
+              onChange={(e) => {
+                setNameDraft(e.target.value);
+                setNameTouched(true);
+                setNameStatus('idle');
+                setNameError(null);
+              }}
+              disabled={me.mode !== 'user' || busy !== 'idle'}
+              maxLength={24}
+              inputMode="text"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+            />
+            {me.mode === 'user' ? (
+              <div className={styles.buttonRow}>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  onClick={handleSaveName}
+                  disabled={busy !== 'idle' || nameStatus === 'saving'}
+                >
+                  {nameStatus === 'saving' ? 'Saving…' : nameStatus === 'saved' ? 'Saved' : 'Update name'}
+                </button>
+              </div>
+            ) : (
+              <div className={styles.modeHint} style={{ marginTop: '0.5rem' }}>
+                Sign in to change your name.
+              </div>
+            )}
+            {nameStatus === 'error' && nameError && <div className={styles.error} style={{ marginTop: '0.75rem' }}>{nameError}</div>}
 
             {me.mode === 'guest' ? (
               <>
@@ -201,6 +429,37 @@ function AccountView() {
         )}
       </div>
 
+      {me && (
+        <div className={styles.panel}>
+          <div className={styles.sectionTitle}>Stats</div>
+          <div className={styles.statsGrid}>
+            <div className={styles.stat}>
+              <div className={styles.statValue}>{stats.playedStreak}</div>
+              <div className={styles.statLabel}>Played Streak</div>
+            </div>
+            <div className={styles.stat}>
+              <div className={styles.statValue}>{stats.winStreak}</div>
+              <div className={styles.statLabel}>Win Streak</div>
+            </div>
+            <div className={styles.stat}>
+              <div className={styles.statValue}>{stats.totalPlayed}</div>
+              <div className={styles.statLabel}>Played</div>
+            </div>
+            <div className={styles.stat}>
+              <div className={styles.statValue}>{stats.totalWins}</div>
+              <div className={styles.statLabel}>Wins</div>
+            </div>
+            <div className={`${styles.stat} ${styles.statWide}`.trim()}>
+              <div className={styles.statValue}>{avgTime}</div>
+              <div className={styles.statLabel}>Avg Time</div>
+            </div>
+          </div>
+          <div className={styles.modeHint} style={{ marginTop: '0.75rem' }}>
+            Archive plays don&apos;t count toward these stats.
+          </div>
+        </div>
+      )}
+
       {showLockedFeatures && (
         <div className={styles.panel}>
           <div className={styles.sectionTitle}>Settings</div>
@@ -218,6 +477,25 @@ function AccountView() {
                 checked={autoSubmitWins}
                 onChange={handleToggleAutoSubmit}
               />
+            </div>
+          </div>
+          <div className={styles.toggleRow} style={{ marginTop: '0.9rem' }}>
+            <div>
+              <div className={styles.toggleLabel}>Theme</div>
+              <div className={styles.toggleHint}>
+                {isSignedIn ? 'Synced to your account.' : 'Saved on this device.'}
+              </div>
+            </div>
+            <div className={styles.toggleControl}>
+              <select
+                className={styles.select}
+                value={themePreference}
+                onChange={(e) => handleThemeChange(e.target.value as 'system' | 'light' | 'dark')}
+              >
+                <option value="system">System</option>
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+              </select>
             </div>
           </div>
         </div>

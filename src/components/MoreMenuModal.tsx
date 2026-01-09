@@ -7,6 +7,7 @@ type MoreMenuModalProps = {
   open: boolean;
   onClose: () => void;
   onOpenLeaderboard?: () => void;
+  onOpenHallOfFame?: () => void;
   onOpenAccount?: () => void;
   onOpenArchive?: () => void;
   triggerButtonRef?: React.RefObject<HTMLButtonElement>;
@@ -18,6 +19,7 @@ function MoreMenuModal({
   open,
   onClose,
   onOpenLeaderboard,
+  onOpenHallOfFame,
   onOpenAccount,
   onOpenArchive,
   triggerButtonRef,
@@ -111,7 +113,6 @@ function MoreMenuModal({
     <div ref={menuRef} className={styles.dropdown} style={style} role="menu" aria-label="Menu">
       {showLockedFeatures && (
         <>
-          {/* Leaderboard button hidden - keeping code for potential future use
           <button
             type="button"
             className={styles.menuItem}
@@ -123,7 +124,22 @@ function MoreMenuModal({
               <path d="M3 21V10h6V3h6v4h6v14H3zM9 10v11M15 7v14" />
             </svg>
           </button>
-          */}
+          <button
+            type="button"
+            className={styles.menuItem}
+            onClick={() => handleClick(onOpenHallOfFame)}
+            role="menuitem"
+          >
+            <span>Hall of Fame</span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M8 21h8" />
+              <path d="M12 17v4" />
+              <path d="M7 4h10" />
+              <path d="M17 4v3a5 5 0 0 1-10 0V4" />
+              <path d="M5 5a2 2 0 0 0 2 2" />
+              <path d="M19 5a2 2 0 0 1-2 2" />
+            </svg>
+          </button>
           <button
             type="button"
             className={styles.menuItem}

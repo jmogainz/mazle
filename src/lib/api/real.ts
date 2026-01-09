@@ -8,12 +8,19 @@ import type {
   ClaimRequest,
   ClaimResponse,
   GuestResponse,
+  HallOfFamePodiumResponse,
   LeaderboardAroundResponse,
   LeaderboardMeResponse,
   LeaderboardSubmitRequest,
   LeaderboardSubmitResponse,
   LeaderboardTopResponse,
   MeResponse,
+  ResultsImportRequest,
+  ResultsImportResponse,
+  ResultsRecordRequest,
+  ResultsRecordResponse,
+  SettingsUpdateRequest,
+  SettingsUpdateResponse,
 } from './types';
 
 export const realApi = {
@@ -47,6 +54,30 @@ export const realApi = {
       body: JSON.stringify(body),
     }),
 
+  resultsRecord: async (body: ResultsRecordRequest): Promise<ResultsRecordResponse> =>
+    fetchJson('/api/results/record', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+
+  resultsImport: async (body: ResultsImportRequest): Promise<ResultsImportResponse> =>
+    fetchJson('/api/results/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+
+  hallOfFamePodium: async (date: string): Promise<HallOfFamePodiumResponse> =>
+    fetchJson(`/api/hall-of-fame/podium?date=${encodeURIComponent(date)}`, { method: 'GET' }),
+
+  settingsUpdate: async (body: SettingsUpdateRequest): Promise<SettingsUpdateResponse> =>
+    fetchJson('/api/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+
   archiveOffer: async (): Promise<ArchiveOfferResponse> =>
     fetchJson('/api/stripe/archive-offer', { method: 'GET' }),
 
@@ -63,4 +94,3 @@ export const realApi = {
   archivePuzzle: async (date: string): Promise<ArchivePuzzleResponse> =>
     fetchJson(`/api/archive/${encodeURIComponent(date)}`, { method: 'GET' }),
 };
-

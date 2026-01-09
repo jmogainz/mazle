@@ -10,6 +10,7 @@ import OverlayShell from '@/components/OverlayShell';
 import AccountView from '@/components/AccountView';
 import LeaderboardView from '@/components/LeaderboardView';
 import ArchiveView from '@/components/ArchiveView';
+import HallOfFameView from '@/components/HallOfFameView';
 import { api } from '@/lib/api';
 import { prefetchAccount, prefetchArchiveDays, prefetchLeaderboard } from '@/lib/api/cached';
 import { getPrefs } from '@/lib/prefs';
@@ -83,6 +84,7 @@ export default function Home() {
   const [previewFeaturesEnabled, setPreviewFeaturesEnabled] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [showHallOfFame, setShowHallOfFame] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
   const [showArchive, setShowArchive] = useState(false);
   const [selectedBackend, setSelectedBackend] = useState<GeneratorBackend>('auto');
@@ -168,9 +170,11 @@ export default function Home() {
       }
     };
 
-    if ('requestIdleCallback' in window) {
-      const id = window.requestIdleCallback(runPrefetch, { timeout: 1500 });
-      return () => window.cancelIdleCallback(id);
+    const ric = (window as any).requestIdleCallback as ((cb: IdleRequestCallback, opts?: { timeout: number }) => number) | undefined;
+    const cic = (window as any).cancelIdleCallback as ((id: number) => void) | undefined;
+    if (typeof ric === 'function') {
+      const id = ric(runPrefetch, { timeout: 1500 });
+      return () => cic?.(id);
     }
 
     const id = window.setTimeout(runPrefetch, 800);
@@ -262,6 +266,7 @@ export default function Home() {
     showDevTools ||
     showMenu ||
     showLeaderboard ||
+    showHallOfFame ||
     showAccount ||
     (UI_OVERHAUL_EXPERIMENTAL && showArchive);
   const shouldPause = isRouteOverlayOpen || isModalOpen;
@@ -731,10 +736,21 @@ export default function Home() {
           setPreviousResult(dailyResult);
           console.log('[SAVE] Result saved immediately on completion');
 
+          const failedAttempts = serializableState.attempts?.length ?? 0;
+          const attemptsUsed = Math.min(3, Math.max(1, failedAttempts + 1));
+
+          api
+            .resultsRecord(
+              failed
+                ? { date: todayDateStr, completed: false }
+                : { date: todayDateStr, completed: true, timeMs, attemptsUsed }
+            )
+            .catch(() => {
+              // Ignore: guests are rejected and offline users can retry on next load.
+            });
+
           if (!failed && getPrefs().leaderboardAutoSubmitWins) {
-            const failedAttempts = serializableState.attempts?.length ?? 0;
-            const attemptsUsed = Math.min(3, Math.max(1, failedAttempts + 1));
-            api.leaderboardSubmit({ date: todayDateStr, timeMs, attemptsUsed }).catch(() => {
+            api.leaderboardSubmit({ date: todayDateStr }).catch(() => {
               // Ignore: manual submit remains available via the leaderboard overlay.
             });
           }
@@ -1310,6 +1326,7 @@ export default function Home() {
           open={showMenu}
           onClose={() => setShowMenu(false)}
           onOpenLeaderboard={() => setShowLeaderboard(true)}
+          onOpenHallOfFame={() => setShowHallOfFame(true)}
           onOpenAccount={() => setShowAccount(true)}
           onOpenArchive={handleOpenArchive}
           triggerButtonRef={UI_OVERHAUL_EXPERIMENTAL ? menuButtonRef : undefined}
@@ -1323,6 +1340,18 @@ export default function Home() {
             onClose={() => setShowLeaderboard(false)}
           >
             <LeaderboardView />
+            <AdSlot placement="leaderboard" />
+          </OverlayShell>
+        )}
+
+        {showHallOfFame && (
+          <OverlayShell
+            title="Hall of Fame"
+            subtitle="Podium history"
+            variant="overlay"
+            onClose={() => setShowHallOfFame(false)}
+          >
+            <HallOfFameView />
             <AdSlot placement="leaderboard" />
           </OverlayShell>
         )}

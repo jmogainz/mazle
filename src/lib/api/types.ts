@@ -3,13 +3,37 @@ export type ApiError = {
   message: string;
 };
 
+export type ThemePreference = 'system' | 'light' | 'dark';
+
+export type UserProfile = {
+  characterId: string;
+  skinId: string;
+};
+
+export type UserSettings = {
+  theme: ThemePreference;
+  leaderboardAutoSubmit: boolean;
+};
+
+export type UserStats = {
+  playedStreak: number;
+  winStreak: number;
+  totalPlayed: number;
+  totalWins: number;
+  avgSolveTimeMs: number | null;
+};
+
 export type MeResponse = {
   mode: 'guest' | 'user';
+  userId?: string | null;
   displayName: string;
   entitlements: {
     archiveAccess: boolean;
     adsRemoved: boolean;
   };
+  profile?: UserProfile;
+  settings?: UserSettings;
+  stats?: UserStats;
 };
 
 export type GuestResponse = {
@@ -56,9 +80,20 @@ export type LeaderboardEntry = {
   isMe?: boolean;
 };
 
+export type LeaderboardPodiumEntry = {
+  rank: 1 | 2 | 3;
+  displayName: string;
+  timeMs: number;
+  attemptsUsed: number;
+  characterId: string;
+  skinId: string;
+  isMe?: boolean;
+};
+
 export type LeaderboardTopResponse = {
   date: string;
   entries: LeaderboardEntry[];
+  podium?: LeaderboardPodiumEntry[];
 };
 
 export type LeaderboardMeResponse =
@@ -78,14 +113,62 @@ export type LeaderboardAroundResponse = {
 
 export type LeaderboardSubmitRequest = {
   date: string;
-  timeMs: number;
-  attemptsUsed: number;
 };
 
 export type LeaderboardSubmitResponse = {
   ok: true;
   rank?: number;
   updated: boolean;
+};
+
+export type ResultsRecordRequest = {
+  date: string;
+  completed: boolean;
+  timeMs?: number;
+  attemptsUsed?: number;
+};
+
+export type ResultsRecordResponse = {
+  ok: true;
+  created: boolean;
+  result: {
+    date: string;
+    completed: boolean;
+    timeMs: number | null;
+    attemptsUsed: number | null;
+  };
+};
+
+export type ResultsImportRow = {
+  date: string;
+  completed: boolean;
+  timeMs?: number | null;
+  attemptsUsed?: number | null;
+};
+
+export type ResultsImportRequest = {
+  history: ResultsImportRow[];
+};
+
+export type ResultsImportResponse = {
+  ok: true;
+  imported: number;
+  skipped: number;
+};
+
+export type HallOfFamePodiumResponse = {
+  date: string;
+  podium: LeaderboardPodiumEntry[];
+};
+
+export type SettingsUpdateRequest = Partial<{
+  theme: ThemePreference;
+  leaderboardAutoSubmit: boolean;
+}>;
+
+export type SettingsUpdateResponse = {
+  ok: true;
+  settings: UserSettings;
 };
 
 export type ArchiveDay = {

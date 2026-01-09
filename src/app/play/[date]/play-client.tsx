@@ -8,6 +8,7 @@ import MoreMenuModal from '@/components/MoreMenuModal';
 import OverlayShell from '@/components/OverlayShell';
 import AccountView from '@/components/AccountView';
 import LeaderboardView from '@/components/LeaderboardView';
+import HallOfFameView from '@/components/HallOfFameView';
 import { onGameEvent, TILE_SIZE, getNewYorkDateString, type Direction, type PuzzleData } from '@/game';
 import type { GameControls } from '@/game/PhaserGame';
 import { api } from '@/lib/api';
@@ -45,6 +46,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
   const [showHelp, setShowHelp] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [showHallOfFame, setShowHallOfFame] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
   const [previewFeaturesEnabled, setPreviewFeaturesEnabled] = useState(false);
   const [gameResult, setGameResult] = useState<{ moveCount: number; timeMs: number; failed?: boolean; attempts?: any[] } | null>(null);
@@ -67,7 +69,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
   const safeDate = useMemo(() => (isValidNyDateString(date) ? date : null), [date]);
   const expectedPath = safeDate ? `/play/${safeDate}` : null;
   const isRouteOverlayOpen = expectedPath != null && pathname !== expectedPath;
-  const isModalOpen = showHelp || showStats || showShareCard || showMenu || showLeaderboard || showAccount;
+  const isModalOpen = showHelp || showStats || showShareCard || showMenu || showLeaderboard || showHallOfFame || showAccount;
   const shouldPause = isRouteOverlayOpen || isModalOpen;
 
   useEffect(() => {
@@ -86,9 +88,11 @@ export default function ArchivePlayClient({ date }: { date: string }) {
       prefetchLeaderboard(todayNy, 50);
     };
 
-    if ('requestIdleCallback' in window) {
-      const id = window.requestIdleCallback(runPrefetch, { timeout: 1500 });
-      return () => window.cancelIdleCallback(id);
+    const ric = (window as any).requestIdleCallback as ((cb: IdleRequestCallback, opts?: { timeout: number }) => number) | undefined;
+    const cic = (window as any).cancelIdleCallback as ((id: number) => void) | undefined;
+    if (typeof ric === 'function') {
+      const id = ric(runPrefetch, { timeout: 1500 });
+      return () => cic?.(id);
     }
 
     const id = window.setTimeout(runPrefetch, 800);
@@ -332,6 +336,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
           open={showMenu}
           onClose={() => setShowMenu(false)}
           onOpenLeaderboard={() => setShowLeaderboard(true)}
+          onOpenHallOfFame={() => setShowHallOfFame(true)}
           onOpenAccount={() => setShowAccount(true)}
           onOpenArchive={onBackToArchive}
           triggerButtonRef={menuButtonRef}
@@ -471,6 +476,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
           open={showMenu}
           onClose={() => setShowMenu(false)}
           onOpenLeaderboard={() => setShowLeaderboard(true)}
+          onOpenHallOfFame={() => setShowHallOfFame(true)}
           onOpenAccount={() => setShowAccount(true)}
           onOpenArchive={onBackToArchive}
           triggerButtonRef={menuButtonRef}
@@ -484,6 +490,18 @@ export default function ArchivePlayClient({ date }: { date: string }) {
             onClose={() => setShowLeaderboard(false)}
           >
             <LeaderboardView />
+            <AdSlot placement="leaderboard" />
+          </OverlayShell>
+        )}
+
+        {showHallOfFame && (
+          <OverlayShell
+            title="Hall of Fame"
+            subtitle="Podium history"
+            variant="overlay"
+            onClose={() => setShowHallOfFame(false)}
+          >
+            <HallOfFameView />
             <AdSlot placement="leaderboard" />
           </OverlayShell>
         )}
@@ -510,6 +528,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
             attempts={gameResult.attempts}
             leaderboardDate={(process.env.NODE_ENV !== 'production' || previewFeaturesEnabled) ? safeDate : undefined}
             leaderboardAllowSubmit={false}
+            mapType={puzzle.mapType}
             secondaryActionLabel="Back to Archive"
             onSecondaryAction={onBackToArchive}
             footerText="Pick another day in the Archive."

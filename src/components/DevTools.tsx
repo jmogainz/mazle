@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { MapType, GenerationProgress, GeneratorBackend, isRustBackendConfigured, getRustBackendUrl } from '@/game';
+import { GenerationProgress, GeneratorBackend, isRustBackendConfigured, getRustBackendUrl } from '@/game';
 import { PuzzleData } from '@/game';
 import styles from '../app/page.module.css';
 
@@ -25,8 +25,6 @@ interface DevToolsProps {
   activeSeed: string;
   seedInput: string;
   onSeedInputChange: (value: string) => void;
-  selectedMapType: MapType | 'random';
-  onMapTypeChange: (type: MapType | 'random') => void;
   startBatchInput: string;
   onStartBatchInputChange: (value: string) => void;
   selectedBackend: GeneratorBackend;
@@ -55,8 +53,6 @@ export default function DevTools({
   activeSeed,
   seedInput,
   onSeedInputChange,
-  selectedMapType,
-  onMapTypeChange,
   startBatchInput,
   onStartBatchInputChange,
   selectedBackend,
@@ -192,12 +188,6 @@ export default function DevTools({
 
         {/* Core Stats - 3x2 grid */}
         <div className={styles.devStatsGrid6}>
-          <div className={styles.devStatItem}>
-            <span className={styles.devStatValue} style={{ textTransform: 'uppercase' }}>
-              {puzzle.mapType ?? 'ice'}
-            </span>
-            <span className={styles.devStatLabel}>Map</span>
-          </div>
           <div className={styles.devStatItem}>
             <span className={styles.devStatValue}>{puzzle.width}×{puzzle.height}</span>
             <span className={styles.devStatLabel}>Size</span>
@@ -429,26 +419,14 @@ export default function DevTools({
                 className={styles.devInput}
                 disabled={isGenerating}
               />
-              <div className={styles.devInputRow}>
-                <select
-                  value={selectedMapType}
-                  onChange={(e) => onMapTypeChange(e.target.value as MapType | 'random')}
-                  className={styles.devSelect}
-                  disabled={isGenerating}
-                >
-                  <option value="random">Random Map</option>
-                  <option value={MapType.ICE}>Ice Map</option>
-                  <option value={MapType.GROUND}>Ground Map</option>
-                </select>
-                <input
-                  value={startBatchInput}
-                  onChange={(e) => onStartBatchInputChange(e.target.value.replace(/\D/g, ''))}
-                  placeholder="Start batch #"
-                  className={styles.devInputSmall}
-                  disabled={isGenerating}
-                  title="Start generation at a specific batch number (deterministic)"
-                />
-              </div>
+              <input
+                value={startBatchInput}
+                onChange={(e) => onStartBatchInputChange(e.target.value.replace(/\D/g, ''))}
+                placeholder="Start batch #"
+                className={styles.devInput}
+                disabled={isGenerating}
+                title="Start generation at a specific batch number (deterministic)"
+              />
             </>
           )}
           <div className={styles.devButtonRow}>

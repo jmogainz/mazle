@@ -87,34 +87,50 @@ export default function HowToPlay() {
         </header>
 
         <section className={styles.section}>
-          <h2>🎯 The Goal</h2>
+          <h2>The Goal</h2>
           <p>
-            Navigate your character to the <strong>star</strong> in exactly <strong>10 moves</strong>. 
-            You have <strong>3 lives</strong> to find the optimal solution. Complete the puzzle 
+            Navigate your character to the <strong>star</strong> in exactly <strong>10 moves</strong>.
+            You have <strong>3 lives</strong> to find the optimal solution. Complete the puzzle
             as fast as you can — every wrong move adds a time penalty!
           </p>
         </section>
 
         <section className={styles.section}>
-          <h2>🎮 Controls</h2>
+          <h2>Controls</h2>
           <div className={styles.controlsGrid}>
             <div className={styles.controlItem}>
-              <span className={styles.controlIcon}>⌨️</span>
+              <span className={styles.controlIcon}>
+                <svg viewBox="0 0 24 24" className={styles.controlSvg}>
+                  <rect x="2" y="6" width="20" height="12" rx="2" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+                  <path d="M6 12h2M10 12h2M14 12h2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+              </span>
               <span className={styles.controlLabel}>Arrow Keys</span>
             </div>
             <div className={styles.controlItem}>
-              <span className={styles.controlIcon}>🔤</span>
+              <span className={styles.controlIcon}>
+                <svg viewBox="0 0 24 24" className={styles.controlSvg}>
+                  <rect x="3" y="8" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+                  <rect x="9.5" y="8" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+                  <rect x="16" y="8" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+                  <rect x="9.5" y="2" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+                </svg>
+              </span>
               <span className={styles.controlLabel}>WASD</span>
             </div>
             <div className={styles.controlItem}>
-              <span className={styles.controlIcon}>👆</span>
+              <span className={styles.controlIcon}>
+                <svg viewBox="0 0 24 24" className={styles.controlSvg}>
+                  <path d="M12 2v14m0 0l-4-4m4 4l4-4M8 22h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                </svg>
+              </span>
               <span className={styles.controlLabel}>Swipe</span>
             </div>
           </div>
         </section>
 
         <section className={styles.section}>
-          <h2>🧊 Tile Types</h2>
+          <h2>Tile Types</h2>
           <div className={styles.tileList}>
             <div className={styles.tileItem}>
               <div className={styles.tileSwatchContainer}>
@@ -158,7 +174,7 @@ export default function HowToPlay() {
         </section>
 
         <section className={styles.section}>
-          <h2>💡 Tips for Success</h2>
+          <h2>Tips for Success</h2>
           <ul className={styles.tipsList}>
             <li>Think ahead — ice sliding means your moves chain together.</li>
             <li>Count moves mentally before committing to a path.</li>
@@ -169,7 +185,7 @@ export default function HowToPlay() {
         </section>
 
         <section className={styles.section}>
-          <h2>📊 Scoring</h2>
+          <h2>Scoring</h2>
           <p>
             Your time is recorded from when you press &quot;Begin&quot; until you reach the goal. 
             Each life lost adds a <strong>{PENALTY_MS / 1000}-second penalty</strong>. The fastest solvers 

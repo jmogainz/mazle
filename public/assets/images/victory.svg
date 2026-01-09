@@ -1,0 +1,11 @@
+<svg width="200" height="48" viewBox="0 0 200 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Victory: Solid Green Path Tiles -->
+  <rect x="0" y="4" width="36" height="36" rx="4" fill="#6aaa64" />
+  <rect x="40" y="4" width="36" height="36" rx="4" fill="#6aaa64" />
+  <rect x="80" y="4" width="36" height="36" rx="4" fill="#6aaa64" />
+  <rect x="120" y="4" width="36" height="36" rx="4" fill="#6aaa64" />
+  
+  <!-- Final Tile: Light Green Background with Symmetrical Solid Green Star -->
+  <rect x="160" y="4" width="36" height="36" rx="4" fill="#6aaa64" fill-opacity="0.2" />
+  <path d="M178 8L181.5 17.2L191.3 17.7L183.7 23.8L186.2 33.3L178 28L169.8 33.3L172.3 23.8L164.7 17.7L174.5 17.2Z" fill="#6aaa64"/>
+</svg>

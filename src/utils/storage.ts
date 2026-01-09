@@ -24,7 +24,7 @@ export interface InProgressState {
     deviationIndex?: number;
   }[];
   moveHistory: Position[];
-  boulderPositions?: string[];     // For ground maps with boulders
+  boulderPositions?: string[];     // Legacy field for backward compatibility
   isPlaying: boolean;
   // Hint state
   unlockedHintTiles?: string[];

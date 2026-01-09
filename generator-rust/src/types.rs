@@ -32,14 +32,6 @@ pub struct Position {
     pub y: i32,
 }
 
-/// Map types
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum MapType {
-    Ice,
-    Ground,
-}
-
 /// Complete puzzle data for API response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -52,7 +44,6 @@ pub struct PuzzleData {
     pub optimal_moves: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub solution_path: Option<Vec<Position>>,
-    pub map_type: MapType,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub difficulty_score: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]

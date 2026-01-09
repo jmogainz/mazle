@@ -1,6 +1,6 @@
 /**
  * Dedicated Web Worker for WASM puzzle generation.
- * 
+ *
  * Runs WASM generation off the main thread to prevent UI freezing.
  * WASM runs single-threaded (no rayon thread pool) for optimal performance.
  */
@@ -10,7 +10,6 @@ interface GenerateRequest {
   type: 'generate';
   id: number;
   seed: string;
-  mapType: string;
   closenessThreshold?: number;
 }
 
@@ -49,27 +48,27 @@ let initialized = false;
  */
 async function initialize(): Promise<void> {
   if (initialized) return;
-  
+
   try {
     console.log('[Worker] Loading WASM module...');
     const loadStart = performance.now();
-    
+
     // Dynamic import of the WASM module
     wasm = await import('../wasm/generator/mazle_generator');
     await wasm.default();
-    
+
     const loadElapsed = performance.now() - loadStart;
     console.log(`[Worker] WASM loaded in ${loadElapsed.toFixed(0)}ms`);
     console.log('[Worker] Running single-threaded (no rayon thread pool - faster for puzzle generation)');
-    
+
     initialized = true;
-    
+
     const response: ReadyResponse = {
       type: 'ready',
       version: wasm.getVersion(),
     };
     self.postMessage(response);
-    
+
     console.log(`[Worker] Ready (v${response.version})`);
   } catch (error) {
     console.error('[Worker] Initialization failed:', error);
@@ -85,7 +84,7 @@ async function initialize(): Promise<void> {
 /**
  * Generate a puzzle (synchronous, blocks this worker thread).
  */
-async function generate(id: number, seed: string, mapType: string, closenessThreshold?: number): Promise<void> {
+async function generate(id: number, seed: string, closenessThreshold?: number): Promise<void> {
   if (!wasm || !initialized) {
     const response: ErrorResponse = {
       type: 'error',
@@ -95,11 +94,11 @@ async function generate(id: number, seed: string, mapType: string, closenessThre
     self.postMessage(response);
     return;
   }
-  
+
   try {
     console.log(`[Worker] Generating puzzle for seed: ${seed}`);
     const startTime = performance.now();
-    
+
     // Generate puzzle (this blocks until complete)
     let puzzle;
     if (closenessThreshold !== undefined) {
@@ -111,14 +110,14 @@ async function generate(id: number, seed: string, mapType: string, closenessThre
         parallel: false, // Worker is single-threaded
         startBatch: 0,
       };
-      puzzle = wasm.generateWithConfig(seed, mapType, config);
+      puzzle = wasm.generateWithConfig(seed, config);
     } else {
-      puzzle = wasm.generate(seed, mapType);
+      puzzle = wasm.generate(seed);
     }
-    
+
     const elapsed = performance.now() - startTime;
     console.log(`[Worker] Generated in ${elapsed.toFixed(0)}ms`);
-    
+
     const response: GenerateResponse = {
       type: 'generated',
       id,
@@ -140,13 +139,13 @@ async function generate(id: number, seed: string, mapType: string, closenessThre
 // Message handler
 self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
   const { data } = event;
-  
+
   switch (data.type) {
     case 'init':
       await initialize();
       break;
     case 'generate':
-      await generate(data.id, data.seed, data.mapType, data.closenessThreshold);
+      await generate(data.id, data.seed, data.closenessThreshold);
       break;
   }
 };

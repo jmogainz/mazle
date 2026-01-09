@@ -1,4 +1,4 @@
-import { MapType, PuzzleData, TileType } from '../types';
+import { PuzzleData, TileType } from '../types';
 import { MovementConfig } from '../movement';
 
 /**
@@ -15,7 +15,7 @@ export interface PsychologyMetrics {
 }
 
 /**
- * Tileset definition for rendering a map type
+ * Tileset definition for rendering
  */
 export interface TilesetDefinition {
   /** Map of tile type to color (primary fill) */
@@ -29,108 +29,40 @@ export interface TilesetDefinition {
 }
 
 /**
- * Definition of a map type in the registry.
- * Each map type has its own movement config, tileset, and scoring.
- * 
- * Note: Puzzle generation is handled by WASM/Rust backend.
- * This definition provides runtime config for movement and rendering.
+ * Game configuration for Mazle.
+ * Provides runtime config for movement and rendering.
  */
-export interface MapTypeDefinition {
-  /** The map type identifier */
-  type: MapType;
-  
+export interface GameConfig {
   /** Display name for UI */
   displayName: string;
-  
-  /** Movement configuration for this map type */
+
+  /** Movement configuration */
   movementConfig: MovementConfig;
-  
+
   /** Tileset for rendering */
   tileset: TilesetDefinition;
-  
-  /** Selection weight (0 = disabled, higher = more likely to be selected) */
-  weight: number;
-  
+
   /** Calculate psychology-based difficulty metrics */
   psychologyScorer?: (puzzle: PuzzleData) => PsychologyMetrics;
 }
 
+// Game config singleton - will be set by ice map module
+let gameConfig: GameConfig | null = null;
+
 /**
- * The global map type registry.
- * All available map types are registered here.
+ * Set the game configuration.
+ * Called by the ice map module during initialization.
  */
-class MapRegistry {
-  private definitions: Map<MapType, MapTypeDefinition> = new Map();
-
-  /**
-   * Register a map type definition
-   */
-  register(definition: MapTypeDefinition): void {
-    this.definitions.set(definition.type, definition);
-  }
-
-  /**
-   * Get a map type definition by type
-   */
-  get(type: MapType): MapTypeDefinition | undefined {
-    return this.definitions.get(type);
-  }
-
-  /**
-   * Get all registered map types
-   */
-  getAll(): MapTypeDefinition[] {
-    return Array.from(this.definitions.values());
-  }
-
-  /**
-   * Get all enabled map types (weight > 0)
-   */
-  getEnabled(): MapTypeDefinition[] {
-    return this.getAll().filter(def => def.weight > 0);
-  }
-
-  /**
-   * Select a map type using weighted random selection.
-   * Uses a separate RNG stream to avoid perturbing puzzle generation.
-   * 
-   * @param rng - Random number generator (should be seeded with seed + ':maptype')
-   * @returns The selected map type definition, or undefined if none enabled
-   */
-  selectWeighted(rng: { random: () => number }): MapTypeDefinition | undefined {
-    const enabled = this.getEnabled();
-    if (enabled.length === 0) return undefined;
-    
-    const totalWeight = enabled.reduce((sum, def) => sum + def.weight, 0);
-    if (totalWeight === 0) return undefined;
-    
-    let random = rng.random() * totalWeight;
-    for (const def of enabled) {
-      random -= def.weight;
-      if (random <= 0) {
-        return def;
-      }
-    }
-    
-    // Fallback to last enabled (shouldn't happen)
-    return enabled[enabled.length - 1];
-  }
-
-  /**
-   * Check if a map type is registered
-   */
-  has(type: MapType): boolean {
-    return this.definitions.has(type);
-  }
+export function setGameConfig(config: GameConfig): void {
+  gameConfig = config;
 }
 
-// Global singleton instance
-export const MAP_REGISTRY = new MapRegistry();
-
 /**
- * Helper function to register a map type.
- * Use this in map type index files.
+ * Get the game configuration.
  */
-export function registerMapType(definition: MapTypeDefinition): void {
-  MAP_REGISTRY.register(definition);
+export function getGameConfig(): GameConfig {
+  if (!gameConfig) {
+    throw new Error('Game config not initialized. Import maps module first.');
+  }
+  return gameConfig;
 }

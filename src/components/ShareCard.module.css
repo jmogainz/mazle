@@ -341,6 +341,11 @@
   gap: 0.5rem;
 }
 
+.cardFailed .shareButton {
+  background: var(--color-error);
+  border-color: var(--color-error);
+}
+
 .shareBtnIcon {
   width: 20px;
   height: 20px;
@@ -364,7 +369,19 @@
   color: var(--color-primary);
 }
 
-.shareButton.copied {
+.cardFailed .shareButton:hover {
+  color: var(--color-error);
+}
+
+.shareButton.copied,
+.cardFailed .shareButton.copied {
+  background: var(--color-text);
+  border-color: var(--color-text);
+  color: var(--color-background);
+}
+
+.shareButton.copied:hover,
+.cardFailed .shareButton.copied:hover {
   background: var(--color-text);
   border-color: var(--color-text);
   color: var(--color-background);
@@ -657,7 +674,7 @@
   display: block;
   margin: 0 auto 1rem auto;
   width: 64px;
-  height: 64px;
+  height: auto;
 }
 
 .deadPlayerIcon {
@@ -695,3 +712,5 @@
 
 .eyeLeft::before, .eyeRight::before { transform: translateY(-50%) rotate(45deg); }
 .eyeLeft::after, .eyeRight::after { transform: translateY(-50%) rotate(-45deg); }
+
+/* Backflip Animation Removed */

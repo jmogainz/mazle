@@ -4891,7 +4891,7 @@ pub fn generate_puzzle_with_cancel(
                 // 1. All thresholds pass, OR
                 // 2. Closeness score is >= 1.0 (perfect match only)
                 let passes_all_thresholds = pass_unique_opt && pass_ci && pass_dec && pass_gate && pass_fp && pass_loc && pass_dir && pass_bt && pass_amb && pass_paths && pass_olap_best && pass_olap_avg && pass_ediv;
-                let passes_closeness_threshold = pass_unique_opt && closeness >= 0.90;
+                let passes_closeness_threshold = pass_unique_opt && closeness >= config.closeness_threshold;
                 
                 passes_all_thresholds || passes_closeness_threshold
             };

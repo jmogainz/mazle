@@ -1272,24 +1272,27 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
-  transition: opacity 1s ease-out, visibility 1s;
-}
-
-.swipeHintVisible {
-  opacity: 1;
-  visibility: visible;
-  animation: flash 1s 5 alternate forwards;
-}
-
-.swipeHintHidden {
   opacity: 0;
-  visibility: hidden;
-  animation: none;
+  animation: swipeHintFull 8.86s linear forwards;
 }
 
-@keyframes flash {
-  from { opacity: 1; }
-  to { opacity: 0.3; }
+/* Single animation with consistent opacity rate (0.7 opacity/sec) throughout:
+   - Enter: 0 → 0.3 in 430ms
+   - 4 pulses (7 half-cycles): bright → dim → bright → dim → bright → dim → bright
+   - Exit: 1 → 0 in 1430ms (fades out on 4th pulse)
+   Total: 8.86s
+*/
+@keyframes swipeHintFull {
+  0% { opacity: 0; }
+  4.9% { opacity: 0.3; }
+  16.1% { opacity: 1; }
+  27.4% { opacity: 0.3; }
+  38.7% { opacity: 1; }
+  50% { opacity: 0.3; }
+  61.3% { opacity: 1; }
+  72.6% { opacity: 0.3; }
+  83.9% { opacity: 1; }
+  100% { opacity: 0; }
 }
 
 @media (min-width: 769px) {

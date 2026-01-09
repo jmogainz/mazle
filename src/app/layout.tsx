@@ -141,15 +141,15 @@ export default function RootLayout({
             crossOrigin="anonymous"
           />
         ) : null}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{var d=document;var w=window;var vh=(w.visualViewport&&w.visualViewport.height)||w.innerHeight;var vw=w.innerWidth;var showTopAd=${Boolean(ADSENSE_TOP_SLOT)};var showBottomAd=${Boolean(ADSENSE_BOTTOM_SLOT)};var HEADER_HEIGHT=56;var PUZZLE_NUM_HEIGHT=32;var SCOREBOARD_HEIGHT=70;var CONTROLS_HEIGHT=56;var FOOTER_HEIGHT=vw>768?32:0;var AD_HEIGHT=(showTopAd?${AD_BANNER_HEIGHT}+8:0)+(showBottomAd?${AD_BANNER_HEIGHT}+8:0);var PADDING=24;var totalUIHeight=HEADER_HEIGHT+PUZZLE_NUM_HEIGHT+SCOREBOARD_HEIGHT+CONTROLS_HEIGHT+FOOTER_HEIGHT+AD_HEIGHT+PADDING;var availableForMaze=vh-totalUIHeight;var MAX_MAZE_SIZE=520;var UI_SCALE_MIN=0.55;var UI_SCALE_MAX=1;var maxMazeByWidth=Math.max(1,Math.min(vw-4,MAX_MAZE_SIZE));var idealMazeSize=Math.min(maxMazeByWidth,MAX_MAZE_SIZE);var neededForIdealMaze=idealMazeSize;var uiScale=UI_SCALE_MAX;if(availableForMaze<neededForIdealMaze){var uiScalableHeight=HEADER_HEIGHT+PUZZLE_NUM_HEIGHT+SCOREBOARD_HEIGHT+CONTROLS_HEIGHT;var deficit=neededForIdealMaze-availableForMaze;var maxUISavings=uiScalableHeight*(1-UI_SCALE_MIN);if(deficit<=maxUISavings){uiScale=1-(deficit/uiScalableHeight);uiScale=Math.max(UI_SCALE_MIN,Math.min(UI_SCALE_MAX,uiScale));}else{uiScale=UI_SCALE_MIN;}}var uiScaleValue=Math.round(uiScale*1000)/1000;var style=d.getElementById('ui-scale-preload');if(!style){style=d.createElement('style');style.id='ui-scale-preload';style.type='text/css';d.head.appendChild(style);}style.textContent=':root{--vh:'+vh+'px;--ui-scale:'+uiScaleValue.toFixed(3)+';}';}catch(e){}})();`,
-          }}
-        />
         <link rel="preload" as="image" href="/assets/images/alive_character.svg" type="image/svg+xml" />
         <link rel="preload" as="image" href="/assets/images/dead_character.svg" type="image/svg+xml" />
       </head>
       <body>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var d=document;var w=window;var vh=(w.visualViewport&&w.visualViewport.height)||w.innerHeight;var vw=w.innerWidth;var showTopAd=${Boolean(ADSENSE_TOP_SLOT)};var showBottomAd=${Boolean(ADSENSE_BOTTOM_SLOT)};var HEADER_HEIGHT=56;var PUZZLE_NUM_HEIGHT=32;var SCOREBOARD_HEIGHT=70;var CONTROLS_HEIGHT=56;var FOOTER_HEIGHT=vw>768?32:0;var AD_HEIGHT=(showTopAd?${AD_BANNER_HEIGHT}+8:0)+(showBottomAd?${AD_BANNER_HEIGHT}+8:0);var PADDING=24;var totalUIHeight=HEADER_HEIGHT+PUZZLE_NUM_HEIGHT+SCOREBOARD_HEIGHT+CONTROLS_HEIGHT+FOOTER_HEIGHT+AD_HEIGHT+PADDING;var availableForMaze=vh-totalUIHeight;var MAX_MAZE_SIZE=520;var UI_SCALE_MIN=0.55;var UI_SCALE_MAX=1;var maxMazeByWidth=Math.max(1,Math.min(vw-4,MAX_MAZE_SIZE));var idealMazeSize=Math.min(maxMazeByWidth,MAX_MAZE_SIZE);var neededForIdealMaze=idealMazeSize;var uiScale=UI_SCALE_MAX;if(availableForMaze<neededForIdealMaze){var uiScalableHeight=HEADER_HEIGHT+PUZZLE_NUM_HEIGHT+SCOREBOARD_HEIGHT+CONTROLS_HEIGHT;var deficit=neededForIdealMaze-availableForMaze;var maxUISavings=uiScalableHeight*(1-UI_SCALE_MIN);if(deficit<=maxUISavings){uiScale=1-(deficit/uiScalableHeight);uiScale=Math.max(UI_SCALE_MIN,Math.min(UI_SCALE_MAX,uiScale));}else{uiScale=UI_SCALE_MIN;}}var uiScaleValue=Math.round(uiScale*1000)/1000;var style=d.getElementById('ui-scale-preload-style');if(!style){style=d.createElement('style');style.id='ui-scale-preload-style';style.type='text/css';d.head.appendChild(style);}style.textContent=':root{--vh:'+vh+'px;--ui-scale:'+uiScaleValue.toFixed(3)+';}';}catch(e){}})();`,
+          }}
+        />
         <Script
           id="adsense"
           strategy="beforeInteractive"

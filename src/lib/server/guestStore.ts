@@ -44,7 +44,7 @@ export async function reserveGuestDisplayName(name: string, guestId: string): Pr
   const redis = requireRedis();
   const key = guestNameKey(name.toLowerCase());
   const result = await redis.set(key, guestId, { nx: true, ex: GUEST_TTL_SECONDS });
-  return result === 'OK' || result === true;
+  return result === 'OK';
 }
 
 export async function saveGuestProfile(guestId: string, displayName: string): Promise<void> {

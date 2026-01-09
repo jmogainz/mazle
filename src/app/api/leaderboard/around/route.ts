@@ -10,6 +10,7 @@ import {
   parseLeaderboardMember,
 } from '@/lib/server/leaderboard';
 import { ensureDevLeaderboardSeed } from '@/lib/server/leaderboardSeed';
+import { getNewYorkDateString } from '@/game/puzzleGenerator';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -27,6 +28,11 @@ export async function GET(request: Request) {
 
   if (!isValidNyDateString(dateParam)) {
     return jsonError(400, 'INVALID_DATE', 'Missing or invalid date.');
+  }
+
+  const today = getNewYorkDateString();
+  if (dateParam !== today) {
+    return jsonError(400, 'DATE_NOT_TODAY', 'Only today’s leaderboard is available.');
   }
 
   const rank = Math.max(1, Number(rankParam ?? '1') || 1);

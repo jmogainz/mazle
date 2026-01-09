@@ -11,6 +11,20 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS user_profiles (
+  user_id uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  character_id text NOT NULL DEFAULT 'default',
+  skin_id text NOT NULL DEFAULT 'default',
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS user_settings (
+  user_id uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  theme text NOT NULL DEFAULT 'system',
+  leaderboard_auto_submit boolean NOT NULL DEFAULT true,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS oidc_accounts (
   provider text NOT NULL,
   provider_account_id text NOT NULL,
@@ -54,6 +68,17 @@ CREATE TABLE IF NOT EXISTS daily_puzzles (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS daily_results (
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  date date NOT NULL,
+  played_at timestamptz NOT NULL DEFAULT now(),
+  completed boolean NOT NULL,
+  time_ms integer CHECK (time_ms is null or time_ms > 0),
+  attempts_used integer CHECK (attempts_used is null or (attempts_used >= 1 and attempts_used <= 3)),
+  PRIMARY KEY (user_id, date)
+);
+CREATE INDEX IF NOT EXISTS daily_results_user_date_idx ON daily_results(user_id, date desc);
+
 CREATE TABLE IF NOT EXISTS leaderboard_submissions (
   date date NOT NULL,
   subject_type text NOT NULL CHECK (subject_type IN ('guest','user')),
@@ -65,13 +90,31 @@ CREATE TABLE IF NOT EXISTS leaderboard_submissions (
 );
 CREATE INDEX IF NOT EXISTS leaderboard_submissions_date_idx ON leaderboard_submissions(date);
 
+CREATE TABLE IF NOT EXISTS leaderboard_podium (
+  date date NOT NULL,
+  rank integer NOT NULL CHECK (rank IN (1,2,3)),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  time_ms integer NOT NULL CHECK (time_ms > 0),
+  attempts_used integer NOT NULL CHECK (attempts_used >= 1 and attempts_used <= 3),
+  display_name_at_time text NOT NULL,
+  character_id_at_time text NOT NULL,
+  skin_id_at_time text NOT NULL,
+  PRIMARY KEY (date, rank),
+  UNIQUE (date, user_id)
+);
+CREATE INDEX IF NOT EXISTS leaderboard_podium_date_idx ON leaderboard_podium(date);
+
 ---- create above / drop below ----
 
 -- 000001_initial.down.sql
+DROP TABLE IF EXISTS leaderboard_podium;
 DROP TABLE IF EXISTS leaderboard_submissions;
+DROP TABLE IF EXISTS daily_results;
 DROP TABLE IF EXISTS daily_puzzles;
 DROP TABLE IF EXISTS stripe_events;
 DROP TABLE IF EXISTS purchases;
 DROP TABLE IF EXISTS entitlements;
 DROP TABLE IF EXISTS oidc_accounts;
+DROP TABLE IF EXISTS user_settings;
+DROP TABLE IF EXISTS user_profiles;
 DROP TABLE IF EXISTS users;

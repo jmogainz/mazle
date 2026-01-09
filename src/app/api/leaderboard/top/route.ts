@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { ensureDbSchema, getDbPool } from '@/lib/server/db';
 import { resolveSubjectIdentity, subjectKeyFor } from '@/lib/server/identity';
 import { getLeaderboardRedis } from '@/lib/server/redis';
 import { jsonError } from '@/lib/server/responses';
@@ -10,6 +11,7 @@ import {
   parseLeaderboardMember,
 } from '@/lib/server/leaderboard';
 import { ensureDevLeaderboardSeed } from '@/lib/server/leaderboardSeed';
+import { getNewYorkDateString } from '@/game/puzzleGenerator';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -26,6 +28,11 @@ export async function GET(request: Request) {
 
   if (!isValidNyDateString(dateParam)) {
     return jsonError(400, 'INVALID_DATE', 'Missing or invalid date.');
+  }
+
+  const today = getNewYorkDateString();
+  if (dateParam !== today) {
+    return jsonError(400, 'DATE_NOT_TODAY', 'Only today’s leaderboard is available.');
   }
 
   const limit = Math.max(1, Math.min(200, Number(limitParam ?? '50') || 50));
@@ -73,7 +80,57 @@ export async function GET(request: Request) {
       };
     });
 
-    const res = NextResponse.json({ date: dateParam, entries }, { headers: { 'Cache-Control': 'no-store' } });
+    const top3SubjectKeys = parsed.slice(0, 3).map((p) => p.subjectKey).filter((k): k is string => !!k);
+
+    const profilesBySubjectKey = new Map<string, { characterId: string; skinId: string }>();
+    if (top3SubjectKeys.length > 0) {
+      const userIds = top3SubjectKeys
+        .filter((k) => k.startsWith('user:'))
+        .map((k) => k.slice('user:'.length))
+        .filter((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id));
+
+      if (userIds.length > 0) {
+        try {
+          await ensureDbSchema();
+          const pool = getDbPool();
+          const res = await pool.query<{ user_id: string; character_id: string; skin_id: string }>(
+            `select user_id::text as user_id, character_id, skin_id
+             from user_profiles
+             where user_id = any($1::uuid[])`,
+            [userIds]
+          );
+          const byUserId = new Map(res.rows.map((r) => [r.user_id, { characterId: r.character_id, skinId: r.skin_id }]));
+          for (const subjectKey of top3SubjectKeys) {
+            if (!subjectKey.startsWith('user:')) continue;
+            const userId = subjectKey.slice('user:'.length);
+            profilesBySubjectKey.set(subjectKey, byUserId.get(userId) ?? { characterId: 'default', skinId: 'default' });
+          }
+        } catch {
+          for (const subjectKey of top3SubjectKeys) {
+            profilesBySubjectKey.set(subjectKey, { characterId: 'default', skinId: 'default' });
+          }
+        }
+      }
+    }
+
+    const podium =
+      entries.length > 0
+        ? entries.slice(0, 3).map((entry) => {
+            const subjectKey = parsed[entry.rank - 1]?.subjectKey;
+            const profile = subjectKey ? profilesBySubjectKey.get(subjectKey) : null;
+            return {
+              rank: entry.rank as 1 | 2 | 3,
+              displayName: entry.displayName,
+              timeMs: entry.timeMs,
+              attemptsUsed: entry.attemptsUsed,
+              characterId: profile?.characterId ?? 'default',
+              skinId: profile?.skinId ?? 'default',
+              isMe: entry.isMe,
+            };
+          })
+        : undefined;
+
+    const res = NextResponse.json({ date: dateParam, entries, podium }, { headers: { 'Cache-Control': 'no-store' } });
     if (me.setGuestCookie) {
       setGuestIdCookie(res, me.guestId);
     }

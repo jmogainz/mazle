@@ -742,8 +742,11 @@ export default function Home() {
     gameControlsRef.current?.start();
     setLiveAttempts([]);
     setReviewAttemptIndex(null);
-    setShowSwipeHint(true);
-    setTimeout(() => setShowSwipeHint(false), 5000);
+    // Mount hint after 500ms delay - animation handles full lifecycle
+    setShowSwipeHint(false);
+    setTimeout(() => {
+      setShowSwipeHint(true);
+    }, 500);
   }, []);
 
   const handleDevSeedGenerate = useCallback(
@@ -1163,11 +1166,14 @@ export default function Home() {
             >
               Share Score
             </button>
-            <div
-              className={`${styles.swipeHint} ${showSwipeHint ? styles.swipeHintVisible : styles.swipeHintHidden}`}
-            >
-              Swipe anywhere to move
-            </div>
+            {showSwipeHint && (
+              <div
+                className={styles.swipeHint}
+                onAnimationEnd={() => setShowSwipeHint(false)}
+              >
+                Swipe anywhere to move
+              </div>
+            )}
           </div>
 
           {isPostGame && <AdSlot placement="postGame" />}

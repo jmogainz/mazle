@@ -137,6 +137,8 @@ export default function RootLayout({
             crossOrigin="anonymous"
           />
         ) : null}
+        <link rel="preload" as="image" href="/assets/images/alive_character.svg" type="image/svg+xml" />
+        <link rel="preload" as="image" href="/assets/images/dead_character.svg" type="image/svg+xml" />
       </head>
       <body>
         <Script

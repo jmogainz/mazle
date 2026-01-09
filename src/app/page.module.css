@@ -903,6 +903,7 @@
   min-height: calc(48px * var(--ui-scale));
   padding: calc(0.25rem * var(--ui-scale)) 0;
   transition: min-height 0.15s ease-out, padding 0.15s ease-out;
+  position: relative;
 }
 
 /* Unified share button (works on all devices) */
@@ -1192,10 +1193,12 @@
   .gameWrapper {
     padding: 1rem;
     gap: 0.5rem;
+    max-width: none; /* Allow wrapper to expand fully */
   }
 
   .gameArea {
     padding: 0.5rem;
+    max-width: none; /* Remove any artificial constraint */
   }
 
   .footer {
@@ -1217,10 +1220,11 @@
     gap: 0;
     padding: 0.75rem 0.25rem 0.5rem;
     justify-content: flex-start;
+    max-width: none; /* Ensure mobile also uses full width */
   }
 
   .gameArea {
-    flex: 0 1 auto;
+    flex: 1 1 0;
     min-height: 0;
     padding: 0;
   }
@@ -1250,4 +1254,46 @@
   color: var(--color-text);
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.swipeHint {
+  font-size: calc(0.9rem * var(--ui-scale));
+  padding: calc(0.65rem * var(--ui-scale)) 0;
+  font-weight: 800;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-secondary);
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease-out;
+}
+
+.swipeHintVisible {
+  opacity: 1;
+  visibility: visible;
+  animation: flash 1s infinite alternate;
+}
+
+.swipeHintHidden {
+  opacity: 0;
+  visibility: hidden;
+  animation: none;
+}
+
+@keyframes flash {
+  from { opacity: 1; }
+  to { opacity: 0.3; }
+}
+
+@media (min-width: 769px) {
+  .swipeHint {
+    display: none;
+  }
 }

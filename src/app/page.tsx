@@ -321,7 +321,9 @@ export default function Home() {
       typeof ResizeObserver !== 'undefined' && gameArea
         ? new ResizeObserver(updateScale)
         : null;
-    resizeObserver?.observe(gameArea);
+    if (gameArea && resizeObserver) {
+      resizeObserver.observe(gameArea);
+    }
 
     return () => {
       window.visualViewport?.removeEventListener('resize', updateScale);

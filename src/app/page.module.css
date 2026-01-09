@@ -840,6 +840,29 @@
 .gameFrame :global(canvas) {
   display: block;
   border-radius: 10px;
+  transition: filter 0.2s ease-out;
+}
+
+/* Dark overlay on top of canvas (gets blurred with canvas) */
+.darkOverlay {
+  position: absolute;
+  inset: 8px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 6px;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease-out, filter 0.2s ease-out;
+}
+
+.darkOverlayVisible {
+  opacity: 1;
+}
+
+/* Blur both the canvas AND dark overlay (so overlay edges are also blurred) */
+.gameFrameBlurred :global(canvas),
+.gameFrameBlurred .darkOverlay {
+  filter: blur(8px);
 }
 
 /* Blur overlay - separate element, not on container */
@@ -853,8 +876,8 @@
   width: 100%;
   height: 100%;
   background: rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
   border-radius: 10px;
   z-index: 5;
   pointer-events: none;

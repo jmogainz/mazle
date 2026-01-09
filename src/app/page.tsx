@@ -1078,7 +1078,16 @@ export default function Home() {
       : 'Loading Mazle...';
   const displayOptimalMoves = puzzle?.optimalMoves ?? 10;
   const isPostGame = hasPuzzle && !isPlaying && (!!gameResult || !!previousResult);
-  const shouldBlur = showShareCard || (hasPuzzle && !isPlaying && isGameReady && !showInlineResult);
+  const shouldBlur =
+    showShareCard ||
+    showHelp ||
+    showStats ||
+    showMenu ||
+    showLeaderboard ||
+    showAccount ||
+    (UI_OVERHAUL_EXPERIMENTAL && showArchive) ||
+    showDevTools ||
+    (hasPuzzle && !isPlaying && isGameReady && !showInlineResult);
   const showLoader = !hasPuzzle || !isGameReady;
   const showResultsButton = showInlineResult || (!!previousResult && !isPlaying);
   const showMenuButton = process.env.NODE_ENV !== 'production' || previewFeaturesEnabled;
@@ -1175,7 +1184,15 @@ export default function Home() {
           />
 
           <div ref={gameStageRef} className={styles.gameArea}>
-            <div className={styles.gameFrame} style={{ width: gameFrameSizePx.width, height: gameFrameSizePx.height }} ref={gameFrameRef}>
+            <div
+              ref={gameFrameRef}
+              className={`${styles.gameFrame} ${shouldBlur ? styles.gameFrameBlurred : ''}`}
+              style={{
+                width: `${gameFrameSizePx.width}px`,
+                height: `${gameFrameSizePx.height}px`,
+              }}
+            >
+              {/* Render PhaserGame when puzzle exists (hidden until ready) */}
               {puzzle && (
                 <PhaserGame
                   key={renderKey}
@@ -1199,7 +1216,7 @@ export default function Home() {
               {/* Game overlays - only shown when game is ready */}
               {puzzle && isGameReady && (
                 <>
-                  <div className={`${styles.blurOverlay} ${!shouldBlur ? styles.blurOverlayHidden : ''}`} />
+                  <div className={`${styles.darkOverlay} ${shouldBlur ? styles.darkOverlayVisible : ''}`} />
                   {lifeFlash && <div className={styles.lifeFlash} />}
                   {!isPlaying && !showInlineResult && !showShareCard && (
                     <div className={styles.startOverlay}>

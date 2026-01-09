@@ -1,0 +1,13 @@
+<svg width="200" height="48" viewBox="0 0 200 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Loss: Failed row -->
+  <rect x="0" y="4" width="36" height="36" rx="4" fill="#6aaa64" />
+  <rect x="40" y="4" width="36" height="36" rx="4" fill="#6aaa64" />
+  <rect x="80" y="4" width="36" height="36" rx="4" fill="#6aaa64" />
+  
+  <!-- The Failure Point -->
+  <rect x="120" y="4" width="36" height="36" rx="4" fill="#cf6679" />
+  <path d="M130 14L146 30M146 14L130 30" stroke="white" stroke-width="4" stroke-linecap="round"/>
+  
+  <!-- Empty/Remaining -->
+  <rect x="160" y="4" width="36" height="36" rx="4" stroke="#d3d6da" stroke-width="2" />
+</svg>

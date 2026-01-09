@@ -1,27 +1,21 @@
-import { MapType } from '../../types';
-import { registerMapType, MapTypeDefinition } from '../registry';
+import { setGameConfig, GameConfig } from '../registry';
 import { iceMovementConfig } from '../../movement';
 import { iceTileset } from './tileset';
 import { scoreIcePuzzle } from './psychology';
 
 /**
- * Ice map type definition.
+ * Ice map configuration.
  * Classic Pokémon ice gym style puzzles with sliding mechanics.
- * 
- * Note: Puzzle generation is handled by WASM/Rust backend.
- * This definition provides movement, rendering, and scoring config.
  */
-export const iceMapDefinition: MapTypeDefinition = {
-  type: MapType.ICE,
-  displayName: 'Ice',
+export const iceConfig: GameConfig = {
+  displayName: 'Mazle',
   movementConfig: iceMovementConfig,
   tileset: iceTileset,
-  weight: 1, // Enabled
   psychologyScorer: scoreIcePuzzle,
 };
 
-// Register the ice map type
-registerMapType(iceMapDefinition);
+// Set as the game configuration
+setGameConfig(iceConfig);
 
 // Re-export tileset and psychology for direct access
 export { iceTileset } from './tileset';

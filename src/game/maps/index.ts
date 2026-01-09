@@ -1,13 +1,10 @@
 // Map registry and types
-export { MAP_REGISTRY, registerMapType } from './registry';
+export { setGameConfig, getGameConfig } from './registry';
 export type {
-  MapTypeDefinition,
+  GameConfig,
   PsychologyMetrics,
   TilesetDefinition,
 } from './registry';
 
-// Import map type modules to trigger registration
-// These are imported for side effects (they register themselves)
+// Import ice map module to trigger initialization
 import './ice';
-import './ground'; // Registered but disabled (weight: 0)
-

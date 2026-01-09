@@ -4,7 +4,7 @@
  * Provides a unified interface for rendering tiles based on tileset definitions.
  */
 
-import { TileType, MapType } from '../types';
+import { TileType } from '../types';
 import { TilesetDefinition } from '../maps/registry';
 
 /**

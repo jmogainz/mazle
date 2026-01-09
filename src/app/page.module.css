@@ -1052,6 +1052,23 @@
   transition: font-size 0.15s ease-out, margin-bottom 0.15s ease-out;
 }
 
+.previousResultActions {
+  display: flex;
+  flex-direction: column;
+  gap: calc(0.5rem * var(--ui-scale));
+}
+
+.previousResultActions button {
+  width: 100%;
+}
+
+.previousResultActions .shareButton,
+.previousResultActions .viewResultButton {
+  padding-top: calc(0.65rem * var(--ui-scale));
+  padding-bottom: calc(0.65rem * var(--ui-scale));
+  font-size: calc(0.9rem * var(--ui-scale));
+}
+
 .viewResultButton {
   padding: calc(0.75rem * var(--ui-scale)) calc(1.5rem * var(--ui-scale));
   background: var(--color-surface);

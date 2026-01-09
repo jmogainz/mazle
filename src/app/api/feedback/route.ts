@@ -67,9 +67,9 @@ export async function POST(request: NextRequest) {
         const body: FeedbackPayload = await request.json();
 
         // Validate
-        if (!body.message || typeof body.message !== 'string' || body.message.trim().length === 0) {
+        if ((!body.message || body.message.trim().length === 0) && !body.rating) {
             return NextResponse.json(
-                { error: 'Message is required' },
+                { error: 'Message or rating is required' },
                 { status: 400 }
             );
         }
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Generate emoji progress bars like the share card
+        // Generate progress bars like the share card
         const generateProgressBars = (): string => {
             if (!body.attemptScores || body.attemptScores.length === 0) {
                 if (body.failed) {
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
             for (const score of body.attemptScores) {
                 const filledBlocks = Math.min(score, body.optimalMoves - 1);
                 const remainingBlocks = body.optimalMoves - filledBlocks - 1;
-                rows.push('🟥'.repeat(filledBlocks) + '💀' + '⬛'.repeat(remainingBlocks));
+                rows.push('🟥'.repeat(filledBlocks) + '❌' + '⬛'.repeat(remainingBlocks));
             }
 
             // If won, add the winning row
@@ -110,12 +110,12 @@ export async function POST(request: NextRequest) {
 
         // Build Discord embed
         const embed = {
-            description: `**${body.puzzleLabel}**\n${body.failed ? '💀 Failed' : '🏆 Won'}\n⏱️ ${formatTime(body.timeMs)}`,
+            description: `**${body.puzzleLabel}**\n${body.failed ? 'Failed' : 'Won'} | ${formatTime(body.timeMs)}`,
             color: body.failed ? 0xEF476F : 0x6AAA64, // Red for failed, green for success
             fields: [
                 {
                     name: 'Message',
-                    value: body.message.trim().substring(0, 1000),
+                    value: (body.message && body.message.trim().length > 0) ? body.message.trim().substring(0, 1000) : '(No message)',
                     inline: false,
                 },
                 ...(body.rating ? [{

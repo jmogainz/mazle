@@ -1,20 +1,19 @@
 /**
  * Puzzle Seed Utilities
- * 
+ *
  * Provides deterministic seed generation for daily puzzles.
  * Actual puzzle generation is handled by WASM/Rust backend.
- * 
+ *
  * IMPORTANT: All daily puzzle logic uses New York timezone (America/New_York).
  * Puzzles roll over at midnight Eastern Time.
  */
 
 // Import maps to trigger registration of movement configs and tilesets
 import './maps/ice';
-import './maps/ground';
 
 // Launch date for puzzle numbering (in New York timezone)
 // Puzzle #1 starts on December 4, 2025 (ET)
-// Keep this stable to preserve existing “Mazle #N” shares/history.
+// Keep this stable to preserve existing "Mazle #N" shares/history.
 export const LAUNCH_DATE_NY = '2025-12-04';
 
 /**
@@ -53,6 +52,6 @@ export function getPuzzleNumber(date: Date = new Date()): number {
   return getPuzzleNumberFromNyDateString(getNewYorkDateString(date));
 }
 
-// Re-export map registry utilities
-export { MAP_REGISTRY } from './maps/registry';
-export type { MapTypeDefinition, PsychologyMetrics } from './maps/registry';
+// Re-export game config utilities
+export { getGameConfig } from './maps/registry';
+export type { GameConfig, PsychologyMetrics } from './maps/registry';

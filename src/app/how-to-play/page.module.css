@@ -78,7 +78,15 @@
 }
 
 .controlIcon {
-  font-size: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.controlSvg {
+  width: 1.5rem;
+  height: 1.5rem;
+  color: var(--color-text);
 }
 
 .controlLabel {
@@ -138,11 +146,15 @@
 }
 
 .tipsList li::before {
-  content: '✓';
+  content: '';
   position: absolute;
   left: 0;
-  color: var(--color-success);
-  font-weight: bold;
+  top: 0.9rem;
+  width: 0.5rem;
+  height: 0.3rem;
+  border-left: 2px solid var(--color-success);
+  border-bottom: 2px solid var(--color-success);
+  transform: rotate(-45deg);
 }
 
 .ctaSection {

@@ -12,9 +12,9 @@ Both targets produce **identical puzzles** for the same seed - the WASM build is
 
 ## Overview
 
-This is a complete port of both the **ice map** and **ground map** generators from TypeScript to Rust. It includes:
+This is a complete port of the **ice puzzle generator** from TypeScript to Rust. It includes:
 
-### Ice Map Generator (Complete)
+### Ice Puzzle Generator (Complete)
 - ✅ Base maze generation (recursive backtracking)
 - ✅ All 10 "genius-level" deception algorithms:
   1. Counter-intuitive path engineering
@@ -34,14 +34,6 @@ This is a complete port of both the **ice map** and **ground map** generators fr
 - ✅ Psychology-based scoring system
 - ✅ BFS pathfinding (optimized with reverse BFS)
 - ✅ Stuck state detection
-
-### Ground Map Generator (Complete)
-- ✅ Step-based movement with ice patches
-- ✅ Boulder mechanics (Sokoban-style pushing)
-- ✅ All 10 deception algorithms adapted for ground movement
-- ✅ Ledge placement for commitment points
-- ✅ Maze and open room generation
-- ✅ Boulder-aware pathfinding
 
 ### What's NOT Ported
 - Heat map / cognitive load systems (optional optimization, not critical)
@@ -117,14 +109,9 @@ The server starts on port 8080 by default. Set `PORT` environment variable to ch
 GET /health
 ```
 
-### Generate Ice Puzzle
+### Generate Puzzle
 ```
-GET /api/generate/:seed?map_type=ice&attempts=400
-```
-
-### Generate Ground Puzzle
-```
-GET /api/generate/:seed?map_type=ground&attempts=400
+GET /api/generate/:seed?parallel=true
 ```
 
 ### Generate with Config (POST)
@@ -134,9 +121,7 @@ Content-Type: application/json
 
 {
   "seed": "2024-01-01",
-  "mapType": "ice",
   "config": {
-    "traditionalAttempts": 400,
     "targetPsychologyScore": 2000,
     "parallel": true
   }
@@ -150,9 +135,8 @@ Content-Type: application/json
 
 {
   "seeds": ["2024-01-01", "2024-01-02", "2024-01-03"],
-  "mapType": "ice",
   "config": {
-    "traditionalAttempts": 200
+    "parallel": true
   }
 }
 ```
@@ -212,8 +196,7 @@ generator-rust/
     ├── scoring.rs          # Psychology-based scoring
     └── generators/
         ├── mod.rs          # Generator module
-        ├── ice.rs          # Ice map generation
-        └── ground.rs       # Ground map generation
+        └── ice.rs          # Ice puzzle generation
 ```
 
 The crate is structured as both a library and binary:

@@ -7,19 +7,15 @@ import {
   GameState,
   COLORS,
   TILE_SIZE,
-  MapType,
   HINTS_ENABLED,
 } from './types';
 import { emitGameEvent } from './events';
 import {
   simulateMove,
   getDelta,
-  getMovementConfig,
+  iceMovementConfig,
   MovementConfig,
   positionKey,
-  simulateGroundMove,
-  createGroundState,
-  GroundPuzzleState,
 } from './movement';
 import { PENALTY_MS } from '@/constants';
 
@@ -47,9 +43,6 @@ export class GameScene extends Phaser.Scene {
   private hintsEnabled = HINTS_ENABLED;
   private maxLives = 3; // Configurable via dev tools (3-5)
 
-  // Boulder state tracking (for ground maps)
-  private boulderPositions: Set<string> = new Set();
-  private boulderSprites: Map<string, Phaser.GameObjects.Container> = new Map();
   private analysisObjects: Phaser.GameObjects.GameObject[] = [];
   private analysisTimers: Phaser.Time.TimerEvent[] = [];
   private analysisTweens: Phaser.Tweens.Tween[] = [];
@@ -175,7 +168,7 @@ export class GameScene extends Phaser.Scene {
   init(data: { puzzle: PuzzleData }) {
     this.puzzle = data.puzzle;
     // Get movement config based on map type (defaults to ice for legacy puzzles)
-    this.movementConfig = getMovementConfig(this.puzzle.mapType ?? MapType.ICE);
+    this.movementConfig = iceMovementConfig;
     this.isPlaying = false;
     this.gameState = {
       playerPos: { ...this.puzzle.start },
@@ -200,17 +193,6 @@ export class GameScene extends Phaser.Scene {
     this.unlockedThisLifeTiles = new Set();
     this.unlockedThisLifeEdges = new Set();
     this.indexSolutionPath();
-
-    // Initialize boulder positions from puzzle tiles
-    this.boulderPositions = new Set();
-    this.boulderSprites = new Map();
-    for (let y = 0; y < this.puzzle.height; y++) {
-      for (let x = 0; x < this.puzzle.width; x++) {
-        if (this.puzzle.tiles[y][x] === TileType.BOULDER) {
-          this.boulderPositions.add(positionKey({ x, y }));
-        }
-      }
-    }
   }
 
   create() {
@@ -240,9 +222,6 @@ export class GameScene extends Phaser.Scene {
     // Create hint overlays (above tiles, below sprites)
     this.createHintOverlays();
 
-    // Create boulder sprites (for ground maps)
-    this.createBoulderSprites();
-
     // Create goal with animation
     this.createGoal();
 
@@ -257,48 +236,6 @@ export class GameScene extends Phaser.Scene {
 
     // Emit initial state
     emitGameEvent('stateUpdate', { ...this.gameState });
-  }
-
-  private createBoulderSprites() {
-    // Create sprites for each boulder position
-    for (const key of this.boulderPositions) {
-      const [x, y] = key.split(',').map(Number);
-      this.createBoulderSprite(x, y);
-    }
-  }
-
-  private createBoulderSprite(gridX: number, gridY: number): Phaser.GameObjects.Container {
-    const px = this.offsetX + gridX * TILE_SIZE + TILE_SIZE / 2;
-    const py = this.offsetY + gridY * TILE_SIZE + TILE_SIZE / 2;
-
-    const boulder = this.add.container(px, py);
-    const key = positionKey({ x: gridX, y: gridY });
-
-    // Boulder graphics - matches the tile drawing
-    const g = this.add.graphics();
-    const size = TILE_SIZE;
-    const s = size / 32; // Scale factor
-    const boulderSize = size * 0.75;
-    const halfSize = boulderSize / 2;
-
-    // Main boulder body
-    g.fillStyle(COLORS.BOULDER);
-    g.fillRoundedRect(-halfSize, -halfSize, boulderSize, boulderSize, 6 * s);
-
-    // Shadow
-    g.fillStyle(COLORS.BOULDER_SHADOW);
-    g.fillRoundedRect(-halfSize + 3 * s, -halfSize + boulderSize - 6 * s, boulderSize - 6 * s, 4 * s, 2 * s);
-    g.fillRoundedRect(-halfSize + boulderSize - 6 * s, -halfSize + 3 * s, 4 * s, boulderSize - 6 * s, 2 * s);
-
-    // Highlight
-    g.fillStyle(COLORS.BOULDER_HIGHLIGHT);
-    g.fillCircle(-halfSize + 8 * s, -halfSize + 8 * s, 3 * s);
-    g.fillRoundedRect(-halfSize + 4 * s, -halfSize + 3 * s, boulderSize * 0.4, 3 * s, 1 * s);
-
-    boulder.add(g);
-    this.boulderSprites.set(key, boulder);
-
-    return boulder;
   }
 
   private drawTiles() {
@@ -651,19 +588,7 @@ export class GameScene extends Phaser.Scene {
     if (this.gameState.isPaused) return;
     if (this.isAnimating || this.gameState.isComplete || !this.isPlaying) return;
 
-    const currentPos = { ...this.gameState.playerPos };
-
-    // Check if this is a ground map with boulders
-    const isGroundMap = this.puzzle.mapType === MapType.GROUND;
-    const hasBoulders = this.boulderPositions.size > 0;
-
-    if (isGroundMap && hasBoulders) {
-      // Use ground movement simulation with boulder support
-      this.handleGroundMove(dir);
-    } else {
-      // Use standard movement simulation (ice maps or ground without boulders)
-      this.handleStandardMove(dir);
-    }
+    this.handleStandardMove(dir);
   }
 
   private handleLifeLost(finalPos: Position) {
@@ -1324,70 +1249,6 @@ export class GameScene extends Phaser.Scene {
     const path = result.path ?? [newPos];
 
     this.recordHintProgress(currentPos, newPos);
-    this.updateGameStateAndCheckLives(newPos, path, () => { });
-  }
-
-  private handleGroundMove(dir: Direction) {
-    const currentPos = { ...this.gameState.playerPos };
-
-    // Create ground state with current boulder positions
-    const groundState: GroundPuzzleState = {
-      tiles: this.puzzle.tiles,
-      boulderPositions: this.boulderPositions,
-      width: this.puzzle.width,
-      height: this.puzzle.height,
-    };
-
-    // Simulate ground move with boulder mechanics
-    const result = simulateGroundMove(groundState, currentPos, dir);
-
-    // If move is invalid, play bump animation
-    if (!result.valid) {
-      this.playBumpAnimation(dir);
-      return;
-    }
-
-    const newPos = result.playerPos;
-    const path = result.path ?? [newPos];
-
-    this.recordHintProgress(currentPos, newPos);
-
-    // Handle boulder push animation
-    if (result.boulderPushed && result.boulderFrom && result.boulderTo && result.newBoulderPositions) {
-      const oldKey = positionKey(result.boulderFrom);
-      const newKey = positionKey(result.boulderTo);
-
-      // Update boulder positions
-      this.boulderPositions = result.newBoulderPositions;
-
-      // Animate boulder and player together
-      const boulderSprite = this.boulderSprites.get(oldKey);
-      if (boulderSprite) {
-        // Update sprite map
-        this.boulderSprites.delete(oldKey);
-        this.boulderSprites.set(newKey, boulderSprite);
-
-        // Calculate boulder target position
-        const boulderPath = result.boulderPath ?? [result.boulderTo];
-        const finalBoulderPos = boulderPath[boulderPath.length - 1];
-        const boulderPx = this.offsetX + finalBoulderPos.x * TILE_SIZE + TILE_SIZE / 2;
-        const boulderPy = this.offsetY + finalBoulderPos.y * TILE_SIZE + TILE_SIZE / 2;
-
-        // Animate boulder
-        const boulderDuration = boulderPath.length > 1
-          ? 180 + (boulderPath.length - 1) * 90  // Ice slide
-          : 110;  // Single push
-
-        this.tweens.add({
-          targets: boulderSprite,
-          x: boulderPx,
-          y: boulderPy,
-          duration: boulderDuration,
-          ease: boulderPath.length > 1 ? 'Sine.easeOut' : 'Quad.easeOut',
-        });
-      }
-    }
-
     this.updateGameStateAndCheckLives(newPos, path, () => { });
   }
 
@@ -2233,7 +2094,6 @@ export class GameScene extends Phaser.Scene {
     penaltyTimeMs: number;
     attempts: GameState['attempts'];
     moveHistory: Position[];
-    boulderPositions?: string[];
     isPlaying: boolean;
     isComplete: boolean;
     unlockedHintTiles?: string[];
@@ -2256,7 +2116,6 @@ export class GameScene extends Phaser.Scene {
       penaltyTimeMs: this.gameState.penaltyTimeMs,
       attempts: this.gameState.attempts.map(a => ({ ...a, path: [...a.path] })),
       moveHistory: [...this.gameState.moveHistory],
-      boulderPositions: this.boulderPositions.size > 0 ? Array.from(this.boulderPositions) : undefined,
       isPlaying: this.isPlaying,
       isComplete: this.gameState.isComplete,
       unlockedHintTiles: this.unlockedHintTiles.size > 0 ? Array.from(this.unlockedHintTiles) : undefined,
@@ -2278,7 +2137,6 @@ export class GameScene extends Phaser.Scene {
     penaltyTimeMs: number;
     attempts: GameState['attempts'];
     moveHistory: Position[];
-    boulderPositions?: string[];
     isPlaying: boolean;
     isComplete?: boolean;
     unlockedHintTiles?: string[];
@@ -2305,24 +2163,6 @@ export class GameScene extends Phaser.Scene {
     this.gameState.isComplete = state.isComplete ?? false;
     this.gameState.isPaused = false;
     this.pauseStartedAtMs = null;
-
-    // Restore boulder positions if present
-    if (state.boulderPositions) {
-      // Clear existing boulder sprites
-      for (const [key, sprite] of this.boulderSprites) {
-        sprite.destroy();
-      }
-      this.boulderSprites.clear();
-
-      // Set new boulder positions
-      this.boulderPositions = new Set(state.boulderPositions);
-
-      // Create sprites for new positions
-      for (const key of this.boulderPositions) {
-        const [x, y] = key.split(',').map(Number);
-        this.createBoulderSprite(x, y);
-      }
-    }
 
     // Restore hint state
     this.unlockedHintTiles = new Set(state.unlockedHintTiles ?? []);

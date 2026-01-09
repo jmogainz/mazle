@@ -14,7 +14,7 @@ use tower_http::cors::{Any, CorsLayer};
 
 // Import from library
 use mazle_generator::{
-    cache::PuzzleCache, generate_ground_puzzle, generate_ice_puzzle_with_cancel, scheduler,
+    cache::PuzzleCache, generate_ice_puzzle_with_cancel, scheduler,
     GenerationConfig, PuzzleData,
 };
 
@@ -41,33 +41,6 @@ struct GenerateRequest {
     seed: String,
     #[serde(default)]
     config: GenerationConfig,
-    #[serde(default = "default_map_type")]
-    map_type: String,
-}
-
-fn default_map_type() -> String {
-    "ice".to_string()
-}
-
-/// Helper to generate puzzle based on map type
-fn generate_by_type(
-    seed: &str,
-    config: &GenerationConfig,
-    map_type: &str,
-    cancel_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
-) -> Result<PuzzleData, ()> {
-    if cancel_flag
-        .as_ref()
-        .map(|f| f.load(std::sync::atomic::Ordering::Relaxed))
-        .unwrap_or(false)
-    {
-        return Err(());
-    }
-
-    match map_type {
-        "ground" => Ok(generate_ground_puzzle(seed, config)),
-        _ => generate_ice_puzzle_with_cancel(seed, config, cancel_flag), // Default to ice
-    }
 }
 
 /// Generation response
@@ -85,8 +58,6 @@ struct GenerateResponse {
 struct GenerateQuery {
     #[serde(default)]
     parallel: bool,
-    #[serde(default = "default_map_type")]
-    map_type: String,
     #[serde(default)]
     start_batch: usize,
     #[serde(default)]
@@ -264,19 +235,17 @@ async fn generate_by_seed(
         config.closeness_threshold = threshold;
     }
 
-    let map_type = query.map_type.clone();
     let seed_for_task = seed.clone();
     let cache_for_task = state.cache.clone();
     let cancel_flag = state.cache.cancel_flag(&seed);
-    
+
     // Spawn generation task and keep a handle for cancellation
     let generation_handle = tokio::spawn({
         let seed_clone = seed_for_task.clone();
-        let map_type_clone = map_type.clone();
         let cancel_clone = cancel_flag.clone();
         async move {
             let result = tokio::task::spawn_blocking(move || {
-                generate_by_type(&seed_clone, &config, &map_type_clone, Some(cancel_clone))
+                generate_ice_puzzle_with_cancel(&seed_clone, &config, Some(cancel_clone))
             })
             .await;
 
@@ -392,10 +361,9 @@ async fn generate_post(
 
     let seed = request.seed.clone();
     let config = request.config.clone();
-    let map_type = request.map_type.clone();
 
     // Spawn CPU-intensive work on blocking thread pool
-    let puzzle = tokio::task::spawn_blocking(move || generate_by_type(&seed, &config, &map_type, None))
+    let puzzle = tokio::task::spawn_blocking(move || generate_ice_puzzle_with_cancel(&seed, &config, None))
         .await
         .expect("Blocking task panicked")
         .expect("generation should not cancel in POST");
@@ -421,8 +389,6 @@ struct BatchRequest {
     seeds: Vec<String>,
     #[serde(default)]
     config: GenerationConfig,
-    #[serde(default = "default_map_type")]
-    map_type: String,
 }
 
 #[derive(Serialize)]
@@ -464,7 +430,6 @@ async fn cancel_generation(
 async fn generate_batch(Json(request): Json<BatchRequest>) -> Json<BatchResponse> {
     let start = Instant::now();
 
-    let map_type = request.map_type.clone();
     let config = request.config.clone();
     let seeds = request.seeds.clone();
 
@@ -473,7 +438,7 @@ async fn generate_batch(Json(request): Json<BatchRequest>) -> Json<BatchResponse
         use rayon::prelude::*;
         seeds
             .par_iter()
-            .map(|seed| generate_by_type(seed, &config, &map_type, None).expect("generation should not cancel in batch"))
+            .map(|seed| generate_ice_puzzle_with_cancel(seed, &config, None).expect("generation should not cancel in batch"))
             .collect::<Vec<PuzzleData>>()
     })
     .await

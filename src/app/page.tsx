@@ -29,7 +29,6 @@ import {
   getNewYorkDateString,
   onGameEvent,
   PuzzleData,
-  MapType,
   generatePuzzleParallel,
   cancelRustRequest,
   fetchDailyPuzzle,
@@ -77,7 +76,6 @@ export default function Home() {
   const [puzzleLabel, setPuzzleLabel] = useState<string | null>(null);
   const [activeSeed, setActiveSeed] = useState('');
   const [seedInput, setSeedInput] = useState('');
-  const [selectedMapType, setSelectedMapType] = useState<MapType | 'random'>('random');
   const [renderKey, setRenderKey] = useState(0);
   const [stats, setStats] = useState<PlayerStats | null>(null);
   const [showShareCard, setShowShareCard] = useState(false);
@@ -787,7 +785,6 @@ export default function Home() {
     async (rawSeed?: string) => {
       const trimmed = rawSeed?.trim() ?? '';
       const isDateSeed = /^\d{4}-\d{2}-\d{2}$/.test(trimmed);
-      const forceMapType = selectedMapType === 'random' ? undefined : selectedMapType;
       const startBatch = startBatchInput ? parseInt(startBatchInput, 10) : undefined;
       const abortController = new AbortController();
 
@@ -822,7 +819,6 @@ export default function Home() {
           const datedPuzzle = await generatePuzzleParallel(
             dailySeed,
             progressHandler,
-            forceMapType,
             selectedBackend,
             startBatch,
             abortController,
@@ -869,7 +865,6 @@ export default function Home() {
         const newPuzzle = await generatePuzzleParallel(
           requestSeed,
           progressHandler,
-          forceMapType,
           selectedBackend,
           startBatch,
           abortController,
@@ -901,7 +896,7 @@ export default function Home() {
         inFlightSeedRef.current = null;
       }
     },
-    [selectedMapType, selectedBackend, startBatchInput, closenessThreshold],
+    [selectedBackend, startBatchInput, closenessThreshold],
   );
 
   const handleLoadDaily = useCallback(() => {
@@ -1071,10 +1066,11 @@ export default function Home() {
             />
           </div>
         )}
+
         <Header
-          streak={stats?.currentStreak || 0}
-          puzzleInfo={hasPuzzle ? (puzzleLabel ?? `#${puzzleNumber}`) : undefined}
-          puzzleInfoLoading={!hasPuzzle}
+          streak={stats?.currentStreak ?? 0}
+          puzzleInfo={puzzleLabel ?? (puzzleNumber > 0 ? `#${puzzleNumber}` : undefined)}
+          puzzleInfoLoading={isGenerating || (!puzzle && !gameResult)}
           onHelpClick={() => setShowHelp(true)}
           onStatsClick={() => setShowStats(true)}
           onMenuClick={showMenuButton ? () => setShowMenu(true) : undefined}
@@ -1091,8 +1087,6 @@ export default function Home() {
               activeSeed={activeSeed}
               seedInput={seedInput}
               onSeedInputChange={setSeedInput}
-              selectedMapType={selectedMapType}
-              onMapTypeChange={setSelectedMapType}
               startBatchInput={startBatchInput}
               onStartBatchInputChange={setStartBatchInput}
               selectedBackend={selectedBackend}
@@ -1132,15 +1126,7 @@ export default function Home() {
           />
 
           <div ref={gameStageRef} className={styles.gameArea}>
-            <div
-              ref={gameFrameRef}
-              className={styles.gameFrame}
-              style={{
-                width: `${gameFrameSizePx.width}px`,
-                height: `${gameFrameSizePx.height}px`,
-              }}
-            >
-              {/* Render PhaserGame when puzzle exists (hidden until ready) */}
+            <div className={styles.gameFrame} style={{ width: gameFrameSizePx.width, height: gameFrameSizePx.height }} ref={gameFrameRef}>
               {puzzle && (
                 <PhaserGame
                   key={renderKey}
@@ -1151,7 +1137,7 @@ export default function Home() {
                 />
               )}
 
-              {/* Unified loader - shown until puzzle is ready (then dynamic import fallback takes over) */}
+              {/* Loading Overlay */}
               {!puzzle && (
                 <div className={styles.frameLoader}>
                   <Loader
@@ -1175,9 +1161,14 @@ export default function Home() {
                               ? 'You already completed today\u2019s puzzle!'
                               : 'You already played today\u2019s puzzle!'}
                           </p>
-                          <button onClick={handleViewResult} className={styles.viewResultButton}>
-                            View Result
-                          </button>
+                          <div className={styles.previousResultActions}>
+                            <button onClick={handleViewResult} className={styles.viewResultButton}>
+                              View Result
+                            </button>
+                            <button onClick={handleShowShareCard} className={styles.shareButton}>
+                              Share Score
+                            </button>
+                          </div>
                         </div>
                       ) : (
                         <button className={styles.startButton} onClick={handleBegin}>
@@ -1283,7 +1274,6 @@ export default function Home() {
             failed={gameResult.failed}
             attempts={gameResult.attempts}
             maxLives={devMaxLives}
-            mapType={puzzle.mapType}
             leaderboardDate={
               (process.env.NODE_ENV !== 'production' || previewFeaturesEnabled) && !debugModeRef.current
                 ? getNewYorkDateString()

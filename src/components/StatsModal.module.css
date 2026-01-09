@@ -58,15 +58,21 @@
   background: none;
   border: none;
   color: var(--color-secondary);
-  font-size: 1.25rem;
   cursor: pointer;
   padding: 0.25rem;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transition: color 0.2s;
 }
 
 .closeButton:hover {
   color: var(--color-text);
+}
+
+.closeIcon {
+  width: 1.25rem;
+  height: 1.25rem;
 }
 
 .title {
@@ -157,11 +163,18 @@
 
 .historyWin {
   color: var(--color-success);
-  font-weight: bold;
+  display: flex;
+  align-items: center;
 }
 
 .historyLoss {
   color: var(--color-error);
-  font-weight: bold;
+  display: flex;
+  align-items: center;
+}
+
+.statusIcon {
+  width: 1rem;
+  height: 1rem;
 }
 

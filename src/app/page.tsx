@@ -48,11 +48,7 @@ import styles from './page.module.css';
 // Dynamic import for Phaser (client-side only)
 const PhaserGame = dynamic(() => import('@/game/PhaserGame'), {
   ssr: false,
-  loading: () => (
-    <div className={styles.frameLoader}>
-      <Loader text="Loading puzzle..." />
-    </div>
-  ),
+  loading: () => null,
 });
 
 // Keep for potential future use (e.g., auto-enable in dev builds)
@@ -1037,10 +1033,15 @@ export default function Home() {
 
   // Derived state
   const hasPuzzle = Boolean(puzzle);
-  const loadingText = isGenerating ? 'Generating daily puzzle...' : 'Loading Mazle...';
+  const loadingText = isGenerating
+    ? 'Generating daily puzzle...'
+    : hasPuzzle && !isGameReady
+      ? 'Loading puzzle...'
+      : 'Loading Mazle...';
   const displayOptimalMoves = puzzle?.optimalMoves ?? 10;
   const isPostGame = hasPuzzle && !isPlaying && (!!gameResult || !!previousResult);
   const shouldBlur = showShareCard || (hasPuzzle && !isPlaying && isGameReady && !showInlineResult);
+  const showLoader = !hasPuzzle || !isGameReady;
   const showResultsButton = showInlineResult || (!!previousResult && !isPlaying);
   const showMenuButton = process.env.NODE_ENV !== 'production' || previewFeaturesEnabled;
 
@@ -1138,7 +1139,7 @@ export default function Home() {
               )}
 
               {/* Loading Overlay */}
-              {!puzzle && (
+              {showLoader && (
                 <div className={styles.frameLoader}>
                   <Loader
                     text={loadingText}

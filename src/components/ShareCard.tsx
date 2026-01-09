@@ -546,7 +546,7 @@ export default function ShareCard({
               src="/assets/images/alive_character.svg"
               alt="Victory"
               width={64}
-              height={64}
+              height={80}
               className={styles.characterIcon}
               priority
             />

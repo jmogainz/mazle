@@ -11,6 +11,7 @@ export interface GameControls {
   canAcceptMoveInput: () => boolean;
   start: () => void;
   showAnalysis: (attempts: any[]) => void;
+  replayAnalysis: () => void;
   getSerializableState: () => ReturnType<GameScene['getSerializableState']> | null;
   restoreState: (state: Parameters<GameScene['restoreState']>[0]) => void;
   setHintsEnabled: (enabled: boolean) => void;
@@ -66,6 +67,10 @@ export default function PhaserGame({ puzzle, viewportWidth, viewportHeight, onRe
     showAnalysis: (attempts: any[]) => {
       const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;
       scene?.showAnalysis(attempts);
+    },
+    replayAnalysis: () => {
+      const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;
+      scene?.replayAnalysis();
     },
     getSerializableState: () => {
       const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;

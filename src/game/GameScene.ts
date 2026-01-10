@@ -46,6 +46,7 @@ export class GameScene extends Phaser.Scene {
   private analysisObjects: Phaser.GameObjects.GameObject[] = [];
   private analysisTimers: Phaser.Time.TimerEvent[] = [];
   private analysisTweens: Phaser.Tweens.Tween[] = [];
+  private analysisCompleted = false; // Track if analysis animation finished playing
 
   private solutionIndexByKey: Map<string, number> | null = null;
   private solutionNextByKey: Map<string, string> | null = null;
@@ -734,7 +735,13 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    // Clear previous analysis if any
+    // If analysis already completed, don't replay - just fire onComplete
+    if (this.analysisCompleted) {
+      onComplete?.();
+      return;
+    }
+
+    // Clear previous analysis if any (this also resets analysisCompleted to false)
     this.clearAnalysis();
 
     const path = this.puzzle.solutionPath;
@@ -911,6 +918,10 @@ export class GameScene extends Phaser.Scene {
           });
           this.analysisTweens.push(fadeOutTween);
           this.drawUserAttemptPaths();
+          // Mark analysis as completed so it won't replay
+          this.analysisCompleted = true;
+          // Emit event so UI can show replay button
+          emitGameEvent('analysisComplete', {});
           // Notify when analysis is fully complete (after attempt paths fade in)
           if (onComplete) {
             this.time.delayedCall(400, onComplete);
@@ -1143,7 +1154,7 @@ export class GameScene extends Phaser.Scene {
 
       indices.slice(0, 5).forEach((attemptNum, i) => {
         const badgePos = positions[i];
-        
+
         const badgeG = this.add.graphics();
         badgeG.fillStyle(0xffffff, 1);
         badgeG.fillCircle(badgePos.x, badgePos.y, 6 * s);
@@ -1410,6 +1421,14 @@ export class GameScene extends Phaser.Scene {
     this.gameState.attempts = attempts || [];
     this.gameState.isComplete = true;
     this.player.setVisible(false);
+    this.drawEndGameAnalysis();
+  }
+
+  // Public method to force replay the analysis animation
+  public replayAnalysis() {
+    // Clear existing analysis and reset completed flag
+    this.clearAnalysis();
+    // Now draw fresh
     this.drawEndGameAnalysis();
   }
 
@@ -2199,5 +2218,8 @@ export class GameScene extends Phaser.Scene {
     // Destroy all analysis game objects
     this.analysisObjects.forEach(obj => obj.destroy());
     this.analysisObjects = [];
+
+    // Reset completed flag so interrupted animations can be replayed
+    this.analysisCompleted = false;
   }
 }

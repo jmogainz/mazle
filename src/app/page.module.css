@@ -14,18 +14,17 @@
   0% {
     background-position: -200% 0;
   }
+
   100% {
     background-position: 200% 0;
   }
 }
 
 .skeleton {
-  background: linear-gradient(
-    90deg,
-    var(--color-surface) 25%,
-    rgba(255, 255, 255, 0.1) 50%,
-    var(--color-surface) 75%
-  );
+  background: linear-gradient(90deg,
+      var(--color-surface) 25%,
+      rgba(255, 255, 255, 0.1) 50%,
+      var(--color-surface) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s ease-in-out infinite;
   border-radius: 4px;
@@ -930,10 +929,61 @@
   display: flex;
   justify-content: center;
   align-items: flex-start;
+  gap: calc(0.5rem * var(--ui-scale));
   min-height: calc(48px * var(--ui-scale));
   padding: calc(0.25rem * var(--ui-scale)) 0;
   transition: min-height 0.15s ease-out, padding 0.15s ease-out;
   position: relative;
+}
+
+/* Replay Solution overlay button - fades in center of game frame */
+.replaySolutionOverlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10;
+  background: rgba(var(--color-surface-rgb), 0.75);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: var(--color-text);
+  border: 1.5px solid var(--color-border);
+  border-radius: 8px;
+  padding: calc(0.4rem * var(--ui-scale)) calc(0.7rem * var(--ui-scale));
+  font-size: calc(0.65rem * var(--ui-scale));
+  font-weight: 600;
+  font-family: var(--font-main);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  transition: background 0.2s, border-color 0.2s;
+  animation: replayPulse 2.5s ease-in-out infinite;
+}
+
+.replaySolutionOverlay:hover {
+  background: rgba(var(--color-primary-rgb), 0.85);
+  border-color: var(--color-primary);
+  animation: none;
+  transform: translate(-50%, -50%) scale(1.05);
+}
+
+.replaySolutionOverlay:active {
+  transform: translate(-50%, -50%) scale(0.98);
+}
+
+@keyframes replayPulse {
+
+  0%,
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.95);
+  }
+
+  50% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
 }
 
 /* Unified share button (works on all devices) */
@@ -1214,7 +1264,7 @@
   .footerTextDesktop {
     display: none;
   }
-  
+
   .footerTextMobile {
     display: inline;
   }
@@ -1225,12 +1275,14 @@
   .gameWrapper {
     padding: 1rem;
     gap: 0.5rem;
-    max-width: none; /* Allow wrapper to expand fully */
+    max-width: none;
+    /* Allow wrapper to expand fully */
   }
 
   .gameArea {
     padding: 0.5rem;
-    max-width: none; /* Remove any artificial constraint */
+    max-width: none;
+    /* Remove any artificial constraint */
   }
 
   .footer {
@@ -1252,7 +1304,8 @@
     gap: 0;
     padding: 0.75rem 0.25rem 0.5rem;
     justify-content: flex-start;
-    max-width: none; /* Ensure mobile also uses full width */
+    max-width: none;
+    /* Ensure mobile also uses full width */
   }
 
   .gameArea {
@@ -1315,16 +1368,45 @@
    Total: 8.86s
 */
 @keyframes swipeHintFull {
-  0% { opacity: 0; }
-  4.9% { opacity: 0.3; }
-  16.1% { opacity: 1; }
-  27.4% { opacity: 0.3; }
-  38.7% { opacity: 1; }
-  50% { opacity: 0.3; }
-  61.3% { opacity: 1; }
-  72.6% { opacity: 0.3; }
-  83.9% { opacity: 1; }
-  100% { opacity: 0; }
+  0% {
+    opacity: 0;
+  }
+
+  4.9% {
+    opacity: 0.3;
+  }
+
+  16.1% {
+    opacity: 1;
+  }
+
+  27.4% {
+    opacity: 0.3;
+  }
+
+  38.7% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.3;
+  }
+
+  61.3% {
+    opacity: 1;
+  }
+
+  72.6% {
+    opacity: 0.3;
+  }
+
+  83.9% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
 }
 
 @media (min-width: 769px) {

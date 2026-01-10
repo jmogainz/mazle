@@ -144,6 +144,7 @@ export default function Home() {
   const uiScaleRef = useRef<number | null>(null);
   const [liveAttempts, setLiveAttempts] = useState<GameState['attempts']>([]);
   const [reviewAttemptIndex, setReviewAttemptIndex] = useState<number | null>(null);
+  const [showReplayButton, setShowReplayButton] = useState(false);
 
   // Keep devMaxLivesRef in sync
   useEffect(() => {
@@ -797,6 +798,14 @@ export default function Home() {
     };
   }, [puzzleNumber, previousResult, activeSeed]);
 
+  // Listen for analysis completion to show replay button
+  useEffect(() => {
+    const unsubscribe = onGameEvent('analysisComplete', () => {
+      setShowReplayButton(true);
+    });
+    return unsubscribe;
+  }, []);
+
   // Reset review mode when hints are enabled
   useEffect(() => {
     if (hintsEnabled) {
@@ -959,6 +968,11 @@ export default function Home() {
       gameControlsRef.current.showAnalysis(attempts);
     }
   }, [gameResult?.attempts, previousResult?.attempts]);
+
+  const handleReplayAnalysis = useCallback(() => {
+    setShowReplayButton(false); // Hide button while replaying
+    gameControlsRef.current?.replayAnalysis();
+  }, []);
 
   const handleGameReady = useCallback((controls: GameControls) => {
     gameControlsRef.current = controls;
@@ -1258,6 +1272,15 @@ export default function Home() {
                         </button>
                       )}
                     </div>
+                  )}
+                  {/* Replay Solution overlay button - fades in after analysis completes */}
+                  {showInlineResult && showReplayButton && !showShareCard && (
+                    <button
+                      className={styles.replaySolutionOverlay}
+                      onClick={handleReplayAnalysis}
+                    >
+                      Replay Solution
+                    </button>
                   )}
                 </>
               )}

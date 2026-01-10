@@ -91,7 +91,7 @@ export default function HallOfFameView() {
           <div className={styles.podium}>
             <div className={styles.podiumColumn}>
               <div className={styles.podiumAvatar}>
-                <CharacterIcon characterId={second?.characterId} skinId={second?.skinId} size={34} />
+                <CharacterIcon characterId={second?.characterId} skinId={second?.skinId} size={40} />
               </div>
               <div className={styles.podiumName}>{second?.displayName ?? '—'}</div>
               <div className={`${styles.podiumBar} ${styles.podiumSilver}`}>
@@ -101,7 +101,7 @@ export default function HallOfFameView() {
             </div>
             <div className={styles.podiumColumn}>
               <div className={styles.podiumAvatar}>
-                <CharacterIcon characterId={first?.characterId} skinId={first?.skinId} size={36} />
+                <CharacterIcon characterId={first?.characterId} skinId={first?.skinId} size={48} />
               </div>
               <div className={styles.podiumName}>{first?.displayName ?? '—'}</div>
               <div className={`${styles.podiumBar} ${styles.podiumGold}`}>
@@ -111,7 +111,7 @@ export default function HallOfFameView() {
             </div>
             <div className={styles.podiumColumn}>
               <div className={styles.podiumAvatar}>
-                <CharacterIcon characterId={third?.characterId} skinId={third?.skinId} size={34} />
+                <CharacterIcon characterId={third?.characterId} skinId={third?.skinId} size={40} />
               </div>
               <div className={styles.podiumName}>{third?.displayName ?? '—'}</div>
               <div className={`${styles.podiumBar} ${styles.podiumBronze}`}>

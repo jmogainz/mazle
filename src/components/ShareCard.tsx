@@ -8,6 +8,7 @@ import { cachedApi, fetchLeaderboardMeFresh, fetchLeaderboardTopFresh, prefetchL
 import type { LeaderboardEntry, LeaderboardMeResponse, LeaderboardTopResponse } from '@/lib/api/types';
 import { MapType } from '@/game/types';
 import { formatTime } from '@/utils/storage';
+import CharacterIcon from './CharacterIcon';
 import styles from './ShareCard.module.css';
 
 type LoadState<T> =
@@ -108,22 +109,51 @@ export default function ShareCard({
 
   const hasLeaderboard = !!leaderboardDate;
   const [activeTab, setActiveTab] = useState<'share' | 'leaderboard'>('share');
-  const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
-  const swipeIgnoreRef = useRef(false);
   const [viewerMode, setViewerMode] = useState<'unknown' | 'guest' | 'user'>('unknown');
+  const [viewerName, setViewerName] = useState<string | null>(null);
 
   const [leaderboardTopState, setLeaderboardTopState] = useState<LoadState<LeaderboardTopResponse>>({ status: 'idle' });
   const [leaderboardMeState, setLeaderboardMeState] = useState<LoadState<LeaderboardMeResponse>>({ status: 'idle' });
   const [leaderboardSubmitState, setLeaderboardSubmitState] = useState<'idle' | 'submitting' | 'submitted' | 'failed'>('idle');
 
+  // Height adjustment state
+  const [carouselHeight, setCarouselHeight] = useState<number | undefined>(undefined);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const shareContentRef = useRef<HTMLDivElement>(null);
+  const leaderboardContentRef = useRef<HTMLDivElement>(null);
+
   const displayLabel = puzzleLabel ?? `#${puzzleNumber}`;
   const maxBlocks = Math.max(optimalMoves, 1);
+
+  // Resize logic
+  const updateHeight = useCallback(() => {
+    // Always lock height to the Share tab content
+    if (shareContentRef.current) {
+      const targetHeight = shareContentRef.current.offsetHeight;
+      if (targetHeight > 0) {
+        setCarouselHeight(targetHeight);
+      }
+    }
+  }, []); // No dependencies - we only care about share tab
+
+  // Update height on mount and when content might change (feedback open)
+  useEffect(() => {
+    updateHeight();
+
+    const observer = new ResizeObserver(() => {
+      updateHeight();
+    });
+
+    if (shareContentRef.current) observer.observe(shareContentRef.current);
+
+    return () => observer.disconnect();
+  }, [updateHeight, feedbackOpen]); // Re-run when feedback toggles
 
   const attemptsUsed = useMemo(() => {
     if (failed) return null;
     const failedAttempts = attempts?.length ?? 0;
-    return Math.min(3, Math.max(1, failedAttempts + 1));
-  }, [attempts, failed]);
+    return Math.min(maxLives, Math.max(1, failedAttempts + 1));
+  }, [attempts, failed, maxLives]);
 
   // Calculate best attempt for failed runs (using correctMoves if available)
   const bestAttempt = attempts && attempts.length > 0
@@ -267,8 +297,8 @@ export default function ShareCard({
     }
   };
 
-  const attemptsUsed = failed ? maxLives : Math.min(attempts.length + 1, maxLives);
-  const scoreText = failed ? `X/${maxLives}` : `${attemptsUsed}/${maxLives}`;
+  const attemptsUsedForScore = attemptsUsed ?? maxLives;
+  const scoreText = failed ? `X/${maxLives}` : `${attemptsUsedForScore}/${maxLives}`;
   const mapEmoji = mapType ? getMapEmoji(mapType) : '';
   const shareTitle = mapEmoji ? `Mazle ${displayLabel} ${mapEmoji}` : `Mazle ${displayLabel}`;
   const shareText = `${shareTitle}\n\n${generateProgressBlocks()}\n\n${formatTime(timeMs)} • ${scoreText}\nmazle.io`;
@@ -313,8 +343,14 @@ export default function ShareCard({
     if (!leaderboardAllowSubmit) return;
     cachedApi
       .me()
-      .then((me) => setViewerMode(me.mode))
-      .catch(() => setViewerMode('unknown'));
+      .then((me) => {
+        setViewerMode(me.mode);
+        setViewerName(me.displayName);
+      })
+      .catch(() => {
+        setViewerMode('unknown');
+        setViewerName(null);
+      });
   }, [hasLeaderboard, leaderboardAllowSubmit]);
 
   useEffect(() => {
@@ -515,18 +551,30 @@ export default function ShareCard({
         case 'loaded': {
           const me = leaderboardMeState.data;
           if (!me) {
-            return <div className={styles.leaderboardHint}>Not submitted for this day.</div>;
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                <div className={styles.meRow}>
+                  <div className={styles.meName}>{viewerName || (viewerMode === 'user' ? 'You' : 'Guest')}</div>
+                  <div className={styles.rank}>{formatTime(timeMs)}</div>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'center', width: '100%', marginTop: '0.2rem' }}>
+                  {submitPanel()}
+                </div>
+              </div>
+            );
           }
 
           return (
             <div className={styles.meRow}>
-              <div className={styles.meMetaLeft}>
+              <div className={styles.meLeft}>
                 <div className={styles.meName}>{me.displayName}</div>
                 <div className={styles.meMeta}>
-                  {formatTime(me.timeMs)} • {me.attemptsUsed}/3 tries
+                  {me.attemptsUsed}/3 tries • #{me.rank}
                 </div>
               </div>
-              <div className={styles.meRank}>#{me.rank}</div>
+              <div className={styles.meRight}>
+                <div className={styles.rank}>{formatTime(me.timeMs)}</div>
+              </div>
             </div>
           );
         }
@@ -542,7 +590,7 @@ export default function ShareCard({
 
       if (viewerMode !== 'user') {
         return (
-          <button type="button" className={styles.leaderboardSubmitButton} onClick={handleOpenAccount}>
+          <button type="button" className={styles.submitButtonSmall} onClick={handleOpenAccount}>
             Sign in to submit
           </button>
         );
@@ -558,7 +606,7 @@ export default function ShareCard({
       return (
         <button
           type="button"
-          className={styles.leaderboardSubmitButton}
+          className={styles.submitButtonSmall}
           onClick={handleLeaderboardSubmit}
           disabled={leaderboardSubmitState === 'submitting'}
         >
@@ -567,15 +615,32 @@ export default function ShareCard({
       );
     };
 
+    const podiumEntries = (() => {
+      if (leaderboardTopState.status !== 'loaded') return [];
+      const podium = leaderboardTopState.data.podium;
+      if (podium && podium.length > 0) return podium;
+      return leaderboardTopState.data.entries.slice(0, 3).map((entry) => ({
+        rank: entry.rank as 1 | 2 | 3,
+        displayName: entry.displayName,
+        timeMs: entry.timeMs,
+        attemptsUsed: entry.attemptsUsed,
+        characterId: 'default',
+        skinId: 'default',
+        isMe: entry.isMe,
+      }));
+    })();
+
+    const podiumByRank = new Map(podiumEntries.map((entry) => [entry.rank, entry]));
+    const first = podiumByRank.get(1);
+    const second = podiumByRank.get(2);
+    const third = podiumByRank.get(3);
+
     return (
-      <div className={styles.leaderboardPanel}>
-        <div className={styles.leaderboardHeader}>
-          <div>
-            <div className={styles.leaderboardTitle}>Leaderboard</div>
-            <div className={styles.leaderboardSubtitle}>
-              Mazle #{puzzleNumber} • {leaderboardDate} (ET)
-            </div>
-          </div>
+      <div className={styles.leaderboardPanelNew} style={{ height: carouselHeight }}>
+        <div className={styles.leaderboardDayTitle}>
+          <div className={styles.leaderboardDayTitleMain}>Mazle {displayLabel}</div>
+        </div>
+        <div className={styles.leaderboardRefreshRow}>
           <button
             type="button"
             className={styles.leaderboardRefreshButton}
@@ -588,43 +653,143 @@ export default function ShareCard({
           </button>
         </div>
 
-        <div className={styles.leaderboardCard}>
-          <div className={styles.leaderboardSectionTitle}>Me</div>
-          {mePanel()}
-          {submitPanel()}
-          {leaderboardSubmitState === 'failed' && <div className={styles.leaderboardError}>Couldn’t submit. Try again.</div>}
-          {submissionNote && (
-            <div className={styles.leaderboardHint} style={{ marginTop: '0.6rem' }}>
-              {submissionNote}
+        {leaderboardTopState.status === 'loaded' && podiumEntries.length >= 3 && (
+          <div className={styles.podium}>
+            <div className={styles.podiumColumn}>
+              <div className={styles.podiumAvatar}>
+                <CharacterIcon characterId={second?.characterId} skinId={second?.skinId} size={40} />
+              </div>
+              <div className={styles.podiumName}>{second?.displayName}</div>
+              <div className={`${styles.podiumBar} ${styles.podiumSilver}`}>
+                <div className={styles.podiumRankBadge}>🥈</div>
+                <div className={styles.podiumTime}>{second ? formatTime(second.timeMs) : ''}</div>
+              </div>
             </div>
-          )}
-        </div>
+            <div className={styles.podiumColumn}>
+              <div className={styles.podiumAvatar}>
+                <CharacterIcon characterId={first?.characterId} skinId={first?.skinId} size={48} />
+              </div>
+              <div className={styles.podiumName}>{first?.displayName}</div>
+              <div className={`${styles.podiumBar} ${styles.podiumGold}`}>
+                <div className={styles.podiumRankBadge}>🥇</div>
+                <div className={styles.podiumTime}>{first ? formatTime(first.timeMs) : ''}</div>
+              </div>
+            </div>
+            <div className={styles.podiumColumn}>
+              <div className={styles.podiumAvatar}>
+                <CharacterIcon characterId={third?.characterId} skinId={third?.skinId} size={40} />
+              </div>
+              <div className={styles.podiumName}>{third?.displayName}</div>
+              <div className={`${styles.podiumBar} ${styles.podiumBronze}`}>
+                <div className={styles.podiumRankBadge}>🥉</div>
+                <div className={styles.podiumTime}>{third ? formatTime(third.timeMs) : ''}</div>
+              </div>
+            </div>
+          </div>
+        )}
 
-        <div className={styles.leaderboardCard}>
-          <div className={styles.leaderboardSectionTitle}>Top</div>
+        {leaderboardTopState.status === 'loading' && (
+          <div className={styles.podium} style={{ opacity: 0.4, filter: 'blur(2px)' }}>
+            <div className={styles.podiumColumn}>
+              <div className={styles.podiumAvatar}>
+                <CharacterIcon size={40} />
+              </div>
+              <div className={styles.podiumName}>Player2</div>
+              <div className={`${styles.podiumBar} ${styles.podiumSilver}`}>
+                <div className={styles.podiumRankBadge}>🥈</div>
+                <div className={styles.podiumTime}>0:00</div>
+              </div>
+            </div>
+            <div className={styles.podiumColumn}>
+              <div className={styles.podiumAvatar}>
+                <CharacterIcon size={48} />
+              </div>
+              <div className={styles.podiumName}>Player1</div>
+              <div className={`${styles.podiumBar} ${styles.podiumGold}`}>
+                <div className={styles.podiumRankBadge}>🥇</div>
+                <div className={styles.podiumTime}>0:00</div>
+              </div>
+            </div>
+            <div className={styles.podiumColumn}>
+              <div className={styles.podiumAvatar}>
+                <CharacterIcon size={40} />
+              </div>
+              <div className={styles.podiumName}>Player3</div>
+              <div className={`${styles.podiumBar} ${styles.podiumBronze}`}>
+                <div className={styles.podiumRankBadge}>🥉</div>
+                <div className={styles.podiumTime}>0:00</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {leaderboardTopState.status === 'error' && <div className={styles.leaderboardError}>{leaderboardTopState.message}</div>}
+
+        <div className={styles.leaderboardScrollArea}>
           {(() => {
             switch (leaderboardTopState.status) {
               case 'idle':
               case 'loading':
                 return <div className={styles.leaderboardHint}>Loading…</div>;
               case 'error':
-                return <div className={styles.leaderboardError}>{leaderboardTopState.message}</div>;
+                return null;
               case 'loaded': {
-                const entries = leaderboardTopState.data.entries;
+                const entries = leaderboardTopState.data.entries.filter(e => e.rank > 3);
                 if (entries.length === 0) {
-                  return <div className={styles.leaderboardHint}>No submissions yet.</div>;
+                  return <div className={styles.leaderboardHint}></div>;
                 }
                 return renderLeaderboardRows(entries);
               }
             }
           })()}
+        </div>
 
-          <div className={styles.leaderboardHint} style={{ marginTop: '0.75rem' }}>
-            Ranking: time • tries • submitted
+        <div className={styles.leaderboardFooter}>
+          <div className={styles.leaderboardSectionTitle} style={{ marginBottom: '0.5rem' }}>
+            You
           </div>
+          {mePanel()}
+          {leaderboardSubmitState === 'failed' && <div className={styles.leaderboardError}>Couldn’t submit. Try again.</div>}
+          {submissionNote && (
+            <div className={styles.leaderboardHint} style={{ marginTop: '0.6rem' }}>
+              {submissionNote}
+            </div>
+          )}
+          {alreadySubmitted && (
+            <div className={styles.leaderboardHint} style={{ marginTop: '0.75rem' }}>
+              Ranking: time • tries • submitted
+            </div>
+          )}
         </div>
       </div>
     );
+  };
+
+  const scrollToTab = (tab: 'share' | 'leaderboard') => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    if (tab === 'share') {
+      container.scrollTo({ left: 0, behavior: 'smooth' });
+    } else {
+      container.scrollTo({ left: container.offsetWidth, behavior: 'smooth' });
+    }
+  };
+
+  // Scroll handler to sync tabs with carousel position
+  const handleScroll = () => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const scrollLeft = container.scrollLeft;
+    const width = container.offsetWidth;
+    const index = Math.round(scrollLeft / width);
+
+    if (index === 0 && activeTab !== 'share') {
+      setActiveTab('share');
+    } else if (index === 1 && activeTab !== 'leaderboard') {
+      setActiveTab('leaderboard');
+    }
   };
 
   return (
@@ -632,35 +797,6 @@ export default function ShareCard({
       <div
         className={`${styles.card} ${failed ? styles.cardFailed : styles.cardSuccess} ${inline ? styles.cardInline : ''}`}
         onClick={(e) => e.stopPropagation()}
-        onPointerDown={(e) => {
-          if (!hasLeaderboard) return;
-          const target = e.target as HTMLElement | null;
-          if (target?.closest('textarea, input, select')) {
-            swipeIgnoreRef.current = true;
-            swipeStartRef.current = null;
-            return;
-          }
-          swipeIgnoreRef.current = false;
-          swipeStartRef.current = { x: e.clientX, y: e.clientY };
-        }}
-        onPointerCancel={() => {
-          swipeIgnoreRef.current = false;
-          swipeStartRef.current = null;
-        }}
-        onPointerUp={(e) => {
-          if (!hasLeaderboard) return;
-          const start = swipeStartRef.current;
-          swipeStartRef.current = null;
-          if (!start || swipeIgnoreRef.current) return;
-
-          const dx = e.clientX - start.x;
-          const dy = e.clientY - start.y;
-          if (Math.abs(dx) < 60) return;
-          if (Math.abs(dx) < Math.abs(dy) * 1.2) return;
-
-          if (dx < 0) setActiveTab('leaderboard');
-          if (dx > 0) setActiveTab('share');
-        }}
       >
         {!inline && (
           <button className={styles.closeButton} onClick={onClose}>
@@ -668,203 +804,222 @@ export default function ShareCard({
           </button>
         )}
 
-        <div className={styles.header}>
-          {failed ? (
-            <Image
-              src="/assets/images/dead_character.svg"
-              alt="Game Over"
-              width={64}
-              height={64}
-              className={styles.characterIcon}
-              priority
-            />
-          ) : (
-            <Image
-              src="/assets/images/alive_character.svg"
-              alt="Victory"
-              width={64}
-              height={80}
-              className={styles.characterIcon}
-              priority
-            />
-          )}
-          <h2 className={styles.title}>{failed ? 'Game Over' : 'Victory'}</h2>
-          <span className={styles.puzzleNumber}>Mazle {displayLabel}</span>
-        </div>
-
         {hasLeaderboard && (
-          <div className={styles.tabBar} role="tablist" aria-label="Share or leaderboard">
-            <button
-              type="button"
-              className={`${styles.tabButton} ${activeTab === 'share' ? styles.tabButtonActive : ''}`.trim()}
-              role="tab"
-              aria-selected={activeTab === 'share'}
-              onClick={() => setActiveTab('share')}
-            >
-              Share
-            </button>
-            <button
-              type="button"
-              className={`${styles.tabButton} ${activeTab === 'leaderboard' ? styles.tabButtonActive : ''}`.trim()}
-              role="tab"
-              aria-selected={activeTab === 'leaderboard'}
-              onClick={() => setActiveTab('leaderboard')}
-            >
-              Leaderboard
-            </button>
+          <div className={styles.tabBarWrapper}>
+            <div className={styles.tabBar} role="tablist" aria-label="Share or leaderboard">
+              <button
+                type="button"
+                className={`${styles.tabButton} ${activeTab === 'share' ? (failed ? styles.tabButtonActiveFailed : styles.tabButtonActive) : ''}`.trim()}
+                role="tab"
+                aria-selected={activeTab === 'share'}
+                onClick={() => scrollToTab('share')}
+              >
+                Share
+              </button>
+              <button
+                type="button"
+                className={`${styles.tabButton} ${activeTab === 'leaderboard' ? (failed ? styles.tabButtonActiveFailed : styles.tabButtonActive) : ''}`.trim()}
+                role="tab"
+                aria-selected={activeTab === 'leaderboard'}
+                onClick={() => scrollToTab('leaderboard')}
+              >
+                Leaderboard
+              </button>
+            </div>
           </div>
         )}
 
-        {activeTab === 'leaderboard' && hasLeaderboard ? (
-          leaderboardTab()
-        ) : (
-          <>
-            <div className={styles.mainStat}>
-              <span className={styles.mainStatValue}>{formatTime(timeMs)}</span>
-              <span className={styles.mainStatLabel}>TOTAL TIME</span>
-            </div>
-
-            {failed && (
-              <div className={styles.subStat}>
-                <span>Best Attempt: {bestAttempt}/{optimalMoves} moves</span>
-              </div>
-            )}
-
-            <div className={styles.progressSection}>
-              <div className={styles.progressHeader}>Attempts</div>
-              <div className={styles.progressList}>
-                {bars.map((bar, idx) => (
-                  <div className={styles.progressRow} key={idx}>
-                    <span className={styles.progressLabel}>
-                      {idx + 1}
-                    </span>
-                    <div className={styles.progressBar}>
-                      <div
-                        className={`
-                          ${styles.progressFill}
-                          ${bar.status === 'success' ? styles.progressFillSuccess : ''}
-                          ${bar.status === 'fail' ? styles.progressFillFail : ''}
-                          ${bar.status === 'empty' ? styles.progressFillEmpty : ''}
-                        `}
-                        style={{ width: `${Math.max(0, Math.min((bar.progress / maxBlocks) * 100, 100))}%` }}
-                      />
-                    </div>
-                    <span className={styles.progressValue}>
-                      {bar.progress}/{optimalMoves}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Share & Feedback Section */}
-            <div className={styles.shareSection}>
-              <button
-                className={`${styles.shareButton} ${shareState === 'copied' ? styles.copied : ''} ${shareState === 'failed' ? styles.failed : ''}`}
-                onClick={handleShare}
-              >
-                <span className={styles.shareBtnIcon}>
-                  <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
-                    <path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z" />
-                  </svg>
-                </span>
-                {getShareButtonText()}
-              </button>
-
-              {secondaryActionLabel && onSecondaryAction && (
-                <button className={styles.secondaryActionButton} onClick={onSecondaryAction}>
-                  {secondaryActionLabel}
-                </button>
-              )}
-            </div>
-
-            {/* Feedback Section */}
-            <div className={styles.feedbackSection}>
-              {!feedbackOpen ? (
-                <button
-                  className={styles.feedbackTriggerSimple}
-                  onClick={() => setFeedbackOpen(true)}
-                >
-                  Share feedback
-                </button>
-              ) : (
-                <div className={styles.feedbackForm}>
-                  {/* Star Rating - optional */}
-                  <div className={styles.starRating}>
-                    <span className={styles.starLabel}>Rate your experience (optional):</span>
-                    <div
-                      className={styles.stars}
-                      onMouseLeave={() => setHoverRating(null)}
-                    >
-                      {[1, 2, 3, 4, 5].map((star) => {
-                        const isFilled = (hoverRating !== null ? hoverRating : feedbackRating) !== null &&
-                          (hoverRating !== null ? hoverRating : feedbackRating!) >= star;
-                        return (
-                          <button
-                            key={star}
-                            type="button"
-                            className={`${styles.star} ${isFilled ? styles.starFilled : ''}`}
-                            onClick={() => setFeedbackRating(star)}
-                            onMouseEnter={() => setHoverRating(star)}
-                            disabled={feedbackState === 'sending' || feedbackState === 'sent'}
-                            aria-label={`Rate ${star} star${star > 1 ? 's' : ''}`}
-                          >
-                            <svg viewBox="0 0 24 24" className={styles.starIcon}>
-                              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                            </svg>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                  <textarea
-                    className={styles.feedbackTextarea}
-                    placeholder="Bug report, suggestion, or just say hi..."
-                    value={feedbackText}
-                    onChange={(e) => setFeedbackText(e.target.value)}
-                    maxLength={1000}
-                    disabled={feedbackState === 'sending' || feedbackState === 'sent'}
+        <div
+          className={styles.carousel}
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
+          style={carouselHeight ? { height: carouselHeight } : undefined}
+        >
+          {/* Share Tab */}
+          <div className={styles.tabPanel}>
+            <div ref={shareContentRef}>
+              <div className={styles.header}>
+                {failed ? (
+                  <Image
+                    src="/assets/images/dead_character.svg"
+                    alt="Game Over"
+                    width={64}
+                    height={64}
+                    className={styles.characterIcon}
+                    priority
                   />
-                  <div className={styles.feedbackActions}>
-                    <button
-                      className={`${styles.feedbackSubmit} ${styles[feedbackState]}`}
-                      onClick={handleFeedback}
-                      disabled={(!feedbackText.trim() && feedbackRating === null) || feedbackState === 'sending' || feedbackState === 'sent'}
-                    >
-                      {feedbackState === 'sending' ? (
-                        <>
-                          <span className={styles.spinner} />
-                          Sending...
-                        </>
-                      ) : (
-                        getFeedbackButtonText()
-                      )}
-                    </button>
-                    <button
-                      className={styles.feedbackCancel}
-                      onClick={() => {
-                        setFeedbackOpen(false);
-                        setFeedbackText('');
-                        setFeedbackRating(null);
-                        setFeedbackState('idle');
-                      }}
-                      disabled={feedbackState === 'sending'}
-                    >
-                      Cancel
-                    </button>
+                ) : (
+                  <Image
+                    src="/assets/images/alive_character.svg"
+                    alt="Victory"
+                    width={64}
+                    height={80}
+                    className={styles.characterIcon}
+                    priority
+                  />
+                )}
+                <h2 className={styles.title}>{failed ? 'Game Over' : 'Victory'}</h2>
+                <span className={styles.puzzleNumber}>
+                  {mapEmoji ? `${mapEmoji} ` : ''}Mazle {displayLabel}
+                </span>
+              </div>
+
+              <div className={styles.mainStat}>
+                <span className={styles.mainStatValue}>{formatTime(timeMs)}</span>
+                <span className={styles.mainStatLabel}>TOTAL TIME</span>
+              </div>
+
+              {failed && (
+                <div className={styles.subStat}>
+                  <span>Best Attempt: {bestAttempt}/{optimalMoves} moves</span>
+                </div>
+              )}
+
+              <div className={styles.progressSection}>
+                <div className={styles.progressHeader}>Attempts</div>
+                <div className={styles.progressList}>
+                  {bars.map((bar, idx) => (
+                    <div className={styles.progressRow} key={idx}>
+                      <span className={styles.progressLabel}>
+                        {idx + 1}
+                      </span>
+                      <div className={styles.progressBar}>
+                        <div
+                          className={`
+                            ${styles.progressFill}
+                            ${bar.status === 'success' ? styles.progressFillSuccess : ''}
+                            ${bar.status === 'fail' ? styles.progressFillFail : ''}
+                            ${bar.status === 'empty' ? styles.progressFillEmpty : ''}
+                          `}
+                          style={{ width: `${Math.max(0, Math.min((bar.progress / maxBlocks) * 100, 100))}%` }}
+                        />
+                      </div>
+                      <span className={styles.progressValue}>
+                        {bar.progress}/{optimalMoves}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Share & Feedback Section */}
+              <div className={styles.shareSection}>
+                <button
+                  className={`${styles.shareButton} ${shareState === 'copied' ? styles.copied : ''} ${shareState === 'failed' ? styles.failed : ''}`}
+                  onClick={handleShare}
+                >
+                  <span className={styles.shareBtnIcon}>
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+                      <path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z" />
+                    </svg>
+                  </span>
+                  {getShareButtonText()}
+                </button>
+
+                {secondaryActionLabel && onSecondaryAction && (
+                  <button className={styles.secondaryActionButton} onClick={onSecondaryAction}>
+                    {secondaryActionLabel}
+                  </button>
+                )}
+              </div>
+
+              {/* Feedback Section */}
+              <div className={styles.feedbackSection}>
+                {!feedbackOpen ? (
+                  <button
+                    className={styles.feedbackTriggerSimple}
+                    onClick={() => setFeedbackOpen(true)}
+                  >
+                    Share feedback
+                  </button>
+                ) : (
+                  <div className={styles.feedbackForm}>
+                    {/* Star Rating - optional */}
+                    <div className={styles.starRating}>
+                      <span className={styles.starLabel}>Rate your experience (optional):</span>
+                      <div
+                        className={styles.stars}
+                        onMouseLeave={() => setHoverRating(null)}
+                      >
+                        {[1, 2, 3, 4, 5].map((star) => {
+                          const isFilled = (hoverRating !== null ? hoverRating : feedbackRating) !== null &&
+                            (hoverRating !== null ? hoverRating : feedbackRating!) >= star;
+                          return (
+                            <button
+                              key={star}
+                              type="button"
+                              className={`${styles.star} ${isFilled ? styles.starFilled : ''}`}
+                              onClick={() => setFeedbackRating(star)}
+                              onMouseEnter={() => setHoverRating(star)}
+                              disabled={feedbackState === 'sending' || feedbackState === 'sent'}
+                              aria-label={`Rate ${star} star${star > 1 ? 's' : ''}`}
+                            >
+                              <svg viewBox="0 0 24 24" className={styles.starIcon}>
+                                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                              </svg>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <textarea
+                      className={styles.feedbackTextarea}
+                      placeholder="Bug report, suggestion, or just say hi..."
+                      value={feedbackText}
+                      onChange={(e) => setFeedbackText(e.target.value)}
+                      maxLength={1000}
+                      disabled={feedbackState === 'sending' || feedbackState === 'sent'}
+                    />
+                    <div className={styles.feedbackActions}>
+                      <button
+                        className={`${styles.feedbackSubmit} ${styles[feedbackState]}`}
+                        onClick={handleFeedback}
+                        disabled={(!feedbackText.trim() && feedbackRating === null) || feedbackState === 'sending' || feedbackState === 'sent'}
+                      >
+                        {feedbackState === 'sending' ? (
+                          <>
+                            <span className={styles.spinner} />
+                            Sending...
+                          </>
+                        ) : (
+                          getFeedbackButtonText()
+                        )}
+                      </button>
+                      <button
+                        className={styles.feedbackCancel}
+                        onClick={() => {
+                          setFeedbackOpen(false);
+                          setFeedbackText('');
+                          setFeedbackRating(null);
+                          setFeedbackState('idle');
+                        }}
+                        disabled={feedbackState === 'sending'}
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              {footerText && (
+                <div className={styles.footer}>
+                  <span className={styles.footerText}>{footerText}</span>
                 </div>
               )}
             </div>
+          </div>
 
-            {/* Footer */}
-            {footerText && (
-              <div className={styles.footer}>
-                <span className={styles.footerText}>{footerText}</span>
+          {/* Leaderboard Tab (always rendered if hasLeaderboard, just scrolled to) */}
+          {hasLeaderboard && (
+            <div className={styles.tabPanel}>
+              <div ref={leaderboardContentRef}>
+                {leaderboardTab()}
               </div>
-            )}
-          </>
-        )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

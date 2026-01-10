@@ -70,9 +70,6 @@
 }
 
 .panel {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
   padding: 0.9rem;
   overflow: hidden;
 }
@@ -96,7 +93,7 @@
 }
 
 .podiumAvatar {
-  margin-bottom: 0.25rem;
+  margin-bottom: -6px; /* Aggressively pull name up */
 }
 
 .podiumName {
@@ -108,7 +105,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.1rem;
+  line-height: 1; /* Tightened line height */
 }
 
 .podiumBar {
@@ -116,30 +114,27 @@
   flex-direction: column;
   align-items: center;
   border-radius: 8px;
-  padding: 0.5rem 0.25rem;
+  padding: 0.6rem 0.5rem 0.4rem;
   width: 100%;
 }
 
 .podiumGold {
   background: linear-gradient(180deg, #FFD700 0%, #FFA500 100%);
-  height: 110px;
+  height: 60px;
 }
 
 .podiumSilver {
   background: linear-gradient(180deg, #E8E8E8 0%, #A0A0A0 100%);
-  height: 90px;
+  height: 45px;
 }
 
 .podiumBronze {
   background: linear-gradient(180deg, #CD7F32 0%, #8B4513 100%);
-  height: 70px;
+  height: 35px;
 }
 
 .podiumRankBadge {
-  font-size: 1.3rem;
-  font-weight: 900;
-  color: rgba(0, 0, 0, 0.7);
-  margin-bottom: auto;
+  display: none;
 }
 
 .podiumTime {
@@ -147,5 +142,6 @@
   font-weight: 700;
   color: rgba(0, 0, 0, 0.6);
   font-variant-numeric: tabular-nums;
+  margin-top: auto; /* Push to bottom of flex container */
 }
 

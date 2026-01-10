@@ -1071,13 +1071,11 @@
 .previousResult {
   text-align: center;
   padding: calc(1.5rem * var(--ui-scale));
-  /* Match MoreMenuModal aesthetic */
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  background: rgba(var(--color-surface-rgb), 0.7);
-  border-radius: 12px;
-  border: none;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  background: var(--color-background);
+  border-radius: 14px;
+  border: 2px solid var(--color-border);
+  backdrop-filter: blur(4px);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
   width: 80%;
   max-width: calc(300px * var(--ui-scale));
   font-family: var(--font-main);
@@ -1085,10 +1083,10 @@
 }
 
 .previousResult p {
-  color: #333333;
+  color: var(--color-secondary);
   font-size: calc(0.9rem * var(--ui-scale));
   margin-bottom: calc(1rem * var(--ui-scale));
-  font-weight: 600;
+  font-weight: 500;
   transition: font-size 0.15s ease-out, margin-bottom 0.15s ease-out;
 }
 
@@ -1111,10 +1109,10 @@
 
 .viewResultButton {
   padding: calc(0.75rem * var(--ui-scale)) calc(1.5rem * var(--ui-scale));
-  background: rgba(var(--color-text-rgb), 0.15);
+  background: var(--color-surface);
   color: var(--color-text);
-  border: 2.5px solid #5a5a5a;
-  border-radius: 8px;
+  border: 2px solid var(--color-border);
+  border-radius: 10px;
   font-size: calc(0.9rem * var(--ui-scale));
   font-weight: 700;
   font-family: var(--font-main);
@@ -1122,14 +1120,14 @@
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1), padding 0.15s ease-out, font-size 0.15s ease-out;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
 .viewResultButton:hover {
-  background: rgba(var(--color-text-rgb), 0.22);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-  border-color: #4a4a4a;
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+  background: var(--color-primary);
+  color: var(--color-background);
+  border-color: var(--color-primary);
 }
 
 
@@ -1258,7 +1256,7 @@
   }
 
   .gameArea {
-    flex: 1 1 0;
+    flex: 0 1 auto;
     min-height: 0;
     padding: 0;
   }

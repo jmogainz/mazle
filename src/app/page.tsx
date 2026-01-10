@@ -763,26 +763,26 @@ export default function Home() {
 
     // Also persist while idle and when backgrounding/unloading so elapsed time doesn't jump backwards.
     const intervalId = window.setInterval(() => {
-        // We can't access state directly here easily without ref, but getSerializableState works
-        const state = gameControlsRef.current?.getSerializableState();
-        if (state && state.isPlaying && activeSeed && !debugModeRef.current && !previousResult) {
-            saveInProgressState(activeSeed, state);
-        }
+      // We can't access state directly here easily without ref, but getSerializableState works
+      const state = gameControlsRef.current?.getSerializableState();
+      if (state && state.isPlaying && activeSeed && !debugModeRef.current && !previousResult) {
+        saveInProgressState(activeSeed, state);
+      }
     }, 5000);
-    
+
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
-         const state = gameControlsRef.current?.getSerializableState();
-         if (state && state.isPlaying && activeSeed && !debugModeRef.current && !previousResult) {
-             saveInProgressState(activeSeed, state);
-         }
+        const state = gameControlsRef.current?.getSerializableState();
+        if (state && state.isPlaying && activeSeed && !debugModeRef.current && !previousResult) {
+          saveInProgressState(activeSeed, state);
+        }
       }
     };
     const handlePageHide = () => {
-       const state = gameControlsRef.current?.getSerializableState();
-       if (state && state.isPlaying && activeSeed && !debugModeRef.current && !previousResult) {
-           saveInProgressState(activeSeed, state);
-       }
+      const state = gameControlsRef.current?.getSerializableState();
+      if (state && state.isPlaying && activeSeed && !debugModeRef.current && !previousResult) {
+        saveInProgressState(activeSeed, state);
+      }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('pagehide', handlePageHide);
@@ -1269,10 +1269,10 @@ export default function Home() {
               className={styles.shareButton}
               onClick={handleShowShareCard}
               style={{
-                visibility: showResultsButton && !showSwipeHint ? 'visible' : 'hidden',
-                opacity: showResultsButton && !showSwipeHint ? 1 : 0,
-                transform: showResultsButton && !showSwipeHint ? 'scale(1)' : 'scale(0.9)',
-                pointerEvents: showResultsButton && !showSwipeHint ? 'auto' : 'none',
+                visibility: showInlineResult && !showSwipeHint && !showShareCard ? 'visible' : 'hidden',
+                opacity: showInlineResult && !showSwipeHint && !showShareCard ? 1 : 0,
+                transform: showInlineResult && !showSwipeHint && !showShareCard ? 'scale(1)' : 'scale(0.9)',
+                pointerEvents: showInlineResult && !showSwipeHint && !showShareCard ? 'auto' : 'none',
               }}
             >
               Share Score

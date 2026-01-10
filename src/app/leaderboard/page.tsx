@@ -4,7 +4,7 @@ import AdSlot from '@/components/AdSlot';
 
 export default function LeaderboardPage() {
   return (
-    <OverlayShell title="Leaderboard" subtitle="Today" variant="page" closeHref="/">
+    <OverlayShell title="Leaderboard" variant="page" closeHref="/">
       <LeaderboardView />
       <AdSlot placement="leaderboard" />
     </OverlayShell>

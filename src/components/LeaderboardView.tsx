@@ -211,16 +211,14 @@ function LeaderboardView() {
 
     if (viewerMode !== 'user') {
       return (
-        <div className={styles.meRow}>
-          <div className={styles.meLeft}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+          <div className={styles.meRow}>
             <div className={styles.meName}>{displayName}</div>
-            <div className={styles.meMeta}>
-              {formatTime(todayResult.timeMs)} • {attemptsUsed}/3 tries
-            </div>
+            <div className={styles.rowTime}>{formatTime(todayResult.timeMs)}</div>
           </div>
-          <div className={styles.meRight}>
+          <div style={{ display: 'flex', justifyContent: 'center', width: '100%', marginTop: '0.2rem' }}>
             <button type="button" className={styles.submitButtonSmall} onClick={handleOpenAccount}>
-              Sign in
+              Sign in to submit
             </button>
           </div>
         </div>
@@ -228,14 +226,12 @@ function LeaderboardView() {
     }
 
     return (
-      <div className={styles.meRow}>
-        <div className={styles.meLeft}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+        <div className={styles.meRow}>
           <div className={styles.meName}>{displayName}</div>
-          <div className={styles.meMeta}>
-            {formatTime(todayResult.timeMs)} • {attemptsUsed}/3 tries
-          </div>
+          <div className={styles.rowTime}>{formatTime(todayResult.timeMs)}</div>
         </div>
-        <div className={styles.meRight}>
+        <div style={{ display: 'flex', justifyContent: 'center', width: '100%', marginTop: '0.2rem' }}>
           <button
             type="button"
             className={styles.submitButtonSmall}
@@ -260,7 +256,7 @@ function LeaderboardView() {
         <div className={styles.podium}>
           <div className={styles.podiumColumn}>
             <div className={styles.podiumAvatar}>
-              <CharacterIcon characterId={second?.characterId} skinId={second?.skinId} size={34} />
+              <CharacterIcon characterId={second?.characterId} skinId={second?.skinId} size={40} />
             </div>
             <div className={styles.podiumName}>{second?.displayName}</div>
             <div className={`${styles.podiumBar} ${styles.podiumSilver}`}>
@@ -270,7 +266,7 @@ function LeaderboardView() {
           </div>
           <div className={styles.podiumColumn}>
             <div className={styles.podiumAvatar}>
-              <CharacterIcon characterId={first?.characterId} skinId={first?.skinId} size={36} />
+              <CharacterIcon characterId={first?.characterId} skinId={first?.skinId} size={48} />
             </div>
             <div className={styles.podiumName}>{first?.displayName}</div>
             <div className={`${styles.podiumBar} ${styles.podiumGold}`}>
@@ -280,7 +276,7 @@ function LeaderboardView() {
           </div>
           <div className={styles.podiumColumn}>
             <div className={styles.podiumAvatar}>
-              <CharacterIcon characterId={third?.characterId} skinId={third?.skinId} size={34} />
+              <CharacterIcon characterId={third?.characterId} skinId={third?.skinId} size={40} />
             </div>
             <div className={styles.podiumName}>{third?.displayName}</div>
             <div className={`${styles.podiumBar} ${styles.podiumBronze}`}>
@@ -295,7 +291,7 @@ function LeaderboardView() {
         <div className={styles.podium} style={{ opacity: 0.4, filter: 'blur(2px)' }}>
           <div className={styles.podiumColumn}>
             <div className={styles.podiumAvatar}>
-              <CharacterIcon size={34} />
+              <CharacterIcon size={40} />
             </div>
             <div className={styles.podiumName}>Player2</div>
             <div className={`${styles.podiumBar} ${styles.podiumSilver}`}>
@@ -305,7 +301,7 @@ function LeaderboardView() {
           </div>
           <div className={styles.podiumColumn}>
             <div className={styles.podiumAvatar}>
-              <CharacterIcon size={36} />
+              <CharacterIcon size={48} />
             </div>
             <div className={styles.podiumName}>Player1</div>
             <div className={`${styles.podiumBar} ${styles.podiumGold}`}>
@@ -315,7 +311,7 @@ function LeaderboardView() {
           </div>
           <div className={styles.podiumColumn}>
             <div className={styles.podiumAvatar}>
-              <CharacterIcon size={34} />
+              <CharacterIcon size={40} />
             </div>
             <div className={styles.podiumName}>Player3</div>
             <div className={`${styles.podiumBar} ${styles.podiumBronze}`}>

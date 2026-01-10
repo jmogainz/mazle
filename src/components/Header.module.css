@@ -16,6 +16,8 @@
 .leftSection {
   display: flex;
   justify-content: flex-start;
+  align-items: center;
+  gap: 0.35rem;
   grid-column: 1;
   grid-row: 1;
 }
@@ -63,18 +65,17 @@
   0% {
     background-position: -200% 0;
   }
+
   100% {
     background-position: 200% 0;
   }
 }
 
 .skeleton {
-  background: linear-gradient(
-    90deg,
-    var(--color-surface) 25%,
-    rgba(255, 255, 255, 0.15) 50%,
-    var(--color-surface) 75%
-  );
+  background: linear-gradient(90deg,
+      var(--color-surface) 25%,
+      rgba(255, 255, 255, 0.15) 50%,
+      var(--color-surface) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s ease-in-out infinite;
   border-radius: 4px;
@@ -124,5 +125,66 @@
 
 .iconButton:hover {
   background: var(--color-surface);
+  color: var(--color-primary);
+}
+
+.themeToggle {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+  padding: calc(0.5rem * var(--ui-scale));
+  border-radius: 6px;
+  transition: background 0.15s ease-out;
+}
+
+.themeToggle:hover {
+  background: var(--color-surface);
+}
+
+.themeToggleInput {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.themeToggleTrack {
+  width: calc(44px * var(--ui-scale));
+  height: calc(24px * var(--ui-scale));
+  border-radius: 999px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.themeToggleThumb {
+  width: calc(20px * var(--ui-scale));
+  height: calc(20px * var(--ui-scale));
+  border-radius: 50%;
+  background: var(--color-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateX(0);
+  transition: transform 0.2s ease, background 0.2s ease;
+  color: var(--color-background);
+}
+
+.themeToggleThumb svg {
+  width: calc(14px * var(--ui-scale));
+  height: calc(14px * var(--ui-scale));
+}
+
+.themeToggleInput:checked+.themeToggleTrack {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.themeToggleInput:checked+.themeToggleTrack .themeToggleThumb {
+  transform: translateX(calc(20px * var(--ui-scale)));
+  background: #ffffff;
   color: var(--color-primary);
 }

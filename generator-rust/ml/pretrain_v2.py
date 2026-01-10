@@ -265,12 +265,23 @@ def augment_puzzle(tiles: torch.Tensor, start_pos: int, goal_pos: int,
 class CollateFnV2:
     """Collate function for v2 model - extracts tiles WITHOUT start/goal."""
     
+    # Move count range for CFG conditioning
+    MIN_MOVES = 4
+    MAX_MOVES = 14
+    NULL_MOVE_TOKEN = MAX_MOVES - MIN_MOVES + 1  # Index 11 = null/unconditional
+    
     def __init__(self, grid_height: int = 13, grid_width: int = 13, 
-                 compute_paths: bool = True, augment: bool = False):
+                 compute_paths: bool = True, augment: bool = False,
+                 cfg_dropout: float = 0.1):
+        """
+        Args:
+            cfg_dropout: Probability of replacing move count with null token (for CFG training)
+        """
         self.grid_height = grid_height
         self.grid_width = grid_width
         self.compute_paths = compute_paths
         self.augment = augment
+        self.cfg_dropout = cfg_dropout
     
     def __call__(self, batch: List[Dict]) -> Dict[str, torch.Tensor]:
         B = len(batch)
@@ -279,6 +290,7 @@ class CollateFnV2:
         tiles = torch.empty((B, H * W), dtype=torch.long)
         start_pos = torch.empty(B, dtype=torch.long)
         goal_pos = torch.empty(B, dtype=torch.long)
+        moves = torch.empty(B, dtype=torch.long)  # Move count tokens for CFG
         on_path = torch.zeros((B, H * W), dtype=torch.float32)
         is_stop = torch.zeros((B, H * W), dtype=torch.float32)
         # Stop sequence: (B, 11) or None entries for puzzles without 11 stops
@@ -289,6 +301,19 @@ class CollateFnV2:
             grid = item["tilesInterior"]
             start = item["start"]
             goal = item["goal"]
+            
+            # Get optimal_moves if present, otherwise default to 10
+            optimal_moves = item.get("optimal_moves", 10)
+            
+            # Convert to token index (clamp to valid range)
+            optimal_moves_clamped = max(self.MIN_MOVES, min(self.MAX_MOVES, optimal_moves))
+            move_token = optimal_moves_clamped - self.MIN_MOVES
+            
+            # CFG dropout: randomly replace with null token
+            if self.cfg_dropout > 0 and torch.rand(1).item() < self.cfg_dropout:
+                move_token = self.NULL_MOVE_TOKEN
+            
+            moves[i] = move_token
             
             # Remap tiles to contiguous indices
             flat_tiles = []
@@ -332,6 +357,7 @@ class CollateFnV2:
             "tiles": tiles,  # (B, 169)
             "start_pos": start_pos,  # (B,)
             "goal_pos": goal_pos,  # (B,)
+            "moves": moves,  # (B,) move count tokens for CFG
             "on_path": on_path,  # (B, 169) binary
             "is_stop": is_stop,  # (B, 169) binary
             "stop_sequence": stop_sequence_tensor,  # (B, 11) ordered stop positions
@@ -507,8 +533,10 @@ def generate_and_validate(
     num_samples: int = 32,
     k_candidates: int = 1,
     temperature: float = 1.0,
+    target_moves: int = 10,
+    guidance_scale: float = 2.0,
 ) -> Dict[str, float]:
-    """Generate samples and validate with Rust verifier."""
+    """Generate samples and validate with Rust verifier using CFG."""
     model.eval()
     
     metrics = {
@@ -528,13 +556,19 @@ def generate_and_validate(
         seed = f"eval-{i}"
         
         if k_candidates > 1:
-            result = model.generate_k_candidates(seed, k_candidates, device, temperature)
+            result = model.generate_k_candidates(
+                seed, k_candidates, device, temperature,
+                target_moves=target_moves, guidance_scale=guidance_scale
+            )
         else:
             # Single generation with deterministic seed
             seed_int = int(hashlib.sha256(seed.encode()).hexdigest()[:16], 16)
             gen = torch.Generator(device=device)
             gen.manual_seed(seed_int)
-            result = model.generate(1, device, gen, temperature)
+            result = model.generate(
+                1, device, gen, temperature,
+                target_moves=target_moves, guidance_scale=guidance_scale
+            )
         
         # Validate each candidate
         for j in range(result["tiles"].shape[0]):
@@ -602,6 +636,10 @@ def main():
     parser.add_argument("--augment", action="store_true", help="Enable data augmentation (rotations/flips)")
     parser.add_argument("--lr-min", type=float, default=1e-6, help="Minimum learning rate floor")
     parser.add_argument("--stop-loss-weight", type=float, default=0.5, help="Weight for ordered stop sequence loss")
+    # CFG (Classifier-Free Guidance) arguments
+    parser.add_argument("--cfg-dropout", type=float, default=0.1, help="Probability of null conditioning during training")
+    parser.add_argument("--guidance-scale", type=float, default=2.0, help="CFG guidance scale for generation (1.0 = no guidance)")
+    parser.add_argument("--target-moves", type=int, default=10, help="Target move count for evaluation generation")
     args = parser.parse_args()
 
     out_dir = Path(args.out)
@@ -668,6 +706,7 @@ def main():
     # EMA for stable sampling
     ema = EMA(model, decay=args.ema_decay)
     log_progress(f"EMA initialized with decay={args.ema_decay}", out_dir)
+    log_progress(f"CFG: dropout={args.cfg_dropout} guidance={args.guidance_scale} target={args.target_moves}", out_dir)
 
     global_step = 0
     best_full_pass = 0.0
@@ -686,7 +725,7 @@ def main():
             dataset,
             batch_size=args.batch_size,
             num_workers=args.num_workers,
-            collate_fn=CollateFnV2(augment=args.augment),
+            collate_fn=CollateFnV2(augment=args.augment, cfg_dropout=args.cfg_dropout),
         )
 
         model.train()
@@ -699,6 +738,7 @@ def main():
             tiles = batch["tiles"].to(device)  # (B, 169)
             start_pos = batch["start_pos"].to(device)  # (B,)
             goal_pos = batch["goal_pos"].to(device)  # (B,)
+            moves = batch["moves"].to(device)  # (B,) move count tokens for CFG
             on_path = batch["on_path"].to(device)  # (B, 169)
             is_stop = batch["is_stop"].to(device)  # (B, 169)
             stop_sequence = batch["stop_sequence"].to(device)  # (B, 11)
@@ -711,8 +751,8 @@ def main():
             # Forward diffusion: mask tiles
             x_t = model.q_sample(tiles, t)
             
-            # Forward pass
-            outputs = model(x_t, t, start_pos, goal_pos)
+            # Forward pass with move count conditioning
+            outputs = model(x_t, t, start_pos, goal_pos, moves)
             
             # Tile loss: predict original tiles from masked
             tile_logits = outputs["tile_logits"]  # (B, 169, vocab_size)
@@ -797,6 +837,8 @@ def main():
                     model, device, validate_fn,
                     num_samples=args.generate_samples,
                     k_candidates=args.k_candidates,
+                    target_moves=args.target_moves,
+                    guidance_scale=args.guidance_scale,
                 )
                 
                 # Restore original weights
@@ -860,11 +902,15 @@ def main():
 
     # Final evaluation
     log_progress("Final evaluation...", out_dir)
+    ema.apply_shadow()
     final_metrics = generate_and_validate(
         model, device, validate_fn,
         num_samples=256,
         k_candidates=args.k_candidates,
+        target_moves=args.target_moves,
+        guidance_scale=args.guidance_scale,
     )
+    ema.restore()
     log_progress(
         f"FINAL: valid={final_metrics['valid_structure']:.1%} "
         f"solve={final_metrics['solvable']:.1%} nostuck={final_metrics['no_stuck']:.1%} "

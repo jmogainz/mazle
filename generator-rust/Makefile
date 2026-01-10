@@ -319,6 +319,7 @@ dataset-gen: cargo-build
 # -------------------------
 MULTIMOVE_COUNTS ?= 4 5 6 7 8 9 11 12 13 14
 MULTIMOVE_PER_MOVE ?= 20000
+MULTIMOVE_START_INDEX ?=
 MULTIMOVE_DATA_DIR ?= $(CURDIR)/data
 
 .PHONY: dataset-gen-multimove
@@ -333,21 +334,28 @@ dataset-gen-multimove: cargo-build
 		outfile="$(MULTIMOVE_DATA_DIR)/train-$${moves}move.jsonl"; \
 		logfile="$(MULTIMOVE_DATA_DIR)/train-$${moves}move.log"; \
 		pidfile="$(MULTIMOVE_DATA_DIR)/train-$${moves}move.pid"; \
-		existing=$$(wc -l < "$$outfile" 2>/dev/null | tr -d ' ' || echo 0); \
-		remaining=$$(($(MULTIMOVE_PER_MOVE) - existing)); \
-		start=$$((existing + 1)); \
-		if [ $$remaining -le 0 ]; then \
-			echo "$${moves}-move: already complete ($$existing samples)"; \
-		elif [ -f "$$pidfile" ] && ps -p $$(cat "$$pidfile") > /dev/null 2>&1; then \
-			echo "$${moves}-move: already running (PID $$(cat $$pidfile), $$existing samples)"; \
+		if [ -n "$(MULTIMOVE_START_INDEX)" ]; then \
+			start="$(MULTIMOVE_START_INDEX)"; \
+			remaining="$(MULTIMOVE_PER_MOVE)"; \
+			echo "$${moves}-move: Manual mode - starting from index $$start, generating $$remaining"; \
 		else \
-			echo "$${moves}-move: starting from index $$start ($$existing done, $$remaining remaining)"; \
+			existing=$$(wc -l < "$$outfile" 2>/dev/null | tr -d ' ' || echo 0); \
+			remaining=$$(($(MULTIMOVE_PER_MOVE) - existing)); \
+			start=$$((existing + 1)); \
+			echo "$${moves}-move: Auto mode - file has $$existing, need $$remaining more (starting at $$start)"; \
+		fi; \
+		if [ $$remaining -le 0 ]; then \
+			echo "$${moves}-move: already complete"; \
+		elif [ -f "$$pidfile" ] && ps -p $$(cat "$$pidfile") > /dev/null 2>&1; then \
+			echo "$${moves}-move: already running (PID $$(cat $$pidfile))"; \
+		else \
 			if command -v setsid >/dev/null 2>&1; then \
 				DATASET_OUT="$$outfile" \
 				DATASET_COUNT="$$remaining" \
 				DATASET_START_INDEX="$$start" \
 				DATASET_SEED_PREFIX="train-$${moves}m" \
 				DATASET_TARGET_MOVES="$$moves" \
+				DATASET_APPEND="1" \
 				setsid ./target/release/mazle-generator </dev/null > "$$logfile" 2>&1 & \
 				echo $$! | tee "$$pidfile"; \
 			else \
@@ -356,6 +364,7 @@ dataset-gen-multimove: cargo-build
 				DATASET_START_INDEX="$$start" \
 				DATASET_SEED_PREFIX="train-$${moves}m" \
 				DATASET_TARGET_MOVES="$$moves" \
+				DATASET_APPEND="1" \
 				nohup ./target/release/mazle-generator </dev/null > "$$logfile" 2>&1 & \
 				echo $$! | tee "$$pidfile"; \
 			fi; \

@@ -265,7 +265,8 @@
 | AR Base | 13% | 7% | 6% | 0% | Loss plateau 0.93 |
 | AR + Aux Losses | 18% | 13% | 11% | 1% | Best v1 AR |
 | Diffusion v1 | 14% | 8% | 6% | 1% | Still improving |
-| **V2 Architecture** | **100%** | **80%+** | **70%** | **1-2%** | CURRENT BEST |
+| V2 Architecture | 100% | 80%+ | 70% | 1-2% | Previous best |
+| **V2 + CFG** | **100%** | **77%** | **70%** | **2.3%** | Move count conditioning |
 
 ---
 
@@ -573,13 +574,165 @@ With 66.7% success rate at K=100:
 
 ---
 
+## 11. Classifier-Free Guidance (CFG) for Move Count Control ⭐⭐ (LATEST ATTEMPT)
+
+### The Problem
+
+The core bottleneck in v2 was identified as **move count control**. The model achieved excellent structural metrics (solve ~80%, unique ~70%) but couldn't consistently generate 10-move puzzles. The `t10%` metric stayed below 3% while `moves_mean` plateaued around 5.
+
+**Root cause:** Training on only 10-move puzzles means the model never learns what distinguishes a 10-move puzzle from a 6-move puzzle. The local tile patterns look similar, so the model drifts toward "easier" configurations with shorter paths.
+
+### The Solution: Classifier-Free Guidance
+
+Implemented CFG conditioning on move count, allowing the model to learn the difference between puzzles of varying complexity.
+
+**Key changes to `model_v2.py`:**
+```python
+# Move count range for conditioning (4-14 moves, plus null token)
+MIN_MOVES = 4
+MAX_MOVES = 14
+NUM_MOVE_TOKENS = MAX_MOVES - MIN_MOVES + 2  # 4-14 + null = 12 tokens
+NULL_MOVE_TOKEN = MAX_MOVES - MIN_MOVES + 1  # Index 11 = null/unconditional
+
+# Move count embedding added to __init__
+self.moves_embed = nn.Embedding(self.NUM_MOVE_TOKENS, config.model_dim)
+
+# In forward(), moves embedding added to timestep embedding
+if moves is not None:
+    moves_emb = self.moves_embed(moves)
+    t_emb = t_emb + moves_emb  # Combine with timestep
+
+# In generate(), CFG formula applied:
+if guidance_scale > 1.0:
+    logits_cond = forward(x_t, t, start_pos, goal_pos, moves_cond)
+    logits_uncond = forward(x_t, t, start_pos, goal_pos, moves_uncond)
+    logits = logits_uncond + guidance_scale * (logits_cond - logits_uncond)
+```
+
+**Key changes to `pretrain_v2.py`:**
+```python
+# CollateFnV2 now extracts optimal_moves from data
+optimal_moves = item.get("optimal_moves", 10)
+move_token = optimal_moves_clamped - MIN_MOVES
+
+# CFG dropout: 10% of time, replace with null token
+if torch.rand(1).item() < cfg_dropout:
+    move_token = NULL_MOVE_TOKEN
+
+# Forward pass now includes moves conditioning
+outputs = model(x_t, t, start_pos, goal_pos, moves)
+```
+
+### Training Data
+
+Created multi-move dataset with puzzles of varying complexity:
+- **File:** `train-multimove-400k-shuf.jsonl` (400,000 samples)
+- **Distribution:**
+  - 200k samples at 10 moves (50%)
+  - 20k samples each for moves 4-9, 11-14 (5% each)
+
+### Training Configuration
+
+```bash
+python pretrain_v2.py \
+  --data ../data/train-multimove-400k-shuf.jsonl \
+  --out output_v2_cfg \
+  --epochs 10 \
+  --batch-size 64 \
+  --preset base \
+  --lr 1e-4 \
+  --ema-decay 0.9999 \
+  --cfg-dropout 0.1 \
+  --guidance-scale 2.0 \
+  --target-moves 10 \
+  --augment
+```
+
+### Results
+
+**Training progression (256 samples per eval, k=1):**
+
+| Step | solve% | nostuck% | unique% | t10% | PASS% | moves_mean |
+|------|--------|----------|---------|------|-------|------------|
+| 1000 | 8.6% | 2.0% | 7.4% | 0.0% | 0.0% | 2.9 |
+| 5000 | 10.2% | 3.5% | 8.2% | 0.4% | 0.4% | 3.6 |
+| 7000 | 18.4% | 6.2% | 15.6% | 0.4% | 0.0% | 4.7 |
+| 10000 | 53.1% | 26.2% | 47.3% | 3.1% | 1.2% | 5.4 |
+| 14000 | **76.6%** | **60.5%** | **70.3%** | **4.7%** | **2.3%** | 4.9 |
+| 19000 | 70.7% | 60.9% | 63.3% | 2.0% | 1.6% | 4.6 |
+
+**Best checkpoint:** Step 14000 with 2.3% PASS rate
+
+### Analysis
+
+**What worked:**
+- Structural quality improved massively (solve 8%→77%, nostuck 2%→65%)
+- Model learned to generate valid puzzles consistently
+- CFG architecture integrated cleanly with existing v2 model
+
+**What didn't work as hoped:**
+- Move count control was weak - `moves_mean` plateaued at ~5 instead of climbing toward 10
+- `t10%` oscillated between 1-5% rather than steadily improving
+- Guidance scale of 2.0 may not be strong enough
+- After peak at step 14000, degradation resumed
+
+**Why move count guidance is weaker than expected:**
+1. **Distribution imbalance:** 50% of data is 10-move, so the model may not learn strong distinctions
+2. **Guidance applied only to tiles:** Position heads (start/goal) are predicted unconditionally
+3. **Move count is a global property:** Even with CFG, the model may find it easier to predict "safe" local patterns
+
+### Comparison to Previous V2
+
+| Metric | V2 (no CFG) | V2 + CFG | Delta |
+|--------|-------------|----------|-------|
+| solve% | ~80% | 77% | -3% |
+| nostuck% | ~70% | 65% | -5% |
+| unique% | ~70% | 70% | 0% |
+| t10% | ~2% | 4.7% | +2.7% |
+| PASS% | ~2.7% | 2.3% | -0.4% |
+
+**Verdict:** CFG didn't improve overall PASS rate. The structural metrics are similar, and while t10% improved slightly, it wasn't enough to compensate.
+
+---
+
+### 9. Key Learnings (Updated)
+
+### 9. Move Count is a "Global Property" Problem
+
+The fundamental challenge: move count is determined by the *entire* grid configuration, not local patterns. CFG helps the model distinguish complexity levels, but the guidance signal is still weak because:
+- The model predicts tiles independently at each position
+- Path length emerges from the combination of all tiles
+- Small changes to any tile can dramatically change optimal path length
+
+### 10. CFG Needs Stronger Signal
+
+With guidance_scale=2.0, the conditional and unconditional predictions may be too similar. Options to try:
+- Higher guidance scale (3.0-5.0)
+- Apply guidance to position heads too
+- Train with higher CFG dropout (20-30%)
+- Use guidance scheduling (higher early, lower late)
+
+---
+
+## Next Steps to Try
+
+1. **Higher guidance scale:** Test inference with guidance_scale=4.0 on existing checkpoint
+2. **Balanced training data:** Equal samples per move count (not 50% 10-move)
+3. **Position-aware CFG:** Apply move conditioning to start/goal prediction too
+4. **Two-stage generation:** First predict stop locations, then fill in tiles
+5. **Accept current baseline:** Use K-candidates with step 14000 checkpoint (2.3% per-puzzle rate)
+
+---
+
 ## File Locations
 
-- **Training data:** `generator-rust/data/train-combined-200k-shuf.jsonl`
-- **V2 model:** `generator-rust/ml/model_v2.py` ⭐
+- **Training data (10-move only):** `generator-rust/data/train-combined-200k-shuf.jsonl`
+- **Training data (multi-move CFG):** `generator-rust/data/train-multimove-400k-shuf.jsonl` ⭐
+- **V2 model (with CFG):** `generator-rust/ml/model_v2.py` ⭐
 - **V2 training:** `generator-rust/ml/pretrain_v2.py` ⭐
 - **RL fine-tuning:** `generator-rust/ml/rl_finetune.py` (failed approach, kept for reference)
-- **Best checkpoint:** `generator-rust/ml/output_v2_full/checkpoint_00008000.pt` ⭐
+- **Best checkpoint (no CFG):** `generator-rust/ml/output_v2_full/checkpoint_00008000.pt`
+- **Best checkpoint (CFG):** `generator-rust/ml/output_v2_cfg/best_model.pt` (step 14000, 2.3% PASS)
 - **V1 AR model:** `generator-rust/ml/model_ar.py`
 - **V1 Diffusion model:** `generator-rust/ml/model_diffusion.py`
 - **Verifier:** `generator-rust/ml/bridge/` (PyO3 Rust bindings)

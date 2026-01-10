@@ -113,40 +113,65 @@ class TransformerBlock(nn.Module):
 
 
 class PositionHead(nn.Module):
-    """Head for predicting a single position (START or GOAL)."""
+    """Head for predicting a single position (START or GOAL), conditioned on moves."""
     
-    def __init__(self, input_dim: int, grid_size: int, hidden_dim: int = 256):
+    def __init__(self, input_dim: int, grid_size: int, hidden_dim: int = 256, cond_dim: int = 0):
+        """
+        Args:
+            input_dim: Dimension of input features
+            grid_size: Number of positions (169)
+            hidden_dim: Hidden layer dimension
+            cond_dim: Dimension of conditioning signal (moves embedding). If 0, no conditioning.
+        """
         super().__init__()
         self.grid_size = grid_size
+        self.cond_dim = cond_dim
+        
+        # If conditioning, we'll concatenate the moves embedding
+        total_input = input_dim + cond_dim
+        
         self.net = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
+            nn.Linear(total_input, hidden_dim),
             nn.GELU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.GELU(),
             nn.Linear(hidden_dim, grid_size),  # 169-way categorical
         )
     
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, cond: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Args:
             x: (B, dim) pooled features
+            cond: (B, cond_dim) conditioning signal (moves embedding)
         Returns:
             (B, grid_size) logits over positions
         """
+        if cond is not None and self.cond_dim > 0:
+            x = torch.cat([x, cond], dim=-1)
         return self.net(x)
 
 
 class PuzzleGeneratorV2(nn.Module):
     """
-    Unconditional puzzle generator with:
+    Puzzle generator with classifier-free guidance for move count conditioning:
     - Position heads for START/GOAL (by construction exactly 1)
     - Masked diffusion for tile grid
-    - No seed conditioning (determinism via sampling RNG)
-    - Ordered stop sequence prediction (auxiliary supervision for 10-move constraint)
+    - Move count conditioning with CFG (learns to differentiate complexity)
+    - Ordered stop sequence prediction (auxiliary supervision)
+    
+    Key insight: Training on mixed move counts (4-14) with CFG allows the model
+    to learn distinct features that correlate with path length, then use guidance
+    to steer generation toward target moves.
     """
     
     # Number of stops for 10-move puzzles (start + 9 intermediate + goal)
     NUM_STOPS = 11
+    
+    # Move count range for conditioning (4-14 moves, plus null token)
+    MIN_MOVES = 4
+    MAX_MOVES = 14
+    NUM_MOVE_TOKENS = MAX_MOVES - MIN_MOVES + 2  # 4-14 + null = 12 tokens
+    NULL_MOVE_TOKEN = MAX_MOVES - MIN_MOVES + 1  # Index 11 = null/unconditional
     
     def __init__(self, config: ModelConfig):
         super().__init__()
@@ -177,6 +202,10 @@ class PuzzleGeneratorV2(nn.Module):
         self.start_pos_embed = nn.Embedding(self.grid_size, config.model_dim)
         self.goal_pos_embed = nn.Embedding(self.grid_size, config.model_dim)
         
+        # Move count conditioning for classifier-free guidance (CFG)
+        # Maps move count (4-14) or null token to embedding
+        self.moves_embed = nn.Embedding(self.NUM_MOVE_TOKENS, config.model_dim)
+        
         # Transformer layers
         self.layers = nn.ModuleList([
             TransformerBlock(config.model_dim, config.num_heads, config.ff_dim, config.dropout)
@@ -186,9 +215,10 @@ class PuzzleGeneratorV2(nn.Module):
         # Output heads
         self.output_norm = nn.LayerNorm(config.model_dim)
         
-        # Position heads (predict START/GOAL locations)
-        self.start_head = PositionHead(config.model_dim, self.grid_size)
-        self.goal_head = PositionHead(config.model_dim * 2, self.grid_size)  # Conditioned on start
+        # Position heads (predict START/GOAL locations) - NOW CONDITIONED ON MOVES
+        # This is critical: moves=10 should imply specific geometric relationship
+        self.start_head = PositionHead(config.model_dim, self.grid_size, cond_dim=config.model_dim)
+        self.goal_head = PositionHead(config.model_dim * 2, self.grid_size, cond_dim=config.model_dim)
         
         # Tile head (predict tile types, conditioned on START/GOAL)
         self.tile_head = nn.Linear(config.model_dim, config.tile_vocab_size)
@@ -277,12 +307,13 @@ class PuzzleGeneratorV2(nn.Module):
         
         return x_t
     
-    def forward_positions(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward_positions(self, x: torch.Tensor, moves_emb: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Predict START and GOAL positions from initial grid features.
         
         Args:
             x: (B, 169, dim) grid features
+            moves_emb: (B, dim) moves embedding for CFG conditioning
         Returns:
             start_logits: (B, 169)
             goal_logits: (B, 169)
@@ -290,16 +321,16 @@ class PuzzleGeneratorV2(nn.Module):
         # Pool features for position prediction
         pooled = x.mean(dim=1)  # (B, dim)
         
-        # Predict START
-        start_logits = self.start_head(pooled)  # (B, 169)
+        # Predict START - conditioned on moves to learn geometric relationship
+        start_logits = self.start_head(pooled, moves_emb)  # (B, 169)
         
-        # Predict GOAL conditioned on START distribution
+        # Predict GOAL conditioned on START distribution AND moves
         # Use soft attention over start positions
         start_probs = F.softmax(start_logits, dim=-1)  # (B, 169)
         start_ctx = torch.einsum("bp,bpd->bd", start_probs, x)  # (B, dim)
         
         goal_input = torch.cat([pooled, start_ctx], dim=-1)  # (B, 2*dim)
-        goal_logits = self.goal_head(goal_input)  # (B, 169)
+        goal_logits = self.goal_head(goal_input, moves_emb)  # (B, 169)
         
         return start_logits, goal_logits
     
@@ -309,6 +340,7 @@ class PuzzleGeneratorV2(nn.Module):
         t: torch.Tensor,
         start_pos: Optional[torch.Tensor] = None,
         goal_pos: Optional[torch.Tensor] = None,
+        moves: Optional[torch.Tensor] = None,
     ) -> Dict[str, torch.Tensor]:
         """
         Forward pass for training.
@@ -318,6 +350,7 @@ class PuzzleGeneratorV2(nn.Module):
             t: (B,) timesteps
             start_pos: (B,) start positions (flat index 0-168)
             goal_pos: (B,) goal positions (flat index 0-168)
+            moves: (B,) move count tokens (0-10 for moves 4-14, 11 for null/unconditional)
         
         Returns:
             dict with logits for tiles, start, goal, path, and stop sequence
@@ -333,6 +366,12 @@ class PuzzleGeneratorV2(nn.Module):
         
         # Add timestep embedding
         t_emb = self.time_embed(t.float())  # (B, dim)
+        
+        # Add move count conditioning (CFG)
+        moves_emb = None
+        if moves is not None:
+            moves_emb = self.moves_embed(moves)  # (B, dim)
+            t_emb = t_emb + moves_emb  # Combine with timestep embedding
         
         # Add START/GOAL position context if provided
         if start_pos is not None:
@@ -353,8 +392,8 @@ class PuzzleGeneratorV2(nn.Module):
         # Tile logits
         tile_logits = self.tile_head(x)  # (B, 169, tile_vocab_size)
         
-        # Position logits (from initial features, before heavy conditioning)
-        start_logits, goal_logits = self.forward_positions(x)
+        # Position logits - NOW CONDITIONED ON MOVES for geometric relationship
+        start_logits, goal_logits = self.forward_positions(x, moves_emb)
         
         # Auxiliary path heads
         on_path_logits = self.on_path_head(x).squeeze(-1)  # (B, 169)
@@ -394,9 +433,11 @@ class PuzzleGeneratorV2(nn.Module):
         generator: Optional[torch.Generator] = None,
         temperature: float = 1.0,
         temperature_schedule: str = "linear",  # "linear", "cosine", or "constant"
+        target_moves: int = 10,
+        guidance_scale: float = 2.0,
     ) -> Dict[str, torch.Tensor]:
         """
-        Generate puzzles with deterministic seeded sampling.
+        Generate puzzles with classifier-free guidance for move count.
         
         Args:
             batch_size: Number of puzzles to generate
@@ -404,6 +445,8 @@ class PuzzleGeneratorV2(nn.Module):
             generator: torch.Generator for deterministic sampling
             temperature: Base temperature for sampling
             temperature_schedule: How to vary temperature over timesteps
+            target_moves: Target move count (4-14)
+            guidance_scale: CFG scale (1.0 = no guidance, higher = stronger conditioning)
         
         Returns:
             dict with:
@@ -413,18 +456,41 @@ class PuzzleGeneratorV2(nn.Module):
         """
         H, W = self.config.grid_height, self.config.grid_width
         
+        # Convert target moves to token index
+        target_moves_clamped = max(self.MIN_MOVES, min(self.MAX_MOVES, target_moves))
+        moves_token = target_moves_clamped - self.MIN_MOVES
+        moves_cond = torch.full((batch_size,), moves_token, dtype=torch.long, device=device)
+        moves_uncond = torch.full((batch_size,), self.NULL_MOVE_TOKEN, dtype=torch.long, device=device)
+        
         # Step 1: Initialize with all MASK tokens
         x_t = torch.full((batch_size, self.grid_size), self.mask_token_id, 
                          dtype=torch.long, device=device)
         
-        # Step 2: Get initial features and sample START/GOAL positions
+        # Step 2: Get initial features and sample START/GOAL positions WITH CFG
         t_init = torch.full((batch_size,), self.num_timesteps - 1, dtype=torch.long, device=device)
         
-        # Initial forward pass to get position logits
-        outputs = self.forward(x_t, t_init)
+        # Apply CFG to position prediction - THIS IS CRITICAL
+        # The model needs to learn that moves=10 implies specific geometric relationship
+        if guidance_scale > 1.0:
+            # Conditional forward pass (with target moves)
+            outputs_cond = self.forward(x_t, t_init, moves=moves_cond)
+            # Unconditional forward pass (with null token)
+            outputs_uncond = self.forward(x_t, t_init, moves=moves_uncond)
+            
+            # CFG formula for positions: logits = uncond + scale * (cond - uncond)
+            start_logits = outputs_uncond["start_logits"] + guidance_scale * (
+                outputs_cond["start_logits"] - outputs_uncond["start_logits"]
+            )
+            goal_logits = outputs_uncond["goal_logits"] + guidance_scale * (
+                outputs_cond["goal_logits"] - outputs_uncond["goal_logits"]
+            )
+        else:
+            outputs = self.forward(x_t, t_init, moves=moves_cond)
+            start_logits = outputs["start_logits"]
+            goal_logits = outputs["goal_logits"]
         
         # Sample START position
-        start_logits = outputs["start_logits"] / temperature
+        start_logits = start_logits / temperature
         start_probs = F.softmax(start_logits, dim=-1)
         if generator is not None:
             # Gumbel-max trick for deterministic sampling
@@ -435,7 +501,7 @@ class PuzzleGeneratorV2(nn.Module):
             start_pos = torch.multinomial(start_probs, 1).squeeze(-1)
         
         # Sample GOAL position (conditioned on START in the model)
-        goal_logits = outputs["goal_logits"] / temperature
+        goal_logits = goal_logits / temperature
         goal_probs = F.softmax(goal_logits, dim=-1)
         if generator is not None:
             gumbel_noise = torch.rand(goal_probs.shape, device=device, generator=generator)
@@ -444,7 +510,7 @@ class PuzzleGeneratorV2(nn.Module):
         else:
             goal_pos = torch.multinomial(goal_probs, 1).squeeze(-1)
         
-        # Step 3: Iterative denoising for tiles
+        # Step 3: Iterative denoising for tiles with CFG
         for step in reversed(range(self.num_timesteps)):
             t = torch.full((batch_size,), step, dtype=torch.long, device=device)
             
@@ -456,9 +522,23 @@ class PuzzleGeneratorV2(nn.Module):
             else:
                 step_temp = temperature
             
-            # Forward pass
-            outputs = self.forward(x_t, t, start_pos, goal_pos)
-            logits = outputs["tile_logits"]  # (B, 169, vocab_size)
+            # CFG: compute both conditional and unconditional logits
+            if guidance_scale > 1.0:
+                # Conditional forward pass (with target moves)
+                outputs_cond = self.forward(x_t, t, start_pos, goal_pos, moves_cond)
+                logits_cond = outputs_cond["tile_logits"]  # (B, 169, vocab_size)
+                
+                # Unconditional forward pass (with null token)
+                outputs_uncond = self.forward(x_t, t, start_pos, goal_pos, moves_uncond)
+                logits_uncond = outputs_uncond["tile_logits"]
+                
+                # CFG formula: logits = uncond + scale * (cond - uncond)
+                logits = logits_uncond + guidance_scale * (logits_cond - logits_uncond)
+            else:
+                # No guidance, just use conditional
+                outputs = self.forward(x_t, t, start_pos, goal_pos, moves_cond)
+                logits = outputs["tile_logits"]
+            
             logits = logits / step_temp
             
             # Sample tiles
@@ -516,9 +596,11 @@ class PuzzleGeneratorV2(nn.Module):
         k: int,
         device: torch.device,
         temperature: float = 1.0,
+        target_moves: int = 10,
+        guidance_scale: float = 2.0,
     ) -> Dict[str, torch.Tensor]:
         """
-        Generate K candidate puzzles from a single seed.
+        Generate K candidate puzzles from a single seed with CFG.
         Uses deterministic sub-seeds for reproducibility.
         
         Args:
@@ -526,6 +608,8 @@ class PuzzleGeneratorV2(nn.Module):
             k: Number of candidates
             device: Device
             temperature: Sampling temperature
+            target_moves: Target move count for CFG
+            guidance_scale: CFG scale (1.0 = no guidance)
         
         Returns:
             dict with K puzzles (tiles, start_pos, goal_pos)
@@ -545,12 +629,14 @@ class PuzzleGeneratorV2(nn.Module):
             gen = torch.Generator(device=device)
             gen.manual_seed(seed_int)
             
-            # Generate single puzzle
+            # Generate single puzzle with CFG
             result = self.generate(
                 batch_size=1,
                 device=device,
                 generator=gen,
                 temperature=temperature,
+                target_moves=target_moves,
+                guidance_scale=guidance_scale,
             )
             
             all_tiles.append(result["tiles"])

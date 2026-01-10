@@ -66,4 +66,6 @@ public/wasm/
 **/.shuttle_deploy_url
 bkp/
 generator-rust/ml/output*/
+generator-rust/ml/output*.pid
 *.log
+

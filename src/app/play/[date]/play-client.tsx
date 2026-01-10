@@ -485,7 +485,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
         {showLeaderboard && (
           <OverlayShell
             title="Leaderboard"
-            subtitle="Today"
+            // subtitle="Today"
             variant="overlay"
             onClose={() => setShowLeaderboard(false)}
           >
@@ -509,7 +509,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
         {showAccount && (
           <OverlayShell
             title="Account"
-            subtitle="Name, sign-in, settings"
+            // subtitle="Name, sign-in, settings"
             variant="overlay"
             onClose={() => setShowAccount(false)}
           >

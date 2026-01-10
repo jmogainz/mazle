@@ -17,7 +17,7 @@
   text-transform: uppercase;
   letter-spacing: 0.1em;
   font-weight: 800;
-  margin: 0 0 0.75rem 0;
+  margin: 0 0 0.35rem 0;
 }
 
 .identityRow {
@@ -57,6 +57,193 @@
   background: var(--color-background);
   color: var(--color-secondary);
   flex-shrink: 0;
+}
+
+/* YOU Panel - Redesigned Layout */
+.youHeader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  margin-bottom: 0.5rem;
+}
+
+.youNameRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  width: 100%;
+}
+
+.youName {
+  font-size: 1.35rem;
+  font-weight: 900;
+  color: var(--color-text);
+  text-align: center;
+}
+
+.youEditButton {
+  position: absolute;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--color-secondary);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.youEditButton:hover {
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.youEditButton:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.youEditButton svg {
+  width: 16px;
+  height: 16px;
+}
+
+.youEditTooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: normal;
+  text-align: center;
+  min-width: 120px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 10;
+  animation: tooltipFadeIn 0.15s ease-out;
+}
+
+.youEditTooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: var(--color-border);
+}
+
+@keyframes tooltipFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.youModeHint {
+  font-size: 0.8rem;
+  color: var(--color-secondary);
+  text-align: center;
+}
+
+.characterDisplay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  margin: 0.25rem 0 0.5rem;
+  padding: 0.25rem 0;
+}
+
+.characterArrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--color-secondary);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.characterArrow:hover:not(:disabled) {
+  color: var(--color-primary);
+}
+
+.characterArrow:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.characterArrow svg {
+  width: 20px;
+  height: 20px;
+}
+
+.youNameInput {
+  width: 100%;
+  max-width: 200px;
+  border: 1px solid var(--color-border);
+  background: var(--color-background);
+  color: var(--color-text);
+  border-radius: 8px;
+  padding: 0.5rem 0.6rem;
+  font-weight: 800;
+  font-family: var(--font-main);
+  font-size: 1.1rem;
+  text-align: center;
+}
+
+.youNameActions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.youNameSaveButton,
+.youNameCancelButton {
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 0.75rem;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.15s;
+}
+
+.youNameSaveButton {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.youNameCancelButton {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+}
+
+.youNameSaveButton:disabled,
+.youNameCancelButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .buttonRow {
@@ -205,40 +392,40 @@
 }
 
 .statsGrid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 0.5rem;
+  display: flex;
+  justify-content: space-around;
+  gap: 0.25rem;
 }
 
 .stat {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.25rem;
-  padding: 0.75rem 0.25rem;
-  background: var(--color-background);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
+  gap: 0.1rem;
+  padding: 0.4rem 0.35rem;
+  flex: 1;
+  min-width: 0;
 }
 
 .statValue {
-  font-size: 1.25rem;
+  font-size: 1rem;
   font-weight: 800;
   color: var(--color-text);
   font-variant-numeric: tabular-nums;
 }
 
 .statLabel {
-  font-size: 0.6rem;
+  font-size: 0.5rem;
   color: var(--color-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   text-align: center;
-  font-weight: 800;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .statWide {
-  grid-column: 1 / -1;
+  flex: none;
 }
 
 .characterRow {
@@ -408,6 +595,60 @@
   position: absolute;
   right: 0;
   top: 0;
+}
+
+/* Expandable Sign-In Section */
+.signInOptions {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 0.75rem;
+  animation: signInExpand 0.3s ease-out;
+}
+
+@keyframes signInExpand {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.signInIconButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  background: var(--color-background);
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.signInIconButton:hover:not(:disabled) {
+  background: var(--color-surface);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.signInIconButton:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.signInIconButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.signInIconButton svg {
+  width: 28px;
+  height: 28px;
+  fill: currentColor;
 }
 
 .upsellContainer {

@@ -139,7 +139,6 @@ export const COLORS = {
   // Ledge (Gray)
   LEDGE_FACE: 0xe8e8e8,
   LEDGE_EDGE: 0xc0c0c0,
-  LEDGE_ARROW: 0x3a3d41, // Lighter than wall to keep contrast while matching theme
 
   // Legacy flat colors (compatibility with tileset maps)
   GROUND: 0xbfa46b,          // Alias to GROUND_FACE

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { PENALTY_MS } from '@/constants';
 import styles from './page.module.css';
+import { CannonIcon } from '@/components/CannonIcon';
 
 export const metadata: Metadata = {
   title: 'How to Play Mazle - Daily Puzzle Game Guide',
@@ -162,12 +163,12 @@ export default function HowToPlay() {
             <div className={styles.tileItem}>
               <div className={styles.tileSwatchContainer}>
                 <div className={styles.tileLedge}>
-                  <span className={styles.ledgeArrowDown}></span>
+                  <CannonIcon className={styles.cannon} />
                 </div>
               </div>
               <div>
-                <strong>Ledge</strong>
-                <p>One-way tiles — you can enter from any direction but only jump down from the ledge side.</p>
+                <strong>Cannon</strong>
+                <p>Enter from any direction — you&apos;ll be launched out the direction the cannon faces.</p>
               </div>
             </div>
           </div>

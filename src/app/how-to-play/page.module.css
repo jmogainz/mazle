@@ -287,27 +287,15 @@
   bottom: 4px;
 }
 
-.ledgeArrowRight,
-.ledgeArrowDown {
+/* Cannon on ledge tile */
+.cannon {
   position: absolute;
-  width: 0;
-  height: 0;
-  border-style: solid;
-  z-index: 1; /* Ensure visible on top of face */
-}
-
-.ledgeArrowRight {
-  border-width: 5px 0 5px 7px;
-  border-color: transparent transparent transparent #3a3d41;
+  width: 29px;
+  height: 17px;
   top: 50%;
   left: 50%;
-  transform: translate(-20%, -50%); /* Center it roughly */
-}
-
-.ledgeArrowDown {
-  border-width: 7px 5px 0 5px;
-  border-color: #3a3d41 transparent transparent transparent;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -20%);
+  margin-left: -14.5px;
+  margin-top: -8.5px;
+  z-index: 2;
+  transform: rotate(180deg); /* Facing left */
 }

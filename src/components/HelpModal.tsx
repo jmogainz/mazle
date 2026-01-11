@@ -3,6 +3,7 @@
 import { HINTS_ENABLED } from '@/game/types';
 import styles from './HelpModal.module.css';
 import { HELP_CONTENT } from './helpContent';
+import { CannonIcon } from './CannonIcon';
 
 interface HelpModalProps {
   onClose: () => void;
@@ -124,8 +125,7 @@ export default function HelpModal({
                   <div className={styles.demoTile}><div className={styles.tileIceEx} /></div>
                   <div className={styles.demoTile}>
                     <div className={styles.tileLedgeEx}>
-                      <span className={styles.ledgeArrowRight}></span>
-                      <span className={styles.ledgeArrowDown}></span>
+                      <CannonIcon className={styles.cannon} />
                     </div>
                   </div>
                 </div>

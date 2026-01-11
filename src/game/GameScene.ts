@@ -47,6 +47,10 @@ export class GameScene extends Phaser.Scene {
   private analysisTimers: Phaser.Time.TimerEvent[] = [];
   private analysisTweens: Phaser.Tweens.Tween[] = [];
 
+  private cannons: Map<string, Phaser.GameObjects.Container> = new Map();
+  private cannonOriginalAngles: Map<string, number> = new Map();
+  private isInCannon = false;
+
   private solutionIndexByKey: Map<string, number> | null = null;
   private solutionNextByKey: Map<string, string> | null = null;
   private solutionPosByKey: Map<string, Position> | null = null;
@@ -218,6 +222,7 @@ export class GameScene extends Phaser.Scene {
 
     // Draw tiles
     this.drawTiles();
+    this.createCannons();
 
     // Create hint overlays (above tiles, below sprites)
     this.createHintOverlays();
@@ -236,6 +241,150 @@ export class GameScene extends Phaser.Scene {
 
     // Emit initial state
     emitGameEvent('stateUpdate', { ...this.gameState });
+  }
+
+  private createCannons() {
+    const drawQuad = (g: Phaser.GameObjects.Graphics, x1: number, y1: number, cx: number, cy: number, x2: number, y2: number) => {
+      const curve = new Phaser.Curves.QuadraticBezier(
+        new Phaser.Math.Vector2(x1, y1),
+        new Phaser.Math.Vector2(cx, cy),
+        new Phaser.Math.Vector2(x2, y2)
+      );
+      const points = curve.getPoints(8);
+      for (let i = 1; i < points.length; i++) {
+        g.lineTo(points[i].x, points[i].y);
+      }
+    };
+
+    this.cannons.forEach(c => c.destroy());
+    this.cannons.clear();
+    this.cannonOriginalAngles.clear();
+    const s = TILE_SIZE / 32;
+
+    for (let y = 0; y < this.puzzle.height; y++) {
+      for (let x = 0; x < this.puzzle.width; x++) {
+        const tile = this.puzzle.tiles[y][x];
+        if (
+          tile === TileType.LEDGE_UP ||
+          tile === TileType.LEDGE_DOWN ||
+          tile === TileType.LEDGE_LEFT ||
+          tile === TileType.LEDGE_RIGHT
+        ) {
+          const px = this.offsetX + x * TILE_SIZE + TILE_SIZE / 2;
+          const py = this.offsetY + y * TILE_SIZE + TILE_SIZE / 2 - this.tileFaceLift;
+
+          const container = this.add.container(px, py);
+          container.setDepth(5);
+
+          const g = this.add.graphics();
+          
+          // Classic cannon design - drawn facing RIGHT
+          // Uses bronze/brass coloring for recognizable cannon look
+          
+          // Shadow under cannon
+          g.fillStyle(0x000000, 0.3);
+          g.fillEllipse(0, 3 * s, 26 * s, 8 * s);
+          
+          // Back bulge (cascabel/breech end) - the round back of cannon
+          g.fillStyle(0x8B7355); // Bronze
+          g.fillCircle(-10 * s, 0, 11 * s);
+          
+          // Barrel body - thicker for heavier look
+          g.fillStyle(0x8B7355);
+          g.beginPath();
+          g.moveTo(-10 * s, -11 * s);   // Top back
+          g.lineTo(4 * s, -8 * s);   // Top front (thicker neck)
+          g.lineTo(4 * s, 8 * s);    // Bottom front
+          g.lineTo(-10 * s, 11 * s);    // Bottom back
+          g.closePath();
+          g.fillPath();
+          
+          // Top barrel highlight (3D bronze sheen)
+          g.fillStyle(0xA08060);
+          g.beginPath();
+          g.moveTo(-8 * s, -10 * s);
+          g.lineTo(3 * s, -7.5 * s);
+          g.lineTo(3 * s, -4.5 * s);
+          g.lineTo(-8 * s, -6 * s);
+          g.closePath();
+          g.fillPath();
+          
+          // Decorative reinforcing band near breech
+          g.fillStyle(0x705030);
+          g.fillRect(-4 * s, -10 * s, 3 * s, 20 * s);
+          
+          // Muzzle swell - Massive flared mouth to hold character
+          g.fillStyle(0x8B7355);
+          g.beginPath();
+          g.moveTo(4 * s, -8 * s);    // Neck top
+          // Deep concave flare to wide mouth
+          drawQuad(g, 4 * s, -8 * s, 8 * s, -8 * s, 12 * s, -11 * s);
+          g.lineTo(12 * s, 11 * s);     // Front edge (wide)
+          drawQuad(g, 12 * s, 11 * s, 8 * s, 8 * s, 4 * s, 8 * s);   // Bottom flare
+          g.closePath();
+          g.fillPath();
+          
+          // Muzzle flare highlight
+          g.fillStyle(0xA08060);
+          g.beginPath();
+          g.moveTo(4.5 * s, -7.5 * s);
+          drawQuad(g, 4.5 * s, -7.5 * s, 8 * s, -7.5 * s, 11.5 * s, -10 * s);
+          g.lineTo(11.5 * s, -8 * s);
+          drawQuad(g, 11.5 * s, -8 * s, 8 * s, -5 * s, 4.5 * s, -5 * s);
+          g.closePath();
+          g.fillPath();
+          
+          // Muzzle ring (raised lip) - Wide and thin
+          g.fillStyle(0x7A6545);
+          g.fillEllipse(12 * s, 0, 4 * s, 22 * s);
+          
+          // Muzzle face (front plane)
+          g.fillStyle(0x8B7355);
+          g.fillEllipse(12 * s, 0, 3.5 * s, 22 * s);
+          
+          // Muzzle rim highlight
+          g.lineStyle(1.2 * s, 0xA08060);
+          g.beginPath();
+          drawQuad(g, 12 * s, -11 * s, 15 * s, 0, 12 * s, 11 * s);
+          g.strokePath();
+          
+          // Inner bore shadow ring (Minimal bezel)
+          g.fillStyle(0x503820);
+          g.fillEllipse(12 * s, 0, 3 * s, 20 * s);
+          
+          // Cannon bore (Huge dark hole for character)
+          g.fillStyle(0x1a1a1a);
+          g.fillEllipse(12 * s, 0, 2.8 * s, 19 * s);
+          
+          // Deep black center
+          g.fillStyle(0x000000);
+          g.fillEllipse(12 * s, 0, 2 * s, 16 * s);
+
+          container.add(g);
+
+          let angle = 0;
+          switch (tile) {
+            case TileType.LEDGE_UP:
+              angle = -90; 
+              break;
+            case TileType.LEDGE_DOWN:
+              angle = 90; 
+              break;
+            case TileType.LEDGE_LEFT:
+              angle = 0; 
+              break;
+            case TileType.LEDGE_RIGHT:
+              angle = 180; 
+              break;
+          }
+          
+          container.setAngle(angle);
+          const key = positionKey({ x, y });
+          this.cannons.set(key, container);
+          this.cannonOriginalAngles.set(key, angle);
+        }
+      }
+    }
   }
 
   private drawTiles() {
@@ -365,46 +514,7 @@ export class GameScene extends Phaser.Scene {
       case TileType.LEDGE_LEFT:
       case TileType.LEDGE_RIGHT:
         draw3DTile(COLORS.LEDGE_FACE, COLORS.LEDGE_EDGE);
-
-        // Simple filled triangle centered on the tile face
-        const cx = px + size / 2;
-        const cy = py + size / 2 - depth / 2;
-        const baseWidth = size * 0.32;
-        const baseHeight = size * 0.20;
-        const shrink = 1 * s;               // trim top/bottom by 1px
-        const lift = depth * 0.6;       // subtle perspective lift toward the pointing direction
-        const halfW = baseWidth / 2;
-        const halfH = Math.max(baseHeight / 2 - shrink, 1);
-
-        g.fillStyle(COLORS.LEDGE_ARROW);
-        // Base "up" triangle points relative to center
-        const upA = { x: 0, y: -halfH - lift };
-        const upB = { x: -halfW, y: halfH };
-        const upC = { x: halfW, y: halfH };
-
-        const rotate = (p: { x: number; y: number }, dir: 'up' | 'down' | 'left' | 'right') => {
-          switch (dir) {
-            case 'up':
-              return { x: p.x, y: p.y };
-            case 'down':
-              return { x: p.x, y: -p.y };
-            case 'right':
-              return { x: -p.y, y: p.x };
-            case 'left':
-              return { x: p.y, y: -p.x };
-          }
-        };
-
-        const dir =
-          tile === TileType.LEDGE_UP ? 'down' : // enter from above, exit downward
-            tile === TileType.LEDGE_DOWN ? 'up' : // enter from below, exit upward
-              tile === TileType.LEDGE_RIGHT ? 'right' : 'left';
-
-        const A = rotate(upA, dir);
-        const B = rotate(upB, dir);
-        const C = rotate(upC, dir);
-
-        g.fillTriangle(cx + A.x, cy + A.y, cx + B.x, cy + B.y, cx + C.x, cy + C.y);
+        // Arrow is now handled by createCannons() with 3D models
         break;
 
       case TileType.BOULDER:
@@ -1227,6 +1337,72 @@ export class GameScene extends Phaser.Scene {
   }
 
   private handleStandardMove(dir: Direction) {
+    if (this.isInCannon) {
+      const currentPos = { ...this.gameState.playerPos };
+      const cannonKey = positionKey(currentPos);
+      const cannon = this.cannons.get(cannonKey);
+      const originalAngle = this.cannonOriginalAngles.get(cannonKey);
+
+      if (cannon) {
+        let angle = 0;
+        switch(dir) {
+          case Direction.UP: angle = -90; break;
+          case Direction.DOWN: angle = 90; break;
+          case Direction.LEFT: angle = 180; break;
+          case Direction.RIGHT: angle = 0; break;
+        }
+
+        this.isAnimating = true;
+        // Rotate to fire direction
+        this.tweens.add({
+          targets: cannon,
+          angle: angle,
+          duration: 150,
+          ease: 'Back.out',
+          onComplete: () => {
+             // Recoil animation
+             const rad = Phaser.Math.DegToRad(angle);
+             const recoilDist = -10;
+             const dx = Math.cos(rad) * recoilDist;
+             const dy = Math.sin(rad) * recoilDist;
+             
+             this.tweens.add({
+                targets: cannon,
+                x: cannon.x + dx,
+                y: cannon.y + dy,
+                duration: 50,
+                yoyo: true,
+                onComplete: () => {
+                   this.player.setVisible(true);
+                   this.isInCannon = false;
+                   this.isAnimating = false;
+                   this.doMoveSimulation(dir);
+                   
+                   // Reset cannon to original angle after firing
+                   if (originalAngle !== undefined) {
+                     this.tweens.add({
+                       targets: cannon,
+                       angle: originalAngle,
+                       duration: 300,
+                       ease: 'Sine.inOut',
+                       delay: 200
+                     });
+                   }
+                }
+             });
+          }
+        });
+        return;
+      }
+      // Fallback
+      this.isInCannon = false;
+      this.player.setVisible(true);
+    }
+
+    this.doMoveSimulation(dir);
+  }
+
+  private doMoveSimulation(dir: Direction) {
     const currentPos = { ...this.gameState.playerPos };
 
     // Use shared movement simulation
@@ -1249,7 +1425,33 @@ export class GameScene extends Phaser.Scene {
     const path = result.path ?? [newPos];
 
     this.recordHintProgress(currentPos, newPos);
-    this.updateGameStateAndCheckLives(newPos, path, () => { });
+    
+    // Check for cannon entry
+    const targetTile = this.puzzle.tiles[newPos.y][newPos.x];
+    const isCannon = (
+      targetTile === TileType.LEDGE_UP || 
+      targetTile === TileType.LEDGE_DOWN || 
+      targetTile === TileType.LEDGE_LEFT || 
+      targetTile === TileType.LEDGE_RIGHT
+    );
+
+    this.updateGameStateAndCheckLives(newPos, path, () => { 
+        if (isCannon && !this.gameState.isComplete) {
+            this.isInCannon = true;
+            this.player.setVisible(false);
+            const cannon = this.cannons.get(positionKey(newPos));
+            if (cannon) {
+                this.tweens.add({
+                    targets: cannon,
+                    scaleX: 1.2,
+                    scaleY: 1.2,
+                    duration: 100,
+                    yoyo: true,
+                    ease: 'Quad.out'
+                });
+            }
+        }
+    });
   }
 
   private animatePath(path: Position[], onComplete: () => void) {
@@ -1488,6 +1690,8 @@ export class GameScene extends Phaser.Scene {
   public restart() {
     this.clearAnalysis();
     this.isPlaying = false;
+    this.isInCannon = false;
+    this.createCannons(); // Reset cannons
     this.gameState = {
       playerPos: { ...this.puzzle.start },
       moveCount: 0,

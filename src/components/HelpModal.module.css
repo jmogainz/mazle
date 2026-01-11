@@ -589,7 +589,7 @@
   21% { transform: rotate(180deg) scale(1) translateX(0); }
   
   /* Fire! (Recoil) */
-  28% { transform: rotate(180deg) scale(1) translateX(4px); }
+  28% { transform: rotate(180deg) scale(1) translateX(-4px); }
   31% { transform: rotate(180deg) scale(1) translateX(0); }
   
   /* Hold orientation until phase change */
@@ -710,7 +710,7 @@
   28% { left: 70px; opacity: 0; }
   
   /* Fire! Reappear and shoot back */
-  28.1% { left: 70px; opacity: 1; }
+  28.1% { left: 45px; opacity: 1; }
   35% { left: 8px; opacity: 1; }
   
   /* Hold at start */
@@ -990,7 +990,7 @@
     28% { left: 61px; opacity: 0; }
     
     /* Fire! Reappear and shoot */
-    28.1% { left: 61px; opacity: 1; }
+    28.1% { left: 38px; opacity: 1; }
     35% { left: 7px; opacity: 1; }
     
     /* Hold */

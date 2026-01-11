@@ -1189,6 +1189,11 @@ export class GameScene extends Phaser.Scene {
               yoyo: true,
               onComplete: () => {
                 // Show ghost and launch it
+                // Set start position to cannon bore
+                const boreDist = 20;
+                ghost.x = cannon.x + Math.cos(rad) * boreDist;
+                ghost.y = cannon.y + Math.sin(rad) * boreDist;
+
                 ghost.setAlpha(0.6);
                 
                 const moveTween = this.tweens.add({
@@ -1554,6 +1559,11 @@ export class GameScene extends Phaser.Scene {
                 duration: 50,
                 yoyo: true,
                 onComplete: () => {
+                   // Set position to cannon bore
+                   const boreDist = 20;
+                   this.player.x = cannon.x + Math.cos(rad) * boreDist;
+                   this.player.y = cannon.y + Math.sin(rad) * boreDist;
+
                    this.player.setVisible(true);
                    this.isInCannon = false;
                    this.isAnimating = false;

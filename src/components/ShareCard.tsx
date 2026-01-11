@@ -542,14 +542,58 @@ export default function ShareCard({
               priority
             />
           ) : (
-            <Image
-              src="/assets/images/alive_character.svg"
-              alt="Victory"
-              width={64}
-              height={80}
-              className={styles.characterIcon}
-              priority
-            />
+            <div className={styles.victoryCharacterContainer}>
+              <svg 
+                viewBox="0 -16 64 80" 
+                className={styles.victoryCharacterSvg}
+                width="64" 
+                height="80"
+              >
+                {/* Shadow */}
+                <ellipse cx="32" cy="48" rx="32" ry="12" fill="black" fillOpacity="0.25"/>
+                
+                {/* Body */}
+                <rect x="16" y="12" width="32" height="36" rx="6" fill="#FF4D4D" stroke="#CC0000" strokeWidth="2.5"/>
+                
+                {/* Eyes */}
+                <circle cx="26" cy="24" r="6" fill="white"/>
+                <circle cx="38" cy="24" r="6" fill="white"/>
+                
+                {/* Pupils */}
+                <circle cx="28" cy="24" r="3" fill="black"/>
+                <circle cx="40" cy="24" r="3" fill="black"/>
+
+                {/* Animated Crown */}
+                <g className={styles.crownGroup}>
+                  {/* Glow Effect - dilated and blurred */}
+                  <path 
+                    d="M16 12 L16 0 L24 8 L32 0 L40 8 L48 0 L48 12 Z" 
+                    fill="#FFE082" 
+                    stroke="#FFE082"
+                    strokeWidth="8"
+                    strokeLinejoin="round"
+                    transform="translate(0, -4.75)"
+                    className={styles.crownGlow}
+                    filter="url(#softGlow)"
+                  />
+                  {/* Main Crown */}
+                  <path 
+                    d="M16 12 L16 0 L24 8 L32 0 L40 8 L48 0 L48 12 Z" 
+                    fill="#FFD700" 
+                    stroke="#DAA520" 
+                    strokeWidth="1.5"
+                    strokeLinejoin="round"
+                    transform="translate(0, -4.75)"
+                  />
+                </g>
+
+                <defs>
+                  <filter id="softGlow" x="-100%" y="-100%" width="300%" height="300%">
+                    <feGaussianBlur stdDeviation="6" result="coloredBlur"/>
+                  </filter>
+                </defs>
+              </svg>
+            </div>
           )}
           <h2 className={styles.title}>{failed ? 'Game Over' : 'Victory'}</h2>
           <span className={styles.puzzleNumber}>Mazle {displayLabel}</span>

@@ -897,6 +897,47 @@
   height: auto;
 }
 
+/* Victory Character Animation */
+.victoryCharacterContainer {
+  display: block;
+  margin: 0 auto 1rem auto;
+  width: 64px;
+  height: 80px;
+}
+
+.victoryCharacterSvg {
+  overflow: visible;
+}
+
+.crownGroup {
+  animation: bob 1.8s ease-in-out infinite;
+  transform-origin: center center;
+}
+
+.crownGlow {
+  opacity: 0.5;
+  animation: glowPulse 2s ease-in-out infinite alternate;
+  transform-origin: center center;
+}
+
+@keyframes bob {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-0.8px);
+  }
+}
+
+@keyframes glowPulse {
+  from {
+    opacity: 0.3;
+  }
+  to {
+    opacity: 0.6;
+  }
+}
+
 .deadPlayerIcon {
   margin: 0 auto 1rem auto;
   width: 48px;

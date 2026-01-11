@@ -283,7 +283,7 @@ export class GameScene extends Phaser.Scene {
           
           // Shadow under cannon
           g.fillStyle(0x000000, 0.3);
-          g.fillEllipse(0, 3 * s, 26 * s, 8 * s);
+          g.fillEllipse(0, 3 * s, 29 * s, 8 * s);
           
           // Back bulge (cascabel/breech end) - the round back of cannon
           g.fillStyle(0x8B7355); // Bronze
@@ -293,8 +293,8 @@ export class GameScene extends Phaser.Scene {
           g.fillStyle(0x8B7355);
           g.beginPath();
           g.moveTo(-10 * s, -11 * s);   // Top back
-          g.lineTo(4 * s, -8 * s);   // Top front (thicker neck)
-          g.lineTo(4 * s, 8 * s);    // Bottom front
+          g.lineTo(7 * s, -8 * s);    // Top front (thicker neck)
+          g.lineTo(7 * s, 8 * s);     // Bottom front
           g.lineTo(-10 * s, 11 * s);    // Bottom back
           g.closePath();
           g.fillPath();
@@ -303,8 +303,8 @@ export class GameScene extends Phaser.Scene {
           g.fillStyle(0xA08060);
           g.beginPath();
           g.moveTo(-8 * s, -10 * s);
-          g.lineTo(3 * s, -7.5 * s);
-          g.lineTo(3 * s, -4.5 * s);
+          g.lineTo(6 * s, -7.5 * s);
+          g.lineTo(6 * s, -4.5 * s);
           g.lineTo(-8 * s, -6 * s);
           g.closePath();
           g.fillPath();
@@ -316,49 +316,49 @@ export class GameScene extends Phaser.Scene {
           // Muzzle swell - Massive flared mouth to hold character
           g.fillStyle(0x8B7355);
           g.beginPath();
-          g.moveTo(4 * s, -8 * s);    // Neck top
+          g.moveTo(7 * s, -8 * s);    // Neck top
           // Deep concave flare to wide mouth
-          drawQuad(g, 4 * s, -8 * s, 8 * s, -8 * s, 12 * s, -11 * s);
-          g.lineTo(12 * s, 11 * s);     // Front edge (wide)
-          drawQuad(g, 12 * s, 11 * s, 8 * s, 8 * s, 4 * s, 8 * s);   // Bottom flare
+          drawQuad(g, 7 * s, -8 * s, 11 * s, -8 * s, 15 * s, -11 * s);
+          g.lineTo(15 * s, 11 * s);     // Front edge (wide)
+          drawQuad(g, 15 * s, 11 * s, 11 * s, 8 * s, 7 * s, 8 * s);   // Bottom flare
           g.closePath();
           g.fillPath();
           
           // Muzzle flare highlight
           g.fillStyle(0xA08060);
           g.beginPath();
-          g.moveTo(4.5 * s, -7.5 * s);
-          drawQuad(g, 4.5 * s, -7.5 * s, 8 * s, -7.5 * s, 11.5 * s, -10 * s);
-          g.lineTo(11.5 * s, -8 * s);
-          drawQuad(g, 11.5 * s, -8 * s, 8 * s, -5 * s, 4.5 * s, -5 * s);
+          g.moveTo(7.5 * s, -7.5 * s);
+          drawQuad(g, 7.5 * s, -7.5 * s, 11 * s, -7.5 * s, 14.5 * s, -10 * s);
+          g.lineTo(14.5 * s, -8 * s);
+          drawQuad(g, 14.5 * s, -8 * s, 11 * s, -5 * s, 7.5 * s, -5 * s);
           g.closePath();
           g.fillPath();
           
           // Muzzle ring (raised lip) - Wide and thin
           g.fillStyle(0x7A6545);
-          g.fillEllipse(12 * s, 0, 4 * s, 22 * s);
+          g.fillEllipse(15 * s, 0, 4 * s, 22 * s);
           
           // Muzzle face (front plane)
           g.fillStyle(0x8B7355);
-          g.fillEllipse(12 * s, 0, 3.5 * s, 22 * s);
+          g.fillEllipse(15 * s, 0, 3.5 * s, 22 * s);
           
           // Muzzle rim highlight
           g.lineStyle(1.2 * s, 0xA08060);
           g.beginPath();
-          drawQuad(g, 12 * s, -11 * s, 15 * s, 0, 12 * s, 11 * s);
+          drawQuad(g, 15 * s, -11 * s, 18 * s, 0, 15 * s, 11 * s);
           g.strokePath();
           
           // Inner bore shadow ring (Minimal bezel)
           g.fillStyle(0x503820);
-          g.fillEllipse(12 * s, 0, 3 * s, 20 * s);
+          g.fillEllipse(15 * s, 0, 3 * s, 20 * s);
           
           // Cannon bore (Huge dark hole for character)
           g.fillStyle(0x1a1a1a);
-          g.fillEllipse(12 * s, 0, 2.8 * s, 19 * s);
+          g.fillEllipse(15 * s, 0, 2.8 * s, 19 * s);
           
           // Deep black center
           g.fillStyle(0x000000);
-          g.fillEllipse(12 * s, 0, 2 * s, 16 * s);
+          g.fillEllipse(15 * s, 0, 2 * s, 16 * s);
 
           container.add(g);
 

@@ -118,9 +118,86 @@ export default function ShareCard({
 
   // Height adjustment state
   const [carouselHeight, setCarouselHeight] = useState<number | undefined>(undefined);
+  const [scrollProgress, setScrollProgress] = useState(0); // 0 = Share, 1 = Leaderboard
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const shareContentRef = useRef<HTMLDivElement>(null);
   const leaderboardContentRef = useRef<HTMLDivElement>(null);
+
+  // Animation refs
+  const leaderboardScrollRef = useRef<HTMLDivElement>(null);
+  const leaderboardListRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Only run if active tab is leaderboard and data is loaded (implicit via DOM check)
+    if (activeTab !== 'leaderboard') return;
+
+    const scrollContainer = leaderboardScrollRef.current;
+    if (!scrollContainer) return;
+
+    let rafId: number;
+    const update = () => {
+      const listContainer = leaderboardListRef.current;
+      if (!listContainer) return;
+
+      const viewHeight = scrollContainer.clientHeight;
+      const scrollTop = scrollContainer.scrollTop;
+
+      const children = listContainer.children;
+      for (let i = 0; i < children.length; i++) {
+        const child = children[i] as HTMLElement;
+        const childHeight = child.offsetHeight;
+        // relativeTop is the position of the top edge of the child relative to the viewport top
+        const relativeTop = child.offsetTop - scrollTop;
+        // relativeBottom is the position of the bottom edge relative to the viewport top
+        const relativeBottom = relativeTop + childHeight;
+
+        let fractionVisible = 1;
+
+        if (relativeBottom > viewHeight) {
+          // Crossing bottom edge
+          // Visible pixels = how much is above the bottom edge
+          const visiblePixels = Math.max(0, viewHeight - relativeTop);
+          fractionVisible = Math.min(1, visiblePixels / childHeight);
+        } else if (relativeTop < 0) {
+          // Crossing top edge
+          // Visible pixels = how much is below the top edge
+          const visiblePixels = Math.max(0, relativeBottom);
+          fractionVisible = Math.min(1, visiblePixels / childHeight);
+        }
+
+        if (fractionVisible < 1) {
+           // Scale from 0.9 to 1.0 based on visibility
+           const scale = 0.9 + 0.1 * fractionVisible;
+           // Opacity from 0.3 to 1.0 based on visibility
+           const opacity = 0.3 + 0.7 * fractionVisible;
+           
+           child.style.transform = `scale(${scale})`;
+           child.style.opacity = `${opacity}`;
+        } else {
+           if (child.style.transform) child.style.transform = '';
+           if (child.style.opacity) child.style.opacity = '';
+        }
+      }
+    };
+
+    const handleScroll = () => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(update);
+    };
+
+    scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
+    // Also update on window resize
+    window.addEventListener('resize', handleScroll);
+    
+    // Initial update
+    update();
+    
+    return () => {
+      scrollContainer.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', handleScroll);
+      cancelAnimationFrame(rafId);
+    };
+  }, [activeTab, leaderboardTopState]);
 
   const displayLabel = puzzleLabel ?? `#${puzzleNumber}`;
   const maxBlocks = Math.max(optimalMoves, 1);
@@ -516,7 +593,7 @@ export default function ShareCard({
 
   const renderLeaderboardRows = (entries: LeaderboardEntry[]) => {
     return (
-      <div className={styles.leaderboardList}>
+      <div className={styles.leaderboardList} ref={leaderboardListRef}>
         {entries.map((e) => (
           <div
             key={`${e.rank}-${e.displayName}`}
@@ -552,10 +629,15 @@ export default function ShareCard({
           const me = leaderboardMeState.data;
           if (!me) {
             return (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                 <div className={styles.meRow}>
                   <div className={styles.meName}>{viewerName || (viewerMode === 'user' ? 'You' : 'Guest')}</div>
-                  <div className={styles.rank}>{formatTime(timeMs)}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <div className={styles.rank}>{formatTime(timeMs)}</div>
+                    <div className={styles.leaderboardTries}>
+                      {failed ? '(DNF)' : `${attemptsUsed ?? 1}/3`}
+                    </div>
+                  </div>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'center', width: '100%', marginTop: '0.2rem' }}>
                   {submitPanel()}
@@ -639,6 +721,7 @@ export default function ShareCard({
       <div className={styles.leaderboardPanelNew} style={{ height: carouselHeight }}>
         <div className={styles.leaderboardDayTitle}>
           <div className={styles.leaderboardDayTitleMain}>Mazle {displayLabel}</div>
+          <div className={styles.leaderboardDayTitleSub}>Today</div>
         </div>
         <div className={styles.leaderboardRefreshRow}>
           <button
@@ -725,7 +808,7 @@ export default function ShareCard({
 
         {leaderboardTopState.status === 'error' && <div className={styles.leaderboardError}>{leaderboardTopState.message}</div>}
 
-        <div className={styles.leaderboardScrollArea}>
+        <div className={styles.leaderboardScrollArea} ref={leaderboardScrollRef}>
           {(() => {
             switch (leaderboardTopState.status) {
               case 'idle':
@@ -751,7 +834,7 @@ export default function ShareCard({
           {mePanel()}
           {leaderboardSubmitState === 'failed' && <div className={styles.leaderboardError}>Couldn’t submit. Try again.</div>}
           {submissionNote && (
-            <div className={styles.leaderboardHint} style={{ marginTop: '0.6rem' }}>
+            <div className={styles.leaderboardHint} style={{ textAlign: 'center' }}>
               {submissionNote}
             </div>
           )}
@@ -783,7 +866,10 @@ export default function ShareCard({
 
     const scrollLeft = container.scrollLeft;
     const width = container.offsetWidth;
-    const index = Math.round(scrollLeft / width);
+    const progress = Math.min(1, Math.max(0, scrollLeft / width));
+    setScrollProgress(progress);
+
+    const index = Math.round(progress);
 
     if (index === 0 && activeTab !== 'share') {
       setActiveTab('share');
@@ -807,9 +893,15 @@ export default function ShareCard({
         {hasLeaderboard && (
           <div className={styles.tabBarWrapper}>
             <div className={styles.tabBar} role="tablist" aria-label="Share or leaderboard">
+              <div
+                className={`${styles.tabBlob} ${failed ? styles.tabBlobFailed : ''}`}
+                style={{
+                  transform: `translateX(${scrollProgress * 100}%)`,
+                }}
+              />
               <button
                 type="button"
-                className={`${styles.tabButton} ${activeTab === 'share' ? (failed ? styles.tabButtonActiveFailed : styles.tabButtonActive) : ''}`.trim()}
+                className={`${styles.tabButton} ${scrollProgress < 0.5 ? styles.tabButtonTextActive : ''}`.trim()}
                 role="tab"
                 aria-selected={activeTab === 'share'}
                 onClick={() => scrollToTab('share')}
@@ -818,7 +910,7 @@ export default function ShareCard({
               </button>
               <button
                 type="button"
-                className={`${styles.tabButton} ${activeTab === 'leaderboard' ? (failed ? styles.tabButtonActiveFailed : styles.tabButtonActive) : ''}`.trim()}
+                className={`${styles.tabButton} ${scrollProgress >= 0.5 ? styles.tabButtonTextActive : ''}`.trim()}
                 role="tab"
                 aria-selected={activeTab === 'leaderboard'}
                 onClick={() => scrollToTab('leaderboard')}

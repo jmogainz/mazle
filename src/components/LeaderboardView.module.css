@@ -102,6 +102,7 @@
 
 /* Scrollable container for the list */
 .scrollArea {
+  position: relative;
   flex: 1;
   overflow-y: auto;
   min-height: 0;
@@ -253,6 +254,8 @@
   border: 1px solid var(--color-border);
   background: var(--color-background);
   border-radius: 8px;
+  will-change: transform, opacity;
+  transform-origin: center bottom;
 }
 
 .rowMe {

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import {
@@ -61,6 +61,86 @@ function LeaderboardView() {
   );
   const [viewerMode, setViewerMode] = useState<'unknown' | 'guest' | 'user'>('unknown');
   const [submitState, setSubmitState] = useState<'idle' | 'submitting' | 'submitted' | 'failed'>('idle');
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const scrollContainer = scrollRef.current;
+    // We attach listRef to the list container. 
+    // If it's not present (e.g. loading or error), we might not have it.
+    // However, if we just want to update when it exists:
+    if (!scrollContainer) return;
+    
+    // If listRef is null, we can still attach scroll listener but it won't do anything.
+    // But we want to re-run this when listRef becomes available.
+    // The dependency array handles this? No, refs don't trigger re-renders.
+    // But topState changes trigger re-renders which re-runs this effect.
+    
+    let rafId: number;
+    const update = () => {
+      const listContainer = listRef.current;
+      if (!listContainer) return;
+
+      const viewHeight = scrollContainer.clientHeight;
+      const scrollTop = scrollContainer.scrollTop;
+
+      const children = listContainer.children;
+      for (let i = 0; i < children.length; i++) {
+        const child = children[i] as HTMLElement;
+        const childHeight = child.offsetHeight;
+        // relativeTop is the position of the top edge of the child relative to the viewport top
+        const relativeTop = child.offsetTop - scrollTop;
+        // relativeBottom is the position of the bottom edge relative to the viewport top
+        const relativeBottom = relativeTop + childHeight;
+
+        let fractionVisible = 1;
+
+        if (relativeBottom > viewHeight) {
+          // Crossing bottom edge
+          // Visible pixels = how much is above the bottom edge
+          const visiblePixels = Math.max(0, viewHeight - relativeTop);
+          fractionVisible = Math.min(1, visiblePixels / childHeight);
+        } else if (relativeTop < 0) {
+          // Crossing top edge
+          // Visible pixels = how much is below the top edge
+          const visiblePixels = Math.max(0, relativeBottom);
+          fractionVisible = Math.min(1, visiblePixels / childHeight);
+        }
+
+        if (fractionVisible < 1) {
+           // Scale from 0.9 to 1.0 based on visibility
+           const scale = 0.9 + 0.1 * fractionVisible;
+           // Opacity from 0.3 to 1.0 based on visibility
+           const opacity = 0.3 + 0.7 * fractionVisible;
+           
+           child.style.transform = `scale(${scale})`;
+           child.style.opacity = `${opacity}`;
+        } else {
+           if (child.style.transform) child.style.transform = '';
+           if (child.style.opacity) child.style.opacity = '';
+        }
+      }
+    };
+
+    const handleScroll = () => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(update);
+    };
+
+    scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
+    // Also update on window resize
+    window.addEventListener('resize', handleScroll);
+    
+    // Initial update
+    update();
+    
+    return () => {
+      scrollContainer.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', handleScroll);
+      cancelAnimationFrame(rafId);
+    };
+  }, [topState]);
 
   useEffect(() => {
     if (!showLockedFeatures) return;
@@ -189,13 +269,10 @@ function LeaderboardView() {
     if (me) {
       return (
         <div className={styles.meRow}>
-          <div className={styles.meLeft}>
-            <div className={styles.meName}>{me.displayName}</div>
-            <div className={styles.meMeta}>
-              {formatTime(me.timeMs)} • {me.attemptsUsed}/3 tries
-            </div>
-          </div>
-          <div className={styles.meRight}>
+          <div className={styles.meName}>{me.displayName}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <div className={styles.rowTime}>{formatTime(me.timeMs)}</div>
+            <div className={styles.rowAttempts}>{me.attemptsUsed}/3</div>
             <div className={styles.rank}>#{me.rank}</div>
           </div>
         </div>
@@ -205,41 +282,36 @@ function LeaderboardView() {
     if (!todayResult || todayResult.date !== todayDate) {
       return <div className={styles.hintText}>Play today&apos;s puzzle to join the leaderboard.</div>;
     }
-    if (todayResult.failed) {
-      return <div className={styles.hintText}>Only successful solves can be submitted.</div>;
-    }
 
-    if (viewerMode !== 'user') {
-      return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-          <div className={styles.meRow}>
-            <div className={styles.meName}>{displayName}</div>
-            <div className={styles.rowTime}>{formatTime(todayResult.timeMs)}</div>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'center', width: '100%', marginTop: '0.2rem' }}>
-            <button type="button" className={styles.submitButtonSmall} onClick={handleOpenAccount}>
-              Sign in to submit
-            </button>
-          </div>
-        </div>
-      );
-    }
+    const attemptsDisplay = todayResult.failed ? '(DNF)' : `${attemptsUsed}/3`;
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
         <div className={styles.meRow}>
           <div className={styles.meName}>{displayName}</div>
-          <div className={styles.rowTime}>{formatTime(todayResult.timeMs)}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <div className={styles.rowTime}>{formatTime(todayResult.timeMs)}</div>
+            <div className={styles.rowAttempts}>{attemptsDisplay}</div>
+          </div>
         </div>
+
         <div style={{ display: 'flex', justifyContent: 'center', width: '100%', marginTop: '0.2rem' }}>
-          <button
-            type="button"
-            className={styles.submitButtonSmall}
-            onClick={handleSubmit}
-            disabled={submitState === 'submitting' || !canSubmit}
-          >
-            {submitState === 'submitting' ? '...' : 'Submit Time'}
-          </button>
+          {todayResult.failed ? (
+            <div className={styles.hintText}>Only successful solves can be submitted.</div>
+          ) : viewerMode !== 'user' ? (
+            <button type="button" className={styles.submitButtonSmall} onClick={handleOpenAccount}>
+              Sign in to submit
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={styles.submitButtonSmall}
+              onClick={handleSubmit}
+              disabled={submitState === 'submitting' || !canSubmit}
+            >
+              {submitState === 'submitting' ? '...' : 'Submit Time'}
+            </button>
+          )}
         </div>
       </div>
     );
@@ -324,9 +396,9 @@ function LeaderboardView() {
 
       {topState.status === 'error' && <div className={styles.error}>{topState.message}</div>}
 
-      <div className={styles.scrollArea}>
+      <div className={styles.scrollArea} ref={scrollRef}>
         {topState.status === 'loaded' && restEntries.length > 0 && (
-          <div className={styles.list}>
+          <div className={styles.list} ref={listRef}>
             {restEntries.map((e) => (
               <div key={`${e.rank}-${e.displayName}`} className={`${styles.row} ${e.isMe ? styles.rowMe : ''}`.trim()}>
                 <div className={styles.rowRank}>#{e.rank}</div>
@@ -343,7 +415,7 @@ function LeaderboardView() {
         )}
 
         {topState.status === 'loading' && (
-          <div className={styles.list}>
+          <div className={styles.list} ref={listRef}>
             {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className={styles.row} style={{ opacity: 0.4 }}>
                 <div className={styles.rowRank}>#{i + 4}</div>

@@ -927,7 +927,7 @@
     transform: translateY(0);
   }
   50% {
-    transform: translateY(-0.8px);
+    transform: translateY(-0.5px);
   }
 }
 

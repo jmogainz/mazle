@@ -572,7 +572,7 @@ export default function ShareCard({
                     stroke="#FFE082"
                     strokeWidth="8"
                     strokeLinejoin="round"
-                    transform="translate(0, -4.75)"
+                    transform="translate(0, -6)"
                     className={styles.crownGlow}
                     filter="url(#softGlow)"
                   />
@@ -583,7 +583,7 @@ export default function ShareCard({
                     stroke="#DAA520" 
                     strokeWidth="1.5"
                     strokeLinejoin="round"
-                    transform="translate(0, -4.75)"
+                    transform="translate(0, -6)"
                   />
                 </g>
 

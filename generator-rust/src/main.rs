@@ -321,15 +321,12 @@ fn run_dataset_generation(config: DatasetConfig) -> Result<(), Box<dyn std::erro
 // DAILY KV BACKFILL (NATIVE, OUTSIDE DOCKER)
 // =============================================================================
 
-const DEFAULT_DAILIES_KV_CLOSENESS_THRESHOLD: f64 = 0.99; // Match prod backend default (ENV != dev)
-
 #[derive(Clone, Debug)]
 struct DailiesKvConfig {
     start_date: NaiveDate,
     end_date: NaiveDate,
     force: bool,
     parallel: bool,
-    closeness_threshold: f64,
     target_moves: Option<i32>,
 }
 
@@ -375,13 +372,6 @@ fn dailies_kv_config_from_env() -> Result<Option<DailiesKvConfig>, String> {
         Err(_) => true,
     };
 
-    let closeness_threshold = match std::env::var("DAILIES_KV_CLOSENESS_THRESHOLD") {
-        Ok(value) => value
-            .parse::<f64>()
-            .map_err(|_| format!("Invalid DAILIES_KV_CLOSENESS_THRESHOLD: {}", value))?,
-        Err(_) => DEFAULT_DAILIES_KV_CLOSENESS_THRESHOLD,
-    };
-
     let target_moves = match std::env::var("DAILIES_KV_TARGET_MOVES") {
         Ok(value) => Some(
             value
@@ -396,7 +386,6 @@ fn dailies_kv_config_from_env() -> Result<Option<DailiesKvConfig>, String> {
         end_date,
         force,
         parallel,
-        closeness_threshold,
         target_moves,
     }))
 }
@@ -490,7 +479,6 @@ async fn run_dailies_kv_backfill(
 
     let mut gen_config = GenerationConfig::default();
     gen_config.parallel = config.parallel;
-    gen_config.closeness_threshold = config.closeness_threshold;
     gen_config.target_moves = config.target_moves;
 
     info!("🗓️ Daily KV backfill mode enabled");
@@ -502,7 +490,7 @@ async fn run_dailies_kv_backfill(
         total_days,
         config.force,
         config.parallel,
-        config.closeness_threshold,
+        gen_config.closeness_threshold,
         config.target_moves
     );
 

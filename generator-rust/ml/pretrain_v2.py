@@ -886,8 +886,12 @@ def main():
 
     # Load checkpoint if specified
     if args.checkpoint:
-        ckpt = torch.load(args.checkpoint, map_location=device)
-        model.load_state_dict(ckpt["model_state"])
+        ckpt = torch.load(args.checkpoint, map_location=device, weights_only=False)
+        # Support EMA weights (stored under 'ema_shadow' key)
+        if "ema_shadow" in ckpt:
+            model.load_state_dict(ckpt["ema_shadow"], strict=False)
+        else:
+            model.load_state_dict(ckpt["model_state"])
         log_progress(f"Loaded checkpoint: {args.checkpoint}", out_dir)
 
     # Run appropriate training mode

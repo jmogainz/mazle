@@ -321,7 +321,6 @@ BWS_PROJECT_NAME_FOR_KV ?= $(ROOT_APP_NAME)-$(ENV)
 	DAILIES_KV_END ?=
 	DAILIES_KV_FORCE ?= 0
 	DAILIES_KV_PARALLEL ?= 1
-	DAILIES_KV_CLOSENESS_THRESHOLD ?= 0.99
 	DAILIES_KV_TARGET_MOVES ?=
 DAILIES_KV_LOG ?= $(CURDIR)/data/dailies-kv-backfill.log
 DAILIES_KV_PID ?= $(CURDIR)/data/dailies-kv-backfill.pid
@@ -367,7 +366,6 @@ dailies-kv-backfill: cargo-build
 			DAILIES_KV_END="$(DAILIES_KV_END)" \
 			DAILIES_KV_FORCE="$(DAILIES_KV_FORCE)" \
 			DAILIES_KV_PARALLEL="$(DAILIES_KV_PARALLEL)" \
-			DAILIES_KV_CLOSENESS_THRESHOLD="$(DAILIES_KV_CLOSENESS_THRESHOLD)" \
 			$(if $(DAILIES_KV_TARGET_MOVES),DAILIES_KV_TARGET_MOVES="$(DAILIES_KV_TARGET_MOVES)") \
 			setsid ./target/release/mazle-generator </dev/null > "$(DAILIES_KV_LOG)" 2>&1 & \
 			echo $$! | tee "$(DAILIES_KV_PID)"; \
@@ -379,7 +377,6 @@ dailies-kv-backfill: cargo-build
 			DAILIES_KV_END="$(DAILIES_KV_END)" \
 			DAILIES_KV_FORCE="$(DAILIES_KV_FORCE)" \
 			DAILIES_KV_PARALLEL="$(DAILIES_KV_PARALLEL)" \
-			DAILIES_KV_CLOSENESS_THRESHOLD="$(DAILIES_KV_CLOSENESS_THRESHOLD)" \
 			$(if $(DAILIES_KV_TARGET_MOVES),DAILIES_KV_TARGET_MOVES="$(DAILIES_KV_TARGET_MOVES)") \
 			nohup ./target/release/mazle-generator </dev/null > "$(DAILIES_KV_LOG)" 2>&1 & \
 			echo $$! | tee "$(DAILIES_KV_PID)"; \

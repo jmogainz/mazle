@@ -127,8 +127,14 @@ export default function Home() {
   const adsReadyTimeoutRef = useRef<number | null>(null);
   const adTimeoutsRef = useRef<{ top?: number; bottom?: number }>({});
   const hintsPrefLoadedRef = useRef(false);
-  // Initialize with max maze size to prevent layout shift before useEffect calculates actual size
-  const [gameFrameSizePx, setGameFrameSizePx] = useState<{ width: number; height: number }>({ width: 520, height: 520 });
+  // Initialize from CSS variable set by preload script, fallback to 520
+  const [gameFrameSizePx, setGameFrameSizePx] = useState<{ width: number; height: number }>(() => {
+    if (typeof window !== 'undefined') {
+      const size = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--game-size'), 10);
+      if (size > 0) return { width: size, height: size };
+    }
+    return { width: 520, height: 520 };
+  });
   const tapTimestampsRef = useRef<number[]>([]);
   const lastDevToolsTouchTsRef = useRef<number>(0);
   const devToolsTapTargetRef = useRef<HTMLDivElement | null>(null);
@@ -298,7 +304,7 @@ export default function Home() {
       // Maximum maze size (don't let it grow infinitely on large screens)
       const MAX_MAZE_SIZE = 520;
       // Scale limits for UI
-      const UI_SCALE_MIN = 0.55;
+      const UI_SCALE_MIN = 0.70;
       const UI_SCALE_MAX = 1.0;
 
       // Calculate ideal maze size (constrained by width too)
@@ -796,9 +802,13 @@ export default function Home() {
     setLiveAttempts([]);
     setReviewAttemptIndex(null);
     // Mount hint after 500ms delay - animation handles full lifecycle
+    // Only show on mobile (desktop has display:none which prevents onAnimationEnd)
     setShowSwipeHint(false);
     setTimeout(() => {
-      setShowSwipeHint(true);
+      const isMobile = window.innerWidth < 769;
+      if (isMobile) {
+        setShowSwipeHint(true);
+      }
     }, 500);
   }, []);
 
@@ -1135,23 +1145,24 @@ export default function Home() {
             />
           )}
 
-          {/* Always render GameUI - shows skeleton shimmer while loading */}
-          <GameUI
-            puzzleNumber={puzzleNumber}
-            puzzleLabel={puzzleLabel ?? undefined}
-            optimalMoves={displayOptimalMoves}
-            variant="header"
-            hidePuzzleNumber={true}
-            initialState={initialStats ?? undefined}
-            frozen={isPostGame || !hasPuzzle}
-            maxLives={devMaxLives}
-            hintsEnabled={hintsEnabled}
-            onReviewAttempt={setReviewAttemptIndex}
-            reviewAttemptIndex={reviewAttemptIndex}
-            loading={!hasPuzzle}
-          />
+          <div className={styles.gameCluster}>
+            {/* Always render GameUI - shows skeleton shimmer while loading */}
+            <GameUI
+              puzzleNumber={puzzleNumber}
+              puzzleLabel={puzzleLabel ?? undefined}
+              optimalMoves={displayOptimalMoves}
+              variant="header"
+              hidePuzzleNumber={true}
+              initialState={initialStats ?? undefined}
+              frozen={isPostGame || !hasPuzzle}
+              maxLives={devMaxLives}
+              hintsEnabled={hintsEnabled}
+              onReviewAttempt={setReviewAttemptIndex}
+              reviewAttemptIndex={reviewAttemptIndex}
+              loading={!hasPuzzle}
+            />
 
-          <div ref={gameStageRef} className={styles.gameArea}>
+            <div ref={gameStageRef} className={styles.gameArea}>
             <div className={styles.gameFrame} style={{ width: gameFrameSizePx.width, height: gameFrameSizePx.height }} ref={gameFrameRef}>
               {puzzle && (
                 <PhaserGame
@@ -1205,30 +1216,31 @@ export default function Home() {
                   )}
                 </>
               )}
-            </div>
-          </div>
-
-          <div className={styles.controlsArea}>
-            <button
-              className={styles.shareButton}
-              onClick={handleShowShareCard}
-              style={{
-                visibility: showResultsButton && !showSwipeHint ? 'visible' : 'hidden',
-                opacity: showResultsButton && !showSwipeHint ? 1 : 0,
-                transform: showResultsButton && !showSwipeHint ? 'scale(1)' : 'scale(0.9)',
-                pointerEvents: showResultsButton && !showSwipeHint ? 'auto' : 'none',
-              }}
-            >
-              Share Score
-            </button>
-            {showSwipeHint && (
-              <div
-                className={styles.swipeHint}
-                onAnimationEnd={() => setShowSwipeHint(false)}
-              >
-                Swipe anywhere to move
               </div>
-            )}
+            </div>
+
+            <div className={styles.controlsArea}>
+              <button
+                className={styles.shareButton}
+                onClick={handleShowShareCard}
+                style={{
+                  visibility: showResultsButton && !showSwipeHint ? 'visible' : 'hidden',
+                  opacity: showResultsButton && !showSwipeHint ? 1 : 0,
+                  transform: showResultsButton && !showSwipeHint ? 'scale(1)' : 'scale(0.9)',
+                  pointerEvents: showResultsButton && !showSwipeHint ? 'auto' : 'none',
+                }}
+              >
+                Share Score
+              </button>
+              {showSwipeHint && (
+                <div
+                  className={styles.swipeHint}
+                  onAnimationEnd={() => setShowSwipeHint(false)}
+                >
+                  Swipe anywhere to move
+                </div>
+              )}
+            </div>
           </div>
 
           {isPostGame && <AdSlot placement="postGame" />}

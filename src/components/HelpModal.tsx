@@ -19,10 +19,10 @@ export default function HelpModal({
       <div className={styles.card} onClick={(e) => e.stopPropagation()}>
         <button className={styles.closeButton} onClick={onClose} aria-label="Close">
           <svg viewBox="0 0 24 24" className={styles.closeIcon}>
-            <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+            <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
           </svg>
         </button>
-        
+
         <h2 className={styles.title}>{HELP_CONTENT.title}</h2>
 
         <div className={styles.goalSection}>
@@ -39,16 +39,17 @@ export default function HelpModal({
           <div className={styles.controlsRow}>
             <div className={styles.controlOption}>
               <div className={styles.controlIcon}>
-                <Image 
-                  src="/assets/images/swipe_gesture.svg" 
-                  alt="Swipe gesture" 
-                  width={24} 
-                  height={24} 
-                  className={styles.swipeIcon}
-                  priority
-                />
+                {/* Phosphor Icon: Hand Swipe Right (Official) */}
+                <svg viewBox="0 0 256 256" className={styles.swipeIconStatic}>
+                  <path
+                    d="M216,140v36c0,25.59-8.49,42.85-8.85,43.58A8,8,0,0,1,200,224a7.9,7.9,0,0,1-3.57-.85,8,8,0,0,1-3.58-10.73c.06-.12,7.16-14.81,7.16-36.42V140a12,12,0,0,0-24,0v4a8,8,0,0,1-16,0V124a12,12,0,0,0-24,0v12a8,8,0,0,1-16,0V68a12,12,0,0,0-24,0V176a8,8,0,0,1-14.79,4.23l-18.68-30-.14-.23A12,12,0,1,0,41.6,162L70.89,212A8,8,0,1,1,57.08,220l-29.32-50a28,28,0,0,1,48.41-28.17L80,148V68a28,28,0,0,1,56,0V98.7a28,28,0,0,1,38.65,16.69A28,28,0,0,1,216,140Zm37.66-89.66-32-32a8,8,0,0,0-11.31,11.32L228.68,48H176a8,8,0,0,0,0,16h52.69L210.34,82.34a8,8,0,0,0,11.31,11.32l32-32A8,8,0,0,0,253.66,50.34Z"
+                    fill="currentColor"
+                  />
+                </svg>
               </div>
-              <span className={styles.controlLabelKeys}>{HELP_CONTENT.controls.labels.swipe}</span>
+              <span className={`${styles.controlLabelKeys} ${styles.controlLabelSwipe}`}>
+                {HELP_CONTENT.controls.labels.swipe}
+              </span>
             </div>
             <div className={styles.controlOption}>
               <div className={styles.controlKeys}>

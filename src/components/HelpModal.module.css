@@ -795,7 +795,7 @@
 }
 
 /* iPhone SE and small height screens - scale down to avoid scroll */
-@media (max-height: 700px) {
+@media (max-height: 800px) {
   .card {
     padding: 1rem;
   }

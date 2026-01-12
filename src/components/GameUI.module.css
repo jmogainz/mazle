@@ -104,8 +104,9 @@
   color: var(--color-text);
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
-  padding: 0 4px;
+  padding: 0 6px;
   transition: font-size 0.15s ease-out;
+  overflow: visible;
 }
 
 .statValue.danger {

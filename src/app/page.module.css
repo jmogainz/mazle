@@ -790,7 +790,7 @@
   min-height: 0;
   min-width: 0;
   width: 100%;
-  padding: 0.25rem;
+  padding: calc(0.25rem * var(--ui-scale));
   overflow: visible;
   position: relative;
 }
@@ -1253,7 +1253,7 @@
   }
 
   .controlsArea {
-    margin-top: calc(1rem * var(--ui-scale));
+    /* No extra margin - use same spacing as desktop */
   }
 
   .puzzleNumberBanner {

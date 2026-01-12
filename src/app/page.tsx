@@ -127,14 +127,9 @@ export default function Home() {
   const adsReadyTimeoutRef = useRef<number | null>(null);
   const adTimeoutsRef = useRef<{ top?: number; bottom?: number }>({});
   const hintsPrefLoadedRef = useRef(false);
-  // Initialize from CSS variable set by preload script, fallback to 520
-  const [gameFrameSizePx, setGameFrameSizePx] = useState<{ width: number; height: number }>(() => {
-    if (typeof window !== 'undefined') {
-      const size = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--game-size'), 10);
-      if (size > 0) return { width: size, height: size };
-    }
-    return { width: 520, height: 520 };
-  });
+  // Initialize with null - useLayoutEffect will set before paint
+  // Using null prevents hydration mismatch between SSR and client
+  const [gameFrameSizePx, setGameFrameSizePx] = useState<{ width: number; height: number } | null>(null);
   const tapTimestampsRef = useRef<number[]>([]);
   const lastDevToolsTouchTsRef = useRef<number>(0);
   const devToolsTapTargetRef = useRef<HTMLDivElement | null>(null);
@@ -356,7 +351,7 @@ export default function Home() {
       const height = Math.max(1, Math.floor(baseHeight * finalScale));
 
       setGameFrameSizePx((prev) => {
-        if (prev.width === width && prev.height === height) return prev;
+        if (prev && prev.width === width && prev.height === height) return prev;
         return { width, height };
       });
     };
@@ -1163,7 +1158,7 @@ export default function Home() {
             />
 
             <div ref={gameStageRef} className={styles.gameArea}>
-            <div className={styles.gameFrame} style={{ width: gameFrameSizePx.width, height: gameFrameSizePx.height }} ref={gameFrameRef}>
+            <div className={styles.gameFrame} style={gameFrameSizePx ? { width: gameFrameSizePx.width, height: gameFrameSizePx.height } : undefined} ref={gameFrameRef}>
               {puzzle && (
                 <PhaserGame
                   key={renderKey}

@@ -1,18 +1,19 @@
 """
-Training script for Puzzle Generator v2.
+Training script for Puzzle Generator v2 (Clean Architecture).
 
-Key changes from v1:
-1. No seed conditioning - model learns distribution, not seed→puzzle mapping
-2. Separate START/GOAL as position heads
-3. BERT-style masked modeling (not autoregressive)
-4. Deterministic seeded sampling for generation
-5. Generate-many + verifier filter baseline
-6. Path auxiliary heads for move-count learning
-7. EMA (Exponential Moving Average) for stable sampling
+Key changes from experimental versions:
+1. No CFG conditioning - removed moves_embed, cfg_dropout
+2. No AdaLN - using standard LayerNorm
+3. Simple cross-entropy on tiles + positions
+4. EMA for stable sampling
+5. Data augmentation (rotations/flips)
+
+Supports two training modes:
+- Standard pretraining: Cross-entropy on training data
+- DPO fine-tuning: Direct Preference Optimization on (winner, loser) pairs
 """
 
 import argparse
-import copy
 import hashlib
 import json
 import math
@@ -27,7 +28,7 @@ from typing import Dict, List, Optional, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 from data import (
@@ -44,52 +45,6 @@ from model_v2 import PuzzleGeneratorV2, ModelConfig, config_for_preset
 # Original: 0=floor, 1=wall, 4=ice, 5=ledge_u, 6=ledge_d, 7=ledge_l, 8=ledge_r
 TILE_REMAP = {0: 0, 1: 1, 4: 2, 5: 3, 6: 4, 7: 5, 8: 6}
 TILE_REMAP_INV = {v: k for k, v in TILE_REMAP.items()}
-
-# Global verifier function (set during init)
-_VALIDATE_FN = None
-
-
-def set_validate_fn(fn):
-    """Set the global verifier function for path computation."""
-    global _VALIDATE_FN
-    _VALIDATE_FN = fn
-
-
-def compute_path_masks(grid: List[List[int]], start: dict, goal: dict, width: int = 13) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
-    """
-    Compute on_path, is_stop masks, and ordered stop sequence from a puzzle.
-    
-    Returns:
-        on_path: (169,) binary tensor - 1 if cell is on optimal path
-        is_stop: (169,) binary tensor - 1 if cell is a stop position
-        stop_sequence: (11,) tensor of flat indices for ordered stops, or None if not 11 stops
-    """
-    global _VALIDATE_FN
-    
-    on_path = torch.zeros(169, dtype=torch.float32)
-    is_stop = torch.zeros(169, dtype=torch.float32)
-    stop_sequence = None
-    
-    if _VALIDATE_FN is None:
-        return on_path, is_stop, stop_sequence
-    
-    try:
-        result = _VALIDATE_FN(grid, start["x"], start["y"], goal["x"], goal["y"], None)
-        if result.solvable and result.optimal_path:
-            path = result.optimal_path
-            for x, y in path:
-                flat_idx = y * width + x
-                if 0 <= flat_idx < 169:
-                    is_stop[flat_idx] = 1.0
-                    on_path[flat_idx] = 1.0
-            
-            # Create ordered stop sequence if exactly 11 stops (10 moves)
-            if len(path) == 11:
-                stop_sequence = torch.tensor([y * width + x for x, y in path], dtype=torch.long)
-    except Exception:
-        pass
-    
-    return on_path, is_stop, stop_sequence
 
 
 def count_lines(path: Path) -> int:
@@ -117,13 +72,12 @@ def remap_tile_inv(idx: int) -> int:
 
 
 # Ledge tile transformations for augmentation
-# Original IDs: 5=up, 6=down, 7=left, 8=right
 # After remapping: 3=up, 4=down, 5=left, 6=right
-LEDGE_REMAP_90CW = {3: 5, 4: 6, 5: 4, 6: 3}  # up->left, down->right, left->down, right->up
-LEDGE_REMAP_180 = {3: 4, 4: 3, 5: 6, 6: 5}   # up<->down, left<->right
-LEDGE_REMAP_90CCW = {3: 6, 4: 5, 5: 3, 6: 4} # up->right, down->left, left->up, right->down
-LEDGE_REMAP_FLIP_H = {3: 3, 4: 4, 5: 6, 6: 5} # left<->right
-LEDGE_REMAP_FLIP_V = {3: 4, 4: 3, 5: 5, 6: 6} # up<->down
+LEDGE_REMAP_90CW = {3: 5, 4: 6, 5: 4, 6: 3}
+LEDGE_REMAP_180 = {3: 4, 4: 3, 5: 6, 6: 5}
+LEDGE_REMAP_90CCW = {3: 6, 4: 5, 5: 3, 6: 4}
+LEDGE_REMAP_FLIP_H = {3: 3, 4: 4, 5: 6, 6: 5}
+LEDGE_REMAP_FLIP_V = {3: 4, 4: 3, 5: 5, 6: 6}
 
 
 def transform_tile(tile_idx: int, transform_map: dict) -> int:
@@ -133,306 +87,122 @@ def transform_tile(tile_idx: int, transform_map: dict) -> int:
     return tile_idx
 
 
-def transform_position(flat_idx: int, aug_type: int, H: int = 13, W: int = 13) -> int:
-    """Transform a flat position index according to augmentation type."""
-    y, x = flat_idx // W, flat_idx % W
-    
-    if aug_type == 0:
-        pass  # Identity
-    elif aug_type == 1:  # Rotate 90 CW
-        x, y = H - 1 - y, x
-    elif aug_type == 2:  # Rotate 180
-        x, y = W - 1 - x, H - 1 - y
-    elif aug_type == 3:  # Rotate 270 CW
-        x, y = y, W - 1 - x
-    elif aug_type == 4:  # Flip horizontal
-        x = W - 1 - x
-    elif aug_type == 5:  # Flip vertical
-        y = H - 1 - y
-    elif aug_type == 6:  # Transpose
-        x, y = y, x
-    elif aug_type == 7:  # Anti-transpose
-        x, y = H - 1 - y, W - 1 - x
-    
-    return y * W + x
-
-
-def augment_puzzle(tiles: torch.Tensor, start_pos: int, goal_pos: int, 
-                   on_path: torch.Tensor, is_stop: torch.Tensor,
-                   stop_sequence: Optional[torch.Tensor] = None,
+def augment_puzzle(tiles: torch.Tensor, start_pos: int, goal_pos: int,
                    H: int = 13, W: int = 13) -> Tuple:
-    """
-    Apply random augmentation to a puzzle.
-    
-    Augmentations: identity, rot90, rot180, rot270, flip_h, flip_v, flip_diag1, flip_diag2
-    """
+    """Apply random augmentation to a puzzle."""
     import random
     aug_type = random.randint(0, 7)
-    
+
     if aug_type == 0:
-        # Identity - no change
-        return tiles, start_pos, goal_pos, on_path, is_stop, stop_sequence
-    
-    # Reshape to 2D for transformations
+        return tiles, start_pos, goal_pos
+
     tiles_2d = tiles.reshape(H, W).clone()
-    on_path_2d = on_path.reshape(H, W).clone()
-    is_stop_2d = is_stop.reshape(H, W).clone()
-    
     start_y, start_x = start_pos // W, start_pos % W
     goal_y, goal_x = goal_pos // W, goal_pos % W
-    
+
     if aug_type == 1:
-        # Rotate 90 CW
         tiles_2d = torch.rot90(tiles_2d, k=-1)
-        on_path_2d = torch.rot90(on_path_2d, k=-1)
-        is_stop_2d = torch.rot90(is_stop_2d, k=-1)
         start_x, start_y = H - 1 - start_y, start_x
         goal_x, goal_y = H - 1 - goal_y, goal_x
         ledge_map = LEDGE_REMAP_90CW
     elif aug_type == 2:
-        # Rotate 180
         tiles_2d = torch.rot90(tiles_2d, k=2)
-        on_path_2d = torch.rot90(on_path_2d, k=2)
-        is_stop_2d = torch.rot90(is_stop_2d, k=2)
         start_x, start_y = W - 1 - start_x, H - 1 - start_y
         goal_x, goal_y = W - 1 - goal_x, H - 1 - goal_y
         ledge_map = LEDGE_REMAP_180
     elif aug_type == 3:
-        # Rotate 270 CW (90 CCW)
         tiles_2d = torch.rot90(tiles_2d, k=1)
-        on_path_2d = torch.rot90(on_path_2d, k=1)
-        is_stop_2d = torch.rot90(is_stop_2d, k=1)
         start_x, start_y = start_y, W - 1 - start_x
         goal_x, goal_y = goal_y, W - 1 - goal_x
         ledge_map = LEDGE_REMAP_90CCW
     elif aug_type == 4:
-        # Flip horizontal
         tiles_2d = torch.flip(tiles_2d, dims=[1])
-        on_path_2d = torch.flip(on_path_2d, dims=[1])
-        is_stop_2d = torch.flip(is_stop_2d, dims=[1])
         start_x = W - 1 - start_x
         goal_x = W - 1 - goal_x
         ledge_map = LEDGE_REMAP_FLIP_H
     elif aug_type == 5:
-        # Flip vertical
         tiles_2d = torch.flip(tiles_2d, dims=[0])
-        on_path_2d = torch.flip(on_path_2d, dims=[0])
-        is_stop_2d = torch.flip(is_stop_2d, dims=[0])
         start_y = H - 1 - start_y
         goal_y = H - 1 - goal_y
         ledge_map = LEDGE_REMAP_FLIP_V
     elif aug_type == 6:
-        # Flip along main diagonal (transpose then adjust ledges)
         tiles_2d = tiles_2d.T
-        on_path_2d = on_path_2d.T
-        is_stop_2d = is_stop_2d.T
         start_x, start_y = start_y, start_x
         goal_x, goal_y = goal_y, goal_x
-        # Transpose swaps left<->up and right<->down
         ledge_map = {3: 5, 4: 6, 5: 3, 6: 4}
-    else:  # aug_type == 7
-        # Flip along anti-diagonal
+    else:
         tiles_2d = torch.flip(tiles_2d.T, dims=[0, 1])
-        on_path_2d = torch.flip(on_path_2d.T, dims=[0, 1])
-        is_stop_2d = torch.flip(is_stop_2d.T, dims=[0, 1])
         start_x, start_y = H - 1 - start_y, W - 1 - start_x
         goal_x, goal_y = H - 1 - goal_y, W - 1 - goal_x
         ledge_map = {3: 6, 4: 5, 5: 4, 6: 3}
-    
-    # Transform ledge tiles
+
     for y in range(H):
         for x in range(W):
             tiles_2d[y, x] = transform_tile(tiles_2d[y, x].item(), ledge_map)
-    
-    # Flatten back
+
     tiles_out = tiles_2d.reshape(-1)
-    on_path_out = on_path_2d.reshape(-1)
-    is_stop_out = is_stop_2d.reshape(-1)
     start_pos_out = start_y * W + start_x
     goal_pos_out = goal_y * W + goal_x
-    
-    # Transform stop sequence if present
-    stop_sequence_out = None
-    if stop_sequence is not None:
-        stop_sequence_out = torch.tensor(
-            [transform_position(p.item(), aug_type, H, W) for p in stop_sequence],
-            dtype=torch.long
-        )
-    
-    return tiles_out, start_pos_out, goal_pos_out, on_path_out, is_stop_out, stop_sequence_out
+
+    return tiles_out, start_pos_out, goal_pos_out
 
 
 class CollateFnV2:
-    """Collate function for v2 model - extracts tiles WITHOUT start/goal."""
-    
-    # Move count range for CFG conditioning
-    MIN_MOVES = 4
-    MAX_MOVES = 14
-    NULL_MOVE_TOKEN = MAX_MOVES - MIN_MOVES + 1  # Index 11 = null/unconditional
-    
-    def __init__(self, grid_height: int = 13, grid_width: int = 13, 
-                 compute_paths: bool = True, augment: bool = False,
-                 cfg_dropout: float = 0.1):
-        """
-        Args:
-            cfg_dropout: Probability of replacing move count with null token (for CFG training)
-        """
+    """Collate function for v2 model - clean version without CFG."""
+
+    def __init__(self, grid_height: int = 13, grid_width: int = 13, augment: bool = False):
         self.grid_height = grid_height
         self.grid_width = grid_width
-        self.compute_paths = compute_paths
         self.augment = augment
-        self.cfg_dropout = cfg_dropout
-    
+
     def __call__(self, batch: List[Dict]) -> Dict[str, torch.Tensor]:
         B = len(batch)
         H, W = self.grid_height, self.grid_width
-        
+
         tiles = torch.empty((B, H * W), dtype=torch.long)
         start_pos = torch.empty(B, dtype=torch.long)
         goal_pos = torch.empty(B, dtype=torch.long)
-        moves = torch.empty(B, dtype=torch.long)  # Move count tokens for CFG
-        on_path = torch.zeros((B, H * W), dtype=torch.float32)
-        is_stop = torch.zeros((B, H * W), dtype=torch.float32)
-        # Stop sequence: (B, 11) or None entries for puzzles without 11 stops
-        stop_sequences = []
-        has_stop_sequence = []
-        
+
         for i, item in enumerate(batch):
             grid = item["tilesInterior"]
             start = item["start"]
             goal = item["goal"]
-            
-            # Get optimal_moves if present, otherwise default to 10
-            optimal_moves = item.get("optimal_moves", 10)
-            
-            # Convert to token index (clamp to valid range)
-            optimal_moves_clamped = max(self.MIN_MOVES, min(self.MAX_MOVES, optimal_moves))
-            move_token = optimal_moves_clamped - self.MIN_MOVES
-            
-            # CFG dropout: randomly replace with null token
-            if self.cfg_dropout > 0 and torch.rand(1).item() < self.cfg_dropout:
-                move_token = self.NULL_MOVE_TOKEN
-            
-            moves[i] = move_token
-            
+
             # Remap tiles to contiguous indices
             flat_tiles = []
             for row in grid:
                 for val in row:
                     flat_tiles.append(remap_tile(val))
-            
+
             tiles[i] = torch.tensor(flat_tiles, dtype=torch.long)
-            
-            # Flat position indices
             start_pos[i] = start["y"] * W + start["x"]
             goal_pos[i] = goal["y"] * W + goal["x"]
-            
-            # Compute path masks and stop sequence if enabled
-            stop_seq_i = None
-            if self.compute_paths:
-                on_path_i, is_stop_i, stop_seq_i = compute_path_masks(grid, start, goal, W)
-                on_path[i] = on_path_i
-                is_stop[i] = is_stop_i
-            
-            # Apply augmentation if enabled
+
             if self.augment:
-                tiles[i], start_pos[i], goal_pos[i], on_path[i], is_stop[i], stop_seq_i = augment_puzzle(
-                    tiles[i], start_pos[i].item(), goal_pos[i].item(),
-                    on_path[i], is_stop[i], stop_seq_i, H, W
+                tiles[i], start_pos[i], goal_pos[i] = augment_puzzle(
+                    tiles[i], start_pos[i].item(), goal_pos[i].item(), H, W
                 )
-            
-            # Track stop sequences
-            if stop_seq_i is not None and len(stop_seq_i) == 11:
-                stop_sequences.append(stop_seq_i)
-                has_stop_sequence.append(True)
-            else:
-                stop_sequences.append(torch.zeros(11, dtype=torch.long))  # Placeholder
-                has_stop_sequence.append(False)
-        
-        # Stack stop sequences
-        stop_sequence_tensor = torch.stack(stop_sequences)  # (B, 11)
-        stop_sequence_mask = torch.tensor(has_stop_sequence, dtype=torch.bool)  # (B,)
-        
-        return {
-            "tiles": tiles,  # (B, 169)
-            "start_pos": start_pos,  # (B,)
-            "goal_pos": goal_pos,  # (B,)
-            "moves": moves,  # (B,) move count tokens for CFG
-            "on_path": on_path,  # (B, 169) binary
-            "is_stop": is_stop,  # (B, 169) binary
-            "stop_sequence": stop_sequence_tensor,  # (B, 11) ordered stop positions
-            "stop_sequence_mask": stop_sequence_mask,  # (B,) True if valid 11-stop sequence
-        }
 
-
-@dataclass
-class ReplayBuffer:
-    """Buffer for verifier-aware fine-tuning."""
-    max_size: int = 10000
-    
-    # Storage
-    tiles: deque = field(default_factory=deque)
-    start_pos: deque = field(default_factory=deque)
-    goal_pos: deque = field(default_factory=deque)
-    scores: deque = field(default_factory=deque)
-    
-    def add(self, tiles: torch.Tensor, start: torch.Tensor, goal: torch.Tensor, score: float):
-        """Add a sample with its verifier score."""
-        self.tiles.append(tiles.cpu())
-        self.start_pos.append(start.cpu())
-        self.goal_pos.append(goal.cpu())
-        self.scores.append(score)
-        
-        # Trim if over capacity
-        while len(self.tiles) > self.max_size:
-            self.tiles.popleft()
-            self.start_pos.popleft()
-            self.goal_pos.popleft()
-            self.scores.popleft()
-    
-    def sample_batch(self, batch_size: int, device: torch.device) -> Optional[Dict]:
-        """Sample a weighted batch (higher scores = more likely)."""
-        if len(self.tiles) < batch_size:
-            return None
-        
-        # Compute sampling weights
-        scores_t = torch.tensor(list(self.scores))
-        weights = torch.exp(scores_t * 2.0)  # Temperature-scaled
-        weights = weights / weights.sum()
-        
-        # Sample indices
-        indices = torch.multinomial(weights, batch_size, replacement=True)
-        
-        tiles = torch.stack([self.tiles[i] for i in indices]).to(device)
-        start = torch.stack([self.start_pos[i] for i in indices]).to(device)
-        goal = torch.stack([self.goal_pos[i] for i in indices]).to(device)
-        sample_scores = torch.tensor([self.scores[i] for i in indices]).to(device)
-        
         return {
             "tiles": tiles,
-            "start_pos": start,
-            "goal_pos": goal,
-            "scores": sample_scores,
+            "start_pos": start_pos,
+            "goal_pos": goal_pos,
         }
-    
-    def __len__(self):
-        return len(self.tiles)
 
 
 class EMA:
     """Exponential Moving Average of model parameters for stable sampling."""
-    
+
     def __init__(self, model: nn.Module, decay: float = 0.999):
         self.model = model
         self.decay = decay
         self.shadow = {}
         self.backup = {}
-        
-        # Initialize shadow weights
+
         for name, param in model.named_parameters():
             if param.requires_grad:
                 self.shadow[name] = param.data.clone()
-    
+
     def update(self):
         """Update EMA weights after each training step."""
         for name, param in self.model.named_parameters():
@@ -440,53 +210,20 @@ class EMA:
                 self.shadow[name] = (
                     self.decay * self.shadow[name] + (1 - self.decay) * param.data
                 )
-    
+
     def apply_shadow(self):
         """Apply EMA weights to model (for evaluation/generation)."""
         for name, param in self.model.named_parameters():
             if param.requires_grad:
                 self.backup[name] = param.data.clone()
                 param.data = self.shadow[name]
-    
+
     def restore(self):
         """Restore original weights after evaluation."""
         for name, param in self.model.named_parameters():
             if param.requires_grad:
                 param.data = self.backup[name]
         self.backup = {}
-
-
-def compute_verifier_score(result) -> float:
-    """
-    Compute a score from verifier result for weighted replay.
-    
-    New scoring (optimized for target_10):
-    - solvable: +1.0
-    - no_stuck: +1.0  
-    - unique_optimal: +1.0
-    - move_distance: +2.0 * exp(-0.5 * |optimal_moves - 10|)
-    
-    This gives continuous reward for being close to 10 moves,
-    rather than binary meets_target_moves.
-    """
-    import math
-    
-    score = 0.0
-    if result.solvable:
-        score += 1.0
-    if result.no_stuck:
-        score += 1.0
-    if result.unique_optimal:
-        score += 1.0
-    
-    # Continuous move-distance reward (peaks at 10)
-    # exp(-0.5 * |m - 10|) gives: 10->1.0, 9/11->0.61, 8/12->0.37, 7/13->0.22
-    if result.optimal_moves > 0:
-        move_distance = abs(result.optimal_moves - 10)
-        score += 2.0 * math.exp(-0.5 * move_distance)
-    
-    # Normalize to 0-1 range (max = 1+1+1+2 = 5)
-    return score / 5.0
 
 
 def try_import_verifier():
@@ -509,8 +246,7 @@ def validate_puzzle(
 ):
     """Validate a single puzzle using Rust verifier."""
     H, W = 13, 13
-    
-    # Convert tiles back to original IDs
+
     grid = []
     flat = tiles.tolist()
     for y in range(H):
@@ -519,8 +255,7 @@ def validate_puzzle(
             idx = flat[y * W + x]
             row.append(remap_tile_inv(idx))
         grid.append(row)
-    
-    # Call verifier
+
     result = validate_fn(grid, start_x, start_y, goal_x, goal_y, target_moves)
     return result
 
@@ -533,12 +268,10 @@ def generate_and_validate(
     num_samples: int = 32,
     k_candidates: int = 1,
     temperature: float = 1.0,
-    target_moves: int = 10,
-    guidance_scale: float = 2.0,
 ) -> Dict[str, float]:
-    """Generate samples and validate with Rust verifier using CFG."""
+    """Generate samples and validate with Rust verifier."""
     model.eval()
-    
+
     metrics = {
         "total": 0,
         "valid_structure": 0,
@@ -548,42 +281,31 @@ def generate_and_validate(
         "target_10": 0,
         "full_pass": 0,
     }
-    
-    # Track move distribution for diagnostics
+
     move_counts = []
-    
+
     for i in range(num_samples):
         seed = f"eval-{i}"
-        
+
         if k_candidates > 1:
-            result = model.generate_k_candidates(
-                seed, k_candidates, device, temperature,
-                target_moves=target_moves, guidance_scale=guidance_scale
-            )
+            result = model.generate_k_candidates(seed, k_candidates, device, temperature)
         else:
-            # Single generation with deterministic seed
             seed_int = int(hashlib.sha256(seed.encode()).hexdigest()[:16], 16)
             gen = torch.Generator(device=device)
             gen.manual_seed(seed_int)
-            result = model.generate(
-                1, device, gen, temperature,
-                target_moves=target_moves, guidance_scale=guidance_scale
-            )
-        
-        # Validate each candidate
+            result = model.generate(1, device, gen, temperature)
+
         for j in range(result["tiles"].shape[0]):
-            tiles = result["tiles"][j].reshape(-1)  # (169,)
+            tiles = result["tiles"][j].reshape(-1)
             sx, sy = result["start_pos"][j].tolist()
             gx, gy = result["goal_pos"][j].tolist()
-            
+
             metrics["total"] += 1
-            
-            # Always count as valid_structure (by construction)
-            metrics["valid_structure"] += 1
-            
+            metrics["valid_structure"] += 1  # By construction
+
             if validate_fn is not None:
                 vr = validate_puzzle(tiles, sx, sy, gx, gy, validate_fn)
-                
+
                 if vr.solvable:
                     metrics["solvable"] += 1
                     move_counts.append(vr.optimal_moves)
@@ -595,75 +317,315 @@ def generate_and_validate(
                     metrics["target_10"] += 1
                 if (vr.solvable and vr.no_stuck and vr.unique_optimal and vr.meets_target_moves):
                     metrics["full_pass"] += 1
-    
-    # Convert to rates
+
     total = max(metrics["total"], 1)
     result = {k: v / total if k != "total" else v for k, v in metrics.items()}
-    
-    # Add move distribution stats
+
     if move_counts:
         import statistics
         result["moves_mean"] = statistics.mean(move_counts)
         result["moves_median"] = statistics.median(move_counts)
         result["moves_stdev"] = statistics.stdev(move_counts) if len(move_counts) > 1 else 0
-        # Count how many are within 1 of target
         result["moves_near_10"] = sum(1 for m in move_counts if abs(m - 10) <= 1) / len(move_counts)
-    
+
     return result
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Train puzzle generator v2")
-    parser.add_argument("--data", type=str, required=True, help="Path to training JSONL")
-    parser.add_argument("--out", type=str, required=True, help="Output directory")
-    parser.add_argument("--data-count", type=int, default=None)
-    parser.add_argument("--epochs", type=int, default=20)
-    parser.add_argument("--batch-size", type=int, default=64)
-    parser.add_argument("--preset", type=str, default="base", choices=["small", "base", "large"])
-    parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--weight-decay", type=float, default=0.01)
-    parser.add_argument("--clip-grad", type=float, default=1.0)
-    parser.add_argument("--val-pct", type=float, default=0.02)
-    parser.add_argument("--test-pct", type=float, default=0.01)
-    parser.add_argument("--shuffle-buffer", type=int, default=8192)
-    parser.add_argument("--num-workers", type=int, default=0)
-    parser.add_argument("--log-every", type=int, default=100)
-    parser.add_argument("--save-every", type=int, default=2000)
-    parser.add_argument("--eval-every", type=int, default=1000)
-    parser.add_argument("--generate-samples", type=int, default=256, help="Samples per eval (larger=more stable)")
-    parser.add_argument("--k-candidates", type=int, default=1, help="Candidates per seed for generate-many")
-    parser.add_argument("--ema-decay", type=float, default=0.999, help="EMA decay rate")
-    parser.add_argument("--augment", action="store_true", help="Enable data augmentation (rotations/flips)")
-    parser.add_argument("--lr-min", type=float, default=1e-6, help="Minimum learning rate floor")
-    parser.add_argument("--stop-loss-weight", type=float, default=0.5, help="Weight for ordered stop sequence loss")
-    # CFG (Classifier-Free Guidance) arguments
-    parser.add_argument("--cfg-dropout", type=float, default=0.1, help="Probability of null conditioning during training")
-    parser.add_argument("--guidance-scale", type=float, default=2.0, help="CFG guidance scale for generation (1.0 = no guidance)")
-    parser.add_argument("--target-moves", type=int, default=10, help="Target move count for evaluation generation")
-    args = parser.parse_args()
+# =============================================================================
+# DPO (Direct Preference Optimization) Training
+# =============================================================================
 
-    out_dir = Path(args.out)
-    out_dir.mkdir(parents=True, exist_ok=True)
+class DPODataset(Dataset):
+    """
+    Dataset for DPO training on (winner, loser) puzzle pairs.
+
+    Format: JSONL with {"winner": {...}, "loser": {...}} where each has
+    tiles, start, goal in the same format as training data.
+    """
+
+    def __init__(self, path: Path):
+        self.samples = []
+        with open(path) as f:
+            for line in f:
+                self.samples.append(json.loads(line))
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        return self.samples[idx]
+
+
+class DPOCollateFn:
+    """Collate function for DPO pairs."""
+
+    def __init__(self, grid_height: int = 13, grid_width: int = 13):
+        self.grid_height = grid_height
+        self.grid_width = grid_width
+
+    def _process_puzzle(self, puzzle: Dict) -> Tuple[torch.Tensor, int, int]:
+        """Extract tiles, start_pos, goal_pos from a puzzle dict."""
+        H, W = self.grid_height, self.grid_width
+        grid = puzzle["tilesInterior"]
+        start = puzzle["start"]
+        goal = puzzle["goal"]
+
+        flat_tiles = []
+        for row in grid:
+            for val in row:
+                flat_tiles.append(remap_tile(val))
+
+        tiles = torch.tensor(flat_tiles, dtype=torch.long)
+        start_pos = start["y"] * W + start["x"]
+        goal_pos = goal["y"] * W + goal["x"]
+
+        return tiles, start_pos, goal_pos
+
+    def __call__(self, batch: List[Dict]) -> Dict[str, torch.Tensor]:
+        B = len(batch)
+        H, W = self.grid_height, self.grid_width
+
+        # Winner puzzles (10-move from training data)
+        winner_tiles = torch.empty((B, H * W), dtype=torch.long)
+        winner_start = torch.empty(B, dtype=torch.long)
+        winner_goal = torch.empty(B, dtype=torch.long)
+
+        # Loser puzzles (short-path from current model)
+        loser_tiles = torch.empty((B, H * W), dtype=torch.long)
+        loser_start = torch.empty(B, dtype=torch.long)
+        loser_goal = torch.empty(B, dtype=torch.long)
+
+        for i, item in enumerate(batch):
+            w_tiles, w_start, w_goal = self._process_puzzle(item["winner"])
+            l_tiles, l_start, l_goal = self._process_puzzle(item["loser"])
+
+            winner_tiles[i] = w_tiles
+            winner_start[i] = w_start
+            winner_goal[i] = w_goal
+
+            loser_tiles[i] = l_tiles
+            loser_start[i] = l_start
+            loser_goal[i] = l_goal
+
+        return {
+            "winner_tiles": winner_tiles,
+            "winner_start": winner_start,
+            "winner_goal": winner_goal,
+            "loser_tiles": loser_tiles,
+            "loser_start": loser_start,
+            "loser_goal": loser_goal,
+        }
+
+
+def compute_log_prob(
+    model: PuzzleGeneratorV2,
+    tiles: torch.Tensor,
+    start_pos: torch.Tensor,
+    goal_pos: torch.Tensor,
+    num_timesteps: int = 50,
+) -> torch.Tensor:
+    """
+    Compute log probability of a puzzle under the model.
+
+    We average over timesteps like in training, computing the expected
+    log probability of predicting the correct tiles.
+
+    Args:
+        model: The puzzle generator
+        tiles: (B, 169) tile indices
+        start_pos: (B,) start positions
+        goal_pos: (B,) goal positions
+        num_timesteps: Number of timesteps to average over
+
+    Returns:
+        (B,) log probabilities
+    """
+    B = tiles.shape[0]
+    device = tiles.device
+
+    total_log_prob = torch.zeros(B, device=device)
+
+    # Sample multiple timesteps and average
+    for _ in range(num_timesteps):
+        t = torch.randint(0, model.num_timesteps, (B,), device=device)
+
+        # Forward diffusion
+        x_t = model.q_sample(tiles, t)
+
+        # Get predictions
+        outputs = model(x_t, t, start_pos, goal_pos)
+        tile_logits = outputs["tile_logits"]  # (B, 169, vocab_size)
+
+        # Log probability of correct tiles
+        log_probs = F.log_softmax(tile_logits, dim=-1)  # (B, 169, vocab_size)
+
+        # Gather log probs for true tiles
+        tile_log_probs = log_probs.gather(2, tiles.unsqueeze(-1)).squeeze(-1)  # (B, 169)
+
+        # Sum over positions
+        total_log_prob += tile_log_probs.sum(dim=1)  # (B,)
+
+    # Average over timesteps
+    return total_log_prob / num_timesteps
+
+
+def dpo_loss(
+    model: PuzzleGeneratorV2,
+    ref_model: PuzzleGeneratorV2,
+    winner_tiles: torch.Tensor,
+    winner_start: torch.Tensor,
+    winner_goal: torch.Tensor,
+    loser_tiles: torch.Tensor,
+    loser_start: torch.Tensor,
+    loser_goal: torch.Tensor,
+    beta: float = 0.1,
+) -> torch.Tensor:
+    """
+    Compute DPO loss.
+
+    DPO Loss = -log(sigmoid(beta * (log_pi(winner) - log_pi(loser)
+                                    - log_ref(winner) + log_ref(loser))))
+
+    This encourages the model to prefer winners over losers relative to
+    the reference model.
+    """
+    # Compute log probs under current model
+    log_pi_winner = compute_log_prob(model, winner_tiles, winner_start, winner_goal)
+    log_pi_loser = compute_log_prob(model, loser_tiles, loser_start, loser_goal)
+
+    # Compute log probs under reference model (frozen)
+    with torch.no_grad():
+        log_ref_winner = compute_log_prob(ref_model, winner_tiles, winner_start, winner_goal)
+        log_ref_loser = compute_log_prob(ref_model, loser_tiles, loser_start, loser_goal)
+
+    # DPO formula
+    log_ratio_diff = (log_pi_winner - log_pi_loser) - (log_ref_winner - log_ref_loser)
+    loss = -F.logsigmoid(beta * log_ratio_diff).mean()
+
+    return loss
+
+
+def train_dpo(args, model, device, validate_fn, out_dir):
+    """DPO fine-tuning loop."""
+    log_progress("Starting DPO fine-tuning...", out_dir)
+
+    # Load DPO dataset
+    dpo_data = DPODataset(Path(args.dpo_data))
+    log_progress(f"Loaded {len(dpo_data)} DPO pairs", out_dir)
+
+    dpo_loader = DataLoader(
+        dpo_data,
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=args.num_workers,
+        collate_fn=DPOCollateFn(),
+    )
+
+    # Create frozen reference model
+    ref_model = PuzzleGeneratorV2(model.config).to(device)
+    ref_model.load_state_dict(model.state_dict())
+    ref_model.eval()
+    for p in ref_model.parameters():
+        p.requires_grad = False
+    log_progress("Created frozen reference model", out_dir)
+
+    # Optimizer
+    optimizer = torch.optim.AdamW(
+        model.parameters(), lr=args.lr, weight_decay=args.weight_decay
+    )
+
+    # EMA
+    ema = EMA(model, decay=args.ema_decay)
+
+    total_steps = len(dpo_loader) * args.epochs
+    global_step = 0
+    best_full_pass = 0.0
+
+    for epoch in range(args.epochs):
+        model.train()
+        epoch_loss = 0.0
+
+        pbar = tqdm(dpo_loader, desc=f"DPO epoch {epoch + 1}")
+        for batch in pbar:
+            winner_tiles = batch["winner_tiles"].to(device)
+            winner_start = batch["winner_start"].to(device)
+            winner_goal = batch["winner_goal"].to(device)
+            loser_tiles = batch["loser_tiles"].to(device)
+            loser_start = batch["loser_start"].to(device)
+            loser_goal = batch["loser_goal"].to(device)
+
+            loss = dpo_loss(
+                model, ref_model,
+                winner_tiles, winner_start, winner_goal,
+                loser_tiles, loser_start, loser_goal,
+                beta=args.dpo_beta,
+            )
+
+            if not torch.isfinite(loss):
+                log_progress(f"nan loss at step {global_step}; skipping", out_dir)
+                continue
+
+            optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad)
+            optimizer.step()
+            ema.update()
+
+            epoch_loss += loss.item()
+            global_step += 1
+            pbar.set_postfix(loss=f"{loss.item():.4f}")
+
+            if global_step % args.log_every == 0:
+                log_progress(f"DPO step {global_step} loss={loss.item():.4f}", out_dir)
+
+            # Evaluation
+            if global_step % args.eval_every == 0:
+                ema.apply_shadow()
+                metrics = generate_and_validate(
+                    model, device, validate_fn,
+                    num_samples=args.generate_samples,
+                    k_candidates=args.k_candidates,
+                )
+                ema.restore()
+
+                log_msg = (
+                    f"DPO eval step={global_step} solve={metrics['solvable']:.1%} "
+                    f"nostuck={metrics['no_stuck']:.1%} unique={metrics['unique_optimal']:.1%} "
+                    f"t10={metrics['target_10']:.1%} PASS={metrics['full_pass']:.1%}"
+                )
+                if "moves_mean" in metrics:
+                    log_msg += f" | moves_mean={metrics['moves_mean']:.1f}"
+                log_progress(log_msg, out_dir)
+
+                if metrics["full_pass"] > best_full_pass:
+                    best_full_pass = metrics["full_pass"]
+                    ema.apply_shadow()
+                    torch.save({
+                        "model_state": model.state_dict(),
+                        "config": model.config,
+                        "step": global_step,
+                        "metrics": metrics,
+                    }, out_dir / "best_dpo_model.pt")
+                    ema.restore()
+                    log_progress(f"New best DPO! full_pass={best_full_pass:.1%}", out_dir)
+
+        log_progress(f"DPO epoch {epoch + 1} avg_loss={epoch_loss / len(dpo_loader):.4f}", out_dir)
+
+    # Save final
+    ema.apply_shadow()
+    torch.save({
+        "model_state": model.state_dict(),
+        "config": model.config,
+        "step": global_step,
+    }, out_dir / "final_dpo_model.pt")
+    ema.restore()
+
+    log_progress(f"DPO training complete. Best full_pass={best_full_pass:.1%}", out_dir)
+
+
+def train_pretrain(args, model, device, validate_fn, out_dir, config):
+    """Standard pretraining loop."""
     data_path = Path(args.data)
-
-    # Device
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-    elif torch.backends.mps.is_available():
-        device = torch.device("mps")
-    else:
-        device = torch.device("cpu")
-    
-    log_progress(f"device={device}", out_dir)
-
-    # Try to import verifier
-    validate_fn = try_import_verifier()
-    if validate_fn:
-        log_progress("Rust verifier available for validation", out_dir)
-        # Set global verifier for path computation during data loading
-        set_validate_fn(validate_fn)
-    else:
-        log_progress("WARNING: Rust verifier not available, using structure-only validation", out_dir)
 
     # Data count
     data_count = args.data_count
@@ -676,37 +638,26 @@ def main():
 
     log_progress(f"data={data_count} train={train_count} steps/epoch={steps_per_epoch}", out_dir)
 
-    # Model
-    config = config_for_preset(args.preset)
-    model = PuzzleGeneratorV2(config).to(device)
-    param_count = sum(p.numel() for p in model.parameters())
-    log_progress(f"model params: {param_count/1e6:.1f}M (preset={args.preset})", out_dir)
-
-    # Optimizer with warmup + cosine decay to floor
+    # Optimizer with warmup + cosine decay
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=args.lr, weight_decay=args.weight_decay
     )
-    
+
     warmup_steps = min(1000, total_steps // 10)
-    lr_min_ratio = args.lr_min / args.lr  # Floor as ratio of max LR
-    
+    lr_min_ratio = args.lr_min / args.lr
+
     def lr_lambda(step):
         if step < warmup_steps:
             return step / warmup_steps
         progress = (step - warmup_steps) / max(1, total_steps - warmup_steps)
-        # Cosine decay from 1.0 to lr_min_ratio
         cosine = 0.5 * (1.0 + math.cos(math.pi * progress))
         return lr_min_ratio + (1.0 - lr_min_ratio) * cosine
-    
+
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
-    # Replay buffer for verifier-aware fine-tuning (DISABLED - made things worse)
-    # replay_buffer = ReplayBuffer(max_size=10000)
-
-    # EMA for stable sampling
+    # EMA
     ema = EMA(model, decay=args.ema_decay)
     log_progress(f"EMA initialized with decay={args.ema_decay}", out_dir)
-    log_progress(f"CFG: dropout={args.cfg_dropout} guidance={args.guidance_scale} target={args.target_moves}", out_dir)
 
     global_step = 0
     best_full_pass = 0.0
@@ -725,7 +676,7 @@ def main():
             dataset,
             batch_size=args.batch_size,
             num_workers=args.num_workers,
-            collate_fn=CollateFnV2(augment=args.augment, cfg_dropout=args.cfg_dropout),
+            collate_fn=CollateFnV2(augment=args.augment),
         )
 
         model.train()
@@ -735,71 +686,35 @@ def main():
 
         pbar = tqdm(loader, desc=f"epoch {epoch + 1}", total=steps_per_epoch)
         for batch in pbar:
-            tiles = batch["tiles"].to(device)  # (B, 169)
-            start_pos = batch["start_pos"].to(device)  # (B,)
-            goal_pos = batch["goal_pos"].to(device)  # (B,)
-            moves = batch["moves"].to(device)  # (B,) move count tokens for CFG
-            on_path = batch["on_path"].to(device)  # (B, 169)
-            is_stop = batch["is_stop"].to(device)  # (B, 169)
-            stop_sequence = batch["stop_sequence"].to(device)  # (B, 11)
-            stop_sequence_mask = batch["stop_sequence_mask"].to(device)  # (B,)
+            tiles = batch["tiles"].to(device)
+            start_pos = batch["start_pos"].to(device)
+            goal_pos = batch["goal_pos"].to(device)
             batch_size = tiles.shape[0]
 
             # Sample random timesteps
             t = torch.randint(0, model.num_timesteps, (batch_size,), device=device)
-            
-            # Forward diffusion: mask tiles
+
+            # Forward diffusion
             x_t = model.q_sample(tiles, t)
-            
-            # Forward pass with move count conditioning
-            outputs = model(x_t, t, start_pos, goal_pos, moves)
-            
-            # Tile loss: predict original tiles from masked
-            tile_logits = outputs["tile_logits"]  # (B, 169, vocab_size)
+
+            # Forward pass
+            outputs = model(x_t, t, start_pos, goal_pos)
+
+            # Tile loss
+            tile_logits = outputs["tile_logits"]
             tile_loss = F.cross_entropy(
                 tile_logits.reshape(-1, config.tile_vocab_size),
                 tiles.reshape(-1),
             )
-            
+
             # Position losses
-            start_logits = outputs["start_logits"]  # (B, 169)
-            goal_logits = outputs["goal_logits"]  # (B, 169)
-            
+            start_logits = outputs["start_logits"]
+            goal_logits = outputs["goal_logits"]
             start_loss = F.cross_entropy(start_logits, start_pos)
             goal_loss = F.cross_entropy(goal_logits, goal_pos)
-            
-            # Path auxiliary losses (binary cross entropy)
-            on_path_logits = outputs["on_path_logits"]  # (B, 169)
-            is_stop_logits = outputs["is_stop_logits"]  # (B, 169)
-            
-            # Only compute path loss if we have path labels (verifier available)
-            if on_path.sum() > 0:
-                on_path_loss = F.binary_cross_entropy_with_logits(on_path_logits, on_path)
-                is_stop_loss = F.binary_cross_entropy_with_logits(is_stop_logits, is_stop)
-            else:
-                on_path_loss = torch.tensor(0.0, device=device)
-                is_stop_loss = torch.tensor(0.0, device=device)
-            
-            # ===== NEW: Ordered stop sequence loss =====
-            # Only compute for samples with valid 11-stop sequences
-            stop_logits = outputs["stop_logits"]  # (B, 11, 169)
-            if stop_sequence_mask.any():
-                # Select only valid samples
-                valid_stop_logits = stop_logits[stop_sequence_mask]  # (N, 11, 169)
-                valid_stop_targets = stop_sequence[stop_sequence_mask]  # (N, 11)
-                
-                # Cross-entropy for each stop position
-                stop_seq_loss = F.cross_entropy(
-                    valid_stop_logits.reshape(-1, 169),
-                    valid_stop_targets.reshape(-1),
-                )
-            else:
-                stop_seq_loss = torch.tensor(0.0, device=device)
-            
-            # Combined loss: tile + position + path auxiliary + stop sequence
-            loss = (tile_loss + 0.5 * start_loss + 0.5 * goal_loss + 
-                    0.5 * on_path_loss + 0.5 * is_stop_loss + 
-                    args.stop_loss_weight * stop_seq_loss)
+
+            # Combined loss
+            loss = tile_loss + 0.5 * start_loss + 0.5 * goal_loss
 
             if not torch.isfinite(loss):
                 log_progress(f"nan loss at step {global_step}; skipping", out_dir)
@@ -813,8 +728,6 @@ def main():
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad)
             optimizer.step()
             scheduler.step()
-            
-            # Update EMA weights
             ema.update()
 
             if global_step % args.log_every == 0:
@@ -823,28 +736,20 @@ def main():
                 log_progress(
                     f"step {global_step} loss={loss.item():.4f} tile={tile_loss.item():.4f} "
                     f"start={start_loss.item():.4f} goal={goal_loss.item():.4f} "
-                    f"path={on_path_loss.item():.4f} stop={is_stop_loss.item():.4f} "
-                    f"stopseq={stop_seq_loss.item():.4f} lr={lr:.2e} dt={dt:.1f}s",
+                    f"lr={lr:.2e} dt={dt:.1f}s",
                     out_dir,
                 )
 
-            # Periodic evaluation (using EMA weights)
+            # Evaluation
             if global_step > 0 and global_step % args.eval_every == 0:
-                # Apply EMA weights for evaluation
                 ema.apply_shadow()
-                
                 metrics = generate_and_validate(
                     model, device, validate_fn,
                     num_samples=args.generate_samples,
                     k_candidates=args.k_candidates,
-                    target_moves=args.target_moves,
-                    guidance_scale=args.guidance_scale,
                 )
-                
-                # Restore original weights
                 ema.restore()
-                
-                # Build log message with move stats if available
+
                 log_msg = (
                     f"eval step={global_step} valid={metrics['valid_structure']:.1%} "
                     f"solve={metrics['solvable']:.1%} nostuck={metrics['no_stuck']:.1%} "
@@ -852,32 +757,25 @@ def main():
                     f"PASS={metrics['full_pass']:.1%}"
                 )
                 if "moves_mean" in metrics:
-                    log_msg += (
-                        f" | moves: mean={metrics['moves_mean']:.1f} "
-                        f"med={metrics['moves_median']:.0f} near10={metrics['moves_near_10']:.1%}"
-                    )
+                    log_msg += f" | moves: mean={metrics['moves_mean']:.1f} near10={metrics['moves_near_10']:.1%}"
                 log_progress(log_msg, out_dir)
-                
-                # Update best (save EMA weights)
+
                 if metrics["full_pass"] > best_full_pass:
                     best_full_pass = metrics["full_pass"]
-                    # Apply EMA for saving
                     ema.apply_shadow()
-                    ckpt = {
-                        "model_state": model.state_dict(),  # This is now EMA weights
+                    torch.save({
+                        "model_state": model.state_dict(),
                         "config": config,
                         "step": global_step,
                         "metrics": metrics,
-                    }
-                    torch.save(ckpt, out_dir / "best_model.pt")
+                    }, out_dir / "best_model.pt")
                     ema.restore()
                     log_progress(f"New best! full_pass={best_full_pass:.1%}", out_dir)
 
             if global_step > 0 and global_step % args.save_every == 0:
-                # Save both regular and EMA weights
                 ema.apply_shadow()
                 ckpt = {
-                    "model_state": model.state_dict(),  # EMA weights
+                    "model_state": model.state_dict(),
                     "ema_shadow": ema.shadow,
                     "optimizer_state": optimizer.state_dict(),
                     "scheduler_state": scheduler.state_dict(),
@@ -892,11 +790,10 @@ def main():
 
             global_step += 1
             pbar.set_postfix(loss=f"{loss.item():.4f}")
-            
+
             if global_step >= steps_per_epoch * (epoch + 1):
                 break
 
-        # End of epoch logging
         avg_loss = epoch_loss / max(1, epoch_samples)
         log_progress(f"epoch {epoch + 1} complete, avg_loss={avg_loss:.4f}", out_dir)
 
@@ -907,8 +804,6 @@ def main():
         model, device, validate_fn,
         num_samples=256,
         k_candidates=args.k_candidates,
-        target_moves=args.target_moves,
-        guidance_scale=args.guidance_scale,
     )
     ema.restore()
     log_progress(
@@ -919,15 +814,94 @@ def main():
         out_dir,
     )
 
-    # Save final model
-    ckpt = {
+    torch.save({
         "model_state": model.state_dict(),
         "config": config,
         "step": global_step,
         "metrics": final_metrics,
-    }
-    torch.save(ckpt, out_dir / "final_model.pt")
+    }, out_dir / "final_model.pt")
     log_progress(f"Training complete. Best full_pass={best_full_pass:.1%}", out_dir)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Train puzzle generator v2 (clean)")
+
+    # Data
+    parser.add_argument("--data", type=str, help="Path to training JSONL (for pretraining)")
+    parser.add_argument("--out", type=str, required=True, help="Output directory")
+    parser.add_argument("--data-count", type=int, default=None)
+
+    # DPO mode
+    parser.add_argument("--dpo", action="store_true", help="Run DPO fine-tuning instead of pretraining")
+    parser.add_argument("--dpo-data", type=str, help="Path to DPO pairs JSONL")
+    parser.add_argument("--dpo-beta", type=float, default=0.1, help="DPO beta parameter")
+    parser.add_argument("--checkpoint", type=str, help="Checkpoint to load before DPO")
+
+    # Training
+    parser.add_argument("--epochs", type=int, default=20)
+    parser.add_argument("--batch-size", type=int, default=64)
+    parser.add_argument("--preset", type=str, default="base", choices=["small", "base", "large"])
+    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--weight-decay", type=float, default=0.01)
+    parser.add_argument("--clip-grad", type=float, default=1.0)
+    parser.add_argument("--val-pct", type=float, default=0.02)
+    parser.add_argument("--test-pct", type=float, default=0.01)
+    parser.add_argument("--shuffle-buffer", type=int, default=8192)
+    parser.add_argument("--num-workers", type=int, default=0)
+    parser.add_argument("--log-every", type=int, default=100)
+    parser.add_argument("--save-every", type=int, default=2000)
+    parser.add_argument("--eval-every", type=int, default=1000)
+    parser.add_argument("--generate-samples", type=int, default=256)
+    parser.add_argument("--k-candidates", type=int, default=1)
+    parser.add_argument("--ema-decay", type=float, default=0.999)
+    parser.add_argument("--augment", action="store_true", help="Enable data augmentation")
+    parser.add_argument("--lr-min", type=float, default=1e-6)
+
+    args = parser.parse_args()
+
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Device
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
+
+    log_progress(f"device={device}", out_dir)
+
+    # Verifier
+    validate_fn = try_import_verifier()
+    if validate_fn:
+        log_progress("Rust verifier available", out_dir)
+    else:
+        log_progress("WARNING: Rust verifier not available", out_dir)
+
+    # Model
+    config = config_for_preset(args.preset)
+    model = PuzzleGeneratorV2(config).to(device)
+    param_count = sum(p.numel() for p in model.parameters())
+    log_progress(f"model params: {param_count/1e6:.1f}M (preset={args.preset})", out_dir)
+
+    # Load checkpoint if specified
+    if args.checkpoint:
+        ckpt = torch.load(args.checkpoint, map_location=device)
+        model.load_state_dict(ckpt["model_state"])
+        log_progress(f"Loaded checkpoint: {args.checkpoint}", out_dir)
+
+    # Run appropriate training mode
+    if args.dpo:
+        if not args.dpo_data:
+            raise ValueError("--dpo-data required for DPO training")
+        if not args.checkpoint:
+            log_progress("WARNING: Running DPO without pretrained checkpoint", out_dir)
+        train_dpo(args, model, device, validate_fn, out_dir)
+    else:
+        if not args.data:
+            raise ValueError("--data required for pretraining")
+        train_pretrain(args, model, device, validate_fn, out_dir, config)
 
 
 if __name__ == "__main__":

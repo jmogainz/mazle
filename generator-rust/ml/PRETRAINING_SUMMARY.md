@@ -265,8 +265,9 @@
 | AR Base | 13% | 7% | 6% | 0% | Loss plateau 0.93 |
 | AR + Aux Losses | 18% | 13% | 11% | 1% | Best v1 AR |
 | Diffusion v1 | 14% | 8% | 6% | 1% | Still improving |
-| V2 Architecture | 100% | 80%+ | 70% | 1-2% | Previous best |
-| **V2 + CFG** | **100%** | **77%** | **70%** | **2.3%** | Move count conditioning |
+| **V2 Architecture** | **100%** | **73%** | **66%** | **2.3%** | **BEST (step 4000)** |
+| V2 + CFG | 100% | 77% | 70% | 2.3% | Matched, didn't beat |
+| V2 + AdaLN | 100% | 70% | 55% | 1.2% | Made it worse |
 
 ---
 
@@ -714,25 +715,158 @@ With guidance_scale=2.0, the conditional and unconditional predictions may be to
 
 ---
 
-## Next Steps to Try
+## 12. AdaLN + Move-Count Auxiliary Head (FAILED)
 
-1. **Higher guidance scale:** Test inference with guidance_scale=4.0 on existing checkpoint
-2. **Balanced training data:** Equal samples per move count (not 50% 10-move)
-3. **Position-aware CFG:** Apply move conditioning to start/goal prediction too
-4. **Two-stage generation:** First predict stop locations, then fill in tiles
-5. **Accept current baseline:** Use K-candidates with step 14000 checkpoint (2.3% per-puzzle rate)
+### Motivation
+
+Standard CFG adds conditioning via simple embedding addition. Research on diffusion models (DiT, Stable Diffusion 3) shows that **Adaptive Layer Normalization (AdaLN)** provides stronger conditioning by modulating layer statistics rather than just adding to activations.
+
+Additionally, we hypothesized that forcing the model to **predict move count from tiles** when conditioning is absent would create a stronger internal representation of complexity.
+
+### Architecture Changes
+
+**AdaLayerNorm (AdaLN):**
+```python
+class AdaLayerNorm(nn.Module):
+    """LayerNorm with FiLM-style conditioning (AdaLN / AdaNorm)."""
+    
+    def __init__(self, dim: int, cond_dim: int):
+        self.norm = nn.LayerNorm(dim, elementwise_affine=False)
+        self.proj = nn.Linear(cond_dim, dim * 2)  # scale and shift
+    
+    def forward(self, x, cond):
+        scale, shift = self.proj(cond).chunk(2, dim=-1)
+        x = self.norm(x)
+        return x * (1.0 + scale.unsqueeze(1)) + shift.unsqueeze(1)
+```
+
+**TransformerBlock changes:**
+- Replaced standard `LayerNorm` with `AdaLayerNorm` in both pre-attention and pre-FFN positions
+- Conditioning tensor (timestep + moves embedding) passed to every layer
+- Removed the older approach of adding timestep embedding after attention
+
+**Move-count auxiliary head:**
+```python
+# Predicts move count (4-14) from grid representation
+self.moves_head = nn.Sequential(
+    nn.Linear(config.model_dim, config.model_dim),
+    nn.GELU(),
+    nn.Linear(config.model_dim, self.NUM_MOVES),  # 11-way classification
+)
+```
+
+**Training changes:**
+- Separate `moves_cond` (with CFG dropout) and `moves_target` (always true label)
+- Move-count loss computed ONLY on unconditional examples (when CFG dropout triggered)
+- Removed stop sequence prediction (found unhelpful in prior experiments)
+
+### Training Configuration
+
+```bash
+python pretrain_v2.py \
+  --data ../data/train-10move-300k-shuf.jsonl \
+  --out output_v2_adaln \
+  --epochs 15 \
+  --batch-size 64 \
+  --preset base \
+  --lr 3e-4 \
+  --eval-every 1000 \
+  --generate-samples 256 \
+  --augment \
+  --ema-decay 0.999 \
+  --cfg-dropout 0.1 \
+  --guidance-scale 2.0 \
+  --move-loss-weight 1.0
+```
+
+### Results
+
+**Training progression (256 samples per eval):**
+
+| Step | solve% | nostuck% | unique% | t10% | PASS% | moves_mean |
+|------|--------|----------|---------|------|-------|------------|
+| 1000 | 75.8% | 37.9% | 65.2% | 1.6% | 0.4% | 5.6 |
+| 2000 | 69.5% | 57.0% | 55.1% | 2.0% | **1.2%** | 4.7 |
+| 3000 | 61.7% | 47.3% | 56.2% | 0.4% | 0.4% | 3.9 |
+| 4000 | 57.4% | 41.0% | 50.4% | 1.6% | 0.8% | 3.9 |
+| 5000 | 59.0% | 40.2% | 52.3% | 0.4% | 0.4% | 3.7 |
+| 6000 | 86.7% | 75.8% | 76.2% | 0.4% | 0.0% | 3.2 |
+| 7000 | 76.6% | 66.0% | 64.8% | 0.0% | 0.0% | 4.0 |
+| 8000 | 71.9% | 59.4% | 59.8% | 1.2% | 0.4% | 3.8 |
+| 9000 | 63.7% | 52.0% | 53.5% | 0.0% | 0.0% | 4.2 |
+| 10000 | 62.9% | 48.4% | 57.0% | 0.0% | 0.0% | 3.9 |
+
+**Best result:** Step 2000 with 1.2% PASS (t10=2.0%)
+
+### Analysis
+
+**What happened:**
+1. **Early peak, rapid decline** - Best PASS at step 2000, then degraded
+2. **Move mean collapsed** - Started at 5.6, dropped to 3.2-4.2 (well below target 10)
+3. **High solvability, wrong complexity** - Model learned valid puzzles but too simple
+4. **Worse than baseline CFG** - Previous CFG achieved 2.3% PASS; AdaLN peaked at 1.2%
+
+**Why AdaLN didn't help:**
+1. **Stronger conditioning ≠ better move control** - AdaLN makes the model more responsive to the conditioning signal, but the conditioning signal itself (move count token) doesn't contain enough information about HOW to achieve that move count
+2. **Move-count head learned trivially** - Loss dropped to ~0.0000 almost immediately, meaning the head could predict move count from early layers without encoding useful structure
+3. **Training data was 10-move only** - All examples have same move count, so the CFG mechanism couldn't learn distinctions between different complexities
+4. **Degradation accelerated** - The stronger conditioning may have made the model more confident in its (wrong) predictions
+
+### Key Learning
+
+**#11: Stronger conditioning architecture doesn't solve the fundamental problem.**
+
+The issue isn't that the model can't "hear" the move count conditioning—it's that move count is an emergent global property that can't be controlled by local tile predictions. Making the conditioning signal stronger (AdaLN) or adding auxiliary supervision (move-count head) doesn't change this fundamental limitation.
+
+The model can easily learn to predict "this grid is a 10-move puzzle" from the grid itself, but it cannot learn "if I place ice here instead of wall, the path will be 2 moves longer."
+
+---
+
+## Summary of All Failed Approaches
+
+| Approach | Best PASS% | Why it Failed |
+|----------|------------|---------------|
+| Feedforward CNN | 0% | Collapsed to majority class |
+| AR Transformer | 1% | Sequential can't reason globally |
+| Discrete Diffusion v1 | 1% | No path structure supervision |
+| V2 + CFG | 2.3% | Matched baseline, didn't improve |
+| REINFORCE RL | 0% (worse) | Sparse reward, high variance |
+| Elite Fine-tuning | ~1% | Tile copying doesn't teach structure |
+| V2 + AdaLN + Move Head | 1.2% | Stronger conditioning, same problem |
+
+---
+
+## Current Best Baseline
+
+**V2 (no CFG) at step 4000: 2.3% PASS rate** (`output_v2_clean`)
+
+This was the **original V2 architecture** before any CFG or auxiliary head experiments. All subsequent attempts (CFG, stop sequence, AdaLN) have **matched but not beaten** this result.
+
+Best checkpoint: `output_v2_clean/` at step 4000
+
+---
+
+## Remaining Options
+
+1. **Accept 2.3%** - Use K-candidates (K=100) for ~70% success rate per seed
+2. **Two-stage generation** - First predict stop positions explicitly, then fill tiles
+3. **Contrastive learning** - Train on (10-move, 6-move) puzzle pairs
+4. **Path-conditioned generation** - Provide optimal path as input, generate tiles that realize it
+5. **Abandon neural approach** - Rust generator may be fundamentally better for this problem
 
 ---
 
 ## File Locations
 
 - **Training data (10-move only):** `generator-rust/data/train-combined-200k-shuf.jsonl`
-- **Training data (multi-move CFG):** `generator-rust/data/train-multimove-400k-shuf.jsonl` ⭐
-- **V2 model (with CFG):** `generator-rust/ml/model_v2.py` ⭐
-- **V2 training:** `generator-rust/ml/pretrain_v2.py` ⭐
+- **Training data (10-move, 300k):** `generator-rust/data/train-10move-300k-shuf.jsonl`
+- **Training data (multi-move CFG):** `generator-rust/data/train-multimove-400k-shuf.jsonl`
+- **V2 model (with CFG + AdaLN):** `generator-rust/ml/model_v2.py`
+- **V2 training:** `generator-rust/ml/pretrain_v2.py`
 - **RL fine-tuning:** `generator-rust/ml/rl_finetune.py` (failed approach, kept for reference)
 - **Best checkpoint (no CFG):** `generator-rust/ml/output_v2_full/checkpoint_00008000.pt`
 - **Best checkpoint (CFG):** `generator-rust/ml/output_v2_cfg/best_model.pt` (step 14000, 2.3% PASS)
+- **AdaLN experiment:** `generator-rust/ml/output_v2_adaln/` (failed, 1.2% best)
 - **V1 AR model:** `generator-rust/ml/model_ar.py`
 - **V1 Diffusion model:** `generator-rust/ml/model_diffusion.py`
 - **Verifier:** `generator-rust/ml/bridge/` (PyO3 Rust bindings)

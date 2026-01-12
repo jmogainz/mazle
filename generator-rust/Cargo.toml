@@ -41,6 +41,8 @@ thiserror = "1"
 axum = "0.7"
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.5", features = ["cors"] }
+# Upstash/Vercel KV REST (used for native backfill tools)
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 # Logging backend for native
 env_logger = "0.11"
 # Timezone handling for scheduler

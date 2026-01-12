@@ -1207,6 +1207,10 @@ pub fn find_optimal_path_public(
     let start_full = Position { x: start.x + 1, y: start.y + 1 };
     let goal_full = Position { x: goal.x + 1, y: goal.y + 1 };
 
+    // Set start/goal tile types (matches validate_ice_puzzle_interior behavior)
+    tiles[start_full.y as usize][start_full.x as usize] = TileType::Start;
+    tiles[goal_full.y as usize][goal_full.x as usize] = TileType::Goal;
+
     // Find path and convert back to interior coords
     find_optimal_path(&tiles, &start_full, &goal_full, full_width, full_height)
         .map(|path| {

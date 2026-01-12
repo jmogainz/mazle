@@ -67,5 +67,7 @@ public/wasm/
 bkp/
 generator-rust/ml/output*/
 generator-rust/ml/output*.pid
+output*.log
+output*.pid
 *.log
 

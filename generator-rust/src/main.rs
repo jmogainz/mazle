@@ -5,7 +5,9 @@ use axum::{
     Router,
 };
 use axum::http::StatusCode;
+use chrono::{Duration as ChronoDuration, NaiveDate};
 use log::{error, info};
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fs::{File, OpenOptions};
@@ -352,6 +354,264 @@ fn run_dataset_generation(config: DatasetConfig) -> Result<(), Box<dyn std::erro
     info!(
         "✅ Dataset generation complete ({} samples) -> {}",
         config.count, config.out_path
+    );
+
+    Ok(())
+}
+
+// =============================================================================
+// DAILY KV BACKFILL (NATIVE, OUTSIDE DOCKER)
+// =============================================================================
+
+const DEFAULT_DAILIES_KV_MAP_TYPE: &str = "ice";
+const DEFAULT_DAILIES_KV_CLOSENESS_THRESHOLD: f64 = 0.99; // Match prod backend default (ENV != dev)
+
+#[derive(Clone, Debug)]
+struct DailiesKvConfig {
+    start_date: NaiveDate,
+    end_date: NaiveDate,
+    force: bool,
+    map_type: String,
+    parallel: bool,
+    closeness_threshold: f64,
+    target_moves: Option<i32>,
+}
+
+fn dailies_kv_config_from_env() -> Result<Option<DailiesKvConfig>, String> {
+    let start_str = match std::env::var("DAILIES_KV_START") {
+        Ok(value) => value,
+        Err(_) => return Ok(None),
+    };
+
+    let start_date = NaiveDate::parse_from_str(&start_str, "%Y-%m-%d")
+        .map_err(|_| format!("Invalid DAILIES_KV_START: {}", start_str))?;
+
+    let end_str = match std::env::var("DAILIES_KV_END") {
+        Ok(value) => value,
+        Err(_) => {
+            return Err(
+                "Missing DAILIES_KV_END (expected YYYY-MM-DD; inclusive end date)".to_string(),
+            )
+        }
+    };
+
+    let end_date = NaiveDate::parse_from_str(&end_str, "%Y-%m-%d")
+        .map_err(|_| format!("Invalid DAILIES_KV_END: {}", end_str))?;
+
+    if end_date < start_date {
+        return Err(format!(
+            "DAILIES_KV_END ({}) must be >= DAILIES_KV_START ({})",
+            end_str, start_str
+        ));
+    }
+
+    let force = match std::env::var("DAILIES_KV_FORCE") {
+        Ok(value) => parse_env_bool("DAILIES_KV_FORCE", value)?,
+        Err(_) => false,
+    };
+
+    let map_type = std::env::var("DAILIES_KV_MAP_TYPE")
+        .unwrap_or_else(|_| DEFAULT_DAILIES_KV_MAP_TYPE.to_string());
+    if map_type != "ice" && map_type != "ground" {
+        return Err(format!(
+            "DAILIES_KV_MAP_TYPE='{}' not supported (use 'ice' or 'ground')",
+            map_type
+        ));
+    }
+
+    let parallel = match std::env::var("DAILIES_KV_PARALLEL") {
+        Ok(value) => parse_env_bool("DAILIES_KV_PARALLEL", value)?,
+        Err(_) => true,
+    };
+
+    let closeness_threshold = match std::env::var("DAILIES_KV_CLOSENESS_THRESHOLD") {
+        Ok(value) => value
+            .parse::<f64>()
+            .map_err(|_| format!("Invalid DAILIES_KV_CLOSENESS_THRESHOLD: {}", value))?,
+        Err(_) => DEFAULT_DAILIES_KV_CLOSENESS_THRESHOLD,
+    };
+
+    let target_moves = match std::env::var("DAILIES_KV_TARGET_MOVES") {
+        Ok(value) => Some(
+            value
+                .parse::<i32>()
+                .map_err(|_| format!("Invalid DAILIES_KV_TARGET_MOVES: {}", value))?,
+        ),
+        Err(_) => None,
+    };
+
+    Ok(Some(DailiesKvConfig {
+        start_date,
+        end_date,
+        force,
+        map_type,
+        parallel,
+        closeness_threshold,
+        target_moves,
+    }))
+}
+
+fn upstash_kv_env() -> Result<(String, String), String> {
+    let url = std::env::var("KV_REST_API_URL")
+        .or_else(|_| std::env::var("UPSTASH_REDIS_REST_URL"))
+        .map_err(|_| "Missing KV_REST_API_URL or UPSTASH_REDIS_REST_URL".to_string())?;
+    let token = std::env::var("KV_REST_API_TOKEN")
+        .or_else(|_| std::env::var("UPSTASH_REDIS_REST_TOKEN"))
+        .map_err(|_| "Missing KV_REST_API_TOKEN or UPSTASH_REDIS_REST_TOKEN".to_string())?;
+
+    Ok((url.trim_end_matches('/').to_string(), token))
+}
+
+async fn upstash_exec(
+    http: &Client,
+    url: &str,
+    token: &str,
+    command: Vec<String>,
+) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    let response = http
+        .post(url)
+        .bearer_auth(token)
+        .json(&command)
+        .send()
+        .await?;
+
+    let status = response.status();
+    let body = response.text().await?;
+    if !status.is_success() {
+        return Err(format!("Upstash HTTP {}: {}", status, body).into());
+    }
+
+    let json: serde_json::Value = serde_json::from_str(&body)
+        .map_err(|e| format!("Upstash JSON parse error: {} (body={})", e, body))?;
+    Ok(json.get("result").cloned().unwrap_or(serde_json::Value::Null))
+}
+
+async fn upstash_exists(
+    http: &Client,
+    url: &str,
+    token: &str,
+    key: &str,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    let result =
+        upstash_exec(http, url, token, vec!["EXISTS".to_string(), key.to_string()]).await?;
+    match result {
+        serde_json::Value::Number(n) => Ok(n.as_i64().unwrap_or(0) > 0),
+        serde_json::Value::String(s) => Ok(s.parse::<i64>().unwrap_or(0) > 0),
+        other => Err(format!("Unexpected Upstash EXISTS result: {}", other).into()),
+    }
+}
+
+async fn upstash_set(
+    http: &Client,
+    url: &str,
+    token: &str,
+    key: &str,
+    value: &str,
+    only_if_not_exists: bool,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    let mut command = vec!["SET".to_string(), key.to_string(), value.to_string()];
+    if only_if_not_exists {
+        command.push("NX".to_string());
+    }
+    let result = upstash_exec(http, url, token, command).await?;
+
+    match result {
+        serde_json::Value::Null => Ok(false),
+        serde_json::Value::String(s) if s == "OK" => Ok(true),
+        serde_json::Value::Bool(true) => Ok(true),
+        other => Err(format!("Unexpected Upstash SET result: {}", other).into()),
+    }
+}
+
+async fn run_dailies_kv_backfill(
+    config: DailiesKvConfig,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let env_mode = std::env::var("ENV").unwrap_or_else(|_| "dev".to_string());
+    if env_mode != "prod" {
+        return Err(format!(
+            "Daily KV backfill requires ENV=prod (got ENV={})",
+            env_mode
+        )
+        .into());
+    }
+
+    let (kv_url, kv_token) = upstash_kv_env().map_err(|e| format!("KV env error: {}", e))?;
+    let http = Client::new();
+
+    let mut gen_config = GenerationConfig::default();
+    gen_config.parallel = config.parallel;
+    gen_config.closeness_threshold = config.closeness_threshold;
+    gen_config.target_moves = config.target_moves;
+
+    info!("🗓️ Daily KV backfill mode enabled");
+    let total_days = (config.end_date - config.start_date).num_days() + 1;
+    info!(
+        "🗓️ start={} end={} days={} map_type={} force={} parallel={} closeness_threshold={:.2} target_moves={:?}",
+        config.start_date.format("%Y-%m-%d"),
+        config.end_date.format("%Y-%m-%d"),
+        total_days,
+        config.map_type,
+        config.force,
+        config.parallel,
+        config.closeness_threshold,
+        config.target_moves
+    );
+
+    let start_time = Instant::now();
+
+    for offset in 0..total_days {
+        let date = config.start_date + ChronoDuration::days(offset);
+        let seed = date.format("%Y-%m-%d").to_string();
+        let key = format!("puzzle:{}", seed);
+
+        if !config.force && upstash_exists(&http, &kv_url, &kv_token, &key).await? {
+            info!("🗓️ {}/{} {} (exists)", offset + 1, total_days, seed);
+            continue;
+        }
+
+        info!("🗓️ {}/{} {} generating...", offset + 1, total_days, seed);
+        let gen_start = Instant::now();
+        let seed_clone = seed.clone();
+        let gen_config_clone = gen_config.clone();
+        let map_type_clone = config.map_type.clone();
+
+        let puzzle_result = tokio::task::spawn_blocking(move || {
+            generate_by_type(&seed_clone, &gen_config_clone, &map_type_clone, None)
+        })
+        .await;
+
+        let puzzle = match puzzle_result {
+            Ok(Ok(p)) => p,
+            Ok(Err(())) => return Err(format!("Generation cancelled for '{}'", seed).into()),
+            Err(join_err) => return Err(format!("Generation task failed for '{}': {}", seed, join_err).into()),
+        };
+
+        let gen_ms = gen_start.elapsed().as_millis() as u64;
+        let value = serde_json::to_string(&puzzle)?;
+
+        // Safety: default never overwrites. Force mode overwrites.
+        let wrote = if config.force {
+            upstash_set(&http, &kv_url, &kv_token, &key, &value, false).await?
+        } else {
+            // Use NX; if another process wins the race we report cached=false.
+            upstash_set(&http, &kv_url, &kv_token, &key, &value, true).await?
+        };
+
+        info!(
+            "🗓️ {}/{} {} cached={} gen={}ms",
+            offset + 1,
+            total_days,
+            seed,
+            wrote,
+            gen_ms
+        );
+    }
+
+    let elapsed = start_time.elapsed();
+    info!(
+        "✅ Daily KV backfill complete ({} days) in {:.1}m",
+        total_days,
+        elapsed.as_secs_f64() / 60.0
     );
 
     Ok(())
@@ -757,6 +1017,21 @@ async fn main() {
     if let Some(config) = dataset_config {
         if let Err(err) = run_dataset_generation(config) {
             error!("❌ Dataset generation failed: {}", err);
+            std::process::exit(1);
+        }
+        return;
+    }
+
+    let dailies_kv_config = match dailies_kv_config_from_env() {
+        Ok(config) => config,
+        Err(err) => {
+            error!("❌ Daily KV backfill config error: {}", err);
+            std::process::exit(1);
+        }
+    };
+    if let Some(config) = dailies_kv_config {
+        if let Err(err) = run_dailies_kv_backfill(config).await {
+            error!("❌ Daily KV backfill failed: {}", err);
             std::process::exit(1);
         }
         return;

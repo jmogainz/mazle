@@ -109,6 +109,20 @@ Daily puzzles are pre-generated at 11 PM ET via Vercel Cron and cached in Vercel
 - Thread-safe backfill from concurrent WASM generations
 - Self-healing on fresh deploy or cron failure
 
+## Backfilling Vercel KV / Upstash (Local)
+
+To pre-generate a bunch of daily puzzles locally and upload them into KV (keys like `puzzle:YYYY-MM-DD`), run the Rust generator natively (outside Docker) and push directly to KV (NX-only; never overwrites):
+
+```bash
+export UNIQUE_RUNNER_ID=$(whoami)
+export BWS_ACCESS_TOKEN=...
+
+cd generator-rust
+make dailies-kv-backfill ENV=prod DAILIES_KV_START=2026-01-01 DAILIES_KV_END=2026-01-30
+```
+
+This fetches `KV_REST_API_URL`/`KV_REST_API_TOKEN` (or Upstash REST equivalents) from Bitwarden Secrets (BWS project `<app>-<env>`, e.g. `mazle-prod`), then spawns a detached native generator process (logs at `generator-rust/data/dailies-kv-backfill.log`).
+
 ## How to Play
 
 - **Arrow keys / WASD / Swipe** to move

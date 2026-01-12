@@ -107,6 +107,8 @@ class JsonlMazeDataset(IterableDataset):
         shuffle_buffer: int = 0,
         shuffle_seed: int = 13,
         map_type: Optional[str] = None,
+        min_optimal_moves: Optional[int] = None,
+        max_optimal_moves: Optional[int] = None,
     ) -> None:
         super().__init__()
         self.path = path
@@ -116,6 +118,8 @@ class JsonlMazeDataset(IterableDataset):
         self.shuffle_buffer = shuffle_buffer
         self.shuffle_seed = shuffle_seed
         self.map_type = map_type
+        self.min_optimal_moves = min_optimal_moves
+        self.max_optimal_moves = max_optimal_moves
 
     def _iter_records(self) -> Iterable[Dict]:
         rng = random.Random(self.shuffle_seed)
@@ -128,6 +132,17 @@ class JsonlMazeDataset(IterableDataset):
                 record = _loads(line)
                 if self.map_type and record.get("mapType") != self.map_type:
                     continue
+
+                optimal_moves = record.get("optimal_moves")
+                if optimal_moves is None:
+                    optimal_moves = record.get("optimalMoves")
+
+                if optimal_moves is not None:
+                    if self.min_optimal_moves is not None and optimal_moves < self.min_optimal_moves:
+                        continue
+                    if self.max_optimal_moves is not None and optimal_moves > self.max_optimal_moves:
+                        continue
+
                 seed = record.get("seed", "")
                 split = split_seed(seed, self.val_pct, self.test_pct)
                 if self.split != split:

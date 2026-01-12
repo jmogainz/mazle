@@ -315,6 +315,83 @@ dataset-gen: cargo-build
 	fi
 
 # -------------------------
+# Daily KV backfill (native, outside Docker)
+# -------------------------
+ROOT_APP_NAME := $(shell sed -n 's/^APP_NAME[[:space:]]*:=[[:space:]]*//p' $(REPO_ROOT)/Makefile | head -n 1 | cut -d ' ' -f1)
+BWS_PROJECT_NAME_FOR_KV ?= $(ROOT_APP_NAME)-$(ENV)
+
+DAILIES_KV_START ?=
+DAILIES_KV_END ?=
+DAILIES_KV_FORCE ?= 0
+DAILIES_KV_MAP_TYPE ?= ice
+DAILIES_KV_PARALLEL ?= 1
+DAILIES_KV_CLOSENESS_THRESHOLD ?= 0.99
+DAILIES_KV_TARGET_MOVES ?=
+DAILIES_KV_LOG ?= $(CURDIR)/data/dailies-kv-backfill.log
+DAILIES_KV_PID ?= $(CURDIR)/data/dailies-kv-backfill.pid
+
+.PHONY: dailies-kv-backfill
+dailies-kv-backfill: RUST_BUILD_PROFILE := release
+dailies-kv-backfill: cargo-build
+	@if [ -z "$(UNIQUE_RUNNER_ID)" ]; then \
+		echo "UNIQUE_RUNNER_ID not set. Run: export UNIQUE_RUNNER_ID=\$$(whoami)"; \
+		exit 1; \
+	fi
+	@if [ -z "$(DAILIES_KV_START)" ]; then \
+		echo "DAILIES_KV_START not set. Example: make dailies-kv-backfill ENV=prod DAILIES_KV_START=2026-01-01 DAILIES_KV_END=2026-01-30"; \
+		exit 1; \
+	fi
+	@if [ -z "$(DAILIES_KV_END)" ]; then \
+		echo "DAILIES_KV_END not set. Example: make dailies-kv-backfill ENV=prod DAILIES_KV_START=2026-01-01 DAILIES_KV_END=2026-01-30"; \
+		exit 1; \
+	fi
+	@if [ "$(ENV)" != "prod" ]; then \
+		echo "[ERROR] ENV=$(ENV) not allowed. Run with: make dailies-kv-backfill ENV=prod ..."; \
+		exit 1; \
+	fi
+	@if [ -z "$$BWS_ACCESS_TOKEN" ]; then \
+		echo "[ERROR] BWS_ACCESS_TOKEN is required to fetch KV secrets from Bitwarden." >&2; \
+		exit 1; \
+	fi
+	@mkdir -p "$(dir $(DAILIES_KV_LOG))"
+	@export BWS_PROJECT_NAME="$(BWS_PROJECT_NAME_FOR_KV)"; \
+	echo "[INFO] [Dailies KV Backfill] Fetching KV secrets from BWS project '$$BWS_PROJECT_NAME'..."; \
+	SECRETS_JSON="$$( "$(DEVOPS_TOOLKIT_PATH)/shared/scripts/fetch_bws_secret.sh" )"; \
+	KV_URL="$$(echo "$$SECRETS_JSON" | jq -r '.KV_REST_API_URL // .UPSTASH_REDIS_REST_URL // empty')"; \
+	KV_TOKEN="$$(echo "$$SECRETS_JSON" | jq -r '.KV_REST_API_TOKEN // .UPSTASH_REDIS_REST_TOKEN // empty')"; \
+	if [ -z "$$KV_URL" ] || [ -z "$$KV_TOKEN" ]; then \
+		echo "[ERROR] Missing KV secrets in BWS project '$$BWS_PROJECT_NAME' (need KV_REST_API_URL+KV_REST_API_TOKEN or UPSTASH_REDIS_REST_URL+UPSTASH_REDIS_REST_TOKEN)" >&2; \
+		exit 1; \
+	fi; \
+	if command -v setsid >/dev/null 2>&1; then \
+		ENV="$(ENV)" \
+		KV_REST_API_URL="$$KV_URL" \
+		KV_REST_API_TOKEN="$$KV_TOKEN" \
+		DAILIES_KV_START="$(DAILIES_KV_START)" \
+		DAILIES_KV_END="$(DAILIES_KV_END)" \
+		DAILIES_KV_FORCE="$(DAILIES_KV_FORCE)" \
+		DAILIES_KV_MAP_TYPE="$(DAILIES_KV_MAP_TYPE)" \
+		DAILIES_KV_PARALLEL="$(DAILIES_KV_PARALLEL)" \
+		DAILIES_KV_CLOSENESS_THRESHOLD="$(DAILIES_KV_CLOSENESS_THRESHOLD)" \
+		$(if $(DAILIES_KV_TARGET_MOVES),DAILIES_KV_TARGET_MOVES="$(DAILIES_KV_TARGET_MOVES)") \
+		setsid ./target/release/mazle-generator </dev/null > "$(DAILIES_KV_LOG)" 2>&1 & \
+		echo $$! | tee "$(DAILIES_KV_PID)"; \
+	else \
+		ENV="$(ENV)" \
+		KV_REST_API_URL="$$KV_URL" \
+		KV_REST_API_TOKEN="$$KV_TOKEN" \
+		DAILIES_KV_START="$(DAILIES_KV_START)" \
+		DAILIES_KV_END="$(DAILIES_KV_END)" \
+		DAILIES_KV_FORCE="$(DAILIES_KV_FORCE)" \
+		DAILIES_KV_MAP_TYPE="$(DAILIES_KV_MAP_TYPE)" \
+		DAILIES_KV_PARALLEL="$(DAILIES_KV_PARALLEL)" \
+		DAILIES_KV_CLOSENESS_THRESHOLD="$(DAILIES_KV_CLOSENESS_THRESHOLD)" \
+		$(if $(DAILIES_KV_TARGET_MOVES),DAILIES_KV_TARGET_MOVES="$(DAILIES_KV_TARGET_MOVES)") \
+		nohup ./target/release/mazle-generator </dev/null > "$(DAILIES_KV_LOG)" 2>&1 & \
+		echo $$! | tee "$(DAILIES_KV_PID)"; \
+	fi
+
+# -------------------------
 # Multi-move dataset generation (4-9, 11-14 moves, skips 10)
 # -------------------------
 MULTIMOVE_COUNTS ?= 4 5 6 7 8 9 11 12 13 14

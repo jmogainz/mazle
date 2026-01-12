@@ -217,23 +217,6 @@ export default function Home() {
   // The --ui-scale CSS variable controls all UI element sizes
   // useLayoutEffect ensures scale is calculated before paint to prevent layout shift
   useLayoutEffect(() => {
-    const getGameAreaSize = () => {
-      const node = gameStageRef.current;
-      if (!node) return null;
-      const rect = node.getBoundingClientRect();
-      const styles = window.getComputedStyle(node);
-      const paddingLeft = Number.parseFloat(styles.paddingLeft) || 0;
-      const paddingRight = Number.parseFloat(styles.paddingRight) || 0;
-      const paddingTop = Number.parseFloat(styles.paddingTop) || 0;
-      const paddingBottom = Number.parseFloat(styles.paddingBottom) || 0;
-      const paddingX = paddingLeft + paddingRight;
-      const paddingY = paddingTop + paddingBottom;
-      const width = Math.max(0, rect.width - paddingX);
-      const height = Math.max(0, rect.height - paddingY);
-      if (width <= 0 || height <= 0) return null;
-      return { width, height };
-    };
-
     const updateScale = () => {
       const viewportHeight = window.visualViewport?.height || window.innerHeight;
       const viewportWidth = window.innerWidth;
@@ -297,20 +280,26 @@ export default function Home() {
         uiScaleRef.current = uiScaleValue;
       }
 
-      // Also update maze frame size
-      const area = getGameAreaSize();
-      const areaScale = area
-        ? Math.min(area.width / baseWidth, area.height / baseHeight)
-        : 1;
-      const maxScale = maxMazeByWidth / baseWidth;
-      const finalScale = Math.min(maxScale, areaScale);
-      const width = Math.max(1, Math.floor(baseWidth * finalScale));
-      const height = Math.max(1, Math.floor(baseHeight * finalScale));
+      // Calculate actual available space with scaled UI
+      const scaledUIHeight = (HEADER_HEIGHT + PUZZLE_NUM_HEIGHT + SCOREBOARD_HEIGHT + CONTROLS_HEIGHT) * uiScale
+        + FOOTER_HEIGHT + AD_HEIGHT + PADDING;
+      const actualAvailableForMaze = viewportHeight - scaledUIHeight;
+
+      // Calculate game size based on available space
+      const maxByHeight = Math.max(1, Math.floor(actualAvailableForMaze));
+      const gameSize = Math.min(maxMazeByWidth, maxByHeight, MAX_MAZE_SIZE);
+      
+      const scale = gameSize / Math.max(baseWidth, baseHeight);
+      const width = Math.max(1, Math.floor(baseWidth * scale));
+      const height = Math.max(1, Math.floor(baseHeight * scale));
 
       setGameFrameSizePx((prev) => {
         if (prev && prev.width === width && prev.height === height) return prev;
         return { width, height };
       });
+
+      // Update CSS variable for initial render consistency
+      document.documentElement.style.setProperty('--game-size', `${gameSize}px`);
     };
 
     // Immediate call on mount to set scale before first paint

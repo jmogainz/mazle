@@ -17,7 +17,6 @@ Dataset format (one JSON object per line)
   "seed": "train-000001",
   "width": 15,
   "height": 15,
-  "mapType": "ice",
   "tilesInterior": [[...13x13...]],
   "start": {"x": 3, "y": 10},
   "goal": {"x": 11, "y": 2}

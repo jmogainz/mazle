@@ -43,8 +43,8 @@ export default function PhaserGame({ puzzle, viewportWidth, viewportHeight, onRe
     onReadyRef.current = onReady;
   }, [onReady]);
 
-  const baseWidth = viewportWidth ?? Math.max(420, puzzle.width * TILE_SIZE + 64);
-  const baseHeight = viewportHeight ?? Math.max(520, puzzle.height * TILE_SIZE + 120);
+  const baseWidth = viewportWidth ?? (puzzle.width * TILE_SIZE);
+  const baseHeight = viewportHeight ?? (puzzle.height * TILE_SIZE);
 
   const getControls = useCallback((): GameControls => ({
     restart: () => {

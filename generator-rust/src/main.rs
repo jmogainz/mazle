@@ -10,7 +10,7 @@ use log::{error, info};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::fs::{File, OpenOptions};
+use std::fs::OpenOptions;
 use std::io::{BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::Path as FsPath;
 use std::sync::Arc;
@@ -19,8 +19,8 @@ use tower_http::cors::{Any, CorsLayer};
 
 // Import from library
 use mazle_generator::{
-    cache::PuzzleCache, generate_ground_puzzle, generate_ice_puzzle_with_cancel, scheduler,
-    GenerationConfig, MapType, Position, PuzzleData, TileType,
+    cache::PuzzleCache, generate_ice_puzzle_with_cancel, scheduler, GenerationConfig, Position,
+    PuzzleData, TileType,
 };
 
 /// Application state
@@ -46,33 +46,6 @@ struct GenerateRequest {
     seed: String,
     #[serde(default)]
     config: GenerationConfig,
-    #[serde(default = "default_map_type")]
-    map_type: String,
-}
-
-fn default_map_type() -> String {
-    "ice".to_string()
-}
-
-/// Helper to generate puzzle based on map type
-fn generate_by_type(
-    seed: &str,
-    config: &GenerationConfig,
-    map_type: &str,
-    cancel_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
-) -> Result<PuzzleData, ()> {
-    if cancel_flag
-        .as_ref()
-        .map(|f| f.load(std::sync::atomic::Ordering::Relaxed))
-        .unwrap_or(false)
-    {
-        return Err(());
-    }
-
-    match map_type {
-        "ground" => Ok(generate_ground_puzzle(seed, config)),
-        _ => generate_ice_puzzle_with_cancel(seed, config, cancel_flag), // Default to ice
-    }
 }
 
 // =============================================================================
@@ -83,7 +56,6 @@ const DEFAULT_DATASET_COUNT: usize = 100_000;
 const DEFAULT_DATASET_START_INDEX: usize = 1;
 const DEFAULT_DATASET_APPEND: bool = false;
 const DEFAULT_DATASET_SEED_PREFIX: &str = "train";
-const DEFAULT_DATASET_MAP_TYPE: &str = "ice";
 const DEFAULT_DATASET_SIZE: usize = 15;
 const DEFAULT_DATASET_CLOSENESS_THRESHOLD: f64 = 0.90;
 const DATASET_PROGRESS_EVERY: usize = 1_000;
@@ -96,7 +68,6 @@ struct DatasetConfig {
     start_index: usize,
     append: bool,
     seed_prefix: String,
-    map_type: String,
     size: usize,
     closeness_threshold: f64,
     target_moves: Option<i32>,
@@ -108,7 +79,6 @@ struct DatasetRecord {
     seed: String,
     width: usize,
     height: usize,
-    map_type: MapType,
     tiles_interior: Vec<Vec<u8>>,
     start: Position,
     goal: Position,
@@ -133,8 +103,9 @@ fn dataset_config_from_env() -> Result<Option<DatasetConfig>, String> {
     let seed_prefix = std::env::var("DATASET_SEED_PREFIX")
         .unwrap_or_else(|_| DEFAULT_DATASET_SEED_PREFIX.to_string());
 
-    let map_type =
-        std::env::var("DATASET_MAP_TYPE").unwrap_or_else(|_| DEFAULT_DATASET_MAP_TYPE.to_string());
+    if std::env::var("DATASET_MAP_TYPE").is_ok() {
+        return Err("DATASET_MAP_TYPE is no longer supported (ice-only)".to_string());
+    }
 
     let start_index = match std::env::var("DATASET_START_INDEX") {
         Ok(value) => value
@@ -166,7 +137,6 @@ fn dataset_config_from_env() -> Result<Option<DatasetConfig>, String> {
         start_index,
         append,
         seed_prefix,
-        map_type,
         size,
         closeness_threshold: DEFAULT_DATASET_CLOSENESS_THRESHOLD,
         target_moves,
@@ -203,7 +173,6 @@ fn dataset_record_from_puzzle(seed: &str, puzzle: &PuzzleData, duration_ms: u64)
         seed: seed.to_string(),
         width,
         height,
-        map_type: puzzle.map_type,
         tiles_interior,
         // Store interior coordinates (13x13) to match tilesInterior indexing.
         start: Position {
@@ -279,27 +248,18 @@ fn run_dataset_generation(config: DatasetConfig) -> Result<(), Box<dyn std::erro
         .into());
     }
 
-    if config.map_type != "ice" && config.map_type != "ground" {
-        return Err(format!(
-            "DATASET_MAP_TYPE='{}' not supported (use 'ice' or 'ground')",
-            config.map_type
-        )
-        .into());
-    }
-
     let mut gen_config = GenerationConfig::default();
     gen_config.closeness_threshold = config.closeness_threshold;
     gen_config.target_moves = config.target_moves;
 
     info!("📦 Dataset generation mode enabled");
     info!(
-        "📦 out={} count={} start_index={} append={} seed_prefix={} map_type={} closeness_threshold={:.2} target_moves={:?}",
+        "📦 out={} count={} start_index={} append={} seed_prefix={} closeness_threshold={:.2} target_moves={:?}",
         config.out_path,
         config.count,
         config.start_index,
         config.append,
         config.seed_prefix,
-        config.map_type,
         config.closeness_threshold,
         config.target_moves
     );
@@ -323,10 +283,8 @@ fn run_dataset_generation(config: DatasetConfig) -> Result<(), Box<dyn std::erro
         let seed = format!("{}-{:0width$}", config.seed_prefix, index, width = seed_width);
 
         let gen_start = Instant::now();
-        let puzzle =
-            generate_by_type(&seed, &gen_config, &config.map_type, None).map_err(|_| {
-                format!("generation cancelled for seed '{}'", seed)
-            })?;
+        let puzzle = generate_ice_puzzle_with_cancel(&seed, &gen_config, None)
+            .map_err(|_| format!("generation cancelled for seed '{}'", seed))?;
         let gen_duration = gen_start.elapsed().as_millis() as u64;
 
         let record = dataset_record_from_puzzle(&seed, &puzzle, gen_duration);
@@ -363,7 +321,6 @@ fn run_dataset_generation(config: DatasetConfig) -> Result<(), Box<dyn std::erro
 // DAILY KV BACKFILL (NATIVE, OUTSIDE DOCKER)
 // =============================================================================
 
-const DEFAULT_DAILIES_KV_MAP_TYPE: &str = "ice";
 const DEFAULT_DAILIES_KV_CLOSENESS_THRESHOLD: f64 = 0.99; // Match prod backend default (ENV != dev)
 
 #[derive(Clone, Debug)]
@@ -371,7 +328,6 @@ struct DailiesKvConfig {
     start_date: NaiveDate,
     end_date: NaiveDate,
     force: bool,
-    map_type: String,
     parallel: bool,
     closeness_threshold: f64,
     target_moves: Option<i32>,
@@ -410,13 +366,8 @@ fn dailies_kv_config_from_env() -> Result<Option<DailiesKvConfig>, String> {
         Err(_) => false,
     };
 
-    let map_type = std::env::var("DAILIES_KV_MAP_TYPE")
-        .unwrap_or_else(|_| DEFAULT_DAILIES_KV_MAP_TYPE.to_string());
-    if map_type != "ice" && map_type != "ground" {
-        return Err(format!(
-            "DAILIES_KV_MAP_TYPE='{}' not supported (use 'ice' or 'ground')",
-            map_type
-        ));
+    if std::env::var("DAILIES_KV_MAP_TYPE").is_ok() {
+        return Err("DAILIES_KV_MAP_TYPE is no longer supported (ice-only)".to_string());
     }
 
     let parallel = match std::env::var("DAILIES_KV_PARALLEL") {
@@ -444,7 +395,6 @@ fn dailies_kv_config_from_env() -> Result<Option<DailiesKvConfig>, String> {
         start_date,
         end_date,
         force,
-        map_type,
         parallel,
         closeness_threshold,
         target_moves,
@@ -546,11 +496,10 @@ async fn run_dailies_kv_backfill(
     info!("🗓️ Daily KV backfill mode enabled");
     let total_days = (config.end_date - config.start_date).num_days() + 1;
     info!(
-        "🗓️ start={} end={} days={} map_type={} force={} parallel={} closeness_threshold={:.2} target_moves={:?}",
+        "🗓️ start={} end={} days={} force={} parallel={} closeness_threshold={:.2} target_moves={:?}",
         config.start_date.format("%Y-%m-%d"),
         config.end_date.format("%Y-%m-%d"),
         total_days,
-        config.map_type,
         config.force,
         config.parallel,
         config.closeness_threshold,
@@ -573,10 +522,9 @@ async fn run_dailies_kv_backfill(
         let gen_start = Instant::now();
         let seed_clone = seed.clone();
         let gen_config_clone = gen_config.clone();
-        let map_type_clone = config.map_type.clone();
 
         let puzzle_result = tokio::task::spawn_blocking(move || {
-            generate_by_type(&seed_clone, &gen_config_clone, &map_type_clone, None)
+            generate_ice_puzzle_with_cancel(&seed_clone, &gen_config_clone, None)
         })
         .await;
 
@@ -632,8 +580,6 @@ struct GenerateResponse {
 struct GenerateQuery {
     #[serde(default)]
     parallel: bool,
-    #[serde(default = "default_map_type")]
-    map_type: String,
     #[serde(default)]
     start_batch: usize,
     #[serde(default)]
@@ -659,6 +605,19 @@ async fn cache_status(State(state): State<AppState>) -> Json<serde_json::Value> 
         "count": seeds.len(),
         "maxEntries": 100,
         "ttlHours": 48,
+    }))
+}
+
+/// Detailed seeds status endpoint for DevTools
+async fn seeds_status(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let generating = state.cache.generating_seeds();
+    let cached = state.cache.cached_seeds_with_metadata();
+
+    Json(json!({
+        "generating": generating,
+        "cached": cached,
+        "generatingCount": generating.len(),
+        "cachedCount": cached.len(),
     }))
 }
 
@@ -712,14 +671,14 @@ async fn generate_by_seed(
                     .into_response();
             }
             // If wait failed, fall through to generate ourselves
-            info!("⚠️ Wait failed for '{}', generating ourselves...", seed);
+            info!("⚠️ Wait failed for '{}', attempting to claim generation...", seed);
         }
         
         info!("✗ Cache MISS for '{}', generating on-demand...", seed);
     }
 
     // 2. Mark as generating (prevent duplicate work)
-    let we_are_generating = state.cache.start_generating(&seed);
+    let mut we_are_generating = state.cache.start_generating(&seed);
     if !we_are_generating {
         // Another request started generating between our check and now - wait for it
         info!("⏳ Race condition: waiting for '{}' generation...", seed);
@@ -734,6 +693,57 @@ async fn generate_by_seed(
             )
                 .into_response();
         }
+
+        // Generation may have finished after wait; check cache before giving up.
+        if let Some(cached) = state.cache.get(&seed) {
+            return (
+                StatusCode::OK,
+                Json(GenerateResponse {
+                    puzzle: cached.puzzle,
+                    generation_time_ms: cached.generation_time_ms,
+                    cached: true,
+                }),
+            )
+                .into_response();
+        }
+
+        // Try to claim generation if no longer in progress.
+        we_are_generating = state.cache.start_generating(&seed);
+        if !we_are_generating {
+            if state.cache.is_generating(&seed) {
+                info!("⏳ Generation still in progress for '{}' after wait timeout", seed);
+                return (
+                    StatusCode::REQUEST_TIMEOUT,
+                    Json(json!({
+                        "error": "generation_in_progress"
+                    })),
+                )
+                    .into_response();
+            }
+
+            info!("⚠️ Wait failed and no generation in progress for '{}'", seed);
+            return (
+                StatusCode::REQUEST_TIMEOUT,
+                Json(json!({
+                    "error": "generation_in_progress"
+                })),
+            )
+                .into_response();
+        }
+    }
+
+    // If we won the generation race but a cache entry appeared meanwhile, return it and clear state.
+    if let Some(cached) = state.cache.get(&seed) {
+        state.cache.finish_generating(&seed);
+        return (
+            StatusCode::OK,
+            Json(GenerateResponse {
+                puzzle: cached.puzzle,
+                generation_time_ms: cached.generation_time_ms,
+                cached: true,
+            }),
+        )
+            .into_response();
     }
     
     // 3. Spawn generation as a detached task so it completes even if client disconnects
@@ -747,19 +757,17 @@ async fn generate_by_seed(
         config.closeness_threshold = threshold;
     }
 
-    let map_type = query.map_type.clone();
     let seed_for_task = seed.clone();
     let cache_for_task = state.cache.clone();
     let cancel_flag = state.cache.cancel_flag(&seed);
-    
+
     // Spawn generation task and keep a handle for cancellation
     let generation_handle = tokio::spawn({
         let seed_clone = seed_for_task.clone();
-        let map_type_clone = map_type.clone();
         let cancel_clone = cancel_flag.clone();
         async move {
             let result = tokio::task::spawn_blocking(move || {
-                generate_by_type(&seed_clone, &config, &map_type_clone, Some(cancel_clone))
+                generate_ice_puzzle_with_cancel(&seed_clone, &config, Some(cancel_clone))
             })
             .await;
 
@@ -875,10 +883,9 @@ async fn generate_post(
 
     let seed = request.seed.clone();
     let config = request.config.clone();
-    let map_type = request.map_type.clone();
 
     // Spawn CPU-intensive work on blocking thread pool
-    let puzzle = tokio::task::spawn_blocking(move || generate_by_type(&seed, &config, &map_type, None))
+    let puzzle = tokio::task::spawn_blocking(move || generate_ice_puzzle_with_cancel(&seed, &config, None))
         .await
         .expect("Blocking task panicked")
         .expect("generation should not cancel in POST");
@@ -904,8 +911,6 @@ struct BatchRequest {
     seeds: Vec<String>,
     #[serde(default)]
     config: GenerationConfig,
-    #[serde(default = "default_map_type")]
-    map_type: String,
 }
 
 #[derive(Serialize)]
@@ -947,7 +952,6 @@ async fn cancel_generation(
 async fn generate_batch(Json(request): Json<BatchRequest>) -> Json<BatchResponse> {
     let start = Instant::now();
 
-    let map_type = request.map_type.clone();
     let config = request.config.clone();
     let seeds = request.seeds.clone();
 
@@ -956,7 +960,7 @@ async fn generate_batch(Json(request): Json<BatchRequest>) -> Json<BatchResponse
         use rayon::prelude::*;
         seeds
             .par_iter()
-            .map(|seed| generate_by_type(seed, &config, &map_type, None).expect("generation should not cancel in batch"))
+            .map(|seed| generate_ice_puzzle_with_cancel(seed, &config, None).expect("generation should not cancel in batch"))
             .collect::<Vec<PuzzleData>>()
     })
     .await
@@ -993,6 +997,7 @@ fn build_router(cache: Arc<PuzzleCache>) -> Router {
         .route("/api/generate", post(generate_post))
         .route("/api/generate/batch", post(generate_batch))
         .route("/api/cache/status", get(cache_status))
+        .route("/api/cache/seeds", get(seeds_status))
         .layer(cors)
         .with_state(state)
 }

@@ -106,7 +106,6 @@ class JsonlMazeDataset(IterableDataset):
         test_pct: float = 0.0,
         shuffle_buffer: int = 0,
         shuffle_seed: int = 13,
-        map_type: Optional[str] = None,
         min_optimal_moves: Optional[int] = None,
         max_optimal_moves: Optional[int] = None,
     ) -> None:
@@ -117,7 +116,6 @@ class JsonlMazeDataset(IterableDataset):
         self.test_pct = test_pct
         self.shuffle_buffer = shuffle_buffer
         self.shuffle_seed = shuffle_seed
-        self.map_type = map_type
         self.min_optimal_moves = min_optimal_moves
         self.max_optimal_moves = max_optimal_moves
 
@@ -130,8 +128,6 @@ class JsonlMazeDataset(IterableDataset):
                 if not line:
                     continue
                 record = _loads(line)
-                if self.map_type and record.get("mapType") != self.map_type:
-                    continue
 
                 optimal_moves = record.get("optimal_moves")
                 if optimal_moves is None:

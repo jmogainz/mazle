@@ -28,25 +28,24 @@ export default function Loader({ text = "Loading...", progress }: LoaderProps) {
         <div className={styles.player} />
       </div>
       
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+      <div className={styles.progressStack}>
         <p className={styles.text}>{text}</p>
         
-        {progress !== undefined && (
-          <div style={{ 
-            width: '120px', 
-            height: '4px', 
-            background: 'var(--color-surface)', 
-            borderRadius: '2px',
-            overflow: 'hidden',
-          }}>
-            <div style={{
-              width: `${Math.min(100, Math.max(0, progress))}%`,
-              height: '100%',
-              background: 'var(--color-primary)',
-              transition: 'width 0.3s ease-out'
-            }} />
-          </div>
-        )}
+        {/* Always render progress bar container to prevent layout shift */}
+        <div
+          className={styles.progressBar}
+          style={{
+          opacity: progress !== undefined ? 1 : 0,
+          transition: 'opacity 0.2s ease-out',
+          }}
+        >
+          <div
+            className={styles.progressFill}
+            style={{
+              width: `${Math.min(100, Math.max(0, progress ?? 0))}%`,
+            }}
+          />
+        </div>
       </div>
     </div>
   );

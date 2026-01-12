@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { usePathname, useRouter } from 'next/navigation';
 import { Header, GameUI, ShareCard, StatsModal, HelpModal, ErrorBoundary, Loader, DevTools, AdSlot } from '@/components';
@@ -25,10 +25,10 @@ import {
 } from '@/constants';
 import {
   getPuzzleNumber,
+  getPuzzleNumberFromNyDateString,
   getNewYorkDateString,
   onGameEvent,
   PuzzleData,
-  MapType,
   generatePuzzleParallel,
   cancelRustRequest,
   fetchDailyPuzzle,
@@ -48,11 +48,7 @@ import styles from './page.module.css';
 // Dynamic import for Phaser (client-side only)
 const PhaserGame = dynamic(() => import('@/game/PhaserGame'), {
   ssr: false,
-  loading: () => (
-    <div className={styles.loading}>
-      <Loader text="Loading puzzle..." />
-    </div>
-  ),
+  loading: () => null,
 });
 
 // Keep for potential future use (e.g., auto-enable in dev builds)
@@ -76,7 +72,6 @@ export default function Home() {
   const [puzzleLabel, setPuzzleLabel] = useState<string | null>(null);
   const [activeSeed, setActiveSeed] = useState('');
   const [seedInput, setSeedInput] = useState('');
-  const [selectedMapType, setSelectedMapType] = useState<MapType | 'random'>('random');
   const [renderKey, setRenderKey] = useState(0);
   const [stats, setStats] = useState<PlayerStats | null>(null);
   const [showShareCard, setShowShareCard] = useState(false);
@@ -99,6 +94,7 @@ export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState<GenerationProgress | null>(null);
   const [showInlineResult, setShowInlineResult] = useState(false);
+  const [isFreshCompletion, setIsFreshCompletion] = useState(false); // True when game completed this session (not loaded from storage)
   const [hintsEnabled, setHintsEnabled] = useState(true);
   const [devMaxLives, setDevMaxLives] = useState(3);
   const [lifeFlash, setLifeFlash] = useState(false);
@@ -131,13 +127,15 @@ export default function Home() {
   const adsReadyTimeoutRef = useRef<number | null>(null);
   const adTimeoutsRef = useRef<{ top?: number; bottom?: number }>({});
   const hintsPrefLoadedRef = useRef(false);
-  const [gameFrameSizePx, setGameFrameSizePx] = useState<{ width: number; height: number } | null>(null);
+  // Initialize with max maze size to prevent layout shift before useEffect calculates actual size
+  const [gameFrameSizePx, setGameFrameSizePx] = useState<{ width: number; height: number }>({ width: 520, height: 520 });
   const tapTimestampsRef = useRef<number[]>([]);
   const lastDevToolsTouchTsRef = useRef<number>(0);
   const devToolsTapTargetRef = useRef<HTMLDivElement | null>(null);
   const pendingRestoreRef = useRef<Parameters<GameControls['restoreState']>[0] | null>(null);
   const hintsEnabledRef = useRef(hintsEnabled);
   const devMaxLivesRef = useRef(devMaxLives);
+  const uiScaleRef = useRef<number | null>(null);
   const [liveAttempts, setLiveAttempts] = useState<GameState['attempts']>([]);
   const [reviewAttemptIndex, setReviewAttemptIndex] = useState<number | null>(null);
 
@@ -150,16 +148,6 @@ export default function Home() {
     try {
       const stored = localStorage.getItem(DEVTOOLS_PREVIEW_FEATURES_KEY);
       setPreviewFeaturesEnabled(stored === '1');
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  const onPreviewFeaturesToggle = useCallback((enabled: boolean) => {
-    setPreviewFeaturesEnabled(enabled);
-    try {
-      if (enabled) localStorage.setItem(DEVTOOLS_PREVIEW_FEATURES_KEY, '1');
-      else localStorage.removeItem(DEVTOOLS_PREVIEW_FEATURES_KEY);
     } catch {
       // ignore
     }
@@ -250,10 +238,10 @@ export default function Home() {
     gameControlsRef.current?.setHintsEnabled?.(hintsEnabled);
   }, [hintsEnabled]);
 
-  const puzzleWidth = puzzle?.width ?? 10;
-  const puzzleHeight = puzzle?.height ?? 10;
-  const baseWidth = puzzleWidth * TILE_SIZE + GAME_BUFFER_PX * 2;
-  const baseHeight = puzzleHeight * TILE_SIZE + GAME_BUFFER_PX * 2;
+  const puzzleWidth = puzzle?.width ?? 15;
+  const puzzleHeight = puzzle?.height ?? 15;
+  const baseWidth = puzzleWidth * TILE_SIZE; // No buffer
+  const baseHeight = puzzleHeight * TILE_SIZE; // No buffer
   const showTopAd = !!ADSENSE_TOP_SLOT;
   const showBottomAd = !!ADSENSE_BOTTOM_SLOT;
   const canRequestAds = adsReady && consentReady;
@@ -269,8 +257,24 @@ export default function Home() {
 
   // Dynamic UI scaling system - maximizes maze size while keeping UI readable
   // The --ui-scale CSS variable controls all UI element sizes
-  useEffect(() => {
-    let rafId: number | null = null;
+  // useLayoutEffect ensures scale is calculated before paint to prevent layout shift
+  useLayoutEffect(() => {
+    const getGameAreaSize = () => {
+      const node = gameStageRef.current;
+      if (!node) return null;
+      const rect = node.getBoundingClientRect();
+      const styles = window.getComputedStyle(node);
+      const paddingLeft = Number.parseFloat(styles.paddingLeft) || 0;
+      const paddingRight = Number.parseFloat(styles.paddingRight) || 0;
+      const paddingTop = Number.parseFloat(styles.paddingTop) || 0;
+      const paddingBottom = Number.parseFloat(styles.paddingBottom) || 0;
+      const paddingX = paddingLeft + paddingRight;
+      const paddingY = paddingTop + paddingBottom;
+      const width = Math.max(0, rect.width - paddingX);
+      const height = Math.max(0, rect.height - paddingY);
+      if (width <= 0 || height <= 0) return null;
+      return { width, height };
+    };
 
     const updateScale = () => {
       const viewportHeight = window.visualViewport?.height || window.innerHeight;
@@ -293,21 +297,18 @@ export default function Home() {
 
       // Maximum maze size (don't let it grow infinitely on large screens)
       const MAX_MAZE_SIZE = 520;
-      const MIN_MAZE_SIZE = 200;
-
       // Scale limits for UI
-      const UI_SCALE_MIN = 0.75;
+      const UI_SCALE_MIN = 0.55;
       const UI_SCALE_MAX = 1.0;
 
       // Calculate ideal maze size (constrained by width too)
-      const maxMazeByWidth = Math.min(viewportWidth - 32, MAX_MAZE_SIZE); // 16px padding each side
-      const idealMazeSize = Math.min(baseWidth, baseHeight, maxMazeByWidth, MAX_MAZE_SIZE);
+      const maxMazeByWidth = Math.max(1, Math.min(viewportWidth - 4, MAX_MAZE_SIZE)); // 2px padding each side
+      const idealMazeSize = Math.min(maxMazeByWidth, MAX_MAZE_SIZE);
 
       // How much height do we need for the ideal maze?
       const neededForIdealMaze = idealMazeSize;
 
       let uiScale = UI_SCALE_MAX;
-      let mazeSize = idealMazeSize;
 
       if (availableForMaze < neededForIdealMaze) {
         // Not enough space - try scaling down UI first
@@ -325,46 +326,50 @@ export default function Home() {
           // Calculate the exact scale needed
           uiScale = 1 - (deficit / uiScalableHeight);
           uiScale = Math.max(UI_SCALE_MIN, Math.min(UI_SCALE_MAX, uiScale));
-          mazeSize = idealMazeSize;
         } else {
           // Even at minimum UI scale, we can't fit ideal maze
           // Scale UI to minimum and shrink maze
           uiScale = UI_SCALE_MIN;
-          const minUIHeight = totalUIHeight - uiScalableHeight * (1 - UI_SCALE_MIN);
-          mazeSize = Math.max(MIN_MAZE_SIZE, viewportHeight - minUIHeight);
         }
       }
 
-      // Apply the UI scale to CSS custom property
-      document.documentElement.style.setProperty('--ui-scale', uiScale.toFixed(3));
+      const uiScaleValue = Math.round(uiScale * 1000) / 1000;
+      if (uiScaleRef.current !== uiScaleValue) {
+        document.documentElement.style.setProperty('--ui-scale', uiScaleValue.toFixed(3));
+        uiScaleRef.current = uiScaleValue;
+      }
 
       // Also update maze frame size
-      const mazeScale = Math.min(1, mazeSize / baseWidth, mazeSize / baseHeight);
-      const width = Math.max(1, Math.floor(baseWidth * mazeScale));
-      const height = Math.max(1, Math.floor(baseHeight * mazeScale));
+      const area = getGameAreaSize();
+      const areaScale = area
+        ? Math.min(area.width / baseWidth, area.height / baseHeight)
+        : 1;
+      const maxScale = maxMazeByWidth / baseWidth;
+      const finalScale = Math.min(maxScale, areaScale);
+      const width = Math.max(1, Math.floor(baseWidth * finalScale));
+      const height = Math.max(1, Math.floor(baseHeight * finalScale));
 
       setGameFrameSizePx((prev) => {
-        if (prev && prev.width === width && prev.height === height) return prev;
+        if (prev.width === width && prev.height === height) return prev;
         return { width, height };
       });
     };
 
-    const scheduleUpdate = () => {
-      if (rafId != null) cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(() => {
-        rafId = null;
-        updateScale();
-      });
-    };
-
-    scheduleUpdate();
-    window.visualViewport?.addEventListener('resize', scheduleUpdate);
-    window.addEventListener('resize', scheduleUpdate);
+    // Immediate call on mount to set scale before first paint
+    updateScale();
+    window.visualViewport?.addEventListener('resize', updateScale);
+    window.addEventListener('resize', updateScale);
+    const gameArea = gameStageRef.current;
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined' && gameArea
+        ? new ResizeObserver(updateScale)
+        : null;
+    resizeObserver?.observe(gameArea);
 
     return () => {
-      if (rafId != null) cancelAnimationFrame(rafId);
-      window.visualViewport?.removeEventListener('resize', scheduleUpdate);
-      window.removeEventListener('resize', scheduleUpdate);
+      window.visualViewport?.removeEventListener('resize', updateScale);
+      window.removeEventListener('resize', updateScale);
+      resizeObserver?.disconnect();
     };
   }, [baseWidth, baseHeight, showTopAd, showBottomAd]);
 
@@ -540,6 +545,7 @@ export default function Home() {
     setShowShareCard(false);
     setShowInlineResult(false);
     setIsPlaying(false);
+    setIsFreshCompletion(false); // Reset - will be set true only by gameComplete event
 
     // Helper to set scoreboard stats for a finished game once we have the puzzle.
     const setResultStats = (optimalMoves: number) => {
@@ -652,6 +658,7 @@ export default function Home() {
       setGameResult(result);
       setShowShareCard(true);
       setIsPlaying(false); // Ensure game is marked as not playing to show blocked state
+      setIsFreshCompletion(true); // Mark as fresh completion (not loaded from storage)
 
       // Set initialStats so scoreboard stays frozen at completion state
       const failedAttempts = result.attempts?.length ?? 0;
@@ -663,41 +670,8 @@ export default function Home() {
         penaltyTimeMs: 0, // Already included in timeMs
       });
 
-      // Clear in-progress state since game is complete
-      clearInProgressState();
-
-      if (debugModeRef.current) {
-        return;
-      }
-
-      // Save result if not already saved today
-      if (!previousResult) {
-        console.log('[SAVE] Saving daily result:', result);
-        const todayDateStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-        const dailyResult: DailyStats = {
-          date: todayDateStr,
-          completed: !result.failed,
-          moveCount: result.moveCount,
-          timeMs: result.timeMs,
-          puzzleNumber,
-          attempts: result.attempts,
-          failed: result.failed,
-        };
-        saveTodaysResult(dailyResult);
-        setStats(getPlayerStats());
-        setPreviousResult(dailyResult);
-        console.log('[SAVE] Result saved, previousResult updated');
-
-        if (!result.failed && getPrefs().leaderboardAutoSubmitWins) {
-          const failedAttempts = result.attempts?.length ?? 0;
-          const attemptsUsed = Math.min(3, Math.max(1, failedAttempts + 1));
-          api.leaderboardSubmit({ date: todayDateStr, timeMs: result.timeMs, attemptsUsed }).catch(() => {
-            // Ignore: manual submit remains available via the leaderboard overlay.
-          });
-        }
-      } else {
-        console.log('[SAVE] Skipped - previousResult already exists:', previousResult);
-      }
+      // Result is already saved in stateUpdate handler when isComplete becomes true
+      // This handler now only triggers UI updates after animation completes
     });
 
     const unsubscribeLifeLost = onGameEvent('lifeLost', (data) => {
@@ -718,8 +692,40 @@ export default function Home() {
       if (debugModeRef.current || previousResult) return;
 
       const serializableState = gameControlsRef.current?.getSerializableState();
-      if (serializableState && serializableState.isPlaying && activeSeed) {
-        saveInProgressState(activeSeed, serializableState);
+      if (serializableState && activeSeed) {
+        if (serializableState.isComplete) {
+          // Game just completed - save result immediately (before animation)
+          clearInProgressState();
+
+          const failed = serializableState.lives === 0;
+          const timeMs = serializableState.elapsedTimeMs + serializableState.penaltyTimeMs;
+          const todayDateStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+
+          const dailyResult: DailyStats = {
+            date: todayDateStr,
+            completed: !failed,
+            moveCount: serializableState.moveCount,
+            timeMs,
+            puzzleNumber,
+            attempts: serializableState.attempts,
+            failed,
+          };
+
+          saveTodaysResult(dailyResult);
+          setStats(getPlayerStats());
+          setPreviousResult(dailyResult);
+          console.log('[SAVE] Result saved immediately on completion');
+
+          if (!failed && getPrefs().leaderboardAutoSubmitWins) {
+            const failedAttempts = serializableState.attempts?.length ?? 0;
+            const attemptsUsed = Math.min(3, Math.max(1, failedAttempts + 1));
+            api.leaderboardSubmit({ date: todayDateStr, timeMs, attemptsUsed }).catch(() => {
+              // Ignore: manual submit remains available via the leaderboard overlay.
+            });
+          }
+        } else if (serializableState.isPlaying) {
+          saveInProgressState(activeSeed, serializableState);
+        }
       }
     };
     const unsubscribeStateUpdate = onGameEvent('stateUpdate', persistInProgressState);
@@ -780,18 +786,24 @@ export default function Home() {
     setReviewAttemptIndex(null);
   }, []);
 
+  const [showSwipeHint, setShowSwipeHint] = useState(false);
+
   const handleBegin = useCallback(() => {
     setIsPlaying(true);
     gameControlsRef.current?.start();
     setLiveAttempts([]);
     setReviewAttemptIndex(null);
+    // Mount hint after 500ms delay - animation handles full lifecycle
+    setShowSwipeHint(false);
+    setTimeout(() => {
+      setShowSwipeHint(true);
+    }, 500);
   }, []);
 
   const handleDevSeedGenerate = useCallback(
     async (rawSeed?: string) => {
       const trimmed = rawSeed?.trim() ?? '';
       const isDateSeed = /^\d{4}-\d{2}-\d{2}$/.test(trimmed);
-      const forceMapType = selectedMapType === 'random' ? undefined : selectedMapType;
       const startBatch = startBatchInput ? parseInt(startBatchInput, 10) : undefined;
       const abortController = new AbortController();
 
@@ -803,7 +815,7 @@ export default function Home() {
 
       // Track which seed this request is for (used by Stop button)
       const requestSeed = isDateSeed
-        ? getDailySeed(new Date(trimmed))
+        ? trimmed
         : (trimmed ||
           `dev-${Date.now()}-${Math.floor(Math.random() * 10000)
             .toString()
@@ -819,14 +831,13 @@ export default function Home() {
         setIsGenerating(true);
         setGenerationProgress(null);
 
-        const targetDate = new Date(trimmed);
         const dailySeed = requestSeed;
+        const puzzleNumberForDate = getPuzzleNumberFromNyDateString(dailySeed);
 
         try {
           const datedPuzzle = await generatePuzzleParallel(
             dailySeed,
             progressHandler,
-            forceMapType,
             selectedBackend,
             startBatch,
             abortController,
@@ -834,7 +845,7 @@ export default function Home() {
           );
           debugModeRef.current = true;
           setPuzzle(datedPuzzle);
-          setPuzzleNumber(getPuzzleNumber(targetDate));
+          setPuzzleNumber(puzzleNumberForDate);
           setPuzzleLabel(`DATE ${trimmed}`);
           setActiveSeed(dailySeed);
           setSeedInput(trimmed);
@@ -873,7 +884,6 @@ export default function Home() {
         const newPuzzle = await generatePuzzleParallel(
           requestSeed,
           progressHandler,
-          forceMapType,
           selectedBackend,
           startBatch,
           abortController,
@@ -905,7 +915,7 @@ export default function Home() {
         inFlightSeedRef.current = null;
       }
     },
-    [selectedMapType, selectedBackend, startBatchInput, closenessThreshold],
+    [selectedBackend, startBatchInput, closenessThreshold],
   );
 
   const handleLoadDaily = useCallback(() => {
@@ -984,11 +994,14 @@ export default function Home() {
   }, [showAnalysis]);
 
   const handleShowShareCard = useCallback(() => {
-    showAnalysis();
-    setShowInlineResult(true);
+    // Only show analysis if already in inline result view
+    // (Don't transition if user is on "View Result" overlay - they can view analysis separately)
+    if (showInlineResult) {
+      showAnalysis();
+    }
     setIsPlaying(false);
     setShowShareCard(true);
-  }, [showAnalysis]);
+  }, [showAnalysis, showInlineResult]);
 
   const handleStopGeneration = useCallback(() => {
     const controller = generationAbortRef.current;
@@ -1020,34 +1033,40 @@ export default function Home() {
   }, []);
 
   const handleCloseShareCard = useCallback(() => {
-    // Hide the share card but keep inline analysis visible
     setShowShareCard(false);
-    setShowInlineResult(true);
     setReviewAttemptIndex(null);
-    showAnalysis();
-  }, [showAnalysis]);
+
+    // Only transition to inline result view if:
+    // 1. Already in inline result view, OR
+    // 2. This is a fresh game completion (not just returning to a previous result)
+    if (showInlineResult || isFreshCompletion) {
+      setShowInlineResult(true);
+      showAnalysis();
+    }
+    // Otherwise, return to "View Result" overlay state
+  }, [showAnalysis, showInlineResult, isFreshCompletion]);
 
   // Calculate progress percentage (works for both loading screen and dev tools)
   const progressPercent = generationProgress
     ? Math.round((generationProgress.workersComplete / generationProgress.totalWorkers) * 100)
     : 0;
 
-  if (!puzzle) {
-    return (
-      <main className={`${styles.main} bg-pattern`} style={{ justifyContent: 'center' }}>
-        <Loader
-          text={isGenerating ? 'Generating daily puzzle...' : 'Loading Mazle...'}
-          progress={isGenerating ? progressPercent : undefined}
-        />
-      </main>
-    );
-  }
-
-  const isPostGame = !isPlaying && (!!gameResult || !!previousResult);
-  const shouldBlur = showShareCard || (!isPlaying && isGameReady && !showInlineResult);
-  const showResultsButton = showInlineResult;
-  const showMenuButton = process.env.NODE_ENV !== 'production' || previewFeaturesEnabled;
+  // Helper for ad visibility
   const isAdVisible = (status: 'filled' | 'unfilled' | null) => canRequestAds && status === 'filled';
+
+  // Derived state
+  const hasPuzzle = Boolean(puzzle);
+  const loadingText = isGenerating
+    ? 'Generating daily puzzle...'
+    : hasPuzzle && !isGameReady
+      ? 'Loading puzzle...'
+      : 'Loading Mazle...';
+  const displayOptimalMoves = puzzle?.optimalMoves ?? 10;
+  const isPostGame = hasPuzzle && !isPlaying && (!!gameResult || !!previousResult);
+  const shouldBlur = showShareCard || (hasPuzzle && !isPlaying && isGameReady && !showInlineResult);
+  const showLoader = !hasPuzzle || !isGameReady;
+  const showResultsButton = showInlineResult || (!!previousResult && !isPlaying);
+  const showMenuButton = process.env.NODE_ENV !== 'production' || previewFeaturesEnabled;
 
   return (
     <ErrorBoundary>
@@ -1071,9 +1090,11 @@ export default function Home() {
             />
           </div>
         )}
+
         <Header
-          streak={stats?.currentStreak || 0}
-          puzzleInfo={puzzleLabel ?? `#${puzzleNumber}`}
+          streak={stats?.currentStreak ?? 0}
+          puzzleInfo={puzzleLabel ?? (puzzleNumber > 0 ? `#${puzzleNumber}` : undefined)}
+          puzzleInfoLoading={isGenerating || (!puzzle && !gameResult)}
           onHelpClick={() => setShowHelp(true)}
           onStatsClick={() => setShowStats(true)}
           onMenuClick={showMenuButton ? () => setShowMenu(true) : undefined}
@@ -1082,7 +1103,7 @@ export default function Home() {
         />
 
         <div className={styles.gameWrapper}>
-          {showDevTools && (
+          {showDevTools && puzzle && (
             <DevTools
               puzzle={puzzle}
               puzzleNumber={puzzleNumber}
@@ -1090,8 +1111,6 @@ export default function Home() {
               activeSeed={activeSeed}
               seedInput={seedInput}
               onSeedInputChange={setSeedInput}
-              selectedMapType={selectedMapType}
-              onMapTypeChange={setSelectedMapType}
               startBatchInput={startBatchInput}
               onStartBatchInputChange={setStartBatchInput}
               selectedBackend={selectedBackend}
@@ -1106,69 +1125,83 @@ export default function Home() {
               onGenerate={handleDevSeedGenerate}
               onLoadDaily={handleLoadDaily}
               onStopGeneration={handleStopGeneration}
-              previewFeaturesEnabled={previewFeaturesEnabled}
-              onPreviewFeaturesToggle={onPreviewFeaturesToggle}
               onClose={() => setShowDevTools(false)}
               canStopGeneration={!!generationAbortRef.current}
               closenessThreshold={closenessThreshold}
               onClosenessThresholdChange={setClosenessThreshold}
+              isProd={IS_PROD}
             />
           )}
 
-          {/* Only show stats when game is ready (avoids flash of default values during restore) */}
-          {(!hasPendingRestore || isGameReady) && (
-            <GameUI
-              puzzleNumber={puzzleNumber}
-              puzzleLabel={puzzleLabel ?? undefined}
-              optimalMoves={puzzle.optimalMoves}
-              variant="header"
-              hidePuzzleNumber={true}
-              initialState={initialStats ?? undefined}
-              frozen={isPostGame}
-              maxLives={devMaxLives}
-              hintsEnabled={hintsEnabled}
-              onReviewAttempt={setReviewAttemptIndex}
-              reviewAttemptIndex={reviewAttemptIndex}
-            />
-          )}
+          {/* Always render GameUI - shows skeleton shimmer while loading */}
+          <GameUI
+            puzzleNumber={puzzleNumber}
+            puzzleLabel={puzzleLabel ?? undefined}
+            optimalMoves={displayOptimalMoves}
+            variant="header"
+            hidePuzzleNumber={true}
+            initialState={initialStats ?? undefined}
+            frozen={isPostGame || !hasPuzzle}
+            maxLives={devMaxLives}
+            hintsEnabled={hintsEnabled}
+            onReviewAttempt={setReviewAttemptIndex}
+            reviewAttemptIndex={reviewAttemptIndex}
+            loading={!hasPuzzle}
+          />
 
           <div ref={gameStageRef} className={styles.gameArea}>
-            <div
-              ref={gameFrameRef}
-              className={styles.gameFrame}
-              style={{
-                width: gameFrameSizePx ? `${gameFrameSizePx.width}px` : undefined,
-                height: gameFrameSizePx ? `${gameFrameSizePx.height}px` : undefined,
-              }}
-            >
-              <PhaserGame
-                key={renderKey}
-                puzzle={puzzle}
-                viewportWidth={baseWidth}
-                viewportHeight={baseHeight}
-                onReady={handleGameReady}
-              />
-              <div className={`${styles.blurOverlay} ${!shouldBlur ? styles.blurOverlayHidden : ''}`} />
-              {lifeFlash && <div className={styles.lifeFlash} />}
-              {!isPlaying && isGameReady && !showInlineResult && !showShareCard && (
-                <div className={styles.startOverlay}>
-                  {previousResult ? (
-                    <div className={styles.previousResult}>
-                      <p>
-                        {previousResult.completed
-                          ? 'You already completed today\u2019s puzzle!'
-                          : 'You already played today\u2019s puzzle!'}
-                      </p>
-                      <button onClick={handleViewResult} className={styles.viewResultButton}>
-                        View Result
-                      </button>
-                    </div>
-                  ) : (
-                    <button className={styles.startButton} onClick={handleBegin}>
-                      Begin
-                    </button>
-                  )}
+            <div className={styles.gameFrame} style={{ width: gameFrameSizePx.width, height: gameFrameSizePx.height }} ref={gameFrameRef}>
+              {puzzle && (
+                <PhaserGame
+                  key={renderKey}
+                  puzzle={puzzle}
+                  viewportWidth={baseWidth}
+                  viewportHeight={baseHeight}
+                  onReady={handleGameReady}
+                />
+              )}
+
+              {/* Loading Overlay */}
+              {showLoader && (
+                <div className={styles.frameLoader}>
+                  <Loader
+                    text={loadingText}
+                    progress={isGenerating ? progressPercent : undefined}
+                  />
                 </div>
+              )}
+
+              {/* Game overlays - only shown when game is ready */}
+              {puzzle && isGameReady && (
+                <>
+                  <div className={`${styles.blurOverlay} ${!shouldBlur ? styles.blurOverlayHidden : ''}`} />
+                  {lifeFlash && <div className={styles.lifeFlash} />}
+                  {!isPlaying && !showInlineResult && !showShareCard && (
+                    <div className={styles.startOverlay}>
+                      {previousResult ? (
+                        <div className={styles.previousResult}>
+                          <p>
+                            {previousResult.completed
+                              ? 'You already completed today\u2019s puzzle!'
+                              : 'You already played today\u2019s puzzle!'}
+                          </p>
+                          <div className={styles.previousResultActions}>
+                            <button onClick={handleViewResult} className={styles.viewResultButton}>
+                              View Result
+                            </button>
+                            <button onClick={handleShowShareCard} className={styles.shareButton}>
+                              Share Score
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button className={styles.startButton} onClick={handleBegin}>
+                          Begin
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -1178,14 +1211,22 @@ export default function Home() {
               className={styles.shareButton}
               onClick={handleShowShareCard}
               style={{
-                visibility: showResultsButton ? 'visible' : 'hidden',
-                opacity: showResultsButton ? 1 : 0,
-                transform: showResultsButton ? 'scale(1)' : 'scale(0.9)',
-                pointerEvents: showResultsButton ? 'auto' : 'none',
+                visibility: showResultsButton && !showSwipeHint ? 'visible' : 'hidden',
+                opacity: showResultsButton && !showSwipeHint ? 1 : 0,
+                transform: showResultsButton && !showSwipeHint ? 'scale(1)' : 'scale(0.9)',
+                pointerEvents: showResultsButton && !showSwipeHint ? 'auto' : 'none',
               }}
             >
               Share Score
             </button>
+            {showSwipeHint && (
+              <div
+                className={styles.swipeHint}
+                onAnimationEnd={() => setShowSwipeHint(false)}
+              >
+                Swipe anywhere to move
+              </div>
+            )}
           </div>
 
           {isPostGame && <AdSlot placement="postGame" />}
@@ -1212,7 +1253,9 @@ export default function Home() {
         )}
 
         <footer className={styles.footer}>
-          <p>Use arrow keys or swipe to move</p>
+          <p>
+            <span className={styles.footerTextDesktop}>Use arrow keys or swipe to move</span>
+          </p>
           <p className={styles.footerLinks}>
             <a href="/about">About</a>
             <span>·</span>
@@ -1253,17 +1296,15 @@ export default function Home() {
           </OverlayShell>
         )}
 
-        {showShareCard && gameResult && (
+        {showShareCard && gameResult && puzzle && (
           <ShareCard
             puzzleNumber={puzzleNumber}
             puzzleLabel={puzzleLabel ?? undefined}
-            moveCount={gameResult.moveCount}
             timeMs={gameResult.timeMs}
             optimalMoves={puzzle.optimalMoves}
             failed={gameResult.failed}
             attempts={gameResult.attempts}
             maxLives={devMaxLives}
-            mapType={puzzle.mapType}
             leaderboardDate={
               (process.env.NODE_ENV !== 'production' || previewFeaturesEnabled) && !debugModeRef.current
                 ? getNewYorkDateString()

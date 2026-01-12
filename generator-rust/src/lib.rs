@@ -15,10 +15,9 @@ pub mod scheduler;
 pub mod types;
 
 // Re-export main types for convenience
-pub use generators::ground::generate_puzzle as generate_ground_puzzle;
 pub use generators::ice::generate_puzzle as generate_ice_puzzle;
 pub use generators::ice::generate_puzzle_with_cancel as generate_ice_puzzle_with_cancel;
-pub use types::{GenerationConfig, MapType, Position, PuzzleData, TileType};
+pub use types::{GenerationConfig, Position, PuzzleData, TileType};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WASM Bindings (only compiled for wasm32 target)
@@ -78,67 +77,26 @@ pub fn wasm_generate_ice_with_config(seed: &str, config_js: JsValue) -> Result<J
     serde_wasm_bindgen::to_value(&puzzle).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
-/// Generate a ground puzzle with default configuration (same as Rust server).
+/// Generate a puzzle with default configuration (same as Rust server).
 /// Thread pool must be initialized first via initThreadPool().
 ///
 /// # Arguments
 /// * `seed` - The seed string for deterministic generation
-///
-/// # Returns
-/// A JavaScript object containing the puzzle data
-#[cfg(target_arch = "wasm32")]
-#[wasm_bindgen(js_name = generateGround)]
-pub fn wasm_generate_ground(seed: &str) -> Result<JsValue, JsValue> {
-    let config = GenerationConfig::default();
-    let puzzle = generate_ground_puzzle(seed, &config);
-    serde_wasm_bindgen::to_value(&puzzle).map_err(|e| JsValue::from_str(&e.to_string()))
-}
-
-/// Generate a ground puzzle with custom configuration.
-///
-/// # Arguments
-/// * `seed` - The seed string for deterministic generation
-/// * `config_js` - JavaScript object with generation configuration
-///
-/// # Returns
-/// A JavaScript object containing the puzzle data
-#[cfg(target_arch = "wasm32")]
-#[wasm_bindgen(js_name = generateGroundWithConfig)]
-pub fn wasm_generate_ground_with_config(
-    seed: &str,
-    config_js: JsValue,
-) -> Result<JsValue, JsValue> {
-    let config: GenerationConfig = serde_wasm_bindgen::from_value(config_js)
-        .map_err(|e| JsValue::from_str(&format!("Invalid config: {}", e)))?;
-    let puzzle = generate_ground_puzzle(seed, &config);
-    serde_wasm_bindgen::to_value(&puzzle).map_err(|e| JsValue::from_str(&e.to_string()))
-}
-
-/// Generate a puzzle by map type with default configuration (same as Rust server).
-/// Thread pool must be initialized first via initThreadPool().
-///
-/// # Arguments
-/// * `seed` - The seed string for deterministic generation
-/// * `map_type` - "ice" or "ground"
 ///
 /// # Returns
 /// A JavaScript object containing the puzzle data
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(js_name = generate)]
-pub fn wasm_generate(seed: &str, map_type: &str) -> Result<JsValue, JsValue> {
+pub fn wasm_generate(seed: &str) -> Result<JsValue, JsValue> {
     let config = GenerationConfig::default();
-    let puzzle = match map_type {
-        "ground" => generate_ground_puzzle(seed, &config),
-        _ => generate_ice_puzzle(seed, &config),
-    };
+    let puzzle = generate_ice_puzzle(seed, &config);
     serde_wasm_bindgen::to_value(&puzzle).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
-/// Generate a puzzle by map type with custom configuration.
+/// Generate a puzzle with custom configuration.
 ///
 /// # Arguments
 /// * `seed` - The seed string for deterministic generation
-/// * `map_type` - "ice" or "ground"
 /// * `config_js` - JavaScript object with generation configuration
 ///
 /// # Returns
@@ -147,15 +105,11 @@ pub fn wasm_generate(seed: &str, map_type: &str) -> Result<JsValue, JsValue> {
 #[wasm_bindgen(js_name = generateWithConfig)]
 pub fn wasm_generate_with_config(
     seed: &str,
-    map_type: &str,
     config_js: JsValue,
 ) -> Result<JsValue, JsValue> {
     let config: GenerationConfig = serde_wasm_bindgen::from_value(config_js)
         .map_err(|e| JsValue::from_str(&format!("Invalid config: {}", e)))?;
-    let puzzle = match map_type {
-        "ground" => generate_ground_puzzle(seed, &config),
-        _ => generate_ice_puzzle(seed, &config),
-    };
+    let puzzle = generate_ice_puzzle(seed, &config);
     serde_wasm_bindgen::to_value(&puzzle).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 

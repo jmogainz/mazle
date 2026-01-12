@@ -1,25 +1,25 @@
 'use client';
 
-import { MapType, HINTS_ENABLED } from '@/game/types';
+import { HINTS_ENABLED } from '@/game/types';
 import styles from './HelpModal.module.css';
 import { HELP_CONTENT } from './helpContent';
 
 interface HelpModalProps {
   onClose: () => void;
-  mapType?: MapType;
   hintsEnabled?: boolean;
 }
 
 export default function HelpModal({
   onClose,
-  mapType = MapType.ICE,
   hintsEnabled = HINTS_ENABLED,
 }: HelpModalProps) {
   return (
     <div className={styles.overlay} onClick={onClose}>
       <div className={styles.card} onClick={(e) => e.stopPropagation()}>
-        <button className={styles.closeButton} onClick={onClose}>
-          ✕
+        <button className={styles.closeButton} onClick={onClose} aria-label="Close">
+          <svg viewBox="0 0 24 24" className={styles.closeIcon}>
+            <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+          </svg>
         </button>
         
         <h2 className={styles.title}>{HELP_CONTENT.title}</h2>
@@ -37,7 +37,11 @@ export default function HelpModal({
           <h3 className={styles.sectionTitleCentered}>{HELP_CONTENT.controls.title}</h3>
           <div className={styles.controlsRow}>
             <div className={styles.controlOption}>
-              <div className={styles.controlIcon}>👆</div>
+              <div className={styles.controlIcon}>
+                <svg viewBox="0 0 24 24" className={styles.swipeIcon}>
+                  <path d="M12 2v14m0 0l-4-4m4 4l4-4M8 22h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                </svg>
+              </div>
               <span className={styles.controlLabelKeys}>{HELP_CONTENT.controls.labels.swipe}</span>
             </div>
             <div className={styles.controlOption}>

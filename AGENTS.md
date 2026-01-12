@@ -409,5 +409,6 @@ make clean && make build
 7. ❌ **NEVER** run full test suites unless explicitly requested
 8. ❌ **NEVER** fix unrelated bugs or "improve" code beyond the request
 9. ✅ **ALLOWED** to use direct CLI (npm/cargo/docker/psql/etc.) for inspection/debugging or when no Make target exists; **prefer Make** for build/run/deploy
+10. ✅ **ALLOWED** to check Docker logs for errors while debugging
 
 **When in doubt:** Check this file, or ask the user for clarification.

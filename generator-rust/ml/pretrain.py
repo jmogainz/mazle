@@ -324,7 +324,6 @@ def run_training(
             test_pct=args.test_pct,
             shuffle_buffer=args.shuffle_buffer,
             shuffle_seed=epoch + 13,
-            map_type="ice",
         )
         loader = DataLoader(
             dataset,
@@ -416,7 +415,6 @@ def run_training(
             test_pct=args.test_pct,
             shuffle_buffer=0,
             shuffle_seed=99,
-            map_type="ice",
         )
         val_loader = DataLoader(
             val_dataset,
@@ -449,7 +447,6 @@ def run_training(
                 test_pct=args.test_pct,
                 shuffle_buffer=0,
                 shuffle_seed=101,
-                map_type="ice",
             )
             solver_loader = DataLoader(
                 solver_dataset,
@@ -489,7 +486,6 @@ def run_training(
             test_pct=args.test_pct,
             shuffle_buffer=0,
             shuffle_seed=103,
-            map_type="ice",
         )
         test_loader = DataLoader(
             test_dataset,

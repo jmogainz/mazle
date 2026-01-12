@@ -42,7 +42,7 @@ Separate training mode with controls:
 - **Regenerate** (new episode)
 
 Telemetry fields to log per episode:
-- `seed`, `width`, `height`, `mapType`
+- `seed`, `width`, `height`
 - `tilesInterior` (13×13)
 - `start`, `goal`
 - `rawTimeMs`, `livesUsed`
@@ -55,7 +55,6 @@ Use the **existing Rust generator** to bootstrap a large supervised dataset.
 - `DATASET_OUT=/path/train.jsonl`
 - `DATASET_COUNT=50000`
 - `DATASET_SEED_PREFIX=train`
-- `DATASET_MAP_TYPE=ice`
 - `DATASET_SIZE=15`
 
 **JSONL schema (one line per puzzle):**
@@ -64,7 +63,6 @@ Use the **existing Rust generator** to bootstrap a large supervised dataset.
   "seed": "train-000001",
   "width": 15,
   "height": 15,
-  "mapType": "ice",
   "tilesInterior": [[...13×13...]],
   "start": {"x": 3, "y": 10},
   "goal": {"x": 11, "y": 2}
@@ -107,4 +105,3 @@ Invalid outputs are rejected (training) or deterministically retried (inference)
 - Variable maze sizes via `width/height` conditioning
 - Additional obstacles via expanded tile vocab
 - Optional difficulty conditioning
-

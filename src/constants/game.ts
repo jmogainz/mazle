@@ -10,7 +10,10 @@ export const TAP_COUNT_THRESHOLD = 10;
 export const TAP_WINDOW_MS = 3000;
 
 // Game frame buffer
-export const GAME_BUFFER_PX = 16;
+export const GAME_BUFFER_PX = 0;
+
+// Penalty for losing a life
+export const PENALTY_MS = 30000;
 
 // Closeness threshold configuration
 export const CLOSENESS_THRESHOLD_DEV = 0.97;

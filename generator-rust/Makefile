@@ -275,12 +275,11 @@ DATASET_OUT ?= $(CURDIR)/data/mazle-train.jsonl
 DATASET_LOG ?= $(CURDIR)/data/mazle-train.log
 DATASET_PID ?= $(CURDIR)/data/mazle-train.pid
 DATASET_COUNT ?= 100000
-DATASET_START_INDEX ?= 1
-DATASET_APPEND ?= 0
-DATASET_SEED_PREFIX ?= train
-DATASET_MAP_TYPE ?= ice
-DATASET_SIZE ?= 15
-DATASET_TARGET_MOVES ?=
+	DATASET_START_INDEX ?= 1
+	DATASET_APPEND ?= 0
+	DATASET_SEED_PREFIX ?= train
+	DATASET_SIZE ?= 15
+	DATASET_TARGET_MOVES ?=
 
 .PHONY: dataset-gen
 dataset-gen: RUST_BUILD_PROFILE := release
@@ -292,27 +291,25 @@ dataset-gen: cargo-build
 	@mkdir -p "$(dir $(DATASET_OUT))"
 	@if command -v setsid >/dev/null 2>&1; then \
 		DATASET_OUT="$(DATASET_OUT)" \
-		DATASET_COUNT="$(DATASET_COUNT)" \
-		DATASET_START_INDEX="$(DATASET_START_INDEX)" \
-		DATASET_APPEND="$(DATASET_APPEND)" \
-		DATASET_SEED_PREFIX="$(DATASET_SEED_PREFIX)" \
-		DATASET_MAP_TYPE="$(DATASET_MAP_TYPE)" \
-		DATASET_SIZE="$(DATASET_SIZE)" \
-		$(if $(DATASET_TARGET_MOVES),DATASET_TARGET_MOVES="$(DATASET_TARGET_MOVES)") \
-		setsid ./target/release/mazle-generator </dev/null > "$(DATASET_LOG)" 2>&1 & \
-		echo $$! | tee "$(DATASET_PID)"; \
-	else \
+			DATASET_COUNT="$(DATASET_COUNT)" \
+			DATASET_START_INDEX="$(DATASET_START_INDEX)" \
+			DATASET_APPEND="$(DATASET_APPEND)" \
+			DATASET_SEED_PREFIX="$(DATASET_SEED_PREFIX)" \
+			DATASET_SIZE="$(DATASET_SIZE)" \
+			$(if $(DATASET_TARGET_MOVES),DATASET_TARGET_MOVES="$(DATASET_TARGET_MOVES)") \
+			setsid ./target/release/mazle-generator </dev/null > "$(DATASET_LOG)" 2>&1 & \
+			echo $$! | tee "$(DATASET_PID)"; \
+		else \
 		DATASET_OUT="$(DATASET_OUT)" \
-		DATASET_COUNT="$(DATASET_COUNT)" \
-		DATASET_START_INDEX="$(DATASET_START_INDEX)" \
-		DATASET_APPEND="$(DATASET_APPEND)" \
-		DATASET_SEED_PREFIX="$(DATASET_SEED_PREFIX)" \
-		DATASET_MAP_TYPE="$(DATASET_MAP_TYPE)" \
-		DATASET_SIZE="$(DATASET_SIZE)" \
-		$(if $(DATASET_TARGET_MOVES),DATASET_TARGET_MOVES="$(DATASET_TARGET_MOVES)") \
-		nohup ./target/release/mazle-generator </dev/null > "$(DATASET_LOG)" 2>&1 & \
-		echo $$! | tee "$(DATASET_PID)"; \
-	fi
+			DATASET_COUNT="$(DATASET_COUNT)" \
+			DATASET_START_INDEX="$(DATASET_START_INDEX)" \
+			DATASET_APPEND="$(DATASET_APPEND)" \
+			DATASET_SEED_PREFIX="$(DATASET_SEED_PREFIX)" \
+			DATASET_SIZE="$(DATASET_SIZE)" \
+			$(if $(DATASET_TARGET_MOVES),DATASET_TARGET_MOVES="$(DATASET_TARGET_MOVES)") \
+			nohup ./target/release/mazle-generator </dev/null > "$(DATASET_LOG)" 2>&1 & \
+			echo $$! | tee "$(DATASET_PID)"; \
+		fi
 
 # -------------------------
 # Daily KV backfill (native, outside Docker)
@@ -320,13 +317,12 @@ dataset-gen: cargo-build
 ROOT_APP_NAME := $(shell sed -n 's/^APP_NAME[[:space:]]*:=[[:space:]]*//p' $(REPO_ROOT)/Makefile | head -n 1 | cut -d ' ' -f1)
 BWS_PROJECT_NAME_FOR_KV ?= $(ROOT_APP_NAME)-$(ENV)
 
-DAILIES_KV_START ?=
-DAILIES_KV_END ?=
-DAILIES_KV_FORCE ?= 0
-DAILIES_KV_MAP_TYPE ?= ice
-DAILIES_KV_PARALLEL ?= 1
-DAILIES_KV_CLOSENESS_THRESHOLD ?= 0.99
-DAILIES_KV_TARGET_MOVES ?=
+	DAILIES_KV_START ?=
+	DAILIES_KV_END ?=
+	DAILIES_KV_FORCE ?= 0
+	DAILIES_KV_PARALLEL ?= 1
+	DAILIES_KV_CLOSENESS_THRESHOLD ?= 0.99
+	DAILIES_KV_TARGET_MOVES ?=
 DAILIES_KV_LOG ?= $(CURDIR)/data/dailies-kv-backfill.log
 DAILIES_KV_PID ?= $(CURDIR)/data/dailies-kv-backfill.pid
 
@@ -367,29 +363,27 @@ dailies-kv-backfill: cargo-build
 		ENV="$(ENV)" \
 		KV_REST_API_URL="$$KV_URL" \
 		KV_REST_API_TOKEN="$$KV_TOKEN" \
-		DAILIES_KV_START="$(DAILIES_KV_START)" \
-		DAILIES_KV_END="$(DAILIES_KV_END)" \
-		DAILIES_KV_FORCE="$(DAILIES_KV_FORCE)" \
-		DAILIES_KV_MAP_TYPE="$(DAILIES_KV_MAP_TYPE)" \
-		DAILIES_KV_PARALLEL="$(DAILIES_KV_PARALLEL)" \
-		DAILIES_KV_CLOSENESS_THRESHOLD="$(DAILIES_KV_CLOSENESS_THRESHOLD)" \
-		$(if $(DAILIES_KV_TARGET_MOVES),DAILIES_KV_TARGET_MOVES="$(DAILIES_KV_TARGET_MOVES)") \
-		setsid ./target/release/mazle-generator </dev/null > "$(DAILIES_KV_LOG)" 2>&1 & \
-		echo $$! | tee "$(DAILIES_KV_PID)"; \
-	else \
+			DAILIES_KV_START="$(DAILIES_KV_START)" \
+			DAILIES_KV_END="$(DAILIES_KV_END)" \
+			DAILIES_KV_FORCE="$(DAILIES_KV_FORCE)" \
+			DAILIES_KV_PARALLEL="$(DAILIES_KV_PARALLEL)" \
+			DAILIES_KV_CLOSENESS_THRESHOLD="$(DAILIES_KV_CLOSENESS_THRESHOLD)" \
+			$(if $(DAILIES_KV_TARGET_MOVES),DAILIES_KV_TARGET_MOVES="$(DAILIES_KV_TARGET_MOVES)") \
+			setsid ./target/release/mazle-generator </dev/null > "$(DAILIES_KV_LOG)" 2>&1 & \
+			echo $$! | tee "$(DAILIES_KV_PID)"; \
+		else \
 		ENV="$(ENV)" \
 		KV_REST_API_URL="$$KV_URL" \
 		KV_REST_API_TOKEN="$$KV_TOKEN" \
-		DAILIES_KV_START="$(DAILIES_KV_START)" \
-		DAILIES_KV_END="$(DAILIES_KV_END)" \
-		DAILIES_KV_FORCE="$(DAILIES_KV_FORCE)" \
-		DAILIES_KV_MAP_TYPE="$(DAILIES_KV_MAP_TYPE)" \
-		DAILIES_KV_PARALLEL="$(DAILIES_KV_PARALLEL)" \
-		DAILIES_KV_CLOSENESS_THRESHOLD="$(DAILIES_KV_CLOSENESS_THRESHOLD)" \
-		$(if $(DAILIES_KV_TARGET_MOVES),DAILIES_KV_TARGET_MOVES="$(DAILIES_KV_TARGET_MOVES)") \
-		nohup ./target/release/mazle-generator </dev/null > "$(DAILIES_KV_LOG)" 2>&1 & \
-		echo $$! | tee "$(DAILIES_KV_PID)"; \
-	fi
+			DAILIES_KV_START="$(DAILIES_KV_START)" \
+			DAILIES_KV_END="$(DAILIES_KV_END)" \
+			DAILIES_KV_FORCE="$(DAILIES_KV_FORCE)" \
+			DAILIES_KV_PARALLEL="$(DAILIES_KV_PARALLEL)" \
+			DAILIES_KV_CLOSENESS_THRESHOLD="$(DAILIES_KV_CLOSENESS_THRESHOLD)" \
+			$(if $(DAILIES_KV_TARGET_MOVES),DAILIES_KV_TARGET_MOVES="$(DAILIES_KV_TARGET_MOVES)") \
+			nohup ./target/release/mazle-generator </dev/null > "$(DAILIES_KV_LOG)" 2>&1 & \
+			echo $$! | tee "$(DAILIES_KV_PID)"; \
+		fi
 
 # -------------------------
 # Multi-move dataset generation (4-9, 11-14 moves, skips 10)

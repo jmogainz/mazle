@@ -670,7 +670,6 @@ def train_pretrain(args, model, device, validate_fn, out_dir, config):
             test_pct=args.test_pct,
             shuffle_buffer=args.shuffle_buffer,
             shuffle_seed=epoch + 42,
-            map_type="ice",
         )
         loader = DataLoader(
             dataset,

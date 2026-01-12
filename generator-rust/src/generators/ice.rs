@@ -2,7 +2,7 @@
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 // Rayon for parallel processing (works on both native and WASM with wasm-bindgen-rayon)
-use crate::types::{Direction, GenerationConfig, MapType, Position, PuzzleData, TileType};
+use crate::types::{Direction, GenerationConfig, Position, PuzzleData, TileType};
 use log::{info, debug};
 use rayon::prelude::*;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -5098,7 +5098,6 @@ pub fn generate_puzzle_with_cancel(
                 goal,
                 optimal_moves,
                 solution_path: Some(optimal_path),
-                map_type: MapType::Ice,
                 difficulty_score: Some(base_score.round() as i32), // Store base score without bonus
                 selected_batch: None, // Will be set when puzzle is selected
                 // Original metrics (Phase 0)

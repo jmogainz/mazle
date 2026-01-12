@@ -1,5 +1,7 @@
 .main {
-  min-height: 100vh;
+  height: var(--vh);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 1.5rem 1rem 3rem;
   max-width: 720px;
   margin: 0 auto;
@@ -76,7 +78,15 @@
 }
 
 .controlIcon {
-  font-size: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.controlSvg {
+  width: 1.5rem;
+  height: 1.5rem;
+  color: var(--color-text);
 }
 
 .controlLabel {
@@ -136,11 +146,15 @@
 }
 
 .tipsList li::before {
-  content: '✓';
+  content: '';
   position: absolute;
   left: 0;
-  color: var(--color-success);
-  font-weight: bold;
+  top: 0.9rem;
+  width: 0.5rem;
+  height: 0.3rem;
+  border-left: 2px solid var(--color-success);
+  border-bottom: 2px solid var(--color-success);
+  transform: rotate(-45deg);
 }
 
 .ctaSection {
@@ -200,4 +214,100 @@
   .controlItem {
     padding: 0.75rem;
   }
+}
+
+/* 3D Tile Styles */
+.tileSwatchContainer {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.tileFloor,
+.tileWall,
+.tileIce,
+.tileLedge {
+  width: 100%;
+  height: 100%;
+  border-radius: 6px;
+  position: relative;
+}
+
+/* 3D tile effect using pseudo-element for edge/shadow */
+.tileFloor::before,
+.tileWall::before,
+.tileIce::before,
+.tileLedge::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 6px;
+}
+
+/* Floor tile */
+.tileFloor {
+  background: #9f8451; /* edge color */
+}
+.tileFloor::before {
+  background: #bfa46b; /* face color */
+  bottom: 4px;
+}
+
+/* Wall tile */
+.tileWall {
+  background: #0a0a0a; /* edge color */
+}
+.tileWall::before {
+  background: #202124; /* face color */
+  bottom: 4px;
+}
+
+/* Ice tile */
+.tileIce {
+  background: #7eb5ed; /* edge color */
+}
+.tileIce::before {
+  background: #a6d8ff; /* face color */
+  bottom: 4px;
+}
+
+/* Ledge tile */
+.tileLedge {
+  background: #c0c0c0; /* edge color */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tileLedge::before {
+  background: #e8e8e8; /* face color */
+  bottom: 4px;
+}
+
+.ledgeArrowRight,
+.ledgeArrowDown {
+  position: absolute;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  z-index: 1; /* Ensure visible on top of face */
+}
+
+.ledgeArrowRight {
+  border-width: 5px 0 5px 7px;
+  border-color: transparent transparent transparent #3a3d41;
+  top: 50%;
+  left: 50%;
+  transform: translate(-20%, -50%); /* Center it roughly */
+}
+
+.ledgeArrowDown {
+  border-width: 7px 5px 0 5px;
+  border-color: #3a3d41 transparent transparent transparent;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -20%);
 }

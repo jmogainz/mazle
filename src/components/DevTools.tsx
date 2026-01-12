@@ -1,8 +1,22 @@
 'use client';
 
-import { MapType, GenerationProgress, GeneratorBackend, isRustBackendConfigured } from '@/game';
+import { useState, useCallback } from 'react';
+import { GenerationProgress, GeneratorBackend, isRustBackendConfigured, getRustBackendUrl } from '@/game';
 import { PuzzleData } from '@/game';
 import styles from '../app/page.module.css';
+
+interface CachedSeed {
+  seed: string;
+  generationTimeMs: number;
+  ageSecs: number;
+}
+
+interface SeedsStatus {
+  generating: string[];
+  cached: CachedSeed[];
+  generatingCount: number;
+  cachedCount: number;
+}
 
 interface DevToolsProps {
   puzzle: PuzzleData;
@@ -11,8 +25,6 @@ interface DevToolsProps {
   activeSeed: string;
   seedInput: string;
   onSeedInputChange: (value: string) => void;
-  selectedMapType: MapType | 'random';
-  onMapTypeChange: (type: MapType | 'random') => void;
   startBatchInput: string;
   onStartBatchInputChange: (value: string) => void;
   selectedBackend: GeneratorBackend;
@@ -27,12 +39,11 @@ interface DevToolsProps {
   onGenerate: (seed?: string) => void;
   onLoadDaily: () => void;
   onStopGeneration: () => void;
-  previewFeaturesEnabled: boolean;
-  onPreviewFeaturesToggle: (enabled: boolean) => void;
   onClose: () => void;
   canStopGeneration: boolean;
   closenessThreshold: number;
   onClosenessThresholdChange: (value: number) => void;
+  isProd?: boolean;
 }
 
 export default function DevTools({
@@ -42,8 +53,6 @@ export default function DevTools({
   activeSeed,
   seedInput,
   onSeedInputChange,
-  selectedMapType,
-  onMapTypeChange,
   startBatchInput,
   onStartBatchInputChange,
   selectedBackend,
@@ -58,13 +67,50 @@ export default function DevTools({
   onGenerate,
   onLoadDaily,
   onStopGeneration,
-  previewFeaturesEnabled,
-  onPreviewFeaturesToggle,
   onClose,
   canStopGeneration,
   closenessThreshold,
   onClosenessThresholdChange,
+  isProd = false,
 }: DevToolsProps) {
+  const [seedsStatus, setSeedsStatus] = useState<SeedsStatus | null>(null);
+  const [isLoadingSeeds, setIsLoadingSeeds] = useState(false);
+  const [seedsError, setSeedsError] = useState<string | null>(null);
+
+  const fetchSeedsStatus = useCallback(async () => {
+    const backendUrl = getRustBackendUrl();
+    if (!backendUrl) {
+      setSeedsError('Backend not configured');
+      return;
+    }
+
+    setIsLoadingSeeds(true);
+    setSeedsError(null);
+
+    try {
+      const response = await fetch(`${backendUrl}/api/cache/seeds`, {
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data: SeedsStatus = await response.json();
+      setSeedsStatus(data);
+    } catch (err) {
+      setSeedsError(err instanceof Error ? err.message : 'Failed to fetch');
+    } finally {
+      setIsLoadingSeeds(false);
+    }
+  }, []);
+
+  const formatAge = (secs: number): string => {
+    if (secs < 60) return `${secs}s`;
+    if (secs < 3600) return `${Math.floor(secs / 60)}m`;
+    return `${Math.floor(secs / 3600)}h`;
+  };
+
   const progressPercent = generationProgress
     ? Math.round((generationProgress.workersComplete / generationProgress.totalWorkers) * 100)
     : 0;
@@ -140,27 +186,8 @@ export default function DevTools({
           />
         </div>
 
-        <div className={styles.devToggleRow}>
-          <label className={styles.devToggleLabel}>
-            <input
-              className={styles.devToggleInput}
-              type="checkbox"
-              checked={previewFeaturesEnabled}
-              onChange={(e) => onPreviewFeaturesToggle(e.target.checked)}
-            />
-            Preview Features
-          </label>
-          <span className={styles.devToggleHint}>Show Archive/Leaderboard buttons in prod.</span>
-        </div>
-
         {/* Core Stats - 3x2 grid */}
         <div className={styles.devStatsGrid6}>
-          <div className={styles.devStatItem}>
-            <span className={styles.devStatValue} style={{ textTransform: 'uppercase' }}>
-              {puzzle.mapType ?? 'ice'}
-            </span>
-            <span className={styles.devStatLabel}>Map</span>
-          </div>
           <div className={styles.devStatItem}>
             <span className={styles.devStatValue}>{puzzle.width}×{puzzle.height}</span>
             <span className={styles.devStatLabel}>Size</span>
@@ -317,56 +344,116 @@ export default function DevTools({
           </div>
         </div>
 
+        {/* Backend Seeds Status */}
+        {isRustBackendConfigured() && (
+          <div className={styles.devSeedsSection}>
+            <div className={styles.devSeedsHeader}>
+              <span className={styles.devSeedsTitle}>Backend Seeds</span>
+              <button
+                type="button"
+                className={styles.devSeedsRefreshBtn}
+                onClick={fetchSeedsStatus}
+                disabled={isLoadingSeeds}
+              >
+                {isLoadingSeeds ? '...' : '↻ Refresh'}
+              </button>
+            </div>
+            <div className={styles.devSeedsContent}>
+              {seedsError ? (
+                <div className={styles.devSeedsEmpty}>{seedsError}</div>
+              ) : !seedsStatus ? (
+                <div className={styles.devSeedsEmpty}>Click refresh to load</div>
+              ) : (
+                <>
+                  {seedsStatus.generatingCount > 0 && (
+                    <div className={styles.devSeedsGroup}>
+                      <div className={styles.devSeedsGroupLabel}>
+                        Generating
+                        <span className={styles.devSeedsCount}>{seedsStatus.generatingCount}</span>
+                      </div>
+                      <div className={styles.devSeedsList}>
+                        {seedsStatus.generating.map((seed) => (
+                          <div key={seed} className={`${styles.devSeedItem} ${styles.devSeedGenerating}`}>
+                            <span className={styles.devSeedName}>{seed}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {seedsStatus.cachedCount > 0 && (
+                    <div className={styles.devSeedsGroup}>
+                      <div className={styles.devSeedsGroupLabel}>
+                        Cached
+                        <span className={styles.devSeedsCount}>{seedsStatus.cachedCount}</span>
+                      </div>
+                      <div className={styles.devSeedsList}>
+                        {seedsStatus.cached.map((item) => (
+                          <div key={item.seed} className={`${styles.devSeedItem} ${styles.devSeedCached}`}>
+                            <span className={styles.devSeedName}>{item.seed}</span>
+                            <span className={styles.devSeedMeta}>
+                              <span>{(item.generationTimeMs / 1000).toFixed(1)}s</span>
+                              <span>{formatAge(item.ageSecs)} ago</span>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {seedsStatus.generatingCount === 0 && seedsStatus.cachedCount === 0 && (
+                    <div className={styles.devSeedsEmpty}>No seeds in backend</div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Controls */}
         <div className={styles.devControls}>
-          <input
-            value={seedInput}
-            onChange={(e) => onSeedInputChange(e.target.value)}
-            placeholder="Custom seed or YYYY-MM-DD"
-            className={styles.devInput}
-            disabled={isGenerating}
-          />
-          <div className={styles.devInputRow}>
-            <select
-              value={selectedMapType}
-              onChange={(e) => onMapTypeChange(e.target.value as MapType | 'random')}
-              className={styles.devSelect}
-              disabled={isGenerating}
-            >
-              <option value="random">Random Map</option>
-              <option value={MapType.ICE}>Ice Map</option>
-              <option value={MapType.GROUND}>Ground Map</option>
-            </select>
-            <input
-              value={startBatchInput}
-              onChange={(e) => onStartBatchInputChange(e.target.value.replace(/\D/g, ''))}
-              placeholder="Start batch #"
-              className={styles.devInputSmall}
-              disabled={isGenerating}
-              title="Start generation at a specific batch number (deterministic)"
-            />
-          </div>
+          {!isProd && (
+            <>
+              <input
+                value={seedInput}
+                onChange={(e) => onSeedInputChange(e.target.value)}
+                placeholder="Custom seed or YYYY-MM-DD"
+                className={styles.devInput}
+                disabled={isGenerating}
+              />
+              <input
+                value={startBatchInput}
+                onChange={(e) => onStartBatchInputChange(e.target.value.replace(/\D/g, ''))}
+                placeholder="Start batch #"
+                className={styles.devInput}
+                disabled={isGenerating}
+                title="Start generation at a specific batch number (deterministic)"
+              />
+            </>
+          )}
           <div className={styles.devButtonRow}>
-            <button
-              type="button"
-              className={styles.devButton}
-              onClick={() => onGenerate(seedInput)}
-              disabled={isGenerating}
-            >
-              Load
-            </button>
-            <button
-              type="button"
-              className={styles.devButtonSecondary}
-              onClick={() => onGenerate()}
-              disabled={isGenerating}
-            >
-              {isGenerating ? (
-                <span className={styles.buttonSpinner} />
-              ) : (
-                '🎲 Random'
-              )}
-            </button>
+            {!isProd && (
+              <>
+                <button
+                  type="button"
+                  className={styles.devButton}
+                  onClick={() => onGenerate(seedInput)}
+                  disabled={isGenerating}
+                >
+                  Load
+                </button>
+                <button
+                  type="button"
+                  className={styles.devButtonSecondary}
+                  onClick={() => onGenerate()}
+                  disabled={isGenerating}
+                >
+                  {isGenerating ? (
+                    <span className={styles.buttonSpinner} />
+                  ) : (
+                    '🎲 Random'
+                  )}
+                </button>
+              </>
+            )}
             <button
               type="button"
               className={styles.devButtonGhost}

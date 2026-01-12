@@ -2,6 +2,7 @@
 
 use crate::types::PuzzleData;
 use log::info;
+use serde_json;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
@@ -108,20 +109,22 @@ impl PuzzleCache {
             Ok(p) => p,
             Err(_) => return false,
         };
-        
+
         if in_progress.contains(seed) {
             return false; // Already generating
         }
-        
-        in_progress.insert(seed.to_string());
-        
-        // Create broadcast channel for waiters
+
+        // Create broadcast channel for waiters and register it before releasing the in_progress lock
+        // to avoid a window where is_generating=true but no waiter exists.
         let (tx, _) = broadcast::channel(1);
-        if let Ok(mut waiters) = self.waiters.write() {
-            waiters.insert(seed.to_string(), tx);
+        match self.waiters.write() {
+            Ok(mut waiters) => {
+                waiters.insert(seed.to_string(), tx);
+                in_progress.insert(seed.to_string());
+                true
+            }
+            Err(_) => false,
         }
-        
-        true
     }
 
     /// Register a join handle for the seed's generation task (for cancellation)
@@ -180,11 +183,9 @@ impl PuzzleCache {
         let timeout = tokio::time::timeout(Duration::from_secs(30 * 60), rx.recv()).await;
         
         match timeout {
-            Ok(Ok(())) => {
-                // Generation complete, get from cache
-                self.get(seed)
-            }
-            _ => None, // Timeout or channel error
+            Ok(Ok(())) => self.get(seed),
+            Ok(Err(_)) => self.get(seed), // Sender dropped; check cache anyway
+            Err(_) => self.get(seed), // Timeout; check cache anyway
         }
     }
 
@@ -289,6 +290,36 @@ impl PuzzleCache {
             .read()
             .ok()
             .map(|e| e.keys().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    /// Get all seeds currently being generated
+    pub fn generating_seeds(&self) -> Vec<String> {
+        self.in_progress
+            .read()
+            .ok()
+            .map(|s| s.iter().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    /// Get all cached seeds with metadata for DevTools display
+    pub fn cached_seeds_with_metadata(&self) -> Vec<serde_json::Value> {
+        self.entries
+            .read()
+            .ok()
+            .map(|entries| {
+                entries
+                    .iter()
+                    .map(|(seed, cached)| {
+                        let age_secs = cached.generated_at.elapsed().as_secs();
+                        serde_json::json!({
+                            "seed": seed,
+                            "generationTimeMs": cached.generation_time_ms,
+                            "ageSecs": age_secs,
+                        })
+                    })
+                    .collect()
+            })
             .unwrap_or_default()
     }
 

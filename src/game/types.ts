@@ -1,12 +1,6 @@
 // Feature flags
 export const HINTS_ENABLED = true;
 
-// Map types for different puzzle variants
-export enum MapType {
-  ICE = 'ice',
-  GROUND = 'ground',
-}
-
 // Tile types for the puzzle
 export enum TileType {
   GROUND = 0,  // Renamed from FLOOR - normal walkable tile
@@ -41,8 +35,7 @@ export interface PuzzleData {
   goal: Position;
   optimalMoves: number;
   solutionPath?: Position[];
-  mapType: MapType;  // Type of map/puzzle variant
-  
+
   // Psychology-based difficulty metrics (for dev mode display)
   difficultyScore?: number;           // Overall psychology score
   selectedBatch?: number;             // Batch number where puzzle was selected
@@ -71,6 +64,7 @@ export interface GameState {
   moveCount: number;
   currentAttemptMoves: number;
   currentAttemptCorrectMoves: number;
+  currentAttemptVisitedSolutionTiles: Set<string>;
   lives: number;
   penaltyTimeMs: number;
   isPaused: boolean;
@@ -94,7 +88,6 @@ export interface DailyStats {
   moveCount: number;
   timeMs: number;
   puzzleNumber: number;
-  mapType?: MapType;  // Optional for legacy compatibility
   failed?: boolean;  // Track if player ran out of lives
   attempts?: {
     moveCount: number;

@@ -1,0 +1,24 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Shadow (Ellipse at 0, 16 relative to center 32,32) -->
+  <ellipse cx="32" cy="48" rx="32" ry="12" fill="black" fill-opacity="0.25"/>
+  
+  <!-- Body (Rounded Rect: -16, -20 relative to center 32,32. Width 32, Height 36) -->
+  <rect x="16" y="12" width="32" height="36" rx="6" fill="#FF4D4D" stroke="#CC0000" stroke-width="2.5"/>
+  
+  <!-- Eyes (White circles: -6, -8 and +6, -8 relative to center) -->
+  <circle cx="26" cy="24" r="6" fill="white"/>
+  <circle cx="38" cy="24" r="6" fill="white"/>
+  
+  <!-- Pupils (Black circles: -4, -8 and +8, -8 relative to center) -->
+  <circle cx="28" cy="24" r="3" fill="black"/>
+  <circle cx="40" cy="24" r="3" fill="black"/>
+  
+  <!-- "Dead" Eyes? The user said "dead guy". If the normal sprite is alive, maybe the "dead" one has X's? -->
+  <!-- However, the user said "same appearance as the one from the end game overlay". -->
+  <!-- If the overlay shows the normal sprite (just stopped), then this is correct. -->
+  <!-- If the overlay shows X eyes, I should change these circles to paths. -->
+  <!-- Since I didn't see explicit "dead state" drawing code in GameScene.ts (only createPlayer once), -->
+  <!-- I will assume the "dead guy" is just the character in its stopped state. -->
+  <!-- If the user says "eyes not located right", maybe they refer to the pupil offset? -->
+  <!-- My SVG reproduces the exact offset from code (-2s and +4s). -->
+</svg>

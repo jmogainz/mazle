@@ -168,7 +168,6 @@ def main():
             test_pct=args.test_pct,
             shuffle_buffer=args.shuffle_buffer,
             shuffle_seed=epoch + 13,
-            map_type="ice",
         )
         loader = DataLoader(
             dataset,
@@ -279,7 +278,6 @@ def main():
             split="val",
             val_pct=args.val_pct,
             test_pct=args.test_pct,
-            map_type="ice",
         )
         val_loader = DataLoader(
             val_dataset, batch_size=args.batch_size, collate_fn=CollateFn(vocab)
@@ -346,7 +344,6 @@ def main():
             split="test",
             val_pct=args.val_pct,
             test_pct=args.test_pct,
-            map_type="ice",
         )
         test_loader = DataLoader(
             test_dataset, batch_size=args.batch_size, collate_fn=CollateFn(vocab)

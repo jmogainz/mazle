@@ -1,0 +1,34 @@
+<svg width="48" height="48" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Shadow -->
+  <ellipse cx="16" cy="24" rx="8" ry="3" fill="black" fill-opacity="0.25"/>
+  
+  <!-- Body (16x18, rounded rect r=3) -->
+  <!-- Centered at 16,16? In code it was -8,-10 to 8,8. So centered around 0,-1 relative to feet? -->
+  <!-- Let's center body in 32x32 frame. -->
+  <rect x="8" y="7" width="16" height="18" rx="3" fill="#E0BB20" stroke="#B8860B" stroke-width="1.25"/>
+  
+  <!-- Eyes -->
+  <!-- Left Eye: center -3, -4 relative to body center -->
+  <!-- Body center is 16, 16. So eye at 13, 12 -->
+  <circle cx="13" cy="12" r="3" fill="white"/>
+  
+  <!-- Right Eye: center 3, -4 -->
+  <!-- Eye at 19, 12 -->
+  <circle cx="19" cy="12" r="3" fill="white"/>
+  
+  <!-- Pupils (looking right, based on code: -2 and 4 relative to body center) -->
+  <!-- Left Pupil: 16-2 = 14 -->
+  <circle cx="14" cy="12" r="1.5" fill="black"/>
+  
+  <!-- Right Pupil: 16+4 = 20 -->
+  <circle cx="20" cy="12" r="1.5" fill="black"/>
+  
+  <!-- Dead state? The user called it "dead guy". -->
+  <!-- If the game overlay shows X eyes on death, I should do that. -->
+  <!-- But I don't see code for X eyes. -->
+  <!-- The user said "exact same appearance". -->
+  <!-- I'll stick to the code's "alive" appearance for now, as that's what I can verify. -->
+  <!-- Wait, if it's "Game Over", maybe they want X eyes? -->
+  <!-- Let's create it with X eyes just in case, or stick to the code. -->
+  <!-- The user said "eyes are not located right". This implies they see eyes. -->
+</svg>

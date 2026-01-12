@@ -422,16 +422,17 @@
   gap: 0.5rem;
 }
 
-.animationGridTwoRows {
+.animationGridColumns {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.animationColumn {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-}
-
-.animationRow {
-  display: flex;
-  justify-content: space-around;
-  gap: 1rem;
+  width: 48%;
 }
 
 .animationDemo {
@@ -439,7 +440,7 @@
   flex-direction: column;
   align-items: center;
   gap: 0.35rem;
-  width: 50%;
+  width: 100%;
 }
 
 .demoRow {
@@ -563,8 +564,10 @@
 }
 
 .ledgeArrowRight,
+.ledgeArrowUp,
 .ledgeArrowDown {
-  position: absolute;
+  position: relative;
+  z-index: 2;
   width: 0;
   height: 0;
   border-style: solid;
@@ -573,26 +576,34 @@
 .ledgeArrowRight {
   border-width: 5px 0 5px 7px;
   border-color: transparent transparent transparent #3a3d41;
-  animation: arrowRight 5s ease-in-out infinite;
+  opacity: 1;
+}
+
+.ledgeArrowUp {
+  border-width: 0 5px 7px 5px;
+  border-color: transparent transparent #3a3d41 transparent;
+  opacity: 1;
 }
 
 .ledgeArrowDown {
   border-width: 7px 5px 0 5px;
   border-color: #3a3d41 transparent transparent transparent;
-  animation: arrowDown 5s ease-in-out infinite;
+  opacity: 1;
 }
 
 @keyframes arrowRight {
-  /* Visible during phase 1 (slide through), hidden for phase 2 (wall bounce) */
-  0%, 48% { opacity: 1; }
-  50%, 100% { opacity: 0; }
+  /* Removed */
 }
 
 @keyframes arrowDown {
-  /* Hidden during phase 1 (slide through), visible for phase 2 (wall bounce) */
-  0%, 48% { opacity: 0; }
-  50%, 97% { opacity: 1; }
-  100% { opacity: 0; }
+  /* Removed */
+}
+
+/* Ledge grid container */
+.demoLedgeGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
 
 /* Animated player icons */
@@ -680,29 +691,28 @@
   95%, 100% { left: 8px; opacity: 0; }
 }
 
-/* Ledge animation - 5s total (syncs with other 2.5s animations):
-   1) Phase 1 (0-50%): EXACT copy of stopAnim timing (percentages halved), then return to start
-   2) Phase 2 (50-100%): EXACT copy of bumpAnim (percentages halved + 50) */
+/* Ledge animation - Slide Right then Down (1 cycle = 2.5s) */
 .playerLedge {
-  animation: ledgeAnim 5s linear infinite;
+  animation: ledgeAnim 2.5s linear infinite;
 }
 
 @keyframes ledgeAnim {
-  /* Phase 1: stopAnim forward (0-25%), hold briefly, return to start (35-47.5%) */
-  /* stopAnim: 0%,5% start → 50% arrive */
-  /* halved:   0%,2.5% start → 25% arrive */
-  0%, 2.5% { left: 8px; opacity: 1; }
-  25%, 30% { left: 70px; opacity: 1; }
-  /* Return to start tile (same speed as forward) */
-  47.5%, 50% { left: 8px; opacity: 1; }
-  /* Phase 2: bumpAnim percentages / 2 + 50 */
-  /* bumpAnim: 0%,5% → 35% → 45%,85% → 90% → 95%,100% */
-  /* shifted:  50%,52.5% → 67.5% → 72.5%,92.5% → 95% → 97.5%,100% */
-  52.5% { left: 8px; opacity: 1; }
-  67.5% { left: 45px; opacity: 1; }
-  72.5%, 92.5% { left: 39px; opacity: 1; }
-  95% { left: 39px; opacity: 0; }
-  97.5%, 100% { left: 8px; opacity: 0; }
+  /* Slide Right: 0% -> 35% (approx 0.875s) */
+  0%, 5% { left: 8px; top: 50%; opacity: 1; }
+  35% { left: 70px; top: 50%; opacity: 1; }
+  
+  /* Turn/Pause: 35% -> 40% (approx 0.125s) */
+  40% { left: 70px; top: 50%; opacity: 1; }
+  
+  /* Slide Down & Fade Out: 40% -> 70% (approx 0.75s) */
+  /* Runs off bottom like ice demo runs off right */
+  70% { left: 70px; top: calc(50% + 90px); opacity: 1; }
+  
+  /* Fade out */
+  85% { left: 70px; top: calc(50% + 105px); opacity: 0; }
+  
+  /* Reset */
+  95%, 100% { left: 8px; top: 50%; opacity: 0; }
 }
 
 .exampleCaption {
@@ -920,7 +930,7 @@
   }
   
   .playerLedge {
-    animation: ledgeAnimSmall 5s linear infinite;
+    animation: ledgeAnimSmall 2.5s linear infinite;
   }
   
   @keyframes slideAnimSmall {
@@ -946,15 +956,21 @@
   }
   
   @keyframes ledgeAnimSmall {
-    /* Phase 1: stopAnimSmall forward (0-25%), hold briefly, return to start (35-47.5%) */
-    0%, 2.5% { left: 7px; opacity: 1; }
-    25%, 30% { left: 61px; opacity: 1; }
-    47.5%, 50% { left: 7px; opacity: 1; }
-    /* Phase 2: bumpAnimSmall percentages / 2 + 50 */
-    52.5% { left: 7px; opacity: 1; }
-    67.5% { left: 39px; opacity: 1; }
-    72.5%, 92.5% { left: 34px; opacity: 1; }
-    95% { left: 34px; opacity: 0; }
-    97.5%, 100% { left: 7px; opacity: 0; }
+    /* Slide Right: 0% -> 35% */
+    0%, 5% { left: 7px; top: 50%; opacity: 1; }
+    35% { left: 61px; top: 50%; opacity: 1; }
+    
+    /* Turn/Pause: 35% -> 40% */
+    40% { left: 61px; top: 50%; opacity: 1; }
+    
+    /* Slide Down & Fade Out: 40% -> 70% */
+    /* 27px * 3 tiles = 81px */
+    70% { left: 61px; top: calc(50% + 81px); opacity: 1; }
+    
+    /* Fade out */
+    85% { left: 61px; top: calc(50% + 95px); opacity: 0; }
+    
+    /* Reset */
+    95%, 100% { left: 7px; top: 50%; opacity: 0; }
   }
 }

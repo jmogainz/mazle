@@ -3,6 +3,7 @@
 import { HINTS_ENABLED } from '@/game/types';
 import styles from './HelpModal.module.css';
 import { HELP_CONTENT } from './helpContent';
+import Image from 'next/image';
 
 interface HelpModalProps {
   onClose: () => void;
@@ -38,9 +39,14 @@ export default function HelpModal({
           <div className={styles.controlsRow}>
             <div className={styles.controlOption}>
               <div className={styles.controlIcon}>
-                <svg viewBox="0 0 24 24" className={styles.swipeIcon}>
-                  <path d="M12 2v14m0 0l-4-4m4 4l4-4M8 22h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-                </svg>
+                <Image 
+                  src="/assets/images/swipe_gesture.svg" 
+                  alt="Swipe gesture" 
+                  width={24} 
+                  height={24} 
+                  className={styles.swipeIcon}
+                  priority
+                />
               </div>
               <span className={styles.controlLabelKeys}>{HELP_CONTENT.controls.labels.swipe}</span>
             </div>
@@ -71,8 +77,8 @@ export default function HelpModal({
 
         <div className={styles.section}>
           <h3 className={styles.sectionTitleCentered}>{HELP_CONTENT.tiles.title}</h3>
-          <div className={styles.animationGridTwoRows}>
-            <div className={styles.animationRow}>
+          <div className={styles.animationGridColumns}>
+            <div className={styles.animationColumn}>
               {/* Ice - slides through and disappears */}
               <div className={styles.animationDemo}>
                 <div className={styles.demoRow}>
@@ -98,9 +104,7 @@ export default function HelpModal({
                 </div>
                 <span className={styles.demoLabel}>{HELP_CONTENT.tiles.labels.ground}</span>
               </div>
-            </div>
 
-            <div className={styles.animationRow}>
               {/* Wall - blocks in middle */}
               <div className={styles.animationDemo}>
                 <div className={styles.demoRow}>
@@ -113,20 +117,50 @@ export default function HelpModal({
                 </div>
                 <span className={styles.demoLabel}>{HELP_CONTENT.tiles.labels.wall}</span>
               </div>
+            </div>
 
-              {/* Ledge - one way entry only */}
+            <div className={styles.animationColumn}>
+              {/* Ledge Bounce - blocks from side */}
               <div className={styles.animationDemo}>
                 <div className={styles.demoRow}>
                   <div className={styles.demoTile}>
-                    <div className={styles.tileFloorEx} />
-                    <div className={styles.playerLedge} />
+                    <div className={styles.tileIceEx} />
+                    <div className={styles.playerBumps} />
                   </div>
                   <div className={styles.demoTile}><div className={styles.tileIceEx} /></div>
                   <div className={styles.demoTile}>
                     <div className={styles.tileLedgeEx}>
-                      <span className={styles.ledgeArrowRight}></span>
-                      <span className={styles.ledgeArrowDown}></span>
+                      <span className={styles.ledgeArrowUp}></span>
                     </div>
+                  </div>
+                </div>
+                <span className={styles.demoLabel}>Blocked</span>
+              </div>
+
+              {/* Ledge - one way entry only */}
+              <div className={styles.animationDemo}>
+                <div className={styles.demoLedgeGrid}>
+                  <div className={styles.demoRow}>
+                    <div className={styles.demoTile}>
+                      <div className={styles.tileIceEx} />
+                      <div className={styles.playerLedge} />
+                    </div>
+                    <div className={styles.demoTile}><div className={styles.tileIceEx} /></div>
+                    <div className={styles.demoTile}>
+                      <div className={styles.tileLedgeEx}>
+                        <span className={styles.ledgeArrowRight}></span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className={styles.demoRow}>
+                    <div className={styles.demoTile} style={{ visibility: 'hidden' }} />
+                    <div className={styles.demoTile} style={{ visibility: 'hidden' }} />
+                    <div className={styles.demoTile}><div className={styles.tileIceEx} /></div>
+                  </div>
+                  <div className={styles.demoRow}>
+                    <div className={styles.demoTile} style={{ visibility: 'hidden' }} />
+                    <div className={styles.demoTile} style={{ visibility: 'hidden' }} />
+                    <div className={styles.demoTile}><div className={styles.tileIceEx} /></div>
                   </div>
                 </div>
                 <span className={styles.demoLabel}>{HELP_CONTENT.tiles.labels.ledge}</span>

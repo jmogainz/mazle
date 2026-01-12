@@ -41,14 +41,13 @@
   align-items: center;
   width: 100%;
   font-family: var(--font-main);
-  padding: calc(0.35rem * var(--ui-scale)) 0;
+  padding: calc(0.35rem * var(--ui-scale)) 0 0 0;
   transition: padding 0.15s ease-out;
 }
 
 /* --- TOP HEADER VARIANT --- */
 .headerContainer {
   gap: calc(0.4rem * var(--ui-scale));
-  margin-bottom: calc(0.15rem * var(--ui-scale));
 }
 
 .puzzleInfo {
@@ -99,6 +98,7 @@
 }
 
 .statValue {
+  position: relative;
   font-size: calc(1.5rem * var(--ui-scale));
   font-weight: 700;
   color: var(--color-text);
@@ -112,6 +112,17 @@
 .statValue.danger {
   color: var(--color-error);
   animation: pulse 1s infinite;
+}
+
+/* Safari/WebKit can sometimes clip the left edge of text glyphs; this nudges text onto a stable layer. */
+@supports (-webkit-touch-callout: none) {
+  .statValue,
+  .movesValue {
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+  }
 }
 
 .statLabel {
@@ -261,6 +272,7 @@
 }
 
 .movesValue {
+  position: relative;
   font-size: calc(3.5rem * var(--ui-scale));
   font-weight: 700;
   color: var(--color-text);

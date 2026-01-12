@@ -3,6 +3,7 @@
 import { HINTS_ENABLED } from '@/game/types';
 import styles from './HelpModal.module.css';
 import { HELP_CONTENT } from './helpContent';
+import Image from 'next/image';
 
 interface HelpModalProps {
   onClose: () => void;
@@ -18,10 +19,10 @@ export default function HelpModal({
       <div className={styles.card} onClick={(e) => e.stopPropagation()}>
         <button className={styles.closeButton} onClick={onClose} aria-label="Close">
           <svg viewBox="0 0 24 24" className={styles.closeIcon}>
-            <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+            <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
           </svg>
         </button>
-        
+
         <h2 className={styles.title}>{HELP_CONTENT.title}</h2>
 
         <div className={styles.goalSection}>
@@ -38,11 +39,17 @@ export default function HelpModal({
           <div className={styles.controlsRow}>
             <div className={styles.controlOption}>
               <div className={styles.controlIcon}>
-                <svg viewBox="0 0 24 24" className={styles.swipeIcon}>
-                  <path d="M12 2v14m0 0l-4-4m4 4l4-4M8 22h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                {/* Phosphor Icon: Hand Swipe Right (Official) */}
+                <svg viewBox="0 0 256 256" className={styles.swipeIconStatic}>
+                  <path
+                    d="M216,140v36c0,25.59-8.49,42.85-8.85,43.58A8,8,0,0,1,200,224a7.9,7.9,0,0,1-3.57-.85,8,8,0,0,1-3.58-10.73c.06-.12,7.16-14.81,7.16-36.42V140a12,12,0,0,0-24,0v4a8,8,0,0,1-16,0V124a12,12,0,0,0-24,0v12a8,8,0,0,1-16,0V68a12,12,0,0,0-24,0V176a8,8,0,0,1-14.79,4.23l-18.68-30-.14-.23A12,12,0,1,0,41.6,162L70.89,212A8,8,0,1,1,57.08,220l-29.32-50a28,28,0,0,1,48.41-28.17L80,148V68a28,28,0,0,1,56,0V98.7a28,28,0,0,1,38.65,16.69A28,28,0,0,1,216,140Zm37.66-89.66-32-32a8,8,0,0,0-11.31,11.32L228.68,48H176a8,8,0,0,0,0,16h52.69L210.34,82.34a8,8,0,0,0,11.31,11.32l32-32A8,8,0,0,0,253.66,50.34Z"
+                    fill="currentColor"
+                  />
                 </svg>
               </div>
-              <span className={styles.controlLabelKeys}>{HELP_CONTENT.controls.labels.swipe}</span>
+              <span className={`${styles.controlLabelKeys} ${styles.controlLabelSwipe}`}>
+                {HELP_CONTENT.controls.labels.swipe}
+              </span>
             </div>
             <div className={styles.controlOption}>
               <div className={styles.controlKeys}>
@@ -71,8 +78,8 @@ export default function HelpModal({
 
         <div className={styles.section}>
           <h3 className={styles.sectionTitleCentered}>{HELP_CONTENT.tiles.title}</h3>
-          <div className={styles.animationGridTwoRows}>
-            <div className={styles.animationRow}>
+          <div className={styles.animationGridColumns}>
+            <div className={styles.animationColumn}>
               {/* Ice - slides through and disappears */}
               <div className={styles.animationDemo}>
                 <div className={styles.demoRow}>
@@ -98,9 +105,7 @@ export default function HelpModal({
                 </div>
                 <span className={styles.demoLabel}>{HELP_CONTENT.tiles.labels.ground}</span>
               </div>
-            </div>
 
-            <div className={styles.animationRow}>
               {/* Wall - blocks in middle */}
               <div className={styles.animationDemo}>
                 <div className={styles.demoRow}>
@@ -113,20 +118,50 @@ export default function HelpModal({
                 </div>
                 <span className={styles.demoLabel}>{HELP_CONTENT.tiles.labels.wall}</span>
               </div>
+            </div>
 
-              {/* Ledge - one way entry only */}
+            <div className={styles.animationColumn}>
+              {/* Ledge Bounce - blocks from side */}
               <div className={styles.animationDemo}>
                 <div className={styles.demoRow}>
                   <div className={styles.demoTile}>
-                    <div className={styles.tileFloorEx} />
-                    <div className={styles.playerLedge} />
+                    <div className={styles.tileIceEx} />
+                    <div className={styles.playerBumps} />
                   </div>
                   <div className={styles.demoTile}><div className={styles.tileIceEx} /></div>
                   <div className={styles.demoTile}>
                     <div className={styles.tileLedgeEx}>
-                      <span className={styles.ledgeArrowRight}></span>
-                      <span className={styles.ledgeArrowDown}></span>
+                      <span className={styles.ledgeArrowUp}></span>
                     </div>
+                  </div>
+                </div>
+                <span className={styles.demoLabel}>Blocked</span>
+              </div>
+
+              {/* Ledge - one way entry only */}
+              <div className={styles.animationDemo}>
+                <div className={styles.demoLedgeGrid}>
+                  <div className={styles.demoRow}>
+                    <div className={styles.demoTile}>
+                      <div className={styles.tileIceEx} />
+                      <div className={styles.playerLedge} />
+                    </div>
+                    <div className={styles.demoTile}><div className={styles.tileIceEx} /></div>
+                    <div className={styles.demoTile}>
+                      <div className={styles.tileLedgeEx}>
+                        <span className={styles.ledgeArrowRight}></span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className={styles.demoRow}>
+                    <div className={styles.demoTile} style={{ visibility: 'hidden' }} />
+                    <div className={styles.demoTile} style={{ visibility: 'hidden' }} />
+                    <div className={styles.demoTile}><div className={styles.tileIceEx} /></div>
+                  </div>
+                  <div className={styles.demoRow}>
+                    <div className={styles.demoTile} style={{ visibility: 'hidden' }} />
+                    <div className={styles.demoTile} style={{ visibility: 'hidden' }} />
+                    <div className={styles.demoTile}><div className={styles.tileIceEx} /></div>
                   </div>
                 </div>
                 <span className={styles.demoLabel}>{HELP_CONTENT.tiles.labels.ledge}</span>

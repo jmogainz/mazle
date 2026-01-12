@@ -27,8 +27,8 @@
   background: var(--color-background);
   border: 2px solid var(--color-border);
   border-radius: 14px;
-  padding: 1.5rem;
-  max-width: 380px;
+  padding: 1.75rem;
+  max-width: 420px;
   width: 100%;
   max-height: 90vh;
   overflow-y: auto;
@@ -39,6 +39,8 @@
   animation: slideUp 0.3s ease-out;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.08);
   font-family: var(--font-main);
+  transform: scale(calc(0.6 + 0.4 * var(--ui-scale, 1)));
+  transform-origin: center;
 }
 
 .cardFailed {
@@ -67,12 +69,12 @@
 
 @keyframes slideUp {
   from {
-    transform: translateY(20px);
+    transform: translateY(20px) scale(calc(0.6 + 0.4 * var(--ui-scale, 1)));
     opacity: 0;
   }
 
   to {
-    transform: translateY(0);
+    transform: translateY(0) scale(calc(0.6 + 0.4 * var(--ui-scale, 1)));
     opacity: 1;
   }
 }
@@ -895,6 +897,47 @@
   margin: 0 auto 1rem auto;
   width: 64px;
   height: auto;
+}
+
+/* Victory Character Animation */
+.victoryCharacterContainer {
+  display: block;
+  margin: 0 auto 1rem auto;
+  width: 64px;
+  height: 80px;
+}
+
+.victoryCharacterSvg {
+  overflow: visible;
+}
+
+.crownGroup {
+  animation: bob 1.8s ease-in-out infinite;
+  transform-origin: center center;
+}
+
+.crownGlow {
+  opacity: 0.5;
+  animation: glowPulse 2s ease-in-out infinite alternate;
+  transform-origin: center center;
+}
+
+@keyframes bob {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-0.5px);
+  }
+}
+
+@keyframes glowPulse {
+  from {
+    opacity: 0.3;
+  }
+  to {
+    opacity: 0.6;
+  }
 }
 
 .deadPlayerIcon {

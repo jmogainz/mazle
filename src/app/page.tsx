@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { usePathname, useRouter } from 'next/navigation';
 import { Header, GameUI, ShareCard, StatsModal, HelpModal, ErrorBoundary, Loader, DevTools, AdSlot } from '@/components';
@@ -127,15 +127,12 @@ export default function Home() {
   const adsReadyTimeoutRef = useRef<number | null>(null);
   const adTimeoutsRef = useRef<{ top?: number; bottom?: number }>({});
   const hintsPrefLoadedRef = useRef(false);
-  // Initialize with max maze size to prevent layout shift before useEffect calculates actual size
-  const [gameFrameSizePx, setGameFrameSizePx] = useState<{ width: number; height: number }>({ width: 520, height: 520 });
   const tapTimestampsRef = useRef<number[]>([]);
   const lastDevToolsTouchTsRef = useRef<number>(0);
   const devToolsTapTargetRef = useRef<HTMLDivElement | null>(null);
   const pendingRestoreRef = useRef<Parameters<GameControls['restoreState']>[0] | null>(null);
   const hintsEnabledRef = useRef(hintsEnabled);
   const devMaxLivesRef = useRef(devMaxLives);
-  const uiScaleRef = useRef<number | null>(null);
   const [liveAttempts, setLiveAttempts] = useState<GameState['attempts']>([]);
   const [reviewAttemptIndex, setReviewAttemptIndex] = useState<number | null>(null);
 
@@ -143,50 +140,6 @@ export default function Home() {
   useEffect(() => {
     devMaxLivesRef.current = devMaxLives;
   }, [devMaxLives]);
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(DEVTOOLS_PREVIEW_FEATURES_KEY);
-      setPreviewFeaturesEnabled(stored === '1');
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'production' && !previewFeaturesEnabled) return;
-    const runPrefetch = () => {
-      prefetchAccount();
-      prefetchLeaderboard(todayNy, 50);
-    };
-
-    if ('requestIdleCallback' in window) {
-      const id = window.requestIdleCallback(runPrefetch, { timeout: 1500 });
-      return () => window.cancelIdleCallback(id);
-    }
-
-    const id = window.setTimeout(runPrefetch, 800);
-    return () => window.clearTimeout(id);
-  }, [todayNy, previewFeaturesEnabled]);
-
-  // Sync CSS custom property to the real visual viewport height (iOS-safe)
-  useEffect(() => {
-    function setVH() {
-      const vh = window.visualViewport?.height || window.innerHeight;
-      document.documentElement.style.setProperty('--vh', `${vh}px`);
-    }
-
-    window.visualViewport?.addEventListener('resize', setVH);
-    window.visualViewport?.addEventListener('scroll', setVH);
-    window.addEventListener('resize', setVH);
-    setVH();
-
-    return () => {
-      window.visualViewport?.removeEventListener('resize', setVH);
-      window.visualViewport?.removeEventListener('scroll', setVH);
-      window.removeEventListener('resize', setVH);
-    };
-  }, []);
 
   useEffect(() => {
     const uaData = (navigator as Navigator & { userAgentData?: { mobile?: boolean } }).userAgentData;
@@ -254,124 +207,6 @@ export default function Home() {
   useEffect(() => {
     gameControlsRef.current?.setPaused?.(shouldPause);
   }, [shouldPause]);
-
-  // Dynamic UI scaling system - maximizes maze size while keeping UI readable
-  // The --ui-scale CSS variable controls all UI element sizes
-  // useLayoutEffect ensures scale is calculated before paint to prevent layout shift
-  useLayoutEffect(() => {
-    const getGameAreaSize = () => {
-      const node = gameStageRef.current;
-      if (!node) return null;
-      const rect = node.getBoundingClientRect();
-      const styles = window.getComputedStyle(node);
-      const paddingLeft = Number.parseFloat(styles.paddingLeft) || 0;
-      const paddingRight = Number.parseFloat(styles.paddingRight) || 0;
-      const paddingTop = Number.parseFloat(styles.paddingTop) || 0;
-      const paddingBottom = Number.parseFloat(styles.paddingBottom) || 0;
-      const paddingX = paddingLeft + paddingRight;
-      const paddingY = paddingTop + paddingBottom;
-      const width = Math.max(0, rect.width - paddingX);
-      const height = Math.max(0, rect.height - paddingY);
-      if (width <= 0 || height <= 0) return null;
-      return { width, height };
-    };
-
-    const updateScale = () => {
-      const viewportHeight = window.visualViewport?.height || window.innerHeight;
-      const viewportWidth = window.innerWidth;
-
-      // Fixed UI heights at scale=1 (approximate values)
-      const HEADER_HEIGHT = 56;      // MAZLE logo + icons
-      const PUZZLE_NUM_HEIGHT = 32;  // Puzzle number banner
-      const SCOREBOARD_HEIGHT = 70;  // Lives, moves, time row
-      const CONTROLS_HEIGHT = 56;    // Share button area
-      const FOOTER_HEIGHT = viewportWidth > 768 ? 32 : 0; // Desktop footer
-      const AD_HEIGHT = (showTopAd ? AD_BANNER_HEIGHT + 8 : 0) + (showBottomAd ? AD_BANNER_HEIGHT + 8 : 0);
-      const PADDING = 24;            // Various padding/gaps
-
-      const totalUIHeight = HEADER_HEIGHT + PUZZLE_NUM_HEIGHT + SCOREBOARD_HEIGHT +
-        CONTROLS_HEIGHT + FOOTER_HEIGHT + AD_HEIGHT + PADDING;
-
-      // Available height for the maze
-      const availableForMaze = viewportHeight - totalUIHeight;
-
-      // Maximum maze size (don't let it grow infinitely on large screens)
-      const MAX_MAZE_SIZE = 520;
-      // Scale limits for UI
-      const UI_SCALE_MIN = 0.55;
-      const UI_SCALE_MAX = 1.0;
-
-      // Calculate ideal maze size (constrained by width too)
-      const maxMazeByWidth = Math.max(1, Math.min(viewportWidth - 4, MAX_MAZE_SIZE)); // 2px padding each side
-      const idealMazeSize = Math.min(maxMazeByWidth, MAX_MAZE_SIZE);
-
-      // How much height do we need for the ideal maze?
-      const neededForIdealMaze = idealMazeSize;
-
-      let uiScale = UI_SCALE_MAX;
-
-      if (availableForMaze < neededForIdealMaze) {
-        // Not enough space - try scaling down UI first
-        // Calculate how much UI space we can save by scaling
-        const uiScalableHeight = HEADER_HEIGHT + PUZZLE_NUM_HEIGHT + SCOREBOARD_HEIGHT + CONTROLS_HEIGHT;
-
-        // How much extra space do we need?
-        const deficit = neededForIdealMaze - availableForMaze;
-
-        // How much can we save by scaling UI to minimum?
-        const maxUISavings = uiScalableHeight * (1 - UI_SCALE_MIN);
-
-        if (deficit <= maxUISavings) {
-          // We can fit the ideal maze by just scaling down UI
-          // Calculate the exact scale needed
-          uiScale = 1 - (deficit / uiScalableHeight);
-          uiScale = Math.max(UI_SCALE_MIN, Math.min(UI_SCALE_MAX, uiScale));
-        } else {
-          // Even at minimum UI scale, we can't fit ideal maze
-          // Scale UI to minimum and shrink maze
-          uiScale = UI_SCALE_MIN;
-        }
-      }
-
-      const uiScaleValue = Math.round(uiScale * 1000) / 1000;
-      if (uiScaleRef.current !== uiScaleValue) {
-        document.documentElement.style.setProperty('--ui-scale', uiScaleValue.toFixed(3));
-        uiScaleRef.current = uiScaleValue;
-      }
-
-      // Also update maze frame size
-      const area = getGameAreaSize();
-      const areaScale = area
-        ? Math.min(area.width / baseWidth, area.height / baseHeight)
-        : 1;
-      const maxScale = maxMazeByWidth / baseWidth;
-      const finalScale = Math.min(maxScale, areaScale);
-      const width = Math.max(1, Math.floor(baseWidth * finalScale));
-      const height = Math.max(1, Math.floor(baseHeight * finalScale));
-
-      setGameFrameSizePx((prev) => {
-        if (prev.width === width && prev.height === height) return prev;
-        return { width, height };
-      });
-    };
-
-    // Immediate call on mount to set scale before first paint
-    updateScale();
-    window.visualViewport?.addEventListener('resize', updateScale);
-    window.addEventListener('resize', updateScale);
-    const gameArea = gameStageRef.current;
-    const resizeObserver =
-      typeof ResizeObserver !== 'undefined' && gameArea
-        ? new ResizeObserver(updateScale)
-        : null;
-    resizeObserver?.observe(gameArea);
-
-    return () => {
-      window.visualViewport?.removeEventListener('resize', updateScale);
-      window.removeEventListener('resize', updateScale);
-      resizeObserver?.disconnect();
-    };
-  }, [baseWidth, baseHeight, showTopAd, showBottomAd]);
 
   useEffect(() => {
     const targets: Record<'top' | 'bottom', boolean> = {
@@ -794,9 +629,13 @@ export default function Home() {
     setLiveAttempts([]);
     setReviewAttemptIndex(null);
     // Mount hint after 500ms delay - animation handles full lifecycle
+    // Only show on mobile (desktop has display:none which prevents onAnimationEnd)
     setShowSwipeHint(false);
     setTimeout(() => {
-      setShowSwipeHint(true);
+      const isMobile = window.innerWidth < 769;
+      if (isMobile) {
+        setShowSwipeHint(true);
+      }
     }, 500);
   }, []);
 
@@ -1133,24 +972,25 @@ export default function Home() {
             />
           )}
 
-          {/* Always render GameUI - shows skeleton shimmer while loading */}
-          <GameUI
-            puzzleNumber={puzzleNumber}
-            puzzleLabel={puzzleLabel ?? undefined}
-            optimalMoves={displayOptimalMoves}
-            variant="header"
-            hidePuzzleNumber={true}
-            initialState={initialStats ?? undefined}
-            frozen={isPostGame || !hasPuzzle}
-            maxLives={devMaxLives}
-            hintsEnabled={hintsEnabled}
-            onReviewAttempt={setReviewAttemptIndex}
-            reviewAttemptIndex={reviewAttemptIndex}
-            loading={!hasPuzzle}
-          />
+          <div className={styles.gameCluster}>
+            {/* Always render GameUI - shows skeleton shimmer while loading */}
+            <GameUI
+              puzzleNumber={puzzleNumber}
+              puzzleLabel={puzzleLabel ?? undefined}
+              optimalMoves={displayOptimalMoves}
+              variant="header"
+              hidePuzzleNumber={true}
+              initialState={initialStats ?? undefined}
+              frozen={isPostGame || !hasPuzzle}
+              maxLives={devMaxLives}
+              hintsEnabled={hintsEnabled}
+              onReviewAttempt={setReviewAttemptIndex}
+              reviewAttemptIndex={reviewAttemptIndex}
+              loading={!hasPuzzle}
+            />
 
-          <div ref={gameStageRef} className={styles.gameArea}>
-            <div className={styles.gameFrame} style={{ width: gameFrameSizePx.width, height: gameFrameSizePx.height }} ref={gameFrameRef}>
+            <div ref={gameStageRef} className={styles.gameArea}>
+            <div className={styles.gameFrame} ref={gameFrameRef}>
               {puzzle && (
                 <PhaserGame
                   key={renderKey}
@@ -1203,30 +1043,31 @@ export default function Home() {
                   )}
                 </>
               )}
-            </div>
-          </div>
-
-          <div className={styles.controlsArea}>
-            <button
-              className={styles.shareButton}
-              onClick={handleShowShareCard}
-              style={{
-                visibility: showResultsButton && !showSwipeHint ? 'visible' : 'hidden',
-                opacity: showResultsButton && !showSwipeHint ? 1 : 0,
-                transform: showResultsButton && !showSwipeHint ? 'scale(1)' : 'scale(0.9)',
-                pointerEvents: showResultsButton && !showSwipeHint ? 'auto' : 'none',
-              }}
-            >
-              Share Score
-            </button>
-            {showSwipeHint && (
-              <div
-                className={styles.swipeHint}
-                onAnimationEnd={() => setShowSwipeHint(false)}
-              >
-                Swipe anywhere to move
               </div>
-            )}
+            </div>
+
+            <div className={styles.controlsArea}>
+              <button
+                className={styles.shareButton}
+                onClick={handleShowShareCard}
+                style={{
+                  visibility: showResultsButton && !showSwipeHint ? 'visible' : 'hidden',
+                  opacity: showResultsButton && !showSwipeHint ? 1 : 0,
+                  transform: showResultsButton && !showSwipeHint ? 'scale(1)' : 'scale(0.9)',
+                  pointerEvents: showResultsButton && !showSwipeHint ? 'auto' : 'none',
+                }}
+              >
+                Share Score
+              </button>
+              {showSwipeHint && (
+                <div
+                  className={styles.swipeHint}
+                  onAnimationEnd={() => setShowSwipeHint(false)}
+                >
+                  Swipe anywhere to move
+                </div>
+              )}
+            </div>
           </div>
 
           {isPostGame && <AdSlot placement="postGame" />}

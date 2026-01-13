@@ -2,11 +2,9 @@
   height: var(--vh);
   min-height: var(--vh);
   position: relative;
-  overflow: hidden;
   /* Prevent scrolling on mobile */
   display: flex;
   flex-direction: column;
-  touch-action: none;
 }
 
 /* Shimmer skeleton animation for loading states */
@@ -768,16 +766,27 @@
   transform: none;
 }
 
-/* Game Area - centers the game frame, takes remaining space */
-.gameArea {
+/* Game Cluster - groups scoreboard, game, and controls together */
+.gameCluster {
   flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  overflow: visible;
+}
+
+/* Game Area - centers the game frame */
+.gameArea {
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 0;
   min-width: 0;
   width: 100%;
-  padding: 0.25rem;
   overflow: visible;
   position: relative;
 }
@@ -823,22 +832,25 @@
   position: relative;
   z-index: 1;
   border-radius: 10px;
-  overflow: visible;
-  /* Changed from hidden to visible for the arrow */
-  /* Use width/height: 0 to let inline styles fully control size */
-  width: 0;
-  height: 0;
-  /* Use inline-block instead of inline-flex to avoid flex spacing */
-  display: inline-block;
-  /* Ensure no extra spacing around canvas */
-  line-height: 0;
-  vertical-align: top;
+  overflow: visible; /* Changed from hidden to visible for the arrow */
+  max-width: min(var(--game-size, 520px), calc(100vw - 1rem));
+  max-height: var(--game-size, 520px);
+  width: var(--game-size, 520px);
+  height: var(--game-size, 520px);
+  /* inline-flex makes it shrink to content size */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
 }
 
 /* Canvas styling - ensure canvas defines the frame size */
 .gameFrame :global(canvas) {
   display: block;
   border-radius: 10px;
+  width: 100%;
+  height: 100%;
+  touch-action: none; /* Prevent scrolling while interacting with game */
   transition: filter 0.2s ease-out;
 }
 
@@ -931,7 +943,8 @@
   align-items: flex-start;
   gap: calc(0.5rem * var(--ui-scale));
   min-height: calc(48px * var(--ui-scale));
-  padding: calc(0.25rem * var(--ui-scale)) 0;
+  padding-top: calc(0.5rem * var(--ui-scale));
+  padding-bottom: calc(0.25rem * var(--ui-scale));
   transition: min-height 0.15s ease-out, padding 0.15s ease-out;
   position: relative;
 }
@@ -1225,15 +1238,15 @@
 .footer {
   display: block;
   text-align: center;
-  padding: 0.5rem 1rem;
+  padding: calc(0.55rem * var(--ui-scale)) 1rem;
   color: var(--color-secondary);
-  font-size: 0.75rem;
-  padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));
+  font-size: calc(0.825rem * var(--ui-scale));
+  padding-bottom: calc(0.55rem * var(--ui-scale) + env(safe-area-inset-bottom));
 }
 
 .footerLinks {
-  margin-top: 0.25rem;
-  font-size: 0.7rem;
+  margin-top: calc(0.275rem * var(--ui-scale));
+  font-size: calc(0.77rem * var(--ui-scale));
 }
 
 .footerLinks a {
@@ -1279,6 +1292,10 @@
     /* Allow wrapper to expand fully */
   }
 
+  .gameCluster {
+    max-width: none;
+  }
+
   .gameArea {
     padding: 0.5rem;
     max-width: none;
@@ -1308,19 +1325,27 @@
     /* Ensure mobile also uses full width */
   }
 
-  .gameArea {
-    flex: 0 1 auto;
+  .gameCluster {
+    flex: 1 1 0;
     min-height: 0;
-    padding: 0;
+    justify-content: center;
   }
 
-  .controlsArea {
-    margin-top: calc(1rem * var(--ui-scale));
+  .gameArea {
+    flex: 0 1 auto;
   }
 
   .puzzleNumberBanner {
     margin-bottom: calc(0.35rem * var(--ui-scale));
   }
+}
+
+/* iPhone XR / mid-size phones (376px - 414px) */
+@media (min-width: 376px) and (max-width: 414px) {
+}
+
+/* iPhone SE and very small screens */
+@media (max-width: 375px) {
 }
 
 /* Puzzle Number Banner - sits between header and stats */
@@ -1334,7 +1359,7 @@
 
 .puzzleNumberText {
   font-family: var(--font-main);
-  font-size: calc(1.05rem * var(--ui-scale));
+  font-size: calc(1.155rem * var(--ui-scale));
   font-weight: 800;
   color: var(--color-text);
   letter-spacing: 0.08em;

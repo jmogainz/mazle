@@ -37,7 +37,29 @@ interface ReadyResponse {
   version: string;
 }
 
-type WorkerResponse = GenerateResponse | ErrorResponse | ReadyResponse;
+interface LogResponse {
+  type: 'log';
+  level: 'log' | 'info' | 'warn' | 'error';
+  args: unknown[];
+}
+
+type WorkerResponse = GenerateResponse | ErrorResponse | ReadyResponse | LogResponse;
+
+// Forward worker console logs to main thread so Rust panics are visible.
+(function proxyConsole() {
+  const levels: Array<LogResponse['level']> = ['log', 'info', 'warn', 'error'];
+  for (const level of levels) {
+    const original = console[level].bind(console);
+    console[level] = (...args: unknown[]) => {
+      try {
+        self.postMessage({ type: 'log', level, args } satisfies LogResponse);
+      } catch {
+        // ignore
+      }
+      original(...args);
+    };
+  }
+})();
 
 // WASM module state
 let wasm: typeof import('../wasm/generator/mazle_generator') | null = null;
@@ -57,9 +79,16 @@ async function initialize(): Promise<void> {
     wasm = await import('../wasm/generator/mazle_generator');
     await wasm.default();
 
+    // Ensure panic hook/logger are initialized even if wasm-bindgen start hook didn't run.
+    try {
+      wasm.wasm_init();
+    } catch {
+      // ignore
+    }
+
     const loadElapsed = performance.now() - loadStart;
     console.log(`[Worker] WASM loaded in ${loadElapsed.toFixed(0)}ms`);
-    console.log('[Worker] Running single-threaded (no rayon thread pool - faster for puzzle generation)');
+    console.log('[Worker] Running single-threaded (no wasm thread pool)');
 
     initialized = true;
 
@@ -130,7 +159,10 @@ async function generate(id: number, seed: string, closenessThreshold?: number): 
     const response: ErrorResponse = {
       type: 'error',
       id,
-      error: error instanceof Error ? error.message : String(error),
+      error:
+        error instanceof Error
+          ? `${error.message}${error.stack ? `\n${error.stack}` : ''}`
+          : String(error),
     };
     self.postMessage(response);
   }

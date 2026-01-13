@@ -56,12 +56,9 @@ endif
 #
 # Override with:
 #   make up WITH_DEPS=0      # Manual override
-#   make up FRONTEND_ONLY=1  # Convenience flag (keeps backend up if running)
 # --------------------------------
 ifeq ($(ENV),$(DEV_TEST_ENV))
   WITH_DEPS ?= 0
-else ifeq ($(FRONTEND_ONLY),1)
-  WITH_DEPS := 0
 else
   WITH_DEPS ?= 1
 endif
@@ -158,10 +155,15 @@ export HOST_GID
 # Next.js App Configuration (for backend URL resolution)
 # --------------------------------
 
+# WASM_ONLY=1 disables backend URL resolution/export so the app defaults to WASM.
+WASM_ONLY ?= 0
+
 ifneq ($(ENV),$(DEV_TEST_ENV))
-  # Tell the toolkit which env var to set with the backend URL
-  # This will be passed to Vercel via --build-env during deployment
-  NEXTJS_BACKEND_ENV_VAR := NEXT_PUBLIC_GENERATOR_URL
+  ifneq ($(WASM_ONLY),1)
+    # Tell the toolkit which env var to set with the backend URL
+    # This will be passed to Vercel via --build-env during deployment
+    NEXTJS_BACKEND_ENV_VAR := NEXT_PUBLIC_GENERATOR_URL
+  endif
 endif
 
 ifndef INCLUDED_NEXTJS_APP_CONFIGURATION
@@ -180,7 +182,10 @@ ifndef INCLUDED_ENV_LOCAL_UTILS
   include $(DEVOPS_TOOLKIT_PATH)/shared/make/utils/env_local.mk
 endif
 
+# Only load BWS .env.local in ENV=dev (dev-test should not require secrets).
+ifeq ($(ENV),dev)
 up:: env-local
+endif
 
 # --------------------------------
 # Targets (toolkit includes)

@@ -135,8 +135,7 @@ export default function PhaserGame({ puzzle, viewportWidth, viewportHeight, onRe
         noAudio: true,
       },
       scale: {
-        mode: Phaser.Scale.FIT,
-        autoCenter: Phaser.Scale.CENTER_BOTH,
+        mode: Phaser.Scale.NONE, // Don't auto-resize on viewport changes (allows browser zoom)
         width: baseWidth,
         height: baseHeight,
       },

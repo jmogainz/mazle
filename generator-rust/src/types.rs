@@ -98,14 +98,14 @@ fn default_target_score() -> i32 {
 fn default_closeness_threshold() -> f64 {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        match std::env::var("ENV").unwrap_or_else(|_| "dev".to_string()).as_str() {
-            "dev" => 0.97,
-            _ => 0.99,
-        }
+            match std::env::var("ENV").unwrap_or_else(|_| "dev".to_string()).as_str() {
+                "dev" => 0.97,
+                _ => 1.0,
+            }
     }
     #[cfg(target_arch = "wasm32")]
     {
-        1.0
+        0.95
     }
 }
 

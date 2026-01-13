@@ -155,10 +155,15 @@ export HOST_GID
 # Next.js App Configuration (for backend URL resolution)
 # --------------------------------
 
+# WASM_ONLY=1 disables backend URL resolution/export so the app defaults to WASM.
+WASM_ONLY ?= 0
+
 ifneq ($(ENV),$(DEV_TEST_ENV))
-  # Tell the toolkit which env var to set with the backend URL
-  # This will be passed to Vercel via --build-env during deployment
-  NEXTJS_BACKEND_ENV_VAR := NEXT_PUBLIC_GENERATOR_URL
+  ifneq ($(WASM_ONLY),1)
+    # Tell the toolkit which env var to set with the backend URL
+    # This will be passed to Vercel via --build-env during deployment
+    NEXTJS_BACKEND_ENV_VAR := NEXT_PUBLIC_GENERATOR_URL
+  endif
 endif
 
 ifndef INCLUDED_NEXTJS_APP_CONFIGURATION

@@ -103,6 +103,7 @@ export default function Home() {
   const inFlightSeedRef = useRef<string | null>(null);
   const debugModeRef = useRef(false);
   const cheatBufferRef = useRef('');
+  const wakeLockRef = useRef<any>(null);
   const cheatTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const gameFrameRef = useRef<HTMLDivElement | null>(null);
   const gameStageRef = useRef<HTMLDivElement | null>(null);
@@ -117,6 +118,9 @@ export default function Home() {
   const pendingRestoreRef = useRef<Parameters<GameControls['restoreState']>[0] | null>(null);
   const hintsEnabledRef = useRef(hintsEnabled);
   const devMaxLivesRef = useRef(devMaxLives);
+  const isPlayingRef = useRef(isPlaying);
+  const wakeLockRequestInFlightRef = useRef(false);
+  const wakeLockReleaseHandlerRef = useRef<((ev: Event) => void) | null>(null);
   const [liveAttempts, setLiveAttempts] = useState<GameState['attempts']>([]);
   const [reviewAttemptIndex, setReviewAttemptIndex] = useState<number | null>(null);
 
@@ -124,6 +128,10 @@ export default function Home() {
   useEffect(() => {
     devMaxLivesRef.current = devMaxLives;
   }, [devMaxLives]);
+
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
 
   useEffect(() => {
     const uaData = (navigator as Navigator & { userAgentData?: { mobile?: boolean } }).userAgentData;
@@ -576,6 +584,96 @@ export default function Home() {
     };
   }, [puzzleNumber, previousResult, activeSeed]);
 
+  const requestWakeLock = useCallback(async () => {
+    try {
+      const wakeLock = (navigator as any)?.wakeLock;
+      if (!wakeLock?.request) return;
+      const existing = wakeLockRef.current;
+      if (existing && existing.released === false) return;
+      if (wakeLockRequestInFlightRef.current) return;
+      wakeLockRequestInFlightRef.current = true;
+
+      if (existing && wakeLockReleaseHandlerRef.current) {
+        try {
+          existing.removeEventListener?.('release', wakeLockReleaseHandlerRef.current);
+        } catch {
+          // Ignore
+        }
+      }
+      wakeLockReleaseHandlerRef.current = null;
+      wakeLockRef.current = null;
+      await existing?.release?.();
+
+      const sentinel = await wakeLock.request('screen');
+      if (!isPlayingRef.current || document.visibilityState !== 'visible') {
+        try {
+          await sentinel.release?.();
+        } catch {
+          // Ignore
+        }
+        return;
+      }
+
+      wakeLockRef.current = sentinel;
+      const handleRelease = () => {
+        if (wakeLockRef.current === sentinel) {
+          wakeLockRef.current = null;
+          wakeLockReleaseHandlerRef.current = null;
+        }
+        if (isPlayingRef.current && document.visibilityState === 'visible') {
+          requestWakeLock();
+        }
+      };
+      wakeLockReleaseHandlerRef.current = handleRelease;
+      sentinel.addEventListener?.('release', handleRelease);
+    } catch {
+      // Ignore - wake lock is best-effort and not supported on all browsers.
+    } finally {
+      wakeLockRequestInFlightRef.current = false;
+    }
+  }, []);
+
+  const releaseWakeLock = useCallback(async () => {
+    try {
+      const sentinel = wakeLockRef.current;
+      if (sentinel && wakeLockReleaseHandlerRef.current) {
+        try {
+          sentinel.removeEventListener?.('release', wakeLockReleaseHandlerRef.current);
+        } catch {
+          // Ignore
+        }
+      }
+      wakeLockReleaseHandlerRef.current = null;
+      await sentinel?.release?.();
+    } catch {
+      // Ignore
+    } finally {
+      wakeLockRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isPlaying) {
+      releaseWakeLock();
+    }
+  }, [isPlaying, releaseWakeLock]);
+
+  useEffect(() => {
+    if (isPlaying && document.visibilityState === 'visible') {
+      requestWakeLock();
+    }
+  }, [isPlaying, requestWakeLock]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isPlaying) {
+        requestWakeLock();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [isPlaying, requestWakeLock]);
+
   // Reset review mode when hints are enabled
   useEffect(() => {
     if (hintsEnabled) {
@@ -600,6 +698,7 @@ export default function Home() {
 
   const handleBegin = useCallback(() => {
     setIsPlaying(true);
+    requestWakeLock();
     gameControlsRef.current?.start();
     setLiveAttempts([]);
     setReviewAttemptIndex(null);
@@ -612,7 +711,7 @@ export default function Home() {
         setShowSwipeHint(true);
       }
     }, 500);
-  }, []);
+  }, [requestWakeLock]);
 
   const handleDevSeedGenerate = useCallback(
     async (rawSeed?: string) => {

@@ -14,7 +14,7 @@ endif
 # -------------------------
 #  ####
 
-ENV ?= dev
+ENV ?= dev-test
 
 COMPOSE_PROJECT_NAME := mazle-generator
 COMPOSE_NETWORK_NAME ?= mazle_network

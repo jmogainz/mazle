@@ -71,6 +71,7 @@ let wasmVersion: string | null = null;
 let requestId = 0;
 
 interface PendingRequest {
+  seed: string;
   resolve: (puzzle: PuzzleData) => void;
   reject: (error: Error) => void;
   onProgress?: (progress: GenerationProgress) => void;
@@ -127,7 +128,7 @@ export function cancelWasmRequest(seed: string): boolean {
     if (pending) {
       pendingRequests.delete(id);
       cancelled = true;
-      pending.reject(new Error('WASM generation cancelled'));
+      pending.reject(new DOMException('WASM generation cancelled', 'AbortError'));
     }
   });
   wasmInFlight.delete(seed);
@@ -240,6 +241,7 @@ async function generateFromWasm(
   }
 
   const id = ++requestId;
+  registerWasmRequest(seed, id);
   
   console.log(`[WASM] Requesting puzzle generation for seed: ${seed}`);
   
@@ -283,8 +285,10 @@ async function generateFromWasm(
     };
     
     pendingRequests.set(id, { 
+      seed,
       resolve: (puzzle) => {
         cleanup();
+        unregisterWasmRequest(seed, id);
         // Send 100% progress on completion
         if (onProgress) {
           onProgress({
@@ -298,6 +302,7 @@ async function generateFromWasm(
       }, 
       reject: (error) => {
         cleanup();
+        unregisterWasmRequest(seed, id);
         reject(error);
       }, 
       onProgress 

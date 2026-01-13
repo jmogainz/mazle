@@ -102,6 +102,7 @@ function AccountView() {
   const [nameError, setNameError] = useState<string | null>(null);
   const [isEditingName, setIsEditingName] = useState(false);
   const [showEditTooltip, setShowEditTooltip] = useState(false);
+  const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   const [previewFeaturesEnabled, setPreviewFeaturesEnabled] = useState(false);
   const [signInExpanded, setSignInExpanded] = useState(false);
 
@@ -504,7 +505,10 @@ function AccountView() {
         <div className={styles.panel}>
           <div className={styles.sectionTitle}>Settings</div>
           <div className={styles.toggleRow}>
-            <div className={styles.toggleLabel}>Auto-submit wins to leaderboard</div>
+            <div>
+              <div className={styles.toggleLabel}>Auto-Submit</div>
+              <div className={styles.toggleHint}>Auto-submit wins to leaderboard</div>
+            </div>
             <div className={styles.toggleControl}>
               <input
                 className={styles.checkbox}
@@ -515,17 +519,93 @@ function AccountView() {
             </div>
           </div>
           <div className={styles.toggleRow} style={{ marginTop: '0.9rem' }}>
-            <div className={styles.toggleLabel}>Theme</div>
+            <div>
+              <div className={styles.toggleLabel}>Theme</div>
+              <div className={styles.toggleHint}>Choose your preferred appearance</div>
+            </div>
             <div className={styles.toggleControl}>
-              <select
-                className={styles.select}
-                value={themePreference}
-                onChange={(e) => handleThemeChange(e.target.value as 'system' | 'light' | 'dark')}
-              >
-                <option value="system">System</option>
-                <option value="light">Light</option>
-                <option value="dark">Dark</option>
-              </select>
+              <div className={styles.themeDropdownWrapper}>
+                <button
+                  type="button"
+                  className={styles.themeTriggerButton}
+                  onClick={() => setIsThemeMenuOpen(!isThemeMenuOpen)}
+                  aria-haspopup="true"
+                  aria-expanded={isThemeMenuOpen}
+                >
+                  <span className={styles.themeValue}>
+                    {themePreference === 'system' ? 'System' : themePreference === 'light' ? 'Light' : 'Dark'}
+                  </span>
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className={styles.chevron}
+                  >
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </button>
+                {isThemeMenuOpen && (
+                  <>
+                    <div className={styles.themeMenuBackdrop} onClick={() => setIsThemeMenuOpen(false)} />
+                    <div className={styles.themeMenu}>
+                      <button
+                        type="button"
+                        className={`${styles.themeMenuItem} ${themePreference === 'system' ? styles.themeMenuItemActive : ''}`}
+                        onClick={() => {
+                          handleThemeChange('system');
+                          setIsThemeMenuOpen(false);
+                        }}
+                      >
+                        <span>System</span>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                          <line x1="8" y1="21" x2="16" y2="21" />
+                          <line x1="12" y1="17" x2="12" y2="21" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        className={`${styles.themeMenuItem} ${themePreference === 'light' ? styles.themeMenuItemActive : ''}`}
+                        onClick={() => {
+                          handleThemeChange('light');
+                          setIsThemeMenuOpen(false);
+                        }}
+                      >
+                        <span>Light</span>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="12" r="5" />
+                          <line x1="12" y1="1" x2="12" y2="3" />
+                          <line x1="12" y1="21" x2="12" y2="23" />
+                          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+                          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                          <line x1="1" y1="12" x2="3" y2="12" />
+                          <line x1="21" y1="12" x2="23" y2="12" />
+                          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+                          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        className={`${styles.themeMenuItem} ${themePreference === 'dark' ? styles.themeMenuItemActive : ''}`}
+                        onClick={() => {
+                          handleThemeChange('dark');
+                          setIsThemeMenuOpen(false);
+                        }}
+                      >
+                        <span>Dark</span>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                        </svg>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </div>

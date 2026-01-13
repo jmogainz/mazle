@@ -8,7 +8,7 @@
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 10px;
-  padding: clamp(0.6rem, 2.5vw, 0.9rem);
+  padding: clamp(0.5rem, 2vw, 0.75rem);
 }
 
 .sectionTitle {
@@ -130,6 +130,7 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   z-index: 10;
   animation: tooltipFadeIn 0.15s ease-out;
+  font-family: var(--font-main);
 }
 
 .youEditTooltip::after {
@@ -402,14 +403,124 @@
   height: 18px;
 }
 
-.select {
-  border: 1px solid var(--color-border);
+/* Theme Dropdown */
+.themeDropdownWrapper {
+  position: relative;
+}
+
+.themeTriggerButton {
+  appearance: none;
+  -webkit-appearance: none;
   background: var(--color-background);
+  border: 1px solid var(--color-border);
   color: var(--color-text);
   border-radius: 10px;
-  padding: 0.55rem 0.7rem;
+  padding: 0.4rem 0.7rem;
   font-weight: 800;
   font-family: var(--font-main);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  transition: border-color 0.15s;
+  min-width: 70px;
+  justify-content: space-between;
+}
+
+.themeTriggerButton:hover {
+  border-color: var(--color-text);
+  background: var(--color-surface);
+}
+
+.themeValue {
+  font-size: 0.75rem;
+}
+
+.chevron {
+  opacity: 0.5;
+  transition: transform 0.2s;
+  width: 12px;
+  height: 12px;
+}
+
+.themeTriggerButton[aria-expanded="true"] .chevron {
+  transform: rotate(180deg);
+}
+
+.themeMenuBackdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100;
+}
+
+.themeMenu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 101;
+  background: rgba(var(--color-surface-rgb), 0.95);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: 10px;
+  padding: 0.25rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 90px;
+  animation: dropdownIn 0.15s ease-out;
+  border: 1px solid var(--color-border);
+}
+
+@keyframes dropdownIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.themeMenuItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--color-text);
+  text-align: left;
+  white-space: nowrap;
+  transition: opacity 0.1s;
+  border-radius: 6px;
+  width: 100%;
+}
+
+.themeMenuItem svg {
+  width: 14px;
+  height: 14px;
+}
+
+
+
+.themeMenuItem:hover {
+  background: rgba(var(--color-text-rgb), 0.05);
+}
+
+.themeMenuItemActive {
+  background: rgba(var(--color-text-rgb), 0.08);
+  color: var(--color-primary);
 }
 
 .nameLabel {

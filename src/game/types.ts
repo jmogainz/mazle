@@ -89,6 +89,8 @@ export interface DailyStats {
   timeMs: number;
   puzzleNumber: number;
   failed?: boolean;  // Track if player ran out of lives
+  attemptsUsed?: number;  // 1-3, how many attempts used (including final)
+  leaderboardRank?: number; // 1 = best (only present if submitted)
   attempts?: {
     moveCount: number;
     correctMoves?: number;

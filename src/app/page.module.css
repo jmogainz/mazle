@@ -779,6 +779,18 @@
   overflow: visible;
 }
 
+/* GameUI wrapper for visibility transitions */
+.gameUiWrapper {
+  width: 100%;
+  opacity: 1;
+  transition: opacity 0.3s ease-out;
+}
+
+.gameUiHidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* Game Area - centers the game frame */
 .gameArea {
   display: flex;
@@ -832,7 +844,8 @@
   position: relative;
   z-index: 1;
   border-radius: 10px;
-  overflow: visible; /* Changed from hidden to visible for the arrow */
+  overflow: visible;
+  /* Changed from hidden to visible for the arrow */
   max-width: min(var(--game-size, 520px), calc(100vw - 1rem));
   max-height: var(--game-size, 520px);
   width: var(--game-size, 520px);
@@ -850,7 +863,8 @@
   border-radius: 10px;
   width: 100%;
   height: 100%;
-  touch-action: none; /* Prevent scrolling while interacting with game */
+  touch-action: none;
+  /* Prevent scrolling while interacting with game */
   transition: filter 0.2s ease-out;
 }
 
@@ -874,6 +888,18 @@
 .gameFrameBlurred :global(canvas),
 .gameFrameBlurred .darkOverlay {
   filter: blur(8px);
+}
+
+/* Lighter blur for menu modal */
+.gameFrameBlurredLight :global(canvas),
+.gameFrameBlurredLight .darkOverlay {
+  filter: blur(5px);
+}
+
+/* General blur class for UI elements */
+.blurred {
+  filter: blur(2px);
+  transition: filter 0.2s ease-out;
 }
 
 /* Blur overlay - separate element, not on container */
@@ -1012,17 +1038,75 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
   cursor: pointer;
-  box-shadow: 0 3px 10px rgba(99, 102, 241, 0.25);
+  box-shadow: 0 3px 10px rgba(106, 170, 100, 0.25);
   transition: opacity 0.2s, transform 0.2s, box-shadow 0.2s, padding 0.15s ease-out, font-size 0.15s ease-out;
 }
 
 .shareButton:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.4);
+  background: transparent;
+  color: var(--color-primary);
+  box-shadow: 0 6px 16px rgba(106, 170, 100, 0.4);
 }
 
 .shareButton:active {
   transform: translateY(0);
+}
+
+.shareButtonFailed {
+  background: var(--color-error);
+  border-color: var(--color-error);
+  box-shadow: 0 3px 10px rgba(239, 68, 68, 0.25);
+}
+
+.shareButtonFailed:hover {
+  background: transparent;
+  color: var(--color-error);
+  box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
+}
+
+/* Controls row with icon buttons flanking share button */
+.controlsRow {
+  display: flex;
+  align-items: center;
+  gap: calc(0.75rem * var(--ui-scale));
+  animation: popIn 0.25s ease-out;
+}
+
+.controlsRow .shareButton {
+  min-width: calc(140px * var(--ui-scale));
+  padding-left: calc(2rem * var(--ui-scale));
+  padding-right: calc(2rem * var(--ui-scale));
+}
+
+.iconButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(44px * var(--ui-scale));
+  height: calc(44px * var(--ui-scale));
+  background: var(--color-surface);
+  border: 2px solid var(--color-border);
+  border-radius: 10px;
+  color: var(--color-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.iconButton:hover {
+  background: rgba(var(--color-primary-rgb, 99, 102, 241), 0.15);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  transform: translateY(-2px);
+}
+
+.iconButton:active {
+  transform: translateY(0);
+}
+
+.iconButton svg {
+  width: calc(20px * var(--ui-scale));
+  height: calc(20px * var(--ui-scale));
 }
 
 @keyframes popIn {
@@ -1133,66 +1217,153 @@
 
 .previousResult {
   text-align: center;
-  padding: calc(1.5rem * var(--ui-scale));
+  padding: calc(1.25rem * var(--ui-scale)) calc(1rem * var(--ui-scale));
   background: var(--color-background);
   border-radius: 14px;
   border: 2px solid var(--color-border);
   backdrop-filter: blur(4px);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
-  width: 80%;
-  max-width: calc(300px * var(--ui-scale));
+  width: 90%;
+  max-width: calc(320px * var(--ui-scale));
   font-family: var(--font-main);
   transition: padding 0.15s ease-out, max-width 0.15s ease-out;
 }
 
-.previousResult p {
+.previousResultTitle {
+  color: var(--color-text);
+  font-size: calc(0.85rem * var(--ui-scale));
+  margin: 0 0 calc(0.75rem * var(--ui-scale)) 0;
+  font-weight: 600;
+  transition: font-size 0.15s ease-out;
+}
+
+.previousResultStats {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(1rem * var(--ui-scale));
+  margin-bottom: calc(0.5rem * var(--ui-scale));
+}
+
+.previousResultAttempts,
+.previousResultTimeBlock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: calc(50px * var(--ui-scale));
+}
+
+.previousResultAttemptsValue,
+.previousResultTimeValue {
+  font-size: calc(1.1rem * var(--ui-scale));
+  font-weight: 800;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.previousResultAttemptsLabel,
+.previousResultTimeLabel {
+  font-size: calc(0.65rem * var(--ui-scale));
   color: var(--color-secondary);
-  font-size: calc(0.9rem * var(--ui-scale));
-  margin-bottom: calc(1rem * var(--ui-scale));
-  font-weight: 500;
-  transition: font-size 0.15s ease-out, margin-bottom 0.15s ease-out;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+.previousResultCharacter {
+  width: calc(64px * var(--ui-scale));
+  height: calc(80px * var(--ui-scale));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.previousResultCharacterSvg {
+  width: calc(64px * var(--ui-scale));
+  height: auto;
+  overflow: visible;
+}
+
+.previousResultCountdown {
+  color: var(--color-text);
+  font-size: calc(0.85rem * var(--ui-scale));
+  margin: calc(0.75rem * var(--ui-scale)) 0 0 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Crown animation for the overlay */
+.crownGroup {
+  animation: crownBob 1.8s ease-in-out infinite;
+  transform-origin: center center;
+}
+
+.crownGlow {
+  opacity: 0.5;
+  animation: crownGlowPulse 2s ease-in-out infinite alternate;
+}
+
+@keyframes crownBob {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-0.5px);
+  }
+}
+
+@keyframes crownGlowPulse {
+  from {
+    opacity: 0.3;
+  }
+
+  to {
+    opacity: 0.6;
+  }
 }
 
 .previousResultActions {
   display: flex;
-  flex-direction: column;
-  gap: calc(0.5rem * var(--ui-scale));
-}
-
-.previousResultActions button {
+  flex-direction: row;
+  align-items: stretch;
+  gap: calc(0.6rem * var(--ui-scale));
   width: 100%;
 }
 
-.previousResultActions .shareButton,
-.previousResultActions .viewResultButton {
-  padding-top: calc(0.65rem * var(--ui-scale));
-  padding-bottom: calc(0.65rem * var(--ui-scale));
-  font-size: calc(0.9rem * var(--ui-scale));
+.previousResultActions .viewResultButtonFull {
+  flex: 1;
 }
 
-.viewResultButton {
-  padding: calc(0.75rem * var(--ui-scale)) calc(1.5rem * var(--ui-scale));
-  background: var(--color-surface);
+.previousResultActions .shareButton {
+  flex: 1;
+}
+
+.viewResultButtonFull {
+  padding: calc(0.6rem * var(--ui-scale)) calc(1rem * var(--ui-scale));
+  background: transparent;
   color: var(--color-text);
   border: 2px solid var(--color-border);
   border-radius: 10px;
-  font-size: calc(0.9rem * var(--ui-scale));
+  font-size: calc(0.8rem * var(--ui-scale));
   font-weight: 700;
   font-family: var(--font-main);
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1), padding 0.15s ease-out, font-size 0.15s ease-out;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
-.viewResultButton:hover {
-  transform: translateY(-2px) scale(1.02);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
-  background: var(--color-primary);
+.viewResultButtonFull:hover {
+  transform: translateY(-2px);
+  background: var(--color-text);
   color: var(--color-background);
-  border-color: var(--color-primary);
+  border-color: var(--color-text);
 }
-
 
 .inlineResultContainer {
   width: 100%;
@@ -1341,12 +1512,10 @@
 }
 
 /* iPhone XR / mid-size phones (376px - 414px) */
-@media (min-width: 376px) and (max-width: 414px) {
-}
+@media (min-width: 376px) and (max-width: 414px) {}
 
 /* iPhone SE and very small screens */
-@media (max-width: 375px) {
-}
+@media (max-width: 375px) {}
 
 /* Puzzle Number Banner - sits between header and stats */
 .puzzleNumberBanner {

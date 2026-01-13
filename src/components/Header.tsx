@@ -11,7 +11,6 @@ interface HeaderProps {
   puzzleInfo?: string;
   puzzleInfoLoading?: boolean;
   onHelpClick: () => void;
-  onStatsClick: () => void;
   onMenuClick?: () => void;
   isMenuOpen?: boolean;
   logoRef?: React.Ref<HTMLDivElement>;
@@ -24,7 +23,6 @@ export default function Header({
   puzzleInfo,
   puzzleInfoLoading,
   onHelpClick,
-  onStatsClick,
   onMenuClick,
   isMenuOpen,
   logoRef,
@@ -104,14 +102,14 @@ export default function Header({
               ) : (
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
                   <circle cx="12" cy="12" r="5" />
-                  <line x1="12" y1="1" x2="12" y2="3" stroke="currentColor" strokeWidth="2" />
-                  <line x1="12" y1="21" x2="12" y2="23" stroke="currentColor" strokeWidth="2" />
-                  <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" stroke="currentColor" strokeWidth="2" />
-                  <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" stroke="currentColor" strokeWidth="2" />
-                  <line x1="1" y1="12" x2="3" y2="12" stroke="currentColor" strokeWidth="2" />
-                  <line x1="21" y1="12" x2="23" y2="12" stroke="currentColor" strokeWidth="2" />
-                  <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" stroke="currentColor" strokeWidth="2" />
-                  <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" stroke="currentColor" strokeWidth="2" />
+                  <line x1="12" y1="1" x2="12" y2="5" stroke="currentColor" strokeWidth="2" />
+                  <line x1="12" y1="19" x2="12" y2="23" stroke="currentColor" strokeWidth="2" />
+                  <line x1="4.22" y1="4.22" x2="7.05" y2="7.05" stroke="currentColor" strokeWidth="2" />
+                  <line x1="16.95" y1="16.95" x2="19.78" y2="19.78" stroke="currentColor" strokeWidth="2" />
+                  <line x1="1" y1="12" x2="5" y2="12" stroke="currentColor" strokeWidth="2" />
+                  <line x1="19" y1="12" x2="23" y2="12" stroke="currentColor" strokeWidth="2" />
+                  <line x1="4.22" y1="19.78" x2="7.05" y2="16.95" stroke="currentColor" strokeWidth="2" />
+                  <line x1="16.95" y1="5.64" x2="19.78" y2="4.22" stroke="currentColor" strokeWidth="2" />
                 </svg>
               )}
             </span>
@@ -131,13 +129,21 @@ export default function Header({
       )}
 
       <div className={styles.rightSection}>
-        <button className={styles.iconButton} onClick={onStatsClick} aria-label="Statistics">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="18" y1="20" x2="18" y2="10" />
-            <line x1="12" y1="20" x2="12" y2="4" />
-            <line x1="6" y1="20" x2="6" y2="14" />
+        <div 
+          className={`${styles.streakIndicator} ${streak > 0 ? styles.streakActive : styles.streakInactive}`}
+          title={streak > 0 ? `${streak} day streak!` : 'No active streak'}
+        >
+          <svg 
+            className={styles.streakFlame} 
+            width="18" 
+            height="18" 
+            viewBox="0 0 24 24" 
+            fill="currentColor"
+          >
+            <path d="M12 23c-3.866 0-7-3.134-7-7 0-2.692 1.58-5.058 3.947-6.447.573-.336 1.303.1 1.197.763-.2 1.246.174 2.503.973 3.467.156.189.436.11.479-.13.247-1.377.953-2.63 2.004-3.553 1.333-1.17 2.272-2.693 2.65-4.4.114-.512.737-.716 1.12-.38C19.457 7.2 21 10.174 21 13.5c0 5.247-4.253 9.5-9.5 9.5h.5z"/>
           </svg>
-        </button>
+          <span className={styles.streakNumber}>{streak}</span>
+        </div>
         {onMenuClick && (
           (menuButtonRef || isMenuOpen !== undefined) ? (
             <button

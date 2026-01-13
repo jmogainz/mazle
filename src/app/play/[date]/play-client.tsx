@@ -328,7 +328,10 @@ export default function ArchivePlayClient({ date }: { date: string }) {
         <Header
           streak={stats.currentStreak || 0}
           onHelpClick={() => setShowHelp(true)}
-          onStatsClick={() => setShowStats(true)}
+          onStatsClick={() => {
+            setStats(getPlayerStats());
+            setShowStats(true);
+          }}
           onMenuClick={showMenuButton ? () => setShowMenu(true) : undefined}
           menuButtonRef={menuButtonRef}
         />
@@ -382,7 +385,10 @@ export default function ArchivePlayClient({ date }: { date: string }) {
         <Header
           streak={stats.currentStreak || 0}
           onHelpClick={() => setShowHelp(true)}
-          onStatsClick={() => setShowStats(true)}
+          onStatsClick={() => {
+            setStats(getPlayerStats());
+            setShowStats(true);
+          }}
           onMenuClick={showMenuButton ? () => setShowMenu(true) : undefined}
           menuButtonRef={menuButtonRef}
         />

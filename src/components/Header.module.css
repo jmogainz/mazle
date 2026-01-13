@@ -188,3 +188,49 @@
   background: #ffffff;
   color: var(--color-primary);
 }
+
+/* Streak indicator */
+.streakIndicator {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: calc(0.3rem * var(--ui-scale)) calc(0.5rem * var(--ui-scale));
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.streakFlame {
+  width: calc(18px * var(--ui-scale));
+  height: calc(18px * var(--ui-scale));
+  transition: all 0.2s ease;
+}
+
+.streakNumber {
+  font-family: var(--font-nunito, 'Nunito', var(--font-system));
+  font-size: calc(0.95rem * var(--ui-scale));
+  font-weight: 800;
+  line-height: 1;
+  transition: color 0.2s ease;
+}
+
+/* Inactive streak (0) - greyed out */
+.streakInactive {
+  color: var(--color-secondary);
+  opacity: 0.4;
+}
+
+/* Active streak (> 0) - fire colors */
+.streakActive {
+  color: #ff6b35;
+}
+
+.streakActive .streakFlame {
+  filter: drop-shadow(0 0 4px rgba(255, 107, 53, 0.5));
+}
+
+.streakActive .streakNumber {
+  background: linear-gradient(180deg, #ffb347 0%, #ff6b35 50%, #e84118 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}

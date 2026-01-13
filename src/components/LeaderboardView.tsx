@@ -12,7 +12,7 @@ import {
   readCachedMe,
 } from '@/lib/api/cached';
 import { getNewYorkDateString, getPuzzleNumberFromNyDateString } from '@/game/puzzleGenerator';
-import { formatTime, getTodaysResult } from '@/utils/storage';
+import { formatTime, getTodaysResult, recordLeaderboardRank } from '@/utils/storage';
 import CharacterIcon from './CharacterIcon';
 import styles from './LeaderboardView.module.css';
 
@@ -192,6 +192,9 @@ function LeaderboardView() {
     try {
       await api.resultsRecord({ date: todayDate, completed: true, timeMs: todayResult.timeMs, attemptsUsed });
       const result = await api.leaderboardSubmit({ date: todayDate });
+      if (result.rank != null) {
+        recordLeaderboardRank(todayDate, result.rank);
+      }
       setSubmitState('submitted');
 
       const accountMe = readCachedMe();

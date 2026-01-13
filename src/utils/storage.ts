@@ -64,13 +64,18 @@ export function getPlayerStats(): PlayerStats {
       }
 
       // Sanitize legacy entries that stored full attempt paths in history (can get large).
-      // Keep the daily result fields, but drop attempts payloads.
+      // Keep the daily result fields, but drop attempts payloads (keep attemptsUsed count).
       let changed = false;
       const sanitizedHistory: DailyStats[] = [];
       for (const raw of parsed.history) {
         if (!raw || typeof raw !== 'object') continue;
-        const entry = raw as DailyStats & { attempts?: unknown };
+        const entry = raw as DailyStats & { attempts?: unknown[] };
         const { attempts, ...rest } = entry as any;
+        // Compute attemptsUsed from attempts array if not already set
+        if (rest.attemptsUsed === undefined && Array.isArray(attempts)) {
+          rest.attemptsUsed = Math.min(3, Math.max(1, attempts.length + 1));
+          changed = true;
+        }
         if (attempts != null) changed = true;
         sanitizedHistory.push(rest as DailyStats);
       }
@@ -190,6 +195,41 @@ export function saveTodaysResult(result: DailyStats): void {
     savePlayerStats(stats);
   } catch {
     console.error('Failed to save daily result');
+  }
+}
+
+export function recordLeaderboardRank(date: string, rank: number): void {
+  if (typeof window === 'undefined') return;
+  if (!Number.isFinite(rank) || rank < 1) return;
+  const normalizedRank = Math.floor(rank);
+
+  try {
+    const stored = localStorage.getItem(DAILY_KEY);
+    if (stored) {
+      const daily = JSON.parse(stored) as DailyStats;
+      if (daily?.date === date) {
+        const next: DailyStats = { ...daily, leaderboardRank: normalizedRank };
+        localStorage.setItem(DAILY_KEY, JSON.stringify(next));
+      }
+    }
+  } catch {
+    // Ignore localStorage update failures
+  }
+
+  try {
+    const stats = getPlayerStats();
+    let changed = false;
+    for (const entry of stats.history) {
+      if (entry.date !== date) continue;
+      if (entry.leaderboardRank !== normalizedRank) {
+        entry.leaderboardRank = normalizedRank;
+        changed = true;
+      }
+      break;
+    }
+    if (changed) savePlayerStats(stats);
+  } catch {
+    // Ignore localStorage update failures
   }
 }
 

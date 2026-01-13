@@ -144,38 +144,46 @@
 .historyItem {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  justify-content: space-between;
   padding: 0.5rem 0.75rem;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background: rgba(106, 170, 100, 0.15);
+  border: 1px solid rgba(106, 170, 100, 0.3);
   border-radius: 6px;
 }
 
-.historyDate {
-  font-size: 0.875rem;
-  color: var(--color-secondary);
-  min-width: 50px;
+.historyItemFailed {
+  background: rgba(255, 77, 77, 0.12);
+  border-color: rgba(255, 77, 77, 0.25);
 }
 
-.historyMoves {
-  flex: 1;
+.historyLeft {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.historyPuzzle {
   font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-secondary);
+  min-width: 40px;
+}
+
+.historyTime {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.historyAttempts {
+  font-size: 0.875rem;
+  font-weight: 500;
   color: var(--color-text);
 }
 
-.historyWin {
-  color: var(--color-success);
-  display: flex;
-  align-items: center;
-}
-
-.historyLoss {
-  color: var(--color-error);
-  display: flex;
-  align-items: center;
-}
-
-.statusIcon {
-  width: 1rem;
-  height: 1rem;
+.historyDnf {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text);
 }

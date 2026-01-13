@@ -41,12 +41,50 @@ import {
   preloadWasm,
   TILE_SIZE,
 } from '@/game';
-import { getPlayerStats, saveTodaysResult, getTodaysResult, getCachedPuzzle, cachePuzzle, saveInProgressState, getInProgressState, clearInProgressState } from '@/utils/storage';
+import {
+  getPlayerStats,
+  saveTodaysResult,
+  getTodaysResult,
+  getCachedPuzzle,
+  cachePuzzle,
+  saveInProgressState,
+  getInProgressState,
+  clearInProgressState,
+  recordLeaderboardRank,
+} from '@/utils/storage';
 import { useAdConsent } from '@/utils/consent';
 import type { PlayerStats, DailyStats, GameState, Direction } from '@/game/types';
 import type { GameControls } from '@/game/PhaserGame';
 import { useGlobalSwipeMoves } from '@/game/useGlobalSwipeMoves';
+import { formatTime } from '@/utils/storage';
 import styles from './page.module.css';
+
+// Calculate time until next puzzle (midnight ET)
+function getTimeUntilMidnightET(): { hours: number; minutes: number; seconds: number; totalMs: number } {
+  const now = new Date();
+  // Get current time in ET
+  const etString = now.toLocaleString('en-US', { timeZone: 'America/New_York' });
+  const etNow = new Date(etString);
+
+  // Calculate midnight ET
+  const midnightET = new Date(etNow);
+  midnightET.setHours(24, 0, 0, 0);
+
+  const totalMs = midnightET.getTime() - etNow.getTime();
+  const totalSeconds = Math.floor(totalMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  return { hours, minutes, seconds, totalMs };
+}
+
+function formatCountdown(time: { hours: number; minutes: number; seconds: number }): string {
+  const h = time.hours;
+  const m = time.minutes.toString().padStart(2, '0');
+  const s = time.seconds.toString().padStart(2, '0');
+  return h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
+}
 
 // Dynamic import for Phaser (client-side only)
 const PhaserGame = dynamic(() => import('@/game/PhaserGame'), {
@@ -104,6 +142,7 @@ export default function Home() {
   const [hintsEnabled, setHintsEnabled] = useState(true);
   const [devMaxLives, setDevMaxLives] = useState(3);
   const [lifeFlash, setLifeFlash] = useState(false);
+  const [nextPuzzleCountdown, setNextPuzzleCountdown] = useState(() => getTimeUntilMidnightET());
   const [hasPendingRestore, setHasPendingRestore] = useState(false);
   const [initialStats, setInitialStats] = useState<{
     lives?: number;
@@ -185,6 +224,17 @@ export default function Home() {
     prefetchLeaderboard(todayNy, 20);
     prefetchLeaderboard(todayNy, 50);
   }, [showShareCard, showLeaderboard, todayNy]);
+
+  // Update countdown timer every second when showing results
+  useEffect(() => {
+    if (!previousResult && !showShareCard) return;
+
+    const interval = setInterval(() => {
+      setNextPuzzleCountdown(getTimeUntilMidnightET());
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [previousResult, showShareCard]);
 
   // Sync CSS custom property to the real visual viewport height (iOS-safe)
   useEffect(() => {
@@ -610,6 +660,9 @@ export default function Home() {
           const timeMs = serializableState.elapsedTimeMs + serializableState.penaltyTimeMs;
           const todayDateStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 
+          const failedAttempts = serializableState.attempts?.length ?? 0;
+          const attemptsUsed = Math.min(3, Math.max(1, failedAttempts + 1));
+
           const dailyResult: DailyStats = {
             date: todayDateStr,
             completed: !failed,
@@ -617,6 +670,7 @@ export default function Home() {
             timeMs,
             puzzleNumber,
             attempts: serializableState.attempts,
+            attemptsUsed,
             failed,
           };
 
@@ -625,23 +679,26 @@ export default function Home() {
           setPreviousResult(dailyResult);
           console.log('[SAVE] Result saved immediately on completion');
 
-          const failedAttempts = serializableState.attempts?.length ?? 0;
-          const attemptsUsed = Math.min(3, Math.max(1, failedAttempts + 1));
-
-          api
+          const recordPromise = api
             .resultsRecord(
               failed
                 ? { date: todayDateStr, completed: false }
                 : { date: todayDateStr, completed: true, timeMs, attemptsUsed }
             )
-            .catch(() => {
-              // Ignore: guests are rejected and offline users can retry on next load.
-            });
+            .catch(() => null);
 
           if (!failed && getPrefs().leaderboardAutoSubmitWins) {
-            api.leaderboardSubmit({ date: todayDateStr }).catch(() => {
-              // Ignore: manual submit remains available via the leaderboard overlay.
-            });
+            recordPromise
+              .then(() => api.leaderboardSubmit({ date: todayDateStr }))
+              .then((res) => {
+                if (res.rank != null) {
+                  recordLeaderboardRank(todayDateStr, res.rank);
+                  setStats(getPlayerStats());
+                }
+              })
+              .catch(() => {
+                // Ignore: manual submit remains available via the leaderboard overlay.
+              });
           }
         } else if (serializableState.isPlaying) {
           saveInProgressState(activeSeed, serializableState);
@@ -1018,7 +1075,6 @@ export default function Home() {
     showDevTools ||
     (hasPuzzle && !isPlaying && isGameReady && !showInlineResult);
   const showLoader = !hasPuzzle || !isGameReady;
-  const showResultsButton = showInlineResult || (!!previousResult && !isPlaying);
   const showMenuButton = process.env.NODE_ENV !== 'production' || previewFeaturesEnabled;
 
   const handleOpenArchive = useCallback(() => {
@@ -1057,7 +1113,6 @@ export default function Home() {
           puzzleInfo={puzzleLabel ?? (puzzleNumber > 0 ? `#${puzzleNumber}` : undefined)}
           puzzleInfoLoading={isGenerating || (!puzzle && !gameResult)}
           onHelpClick={() => setShowHelp(true)}
-          onStatsClick={() => setShowStats(true)}
           onMenuClick={showMenuButton ? () => setShowMenu(UI_OVERHAUL_EXPERIMENTAL ? !showMenu : true) : undefined}
           logoRef={devToolsTapTargetRef}
           logoClassName={styles.devToolsTapTarget}
@@ -1096,104 +1151,204 @@ export default function Home() {
           )}
 
           <div className={styles.gameCluster}>
-            {/* Always render GameUI - shows skeleton shimmer while loading */}
-            <GameUI
-              puzzleNumber={puzzleNumber}
-              puzzleLabel={puzzleLabel ?? undefined}
-              optimalMoves={displayOptimalMoves}
-              variant="header"
-              hidePuzzleNumber={true}
-              initialState={initialStats ?? undefined}
-              frozen={isPostGame || !hasPuzzle}
-              maxLives={devMaxLives}
-              hintsEnabled={hintsEnabled}
-              onReviewAttempt={setReviewAttemptIndex}
-              reviewAttemptIndex={reviewAttemptIndex}
-              loading={!hasPuzzle}
-            />
+            {/* GameUI - invisible when View Result modal is showing, fades in after */}
+            <div className={`${styles.gameUiWrapper} ${(previousResult && !isPlaying && !showInlineResult && !showShareCard) ? styles.gameUiHidden : ''} ${showMenu ? styles.blurred : ''}`}>
+              <GameUI
+                puzzleNumber={puzzleNumber}
+                puzzleLabel={puzzleLabel ?? undefined}
+                optimalMoves={displayOptimalMoves}
+                variant="header"
+                hidePuzzleNumber={true}
+                initialState={initialStats ?? undefined}
+                frozen={isPostGame || !hasPuzzle}
+                maxLives={devMaxLives}
+                hintsEnabled={hintsEnabled}
+                onReviewAttempt={setReviewAttemptIndex}
+                reviewAttemptIndex={reviewAttemptIndex}
+                loading={!hasPuzzle}
+              />
+            </div>
 
             <div ref={gameStageRef} className={styles.gameArea}>
               <div
                 ref={gameFrameRef}
-                className={`${styles.gameFrame} ${shouldBlur ? styles.gameFrameBlurred : ''}`}
+                className={`${styles.gameFrame} ${shouldBlur ? (showMenu && !showShareCard && !showHelp && !showStats && !showLeaderboard && !showAccount && !showDevTools ? styles.gameFrameBlurredLight : styles.gameFrameBlurred) : ''}`}
               >
-              {puzzle && (
-                <PhaserGame
-                  key={renderKey}
-                  puzzle={puzzle}
-                  viewportWidth={baseWidth}
-                  viewportHeight={baseHeight}
-                  onReady={handleGameReady}
-                />
-              )}
-
-              {/* Loading Overlay */}
-              {showLoader && (
-                <div className={styles.frameLoader}>
-                  <Loader
-                    text={loadingText}
-                    progress={isGenerating ? progressPercent : undefined}
+                {puzzle && (
+                  <PhaserGame
+                    key={renderKey}
+                    puzzle={puzzle}
+                    viewportWidth={baseWidth}
+                    viewportHeight={baseHeight}
+                    onReady={handleGameReady}
                   />
+                )}
+
+                {/* Loading Overlay */}
+                {showLoader && (
+                  <div className={styles.frameLoader}>
+                    <Loader
+                      text={loadingText}
+                      progress={isGenerating ? progressPercent : undefined}
+                    />
+                  </div>
+                )}
+
+                {/* Game overlays - only shown when game is ready */}
+                {puzzle && isGameReady && (
+                  <>
+                    <div className={`${styles.darkOverlay} ${shouldBlur ? styles.darkOverlayVisible : ''}`} />
+                    {lifeFlash && <div className={styles.lifeFlash} />}
+                    {!isPlaying && !showInlineResult && !showShareCard && (
+                      <div className={styles.startOverlay}>
+                        {previousResult ? (
+                          <div className={styles.previousResult}>
+                            <p className={styles.previousResultTitle}>
+                              {previousResult.completed
+                                ? 'You completed today\u2019s puzzle!'
+                                : 'You already played today\u2019s puzzle!'}
+                            </p>
+                            <div className={styles.previousResultStats}>
+                              <div className={styles.previousResultAttempts}>
+                                <span className={styles.previousResultAttemptsValue}>
+                                  {previousResult.failed
+                                    ? 'DNF'
+                                    : `${previousResult.attemptsUsed ?? (previousResult.attempts?.length ?? 0) + 1}/${devMaxLives}`}
+                                </span>
+                                <span className={styles.previousResultAttemptsLabel}>tries</span>
+                              </div>
+                              <div className={styles.previousResultCharacter}>
+                                {previousResult.completed ? (
+                                  <svg viewBox="0 -16 64 80" className={styles.previousResultCharacterSvg}>
+                                    {/* Shadow */}
+                                    <ellipse cx="32" cy="48" rx="32" ry="12" fill="black" fillOpacity="0.25" />
+                                    {/* Body */}
+                                    <rect x="16" y="12" width="32" height="36" rx="6" fill="#FF4D4D" stroke="#CC0000" strokeWidth="2.5" />
+                                    {/* Eyes */}
+                                    <circle cx="26" cy="24" r="6" fill="white" />
+                                    <circle cx="38" cy="24" r="6" fill="white" />
+                                    {/* Pupils */}
+                                    <circle cx="28" cy="24" r="3" fill="black" />
+                                    <circle cx="40" cy="24" r="3" fill="black" />
+                                    {/* Crown */}
+                                    <g className={styles.crownGroup}>
+                                      <path
+                                        d="M16 12 L16 0 L24 8 L32 0 L40 8 L48 0 L48 12 Z"
+                                        fill="#FFE082"
+                                        stroke="#FFE082"
+                                        strokeWidth="8"
+                                        strokeLinejoin="round"
+                                        transform="translate(0, -6)"
+                                        className={styles.crownGlow}
+                                        filter="url(#softGlowOverlay)"
+                                      />
+                                      <path
+                                        d="M16 12 L16 0 L24 8 L32 0 L40 8 L48 0 L48 12 Z"
+                                        fill="#FFD700"
+                                        stroke="#DAA520"
+                                        strokeWidth="1.5"
+                                        strokeLinejoin="round"
+                                        transform="translate(0, -6)"
+                                      />
+                                    </g>
+                                    <defs>
+                                      <filter id="softGlowOverlay" x="-100%" y="-100%" width="300%" height="300%">
+                                        <feGaussianBlur stdDeviation="6" result="coloredBlur" />
+                                      </filter>
+                                    </defs>
+                                  </svg>
+                                ) : (
+                                  <svg viewBox="0 0 64 64" className={styles.previousResultCharacterSvg}>
+                                    {/* Shadow */}
+                                    <ellipse cx="32" cy="48" rx="32" ry="12" fill="black" fillOpacity="0.25" />
+                                    {/* Body */}
+                                    <rect x="16" y="12" width="32" height="36" rx="6" fill="#FF4D4D" stroke="#CC0000" strokeWidth="2.5" />
+                                    {/* Dead Eyes (X shapes) */}
+                                    <path d="M22 20 L30 28 M30 20 L22 28" stroke="white" strokeWidth="3" strokeLinecap="round" />
+                                    <path d="M34 20 L42 28 M42 20 L34 28" stroke="white" strokeWidth="3" strokeLinecap="round" />
+                                  </svg>
+                                )}
+                              </div>
+                              <div className={styles.previousResultTimeBlock}>
+                                <span className={styles.previousResultTimeValue}>
+                                  {formatTime(previousResult.timeMs ?? 0)}
+                                </span>
+                                <span className={styles.previousResultTimeLabel}>time</span>
+                              </div>
+                            </div>
+                            <div className={styles.previousResultActions}>
+                              <button onClick={handleViewResult} className={styles.viewResultButtonFull}>
+                                View Result
+                              </button>
+                              <button
+                                onClick={handleShowShareCard}
+                                className={styles.shareButton}
+                              >
+                                Share
+                              </button>
+                            </div>
+                            <p className={styles.previousResultCountdown}>
+                              Next puzzle in {formatCountdown(nextPuzzleCountdown)}
+                            </p>
+                          </div>
+                        ) : (
+                          <button className={styles.startButton} onClick={handleBegin}>
+                            Begin
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {/* Replay Solution overlay button - fades in after analysis completes */}
+                    {showInlineResult && showReplayButton && !showShareCard && !showMenu && (
+                      <button
+                        className={styles.replaySolutionOverlay}
+                        onClick={handleReplayAnalysis}
+                      >
+                        Replay Solution
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className={`${styles.controlsArea} ${showMenu ? styles.blurred : ''}`}>
+              {showInlineResult && !showSwipeHint && !showShareCard && (
+                <div className={styles.controlsRow}>
+                  <button
+                    className={styles.iconButton}
+                    onClick={() => setShowLeaderboard(true)}
+                    aria-label="Leaderboard"
+                    title="Leaderboard"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 21V10h6V3h6v4h6v14H3zM9 10v11M15 7v14" />
+                    </svg>
+                  </button>
+                  <button
+                    className={styles.shareButton}
+                    onClick={handleShowShareCard}
+                  >
+                    Share
+                  </button>
+                  <button
+                    className={styles.iconButton}
+                    onClick={() => {
+                      setStats(getPlayerStats());
+                      setShowStats(true);
+                    }}
+                    aria-label="Statistics"
+                    title="Statistics"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 3v18h18" />
+                      <path d="M18 17V9" />
+                      <path d="M13 17V5" />
+                      <path d="M8 17v-3" />
+                    </svg>
+                  </button>
                 </div>
               )}
-
-              {/* Game overlays - only shown when game is ready */}
-              {puzzle && isGameReady && (
-                <>
-                  <div className={`${styles.darkOverlay} ${shouldBlur ? styles.darkOverlayVisible : ''}`} />
-                  {lifeFlash && <div className={styles.lifeFlash} />}
-                  {!isPlaying && !showInlineResult && !showShareCard && (
-                    <div className={styles.startOverlay}>
-                      {previousResult ? (
-                        <div className={styles.previousResult}>
-                          <p>
-                            {previousResult.completed
-                              ? 'You already completed today\u2019s puzzle!'
-                              : 'You already played today\u2019s puzzle!'}
-                          </p>
-                          <div className={styles.previousResultActions}>
-                            <button onClick={handleViewResult} className={styles.viewResultButton}>
-                              View Result
-                            </button>
-                            <button onClick={handleShowShareCard} className={styles.shareButton}>
-                              Share Score
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <button className={styles.startButton} onClick={handleBegin}>
-                          Begin
-                        </button>
-                      )}
-                    </div>
-                  )}
-                  {/* Replay Solution overlay button - fades in after analysis completes */}
-                  {showInlineResult && showReplayButton && !showShareCard && (
-                    <button
-                      className={styles.replaySolutionOverlay}
-                      onClick={handleReplayAnalysis}
-                    >
-                      Replay Solution
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
-            </div>
-
-            <div className={styles.controlsArea}>
-              <button
-                className={styles.shareButton}
-                onClick={handleShowShareCard}
-                style={{
-                  visibility: showResultsButton && !showSwipeHint && !showShareCard ? 'visible' : 'hidden',
-                  opacity: showResultsButton && !showSwipeHint && !showShareCard ? 1 : 0,
-                  transform: showResultsButton && !showSwipeHint && !showShareCard ? 'scale(1)' : 'scale(0.9)',
-                  pointerEvents: showResultsButton && !showSwipeHint && !showShareCard ? 'auto' : 'none',
-                }}
-              >
-                Share Score
-              </button>
               {showSwipeHint && (
                 <div className={styles.swipeHint} onAnimationEnd={() => setShowSwipeHint(false)}>
                   Swipe anywhere to move
@@ -1240,6 +1395,10 @@ export default function Home() {
         <MoreMenuModal
           open={showMenu}
           onClose={() => setShowMenu(false)}
+          onOpenStats={() => {
+            setStats(getPlayerStats());
+            setShowStats(true);
+          }}
           onOpenLeaderboard={() => setShowLeaderboard(true)}
           onOpenHallOfFame={() => setShowHallOfFame(true)}
           onOpenAccount={() => setShowAccount(true)}
@@ -1304,12 +1463,8 @@ export default function Home() {
             failed={gameResult.failed}
             attempts={gameResult.attempts}
             maxLives={devMaxLives}
-            leaderboardDate={
-              (process.env.NODE_ENV !== 'production' || previewFeaturesEnabled) && !debugModeRef.current
-                ? getNewYorkDateString()
-                : undefined
-            }
             onClose={handleCloseShareCard}
+            countdownText={`Next puzzle in ${formatCountdown(nextPuzzleCountdown)}`}
           />
         )}
 

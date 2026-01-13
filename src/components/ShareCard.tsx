@@ -4,7 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
-import { cachedApi, fetchLeaderboardMeFresh, fetchLeaderboardTopFresh, prefetchLeaderboard } from '@/lib/api/cached';
+import {
+  cachedApi,
+  fetchLeaderboardMeFresh,
+  fetchLeaderboardTopFresh,
+  prefetchLeaderboard,
+  readCachedLeaderboardMe,
+  readCachedLeaderboardTop,
+} from '@/lib/api/cached';
 import type { LeaderboardEntry, LeaderboardMeResponse, LeaderboardTopResponse } from '@/lib/api/types';
 import { MapType } from '@/game/types';
 import { formatTime } from '@/utils/storage';
@@ -112,8 +119,17 @@ export default function ShareCard({
   const [viewerMode, setViewerMode] = useState<'unknown' | 'guest' | 'user'>('unknown');
   const [viewerName, setViewerName] = useState<string | null>(null);
 
-  const [leaderboardTopState, setLeaderboardTopState] = useState<LoadState<LeaderboardTopResponse>>({ status: 'idle' });
-  const [leaderboardMeState, setLeaderboardMeState] = useState<LoadState<LeaderboardMeResponse>>({ status: 'idle' });
+  const cachedTop = useMemo(
+    () => (leaderboardDate ? readCachedLeaderboardTop(leaderboardDate, 20) : null),
+    [leaderboardDate]
+  );
+  const cachedMe = useMemo(() => (leaderboardDate ? readCachedLeaderboardMe(leaderboardDate) : null), [leaderboardDate]);
+  const [leaderboardTopState, setLeaderboardTopState] = useState<LoadState<LeaderboardTopResponse>>(
+    cachedTop ? { status: 'loaded', data: cachedTop } : { status: 'idle' }
+  );
+  const [leaderboardMeState, setLeaderboardMeState] = useState<LoadState<LeaderboardMeResponse>>(
+    cachedMe ? { status: 'loaded', data: cachedMe } : { status: 'idle' }
+  );
   const [leaderboardSubmitState, setLeaderboardSubmitState] = useState<'idle' | 'submitting' | 'submitted' | 'failed'>('idle');
 
   // Height adjustment state
@@ -388,8 +404,20 @@ export default function ShareCard({
 
   const reloadLeaderboard = useCallback(async (force = false) => {
     if (!leaderboardDate) return;
-    setLeaderboardTopState({ status: 'loading' });
-    setLeaderboardMeState({ status: 'loading' });
+    const cachedTopNow = force ? null : readCachedLeaderboardTop(leaderboardDate, 20);
+    const cachedMeNow = force ? null : readCachedLeaderboardMe(leaderboardDate);
+
+    if (cachedTopNow) {
+      setLeaderboardTopState({ status: 'loaded', data: cachedTopNow });
+    } else {
+      setLeaderboardTopState({ status: 'loading' });
+    }
+
+    if (cachedMeNow) {
+      setLeaderboardMeState({ status: 'loaded', data: cachedMeNow });
+    } else {
+      setLeaderboardMeState({ status: 'loading' });
+    }
 
     try {
       const [top, me] = await Promise.all([
@@ -410,10 +438,10 @@ export default function ShareCard({
       setActiveTab('share');
       return;
     }
-    setLeaderboardTopState({ status: 'idle' });
-    setLeaderboardMeState({ status: 'idle' });
+    setLeaderboardTopState(cachedTop ? { status: 'loaded', data: cachedTop } : { status: 'idle' });
+    setLeaderboardMeState(cachedMe ? { status: 'loaded', data: cachedMe } : { status: 'idle' });
     setLeaderboardSubmitState('idle');
-  }, [hasLeaderboard, leaderboardDate]);
+  }, [hasLeaderboard, leaderboardDate, cachedTop, cachedMe]);
 
   useEffect(() => {
     if (!hasLeaderboard) return;
@@ -436,6 +464,12 @@ export default function ShareCard({
     if (leaderboardTopState.status !== 'idle') return;
     reloadLeaderboard();
   }, [activeTab, hasLeaderboard, leaderboardTopState.status, reloadLeaderboard]);
+
+  useEffect(() => {
+    if (!hasLeaderboard) return;
+    if (leaderboardTopState.status !== 'idle' && leaderboardMeState.status !== 'idle') return;
+    reloadLeaderboard();
+  }, [hasLeaderboard, leaderboardTopState.status, leaderboardMeState.status, reloadLeaderboard]);
 
   const canSubmitLeaderboard = hasLeaderboard && leaderboardAllowSubmit && attemptsUsed != null && viewerMode === 'user';
   const alreadySubmitted = leaderboardMeState.status === 'loaded' && !!leaderboardMeState.data;

@@ -182,6 +182,12 @@ export default function Home() {
     return () => window.clearTimeout(id);
   }, [todayNy, previewFeaturesEnabled]);
 
+  useEffect(() => {
+    if (!showShareCard && !showLeaderboard) return;
+    prefetchLeaderboard(todayNy, 20);
+    prefetchLeaderboard(todayNy, 50);
+  }, [showShareCard, showLeaderboard, todayNy]);
+
   // Sync CSS custom property to the real visual viewport height (iOS-safe)
   useEffect(() => {
     function setVH() {
@@ -677,6 +683,8 @@ export default function Home() {
     const unsubscribeComplete = onGameEvent('gameComplete', (data) => {
       const result = data as { moveCount: number; timeMs: number; optimalMoves: number; failed?: boolean; attempts?: any[] };
       setGameResult(result);
+      prefetchLeaderboard(todayNy, 20);
+      prefetchLeaderboard(todayNy, 50);
       setShowShareCard(true);
       setIsPlaying(false); // Ensure game is marked as not playing to show blocked state
       setIsFreshCompletion(true); // Mark as fresh completion (not loaded from storage)
@@ -796,7 +804,7 @@ export default function Home() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('pagehide', handlePageHide);
     };
-  }, [puzzleNumber, previousResult, activeSeed]);
+  }, [puzzleNumber, previousResult, activeSeed, todayNy]);
 
   // Listen for analysis completion to show replay button
   useEffect(() => {

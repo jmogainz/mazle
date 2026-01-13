@@ -20,6 +20,7 @@ make up
 |---------|-------------|
 | `make up` | Start full stack (ENV=dev default, includes Rust backend) |
 | `make up ENV=dev-test` | Start with WASM fallback (no backend) |
+| `make up ENV=dev WASM_ONLY=1` | Disable generator URL export (app defaults to WASM) |
 | `make up ENV=dev WITH_DEPS=0` | Frontend only (connect to existing backend) |
 | `make up FRONTEND_RELEASE_MODE=1` | Run prod-style Next.js build (no hot reload) |
 | `make up ENV=prod` | Deploy backend (Fly.io) + frontend (Vercel) |

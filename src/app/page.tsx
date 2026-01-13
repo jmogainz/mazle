@@ -976,7 +976,6 @@ export default function Home() {
               canStopGeneration={!!generationAbortRef.current}
               closenessThreshold={closenessThreshold}
               onClosenessThresholdChange={setClosenessThreshold}
-              isProd={IS_PROD}
             />
           )}
 

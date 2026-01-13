@@ -43,7 +43,6 @@ interface DevToolsProps {
   canStopGeneration: boolean;
   closenessThreshold: number;
   onClosenessThresholdChange: (value: number) => void;
-  isProd?: boolean;
 }
 
 export default function DevTools({
@@ -71,7 +70,6 @@ export default function DevTools({
   canStopGeneration,
   closenessThreshold,
   onClosenessThresholdChange,
-  isProd = false,
 }: DevToolsProps) {
   const [seedsStatus, setSeedsStatus] = useState<SeedsStatus | null>(null);
   const [isLoadingSeeds, setIsLoadingSeeds] = useState(false);
@@ -410,50 +408,46 @@ export default function DevTools({
 
         {/* Controls */}
         <div className={styles.devControls}>
-          {!isProd && (
-            <>
-              <input
-                value={seedInput}
-                onChange={(e) => onSeedInputChange(e.target.value)}
-                placeholder="Custom seed or YYYY-MM-DD"
-                className={styles.devInput}
-                disabled={isGenerating}
-              />
-              <input
-                value={startBatchInput}
-                onChange={(e) => onStartBatchInputChange(e.target.value.replace(/\D/g, ''))}
-                placeholder="Start batch #"
-                className={styles.devInput}
-                disabled={isGenerating}
-                title="Start generation at a specific batch number (deterministic)"
-              />
-            </>
-          )}
+          <>
+            <input
+              value={seedInput}
+              onChange={(e) => onSeedInputChange(e.target.value)}
+              placeholder="Custom seed or YYYY-MM-DD"
+              className={styles.devInput}
+              disabled={isGenerating}
+            />
+            <input
+              value={startBatchInput}
+              onChange={(e) => onStartBatchInputChange(e.target.value.replace(/\D/g, ''))}
+              placeholder="Start batch #"
+              className={styles.devInput}
+              disabled={isGenerating}
+              title="Start generation at a specific batch number (deterministic)"
+            />
+          </>
           <div className={styles.devButtonRow}>
-            {!isProd && (
-              <>
-                <button
-                  type="button"
-                  className={styles.devButton}
-                  onClick={() => onGenerate(seedInput)}
-                  disabled={isGenerating}
-                >
-                  Load
-                </button>
-                <button
-                  type="button"
-                  className={styles.devButtonSecondary}
-                  onClick={() => onGenerate()}
-                  disabled={isGenerating}
-                >
-                  {isGenerating ? (
-                    <span className={styles.buttonSpinner} />
-                  ) : (
-                    '🎲 Random'
-                  )}
-                </button>
-              </>
-            )}
+            <>
+              <button
+                type="button"
+                className={styles.devButton}
+                onClick={() => onGenerate(seedInput)}
+                disabled={isGenerating}
+              >
+                Load
+              </button>
+              <button
+                type="button"
+                className={styles.devButtonSecondary}
+                onClick={() => onGenerate()}
+                disabled={isGenerating}
+              >
+                {isGenerating ? (
+                  <span className={styles.buttonSpinner} />
+                ) : (
+                  '🎲 Random'
+                )}
+              </button>
+            </>
             <button
               type="button"
               className={styles.devButtonGhost}

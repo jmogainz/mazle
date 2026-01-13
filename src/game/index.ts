@@ -15,6 +15,7 @@ export type { GameConfig, PsychologyMetrics } from './puzzleGenerator';
 export {
   generatePuzzleParallel,
   cancelRustRequest,
+  cancelWasmRequest,
   fetchDailyPuzzle,
   isRustBackendConfigured,
   getRustBackendUrl,

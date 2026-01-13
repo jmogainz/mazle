@@ -76,6 +76,66 @@ interface PendingRequest {
   onProgress?: (progress: GenerationProgress) => void;
 }
 const pendingRequests = new Map<number, PendingRequest>();
+const wasmInFlight = new Map<string, Set<number>>();
+
+function registerWasmRequest(seed: string, id: number) {
+  const existing = wasmInFlight.get(seed) ?? new Set<number>();
+  existing.add(id);
+  wasmInFlight.set(seed, existing);
+}
+
+function unregisterWasmRequest(seed: string, id: number) {
+  const existing = wasmInFlight.get(seed);
+  if (!existing) return;
+  existing.delete(id);
+  if (existing.size === 0) {
+    wasmInFlight.delete(seed);
+  } else {
+    wasmInFlight.set(seed, existing);
+  }
+}
+
+function resetWasmWorker(): void {
+  try {
+    generationWorker?.terminate();
+  } catch {
+    // ignore
+  }
+  generationWorker = null;
+  workerReady = false;
+  workerReadyPromise = null;
+  wasmVersion = null;
+}
+
+export function cancelWasmRequest(seed: string): boolean {
+  const ids = wasmInFlight.get(seed);
+  if (!ids || ids.size === 0) {
+    console.log('[WASM] No in-flight request to cancel for seed', seed);
+    return false;
+  }
+
+  // If multiple requests are waiting on the same seed, do not cancel to avoid
+  // aborting other listeners.
+  if (ids.size > 1) {
+    console.log('[WASM] Skipping cancel; another in-flight request for seed', seed);
+    return false;
+  }
+
+  let cancelled = false;
+  ids.forEach((id) => {
+    const pending = pendingRequests.get(id);
+    if (pending) {
+      pendingRequests.delete(id);
+      cancelled = true;
+      pending.reject(new Error('WASM generation cancelled'));
+    }
+  });
+  wasmInFlight.delete(seed);
+
+  // WASM generation blocks the worker thread; termination is the only reliable cancel.
+  resetWasmWorker();
+  return cancelled;
+}
 
 /**
  * Initialize the generation worker
@@ -98,6 +158,12 @@ async function initGenerationWorker(): Promise<void> {
         const data = event.data;
         
         switch (data.type) {
+          case 'log': {
+            // Forward worker logs (including Rust panic hook output)
+            const level = (data.level as 'log' | 'info' | 'warn' | 'error') ?? 'log';
+            (console[level] ?? console.log)(...[`[WASM:worker]`, ...(data.args ?? [])]);
+            break;
+          }
           case 'ready':
             wasmVersion = data.version;
             workerReady = true;
@@ -576,7 +642,7 @@ export async function preloadWasm(): Promise<void> {
  * @param onProgress - Progress callback
  * @param forceBackend - Force a specific engine ('auto' uses priority: rust > wasm)
  * @param startBatch - Start generation at a specific batch number (for deterministic replay)
- * @param closenessThreshold - Threshold for puzzle closeness (0.97 - 1.0)
+ * @param closenessThreshold - Threshold for puzzle closeness (0.95 - 1.0)
  */
 export async function generatePuzzleParallel(
   seed: string,

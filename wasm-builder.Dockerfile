@@ -93,7 +93,12 @@ RUN --mount=type=cache,id=wasm-cargo-registry,target=/usr/local/cargo/registry \
       else \
         echo "[WASM] Sources changed or no cache; building WASM for BUILD_ENV=$BUILD_ENV"; \
       fi; \
-      wasm-pack build --target web --out-dir /wasm-output --out-name mazle_generator; \
+      if [ "$BUILD_ENV" = "prod" ]; then \
+        wasm-pack build --release --target web --out-dir /wasm-output --out-name mazle_generator; \
+      else \
+        # Dev builds use panic=unwind by default, which surfaces real panic messages instead of generic "unreachable".
+        wasm-pack build --dev --target web --out-dir /wasm-output --out-name mazle_generator; \
+      fi; \
       # Verify wasm-pack produced output \
       if [ ! -f /wasm-output/mazle_generator_bg.wasm ]; then \
         echo "[ERROR] wasm-pack build failed - no output produced"; \

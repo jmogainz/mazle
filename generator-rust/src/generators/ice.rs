@@ -1,12 +1,20 @@
 // Fast, deterministic hashing for tight puzzle loops
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
-// Rayon for parallel processing (works on both native and WASM with wasm-bindgen-rayon)
+// Rayon is only used for native parallel generation. WASM runs single-threaded.
 use crate::types::{Direction, GenerationConfig, Position, PuzzleData, TileType};
-use log::{info, debug};
+use log::{debug, info};
+#[cfg(not(target_arch = "wasm32"))]
 use rayon::prelude::*;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::AtomicBool;
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::Mutex;
+#[cfg(target_arch = "wasm32")]
+use std::cell::{Cell, RefCell};
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
 // =============================================================================
@@ -33,6 +41,7 @@ struct ClosestPuzzleInfo {
 }
 
 /// Per-generation context for isolated tracking (not shared between runs)
+#[cfg(not(target_arch = "wasm32"))]
 struct GenerationContext {
     /// Short identifier for this run (first 8 chars of seed or truncated)
     run_id: String,
@@ -64,6 +73,29 @@ struct GenerationContext {
     closest: Mutex<Option<ClosestPuzzleInfo>>,
 }
 
+/// Per-generation context for isolated tracking (WASM is single-threaded)
+#[cfg(target_arch = "wasm32")]
+struct GenerationContext {
+    run_id: String,
+    // Keep the useful every-10-batch logs on WASM without atomics/timing.
+    fail_ci: Cell<u64>,
+    fail_dec: Cell<u64>,
+    fail_gate: Cell<u64>,
+    fail_fp: Cell<u64>,
+    fail_loc: Cell<u64>,
+    fail_dir: Cell<u64>,
+    fail_bt: Cell<u64>,
+    fail_amb: Cell<u64>,
+    fail_paths: Cell<u64>,
+    fail_olap_best: Cell<u64>,
+    fail_olap_avg: Cell<u64>,
+    fail_ediv: Cell<u64>,
+    fail_unique_opt: Cell<u64>,
+    total_checked: Cell<u64>,
+    closest: RefCell<Option<ClosestPuzzleInfo>>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 impl GenerationContext {
     fn new(seed: &str) -> Self {
         // Use full seed for log prefixing unless it's very long.
@@ -129,12 +161,12 @@ impl GenerationContext {
         let pct = |counter: &AtomicU64| -> f64 {
             counter.load(Ordering::Relaxed) as f64 / total as f64 * 100.0
         };
-        
+
         let mut parts = Vec::new();
-        
+
         // Always show unique optimal (required for all puzzles)
         parts.push(format!("uopt={:.0}%", pct(&self.fail_unique_opt)));
-        
+
         // Only show enabled filters
         if thresholds.ci_enabled { parts.push(format!("ci={:.0}%", pct(&self.fail_ci))); }
         if thresholds.dec_enabled { parts.push(format!("dec={:.0}%", pct(&self.fail_dec))); }
@@ -148,7 +180,7 @@ impl GenerationContext {
         if thresholds.olap_best_enabled { parts.push(format!("olap_best={:.0}%", pct(&self.fail_olap_best))); }
         if thresholds.olap_avg_enabled { parts.push(format!("olap_avg={:.0}%", pct(&self.fail_olap_avg))); }
         if thresholds.ediv_enabled { parts.push(format!("ediv={:.0}%", pct(&self.fail_ediv))); }
-        
+
         parts.push(format!("(n={})", total));
         parts.join(" ")
     }
@@ -158,9 +190,9 @@ impl GenerationContext {
         if let Ok(closest) = self.closest.lock() {
             if let Some(info) = &*closest {
                 let mut parts = Vec::new();
-                
+
                 parts.push(format!("score={:.4}", info.closeness));
-                
+
                 for m in &info.metrics {
                     if let Some(max_thresh) = m.threshold_max {
                         // Range threshold (like locality)
@@ -176,14 +208,14 @@ impl GenerationContext {
                         parts.push(format!("{}={:.2}/{:.2}", m.name, m.value, m.threshold));
                     }
                 }
-                
+
                 let traps_str = if info.traps.is_empty() {
                     String::from("-")
                 } else {
                     info.traps.join(",")
                 };
                 parts.push(format!("traps=[{}]", traps_str));
-                
+
                 return Some(parts.join(" "));
             }
         }
@@ -199,7 +231,7 @@ impl GenerationContext {
         let avg_us = |counter: &AtomicU64| -> f64 {
             counter.load(Ordering::Relaxed) as f64 / total as f64
         };
-        
+
         format!(
             "base={:.2}ms traps={:.2}ms psych={:.2}ms (path={:.2}ms cnt={:.2}ms olap={:.2}ms)",
             avg_us(&self.time_base_maze_us) / 1000.0,
@@ -250,33 +282,148 @@ impl GenerationContext {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+impl GenerationContext {
+    fn new(seed: &str) -> Self {
+        let run_id = {
+            const MAX_LEN: usize = 80;
+            let seed_len = seed.chars().count();
+            if seed_len > MAX_LEN {
+                let mut shortened: String = seed.chars().take(MAX_LEN - 3).collect();
+                shortened.push_str("...");
+                shortened
+            } else {
+                seed.to_string()
+            }
+        };
+
+        Self {
+            run_id,
+            fail_ci: Cell::new(0),
+            fail_dec: Cell::new(0),
+            fail_gate: Cell::new(0),
+            fail_fp: Cell::new(0),
+            fail_loc: Cell::new(0),
+            fail_dir: Cell::new(0),
+            fail_bt: Cell::new(0),
+            fail_amb: Cell::new(0),
+            fail_paths: Cell::new(0),
+            fail_olap_best: Cell::new(0),
+            fail_olap_avg: Cell::new(0),
+            fail_ediv: Cell::new(0),
+            fail_unique_opt: Cell::new(0),
+            total_checked: Cell::new(0),
+            closest: RefCell::new(None),
+        }
+    }
+
+    fn update_closest(&self, info: ClosestPuzzleInfo) {
+        let mut closest = self.closest.borrow_mut();
+        let should_update = match &*closest {
+            None => true,
+            Some(current) => info.closeness > current.closeness,
+        };
+        if should_update {
+            *closest = Some(info);
+        }
+    }
+
+    fn format_fail_rates(&self, thresholds: &PrefilterThresholds) -> String {
+        let total = self.total_checked.get();
+        if total == 0 {
+            return String::from("n=0");
+        }
+        let pct = |counter: u64| -> f64 { counter as f64 / total as f64 * 100.0 };
+
+        let mut parts = Vec::new();
+        parts.push(format!("uopt={:.0}%", pct(self.fail_unique_opt.get())));
+        if thresholds.ci_enabled { parts.push(format!("ci={:.0}%", pct(self.fail_ci.get()))); }
+        if thresholds.dec_enabled { parts.push(format!("dec={:.0}%", pct(self.fail_dec.get()))); }
+        if thresholds.gate_enabled { parts.push(format!("gate={:.0}%", pct(self.fail_gate.get()))); }
+        if thresholds.fp_enabled { parts.push(format!("fp={:.0}%", pct(self.fail_fp.get()))); }
+        if thresholds.loc_enabled { parts.push(format!("loc={:.0}%", pct(self.fail_loc.get()))); }
+        if thresholds.dir_enabled { parts.push(format!("dir={:.0}%", pct(self.fail_dir.get()))); }
+        if thresholds.bt_enabled { parts.push(format!("bt={:.0}%", pct(self.fail_bt.get()))); }
+        if thresholds.amb_enabled { parts.push(format!("amb={:.0}%", pct(self.fail_amb.get()))); }
+        if thresholds.paths_enabled { parts.push(format!("paths={:.0}%", pct(self.fail_paths.get()))); }
+        if thresholds.olap_best_enabled { parts.push(format!("olap_best={:.0}%", pct(self.fail_olap_best.get()))); }
+        if thresholds.olap_avg_enabled { parts.push(format!("olap_avg={:.0}%", pct(self.fail_olap_avg.get()))); }
+        if thresholds.ediv_enabled { parts.push(format!("ediv={:.0}%", pct(self.fail_ediv.get()))); }
+        parts.push(format!("(n={})", total));
+        parts.join(" ")
+    }
+
+    fn format_closest(&self, _thresholds: &PrefilterThresholds) -> Option<String> {
+        let closest = self.closest.borrow();
+        closest.as_ref().map(|info| {
+            let mut parts = Vec::new();
+            parts.push(format!("score={:.4}", info.closeness));
+            for m in &info.metrics {
+                if let Some(max_thresh) = m.threshold_max {
+                    parts.push(format!("{}={:.2}/({:.2}-{:.2})", m.name, m.value, m.threshold, max_thresh));
+                } else if m.is_max_threshold {
+                    parts.push(format!("{}={:.2}/{:.2}", m.name, m.value, m.threshold));
+                } else if m.value.fract() == 0.0 && m.threshold.fract() == 0.0 {
+                    parts.push(format!("{}={}/{}", m.name, m.value as i32, m.threshold as i32));
+                } else {
+                    parts.push(format!("{}={:.2}/{:.2}", m.name, m.value, m.threshold));
+                }
+            }
+            let traps_str = if info.traps.is_empty() { String::from("-") } else { info.traps.join(",") };
+            parts.push(format!("traps=[{}]", traps_str));
+            parts.join(" ")
+        })
+    }
+
+    fn format_timing(&self) -> String {
+        String::from("timing=disabled")
+    }
+
+    fn format_trap_timing(&self) -> String {
+        String::from("trap_timing=disabled")
+    }
+
+    fn record_trap_time(&self, _trap: TrapFunction, _elapsed_us: u64) {}
+}
+
 // =============================================================================
 // PARALLEL ITERATION HELPERS
 // =============================================================================
-// Rayon works on both native and WASM (via wasm-bindgen-rayon thread pool).
-// Both produce identical results for the same seed.
+// Native uses Rayon for parallelism; WASM runs single-threaded.
+// Both targets produce identical results for the same seed.
 
-/// Process a range in parallel and find the best result.
+/// Process a range and find the best result.
 /// Uses attempt index as a deterministic tiebreaker when scores are equal,
 /// ensuring identical results regardless of CPU count or thread scheduling.
+#[cfg(not(target_arch = "wasm32"))]
 fn find_best_in_range<F, T>(_label: &str, range: std::ops::Range<usize>, f: F) -> Option<(T, f64)>
 where
     F: Fn(usize) -> Option<(T, f64)> + Sync + Send,
     T: Send,
 {
-    // Include attempt index in tuple for deterministic tie-breaking
-    let result = range
+    range
         .into_par_iter()
         .filter_map(|i| f(i).map(|(puzzle, score)| (puzzle, score, i)))
-        .max_by(|a, b| {
-            match a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal) {
-                std::cmp::Ordering::Equal => a.2.cmp(&b.2), // Tiebreaker: lower attempt index wins
-                other => other,
-            }
+        .max_by(|a, b| match a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal) {
+            std::cmp::Ordering::Equal => a.2.cmp(&b.2),
+            other => other,
         })
-        .map(|(puzzle, score, _)| (puzzle, score)); // Strip the index
+        .map(|(puzzle, score, _)| (puzzle, score))
+}
 
-    result
+#[cfg(target_arch = "wasm32")]
+fn find_best_in_range<F, T>(_label: &str, range: std::ops::Range<usize>, mut f: F) -> Option<(T, f64)>
+where
+    F: FnMut(usize) -> Option<(T, f64)>,
+{
+    range
+        .into_iter()
+        .filter_map(|i| f(i).map(|(puzzle, score)| (puzzle, score, i)))
+        .max_by(|a, b| match a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal) {
+            std::cmp::Ordering::Equal => a.2.cmp(&b.2),
+            other => other,
+        })
+        .map(|(puzzle, score, _)| (puzzle, score))
 }
 
 // =============================================================================
@@ -2850,11 +2997,15 @@ fn calculate_psychology_score_timed(
     width: usize,
     height: usize,
 ) -> (PsychMetrics, PsychTiming) {
-    use std::time::Instant;
-    
+    #[cfg(not(target_arch = "wasm32"))]
     let t0 = Instant::now();
+
     let optimal_path = find_optimal_path(tiles, start, goal, width, height);
+
+    #[cfg(not(target_arch = "wasm32"))]
     let find_path_us = t0.elapsed().as_micros() as u64;
+    #[cfg(target_arch = "wasm32")]
+    let find_path_us = 0;
     
     if optimal_path.is_none() || optimal_path.as_ref().unwrap().len() < 2 {
         return (PsychMetrics {
@@ -2901,7 +3052,9 @@ fn calculate_psychology_score_timed(
 
     // Path diversity metrics (Phase 2 - NEW) - TIMED
     let tolerance = 2;
+    #[cfg(not(target_arch = "wasm32"))]
     let t1 = Instant::now();
+
     let (near_optimal_paths, optimal_path_count, path_overlap, path_overlap_avg) = count_near_optimal_paths(
         tiles,
         start,
@@ -2912,7 +3065,11 @@ fn calculate_psychology_score_timed(
         optimal_moves,
         tolerance,
     );
+
+    #[cfg(not(target_arch = "wasm32"))]
     let count_paths_us = t1.elapsed().as_micros() as u64;
+    #[cfg(target_arch = "wasm32")]
+    let count_paths_us = 0;
 
     let overlap_us = 0;
     
@@ -4145,6 +4302,18 @@ const ALL_TRAPS: [TrapFunction; 14] = [
 /// - Randomizes order of trap execution
 /// - Varies count ranges by ±50%
 /// Returns list of applied trap short names
+#[cfg(not(target_arch = "wasm32"))]
+fn run_trap_timed<F: FnOnce()>(ctx: &GenerationContext, trap: TrapFunction, f: F) {
+    let t = Instant::now();
+    f();
+    ctx.record_trap_time(trap, t.elapsed().as_micros() as u64);
+}
+
+#[cfg(target_arch = "wasm32")]
+fn run_trap_timed<F: FnOnce()>(_ctx: &GenerationContext, _trap: TrapFunction, f: F) {
+    f();
+}
+
 fn apply_chaos_traps(
     tiles: &mut Vec<Vec<TileType>>,
     start: &Position,
@@ -4183,100 +4352,100 @@ fn apply_chaos_traps(
             TrapFunction::AlmostThere => {
                 let (min, max) = scale_range(2, 5);
                 let count = vary_count(rng, min, max);
-                let t = Instant::now();
-                create_almost_there_traps(tiles, start, goal, width, height, rng, count);
-                ctx.record_trap_time(trap, t.elapsed().as_micros() as u64);
+                run_trap_timed(ctx, trap, || {
+                    create_almost_there_traps(tiles, start, goal, width, height, rng, count);
+                });
             }
             TrapFunction::DecoyOpenAreas => {
                 let (min, max) = scale_range(3, 6);
                 let count = vary_count(rng, min, max);
-                let t = Instant::now();
-                create_decoy_open_areas(tiles, start, goal, width, height, rng, count);
-                ctx.record_trap_time(trap, t.elapsed().as_micros() as u64);
+                run_trap_timed(ctx, trap, || {
+                    create_decoy_open_areas(tiles, start, goal, width, height, rng, count);
+                });
             }
             TrapFunction::HiddenChokePoints => {
                 let (min, max) = scale_range(2, 5);
                 let count = vary_count(rng, min, max);
-                let t = Instant::now();
-                create_hidden_choke_points(tiles, start, goal, width, height, rng, count);
-                ctx.record_trap_time(trap, t.elapsed().as_micros() as u64);
+                run_trap_timed(ctx, trap, || {
+                    create_hidden_choke_points(tiles, start, goal, width, height, rng, count);
+                });
             }
             TrapFunction::MomentumTraps => {
                 let (min, max) = scale_range(4, 8);
                 let count = vary_count(rng, min, max);
-                let t = Instant::now();
-                create_momentum_traps(tiles, start, goal, width, height, rng, count);
-                ctx.record_trap_time(trap, t.elapsed().as_micros() as u64);
+                run_trap_timed(ctx, trap, || {
+                    create_momentum_traps(tiles, start, goal, width, height, rng, count);
+                });
             }
             TrapFunction::AntiGradientZones => {
                 let (min, max) = scale_range(2, 5);
                 let count = vary_count(rng, min, max);
-                let t = Instant::now();
-                create_anti_gradient_zones(tiles, start, goal, width, height, rng, count);
-                ctx.record_trap_time(trap, t.elapsed().as_micros() as u64);
+                run_trap_timed(ctx, trap, || {
+                    create_anti_gradient_zones(tiles, start, goal, width, height, rng, count);
+                });
             }
             TrapFunction::ParallelPathIllusion => {
                 let (min, max) = scale_range(3, 6);
                 let count = vary_count(rng, min, max);
-                let t = Instant::now();
-                create_parallel_path_illusion(tiles, start, goal, width, height, rng, count);
-                ctx.record_trap_time(trap, t.elapsed().as_micros() as u64);
+                run_trap_timed(ctx, trap, || {
+                    create_parallel_path_illusion(tiles, start, goal, width, height, rng, count);
+                });
             }
             TrapFunction::LedgeMisdirection => {
                 let (min, max) = scale_range(5, 9);
                 let count = vary_count(rng, min, max);
-                let t = Instant::now();
-                create_ledge_misdirection(tiles, start, goal, width, height, rng, count);
-                ctx.record_trap_time(trap, t.elapsed().as_micros() as u64);
+                run_trap_timed(ctx, trap, || {
+                    create_ledge_misdirection(tiles, start, goal, width, height, rng, count);
+                });
             }
             TrapFunction::GoalProximityDeadEnds => {
                 let (min, max) = scale_range(3, 6);
                 let count = vary_count(rng, min, max);
-                let t = Instant::now();
-                create_goal_proximity_dead_ends(tiles, start, goal, width, height, rng, count);
-                ctx.record_trap_time(trap, t.elapsed().as_micros() as u64);
+                run_trap_timed(ctx, trap, || {
+                    create_goal_proximity_dead_ends(tiles, start, goal, width, height, rng, count);
+                });
             }
             TrapFunction::CommitmentTraps => {
                 let (min, max) = scale_range(3, 6);
                 let count = vary_count(rng, min, max);
-                let t = Instant::now();
-                create_commitment_traps(tiles, start, goal, width, height, rng, count);
-                ctx.record_trap_time(trap, t.elapsed().as_micros() as u64);
+                run_trap_timed(ctx, trap, || {
+                    create_commitment_traps(tiles, start, goal, width, height, rng, count);
+                });
             }
             TrapFunction::PrecisionGates => {
                 let (min, max) = scale_range(4, 8);
                 let count = vary_count(rng, min, max);
-                let t = Instant::now();
-                add_precision_gates(tiles, start, goal, width, height, rng, count);
-                ctx.record_trap_time(trap, t.elapsed().as_micros() as u64);
+                run_trap_timed(ctx, trap, || {
+                    add_precision_gates(tiles, start, goal, width, height, rng, count);
+                });
             }
             TrapFunction::FunnelPatterns => {
                 let (min, max) = scale_range(3, 6);
                 let count = vary_count(rng, min, max);
-                let t = Instant::now();
-                add_funnel_patterns(tiles, start, goal, width, height, rng, count);
-                ctx.record_trap_time(trap, t.elapsed().as_micros() as u64);
+                run_trap_timed(ctx, trap, || {
+                    add_funnel_patterns(tiles, start, goal, width, height, rng, count);
+                });
             }
             TrapFunction::TrapAlcoves => {
                 let (min, max) = scale_range(5, 9);
                 let count = vary_count(rng, min, max);
-                let t = Instant::now();
-                add_trap_alcoves(tiles, start, goal, width, height, rng, count);
-                ctx.record_trap_time(trap, t.elapsed().as_micros() as u64);
+                run_trap_timed(ctx, trap, || {
+                    add_trap_alcoves(tiles, start, goal, width, height, rng, count);
+                });
             }
             TrapFunction::DeceptivePaths => {
                 let (min, max) = scale_range(8, 15);
                 let count = vary_count(rng, min, max);
-                let t = Instant::now();
-                add_deceptive_paths(tiles, start, goal, width, height, rng, count);
-                ctx.record_trap_time(trap, t.elapsed().as_micros() as u64);
+                run_trap_timed(ctx, trap, || {
+                    add_deceptive_paths(tiles, start, goal, width, height, rng, count);
+                });
             }
             TrapFunction::DeadEndMagnets => {
                 let (min, max) = scale_range(3, 6);
                 let count = vary_count(rng, min, max);
-                let t = Instant::now();
-                add_dead_end_magnets(tiles, start, goal, width, height, rng, count);
-                ctx.record_trap_time(trap, t.elapsed().as_micros() as u64);
+                run_trap_timed(ctx, trap, || {
+                    add_dead_end_magnets(tiles, start, goal, width, height, rng, count);
+                });
             }
         }
     }
@@ -4291,87 +4460,87 @@ fn apply_chaos_traps(
             match wild_trap {
                 TrapFunction::AlmostThere => {
                     let count = vary_count(rng, 1, 3);
-                    let t = Instant::now();
-                    create_almost_there_traps(tiles, start, goal, width, height, rng, count);
-                    ctx.record_trap_time(wild_trap, t.elapsed().as_micros() as u64);
+                    run_trap_timed(ctx, wild_trap, || {
+                        create_almost_there_traps(tiles, start, goal, width, height, rng, count);
+                    });
                 }
                 TrapFunction::DecoyOpenAreas => {
                     let count = vary_count(rng, 2, 4);
-                    let t = Instant::now();
-                    create_decoy_open_areas(tiles, start, goal, width, height, rng, count);
-                    ctx.record_trap_time(wild_trap, t.elapsed().as_micros() as u64);
+                    run_trap_timed(ctx, wild_trap, || {
+                        create_decoy_open_areas(tiles, start, goal, width, height, rng, count);
+                    });
                 }
                 TrapFunction::HiddenChokePoints => {
                     let count = vary_count(rng, 1, 3);
-                    let t = Instant::now();
-                    create_hidden_choke_points(tiles, start, goal, width, height, rng, count);
-                    ctx.record_trap_time(wild_trap, t.elapsed().as_micros() as u64);
+                    run_trap_timed(ctx, wild_trap, || {
+                        create_hidden_choke_points(tiles, start, goal, width, height, rng, count);
+                    });
                 }
                 TrapFunction::MomentumTraps => {
                     let count = vary_count(rng, 2, 5);
-                    let t = Instant::now();
-                    create_momentum_traps(tiles, start, goal, width, height, rng, count);
-                    ctx.record_trap_time(wild_trap, t.elapsed().as_micros() as u64);
+                    run_trap_timed(ctx, wild_trap, || {
+                        create_momentum_traps(tiles, start, goal, width, height, rng, count);
+                    });
                 }
                 TrapFunction::AntiGradientZones => {
                     let count = vary_count(rng, 1, 3);
-                    let t = Instant::now();
-                    create_anti_gradient_zones(tiles, start, goal, width, height, rng, count);
-                    ctx.record_trap_time(wild_trap, t.elapsed().as_micros() as u64);
+                    run_trap_timed(ctx, wild_trap, || {
+                        create_anti_gradient_zones(tiles, start, goal, width, height, rng, count);
+                    });
                 }
                 TrapFunction::ParallelPathIllusion => {
                     let count = vary_count(rng, 2, 4);
-                    let t = Instant::now();
-                    create_parallel_path_illusion(tiles, start, goal, width, height, rng, count);
-                    ctx.record_trap_time(wild_trap, t.elapsed().as_micros() as u64);
+                    run_trap_timed(ctx, wild_trap, || {
+                        create_parallel_path_illusion(tiles, start, goal, width, height, rng, count);
+                    });
                 }
                 TrapFunction::LedgeMisdirection => {
                     let count = vary_count(rng, 3, 6);
-                    let t = Instant::now();
-                    create_ledge_misdirection(tiles, start, goal, width, height, rng, count);
-                    ctx.record_trap_time(wild_trap, t.elapsed().as_micros() as u64);
+                    run_trap_timed(ctx, wild_trap, || {
+                        create_ledge_misdirection(tiles, start, goal, width, height, rng, count);
+                    });
                 }
                 TrapFunction::GoalProximityDeadEnds => {
                     let count = vary_count(rng, 2, 4);
-                    let t = Instant::now();
-                    create_goal_proximity_dead_ends(tiles, start, goal, width, height, rng, count);
-                    ctx.record_trap_time(wild_trap, t.elapsed().as_micros() as u64);
+                    run_trap_timed(ctx, wild_trap, || {
+                        create_goal_proximity_dead_ends(tiles, start, goal, width, height, rng, count);
+                    });
                 }
                 TrapFunction::CommitmentTraps => {
                     let count = vary_count(rng, 2, 4);
-                    let t = Instant::now();
-                    create_commitment_traps(tiles, start, goal, width, height, rng, count);
-                    ctx.record_trap_time(wild_trap, t.elapsed().as_micros() as u64);
+                    run_trap_timed(ctx, wild_trap, || {
+                        create_commitment_traps(tiles, start, goal, width, height, rng, count);
+                    });
                 }
                 TrapFunction::PrecisionGates => {
                     let count = vary_count(rng, 2, 5);
-                    let t = Instant::now();
-                    add_precision_gates(tiles, start, goal, width, height, rng, count);
-                    ctx.record_trap_time(wild_trap, t.elapsed().as_micros() as u64);
+                    run_trap_timed(ctx, wild_trap, || {
+                        add_precision_gates(tiles, start, goal, width, height, rng, count);
+                    });
                 }
                 TrapFunction::FunnelPatterns => {
                     let count = vary_count(rng, 2, 4);
-                    let t = Instant::now();
-                    add_funnel_patterns(tiles, start, goal, width, height, rng, count);
-                    ctx.record_trap_time(wild_trap, t.elapsed().as_micros() as u64);
+                    run_trap_timed(ctx, wild_trap, || {
+                        add_funnel_patterns(tiles, start, goal, width, height, rng, count);
+                    });
                 }
                 TrapFunction::TrapAlcoves => {
                     let count = vary_count(rng, 3, 6);
-                    let t = Instant::now();
-                    add_trap_alcoves(tiles, start, goal, width, height, rng, count);
-                    ctx.record_trap_time(wild_trap, t.elapsed().as_micros() as u64);
+                    run_trap_timed(ctx, wild_trap, || {
+                        add_trap_alcoves(tiles, start, goal, width, height, rng, count);
+                    });
                 }
                 TrapFunction::DeceptivePaths => {
                     let count = vary_count(rng, 4, 8);
-                    let t = Instant::now();
-                    add_deceptive_paths(tiles, start, goal, width, height, rng, count);
-                    ctx.record_trap_time(wild_trap, t.elapsed().as_micros() as u64);
+                    run_trap_timed(ctx, wild_trap, || {
+                        add_deceptive_paths(tiles, start, goal, width, height, rng, count);
+                    });
                 }
                 TrapFunction::DeadEndMagnets => {
                     let count = vary_count(rng, 2, 4);
-                    let t = Instant::now();
-                    add_dead_end_magnets(tiles, start, goal, width, height, rng, count);
-                    ctx.record_trap_time(wild_trap, t.elapsed().as_micros() as u64);
+                    run_trap_timed(ctx, wild_trap, || {
+                        add_dead_end_magnets(tiles, start, goal, width, height, rng, count);
+                    });
                 }
             }
         }
@@ -4399,11 +4568,19 @@ pub fn generate_puzzle_with_cancel(
     cancel_flag: Option<Arc<AtomicBool>>,
 ) -> Result<PuzzleData, ()> {
     // Create per-run context for isolated tracking
+    #[cfg(not(target_arch = "wasm32"))]
     let ctx = Arc::new(GenerationContext::new(seed));
+    #[cfg(target_arch = "wasm32")]
+    let ctx = GenerationContext::new(seed);
+
     let run_id = &ctx.run_id;
 
     // Log generation start with run identifier
+    #[cfg(not(target_arch = "wasm32"))]
     let num_threads = rayon::current_num_threads();
+    #[cfg(target_arch = "wasm32")]
+    let num_threads = 1;
+
     info!("[{}] ━━━ Starting generation ━━━", run_id);
     info!("[{}] seed={} threads={}", run_id, seed, num_threads);
 
@@ -4431,9 +4608,17 @@ pub fn generate_puzzle_with_cancel(
         info!("[{}] Resuming from batch {}", run_id, batch);
     }
     let is_cancelled = |flag: &Option<Arc<AtomicBool>>| -> bool {
-        flag.as_ref()
-            .map(|f| f.load(Ordering::Relaxed))
-            .unwrap_or(false)
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = flag;
+            false
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            flag.as_ref()
+                .map(|f| f.load(Ordering::Relaxed))
+                .unwrap_or(false)
+        }
     };
 
     loop {
@@ -4453,8 +4638,11 @@ pub fn generate_puzzle_with_cancel(
             (scaled_min, scaled_max)
         };
 
-        // Clone context Arc for use in parallel closure
+        // Clone context for use in parallel closure
+        #[cfg(not(target_arch = "wasm32"))]
         let ctx_clone = ctx.clone();
+        #[cfg(target_arch = "wasm32")]
+        let ctx_clone = &ctx;
         let prefilter_thresholds_clone = prefilter_thresholds.clone();
 
         // Generate puzzles in parallel (native) or sequential (WASM)
@@ -4464,12 +4652,14 @@ pub fn generate_puzzle_with_cancel(
                 return None;
             }
 
+            #[cfg(not(target_arch = "wasm32"))]
             let t_start = Instant::now();
             
             let mut attempt_rng = SeededRandom::new(&format!("{}-{}", seed, attempt));
             let mut tiles = create_base_maze(width, height, &mut attempt_rng);
             let mut protected_cells = new_pos_set(width * height);
             
+            #[cfg(not(target_arch = "wasm32"))]
             let t_base = t_start.elapsed();
 
             let mut ice_tiles: Vec<Position> = Vec::new();
@@ -4562,8 +4752,14 @@ pub fn generate_puzzle_with_cancel(
                 &mut attempt_rng,
             );
 
+            #[cfg(not(target_arch = "wasm32"))]
             let t_pre_traps = Instant::now();
             
+            #[cfg(not(target_arch = "wasm32"))]
+            let ctx_for_traps: &GenerationContext = &ctx_clone;
+            #[cfg(target_arch = "wasm32")]
+            let ctx_for_traps: &GenerationContext = ctx_clone;
+
             // Apply trap functions with randomized selection and ordering
             let applied_traps = apply_chaos_traps(
                 &mut tiles,
@@ -4571,7 +4767,7 @@ pub fn generate_puzzle_with_cancel(
                 &goal,
                 width,
                 height,
-                &ctx_clone,
+                ctx_for_traps,
                 &mut attempt_rng,
                 scale_range,
                 &mut protected_cells,
@@ -4628,6 +4824,7 @@ pub fn generate_puzzle_with_cancel(
                 &protected_cells,
             );
 
+            #[cfg(not(target_arch = "wasm32"))]
             let t_traps = t_pre_traps.elapsed();
 
             tiles[start.y as usize][start.x as usize] = TileType::Start;
@@ -4645,25 +4842,48 @@ pub fn generate_puzzle_with_cancel(
             // FAST EARLY BAILOUT: Check unique optimal path first (32% fail rate)
             // This avoids expensive psych score calculation for ~1/3 of candidates
             if !has_unique_optimal_path(&tiles, &start, &goal, width, height, optimal_moves) {
-                ctx_clone.total_checked.fetch_add(1, Ordering::Relaxed);
-                ctx_clone.fail_unique_opt.fetch_add(1, Ordering::Relaxed);
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    ctx_clone.total_checked.fetch_add(1, Ordering::Relaxed);
+                    ctx_clone.fail_unique_opt.fetch_add(1, Ordering::Relaxed);
+                }
+                #[cfg(target_arch = "wasm32")]
+                {
+                    ctx_clone
+                        .total_checked
+                        .set(ctx_clone.total_checked.get().saturating_add(1));
+                    ctx_clone
+                        .fail_unique_opt
+                        .set(ctx_clone.fail_unique_opt.get().saturating_add(1));
+                }
                 return None;
             }
 
+            #[cfg(not(target_arch = "wasm32"))]
             let t_pre_psych = Instant::now();
             let (psych_metrics, psych_timing) = calculate_psychology_score_timed(&tiles, &start, &goal, width, height);
+            #[cfg(not(target_arch = "wasm32"))]
             let t_psych = t_pre_psych.elapsed();
             
             // Record timing stats
-            ctx_clone.time_base_maze_us.fetch_add(t_base.as_micros() as u64, Ordering::Relaxed);
-            ctx_clone.time_traps_us.fetch_add(t_traps.as_micros() as u64, Ordering::Relaxed);
-            ctx_clone.time_psych_score_us.fetch_add(t_psych.as_micros() as u64, Ordering::Relaxed);
-            ctx_clone.time_find_path_us.fetch_add(psych_timing.find_path_us, Ordering::Relaxed);
-            ctx_clone.time_count_paths_us.fetch_add(psych_timing.count_paths_us, Ordering::Relaxed);
-            ctx_clone.time_overlap_us.fetch_add(psych_timing.overlap_us, Ordering::Relaxed);
-            
-            // Track which prefilters fail (using per-run context)
-            ctx_clone.total_checked.fetch_add(1, Ordering::Relaxed);
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                ctx_clone.time_base_maze_us.fetch_add(t_base.as_micros() as u64, Ordering::Relaxed);
+                ctx_clone.time_traps_us.fetch_add(t_traps.as_micros() as u64, Ordering::Relaxed);
+                ctx_clone.time_psych_score_us.fetch_add(t_psych.as_micros() as u64, Ordering::Relaxed);
+                ctx_clone.time_find_path_us.fetch_add(psych_timing.find_path_us, Ordering::Relaxed);
+                ctx_clone.time_count_paths_us.fetch_add(psych_timing.count_paths_us, Ordering::Relaxed);
+                ctx_clone.time_overlap_us.fetch_add(psych_timing.overlap_us, Ordering::Relaxed);
+
+                // Track which prefilters fail (using per-run context)
+                ctx_clone.total_checked.fetch_add(1, Ordering::Relaxed);
+            }
+            #[cfg(target_arch = "wasm32")]
+            {
+                ctx_clone
+                    .total_checked
+                    .set(ctx_clone.total_checked.get().saturating_add(1));
+            }
             let passed = {
                 // unique_opt already checked via early bailout above
                 let pass_unique_opt = true; // Already verified by has_unique_optimal_path
@@ -4687,20 +4907,67 @@ pub fn generate_puzzle_with_cancel(
                 let pass_ediv = psych_metrics.early_divergence >= prefilter_thresholds_clone.min_early_divergence;
 
                 // Note: fail_unique_opt already counted in early bailout
-                if !pass_ci { ctx_clone.fail_ci.fetch_add(1, Ordering::Relaxed); }
-                if !pass_dec { ctx_clone.fail_dec.fetch_add(1, Ordering::Relaxed); }
-                if !pass_gate { ctx_clone.fail_gate.fetch_add(1, Ordering::Relaxed); }
-                if !pass_fp { ctx_clone.fail_fp.fetch_add(1, Ordering::Relaxed); }
-                if !pass_loc { ctx_clone.fail_loc.fetch_add(1, Ordering::Relaxed); }
-                if !pass_dir { ctx_clone.fail_dir.fetch_add(1, Ordering::Relaxed); }
-                if !pass_bt { ctx_clone.fail_bt.fetch_add(1, Ordering::Relaxed); }
-                if !pass_amb { ctx_clone.fail_amb.fetch_add(1, Ordering::Relaxed); }
-                if !pass_paths { ctx_clone.fail_paths.fetch_add(1, Ordering::Relaxed); }
-                if prefilter_thresholds_clone.olap_best_enabled && !pass_olap_best {
-                    ctx_clone.fail_olap_best.fetch_add(1, Ordering::Relaxed);
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    if !pass_ci { ctx_clone.fail_ci.fetch_add(1, Ordering::Relaxed); }
+                    if !pass_dec { ctx_clone.fail_dec.fetch_add(1, Ordering::Relaxed); }
+                    if !pass_gate { ctx_clone.fail_gate.fetch_add(1, Ordering::Relaxed); }
+                    if !pass_fp { ctx_clone.fail_fp.fetch_add(1, Ordering::Relaxed); }
+                    if !pass_loc { ctx_clone.fail_loc.fetch_add(1, Ordering::Relaxed); }
+                    if !pass_dir { ctx_clone.fail_dir.fetch_add(1, Ordering::Relaxed); }
+                    if !pass_bt { ctx_clone.fail_bt.fetch_add(1, Ordering::Relaxed); }
+                    if !pass_amb { ctx_clone.fail_amb.fetch_add(1, Ordering::Relaxed); }
+                    if !pass_paths { ctx_clone.fail_paths.fetch_add(1, Ordering::Relaxed); }
+                    if prefilter_thresholds_clone.olap_best_enabled && !pass_olap_best {
+                        ctx_clone.fail_olap_best.fetch_add(1, Ordering::Relaxed);
+                    }
+                    if !pass_olap_avg { ctx_clone.fail_olap_avg.fetch_add(1, Ordering::Relaxed); }
+                    if !pass_ediv { ctx_clone.fail_ediv.fetch_add(1, Ordering::Relaxed); }
                 }
-                if !pass_olap_avg { ctx_clone.fail_olap_avg.fetch_add(1, Ordering::Relaxed); }
-                if !pass_ediv { ctx_clone.fail_ediv.fetch_add(1, Ordering::Relaxed); }
+                #[cfg(target_arch = "wasm32")]
+                {
+                    if !pass_ci {
+                        ctx_clone.fail_ci.set(ctx_clone.fail_ci.get().saturating_add(1));
+                    }
+                    if !pass_dec {
+                        ctx_clone.fail_dec.set(ctx_clone.fail_dec.get().saturating_add(1));
+                    }
+                    if !pass_gate {
+                        ctx_clone.fail_gate.set(ctx_clone.fail_gate.get().saturating_add(1));
+                    }
+                    if !pass_fp {
+                        ctx_clone.fail_fp.set(ctx_clone.fail_fp.get().saturating_add(1));
+                    }
+                    if !pass_loc {
+                        ctx_clone.fail_loc.set(ctx_clone.fail_loc.get().saturating_add(1));
+                    }
+                    if !pass_dir {
+                        ctx_clone.fail_dir.set(ctx_clone.fail_dir.get().saturating_add(1));
+                    }
+                    if !pass_bt {
+                        ctx_clone.fail_bt.set(ctx_clone.fail_bt.get().saturating_add(1));
+                    }
+                    if !pass_amb {
+                        ctx_clone.fail_amb.set(ctx_clone.fail_amb.get().saturating_add(1));
+                    }
+                    if !pass_paths {
+                        ctx_clone.fail_paths.set(ctx_clone.fail_paths.get().saturating_add(1));
+                    }
+                    if prefilter_thresholds_clone.olap_best_enabled && !pass_olap_best {
+                        ctx_clone
+                            .fail_olap_best
+                            .set(ctx_clone.fail_olap_best.get().saturating_add(1));
+                    }
+                    if !pass_olap_avg {
+                        ctx_clone
+                            .fail_olap_avg
+                            .set(ctx_clone.fail_olap_avg.get().saturating_add(1));
+                    }
+                    if !pass_ediv {
+                        ctx_clone.fail_ediv.set(ctx_clone.fail_ediv.get().saturating_add(1));
+                    }
+                }
+
 
                 // Calculate closeness score for tracking (only for puzzles with unique optimal path)
                 // Higher score = closer to passing all thresholds
@@ -4881,7 +5148,7 @@ pub fn generate_puzzle_with_cancel(
                         metrics,
                         traps: applied_traps.clone(),
                     });
-                    
+
                     score
                 } else {
                     0.0 // No closeness score without unique optimal path
@@ -4889,7 +5156,7 @@ pub fn generate_puzzle_with_cancel(
 
                 // Accept puzzle if either:
                 // 1. All thresholds pass, OR
-                // 2. Closeness score is >= 1.0 (perfect match only)
+                // 2. Closeness score is >= configured closeness_threshold
                 let passes_all_thresholds = pass_unique_opt && pass_ci && pass_dec && pass_gate && pass_fp && pass_loc && pass_dir && pass_bt && pass_amb && pass_paths && pass_olap_best && pass_olap_avg && pass_ediv;
                 let passes_closeness_threshold = pass_unique_opt && closeness >= config.closeness_threshold;
                 

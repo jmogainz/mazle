@@ -20,8 +20,7 @@ make up
 |---------|-------------|
 | `make up` | Start full stack (ENV=dev default, includes Rust backend) |
 | `make up ENV=dev-test` | Start with WASM fallback (no backend) |
-| `make up FRONTEND_ONLY=1` | Restart frontend only (skips backend deps) |
-| `make up ENV=dev WITH_DEPS=0` | Dev mode, frontend only |
+| `make up ENV=dev WITH_DEPS=0` | Frontend only (connect to existing backend) |
 | `make up FRONTEND_RELEASE_MODE=1` | Run prod-style Next.js build (no hot reload) |
 | `make up ENV=prod` | Deploy backend (Fly.io) + frontend (Vercel) |
 | `make down` | Stop containers |
@@ -56,7 +55,7 @@ Override backend: `WITH_DEPS=0` to skip, `WITH_DEPS=1` to include
 # Full stack (backend + frontend)
 VERCEL_TOKEN=... FLY_API_TOKEN=... make up ENV=prod
 
-# Frontend only (backend must already be deployed)
+# Frontend only (connect to existing backend)
 VERCEL_TOKEN=... make up ENV=prod WITH_DEPS=0
 
 # Backend only

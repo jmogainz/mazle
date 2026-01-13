@@ -105,7 +105,7 @@ fn default_closeness_threshold() -> f64 {
     }
     #[cfg(target_arch = "wasm32")]
     {
-        0.95
+        0.90
     }
 }
 

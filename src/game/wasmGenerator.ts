@@ -227,6 +227,7 @@ async function initGenerationWorker(): Promise<void> {
 async function generateFromWasm(
   seed: string,
   onProgress?: (progress: GenerationProgress) => void,
+  startBatch?: number,
   closenessThreshold?: number
 ): Promise<PuzzleData> {
   // Ensure worker is ready
@@ -312,6 +313,7 @@ async function generateFromWasm(
       type: 'generate',
       id,
       seed,
+      startBatch,
       closenessThreshold,
     });
   });
@@ -684,8 +686,7 @@ export async function generatePuzzleParallel(
     }
 
     // Progress is now tracked via worker messages
-    // Note: WASM doesn't support startBatch yet
-    const puzzle = await generateFromWasm(seed, onProgress, closenessThreshold);
+    const puzzle = await generateFromWasm(seed, onProgress, startBatch, closenessThreshold);
 
     return puzzle;
   }
@@ -739,8 +740,7 @@ export async function generatePuzzleParallel(
   console.log('[Engine] Using WASM engine...');
 
   // Progress is now tracked via worker messages
-  // Note: WASM doesn't support startBatch yet
-  const puzzle = await generateFromWasm(seed, onProgress, closenessThreshold);
+  const puzzle = await generateFromWasm(seed, onProgress, startBatch, closenessThreshold);
 
   return puzzle;
 }

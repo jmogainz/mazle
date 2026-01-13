@@ -3,7 +3,7 @@
 //! This library provides puzzle generation for the Mazle game.
 //! It can be compiled to:
 //! - Native binary (server with parallel generation via rayon)
-//! - WebAssembly (browser with parallel generation via wasm-bindgen-rayon)
+//! - WebAssembly (browser single-threaded)
 //!
 //! Both targets produce **identical puzzles** for the same seed and config.
 
@@ -29,10 +29,6 @@ use wasm_bindgen::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use serde_wasm_bindgen;
 
-// Re-export thread pool initializer from wasm-bindgen-rayon
-// This MUST be called from JS before any generate* functions
-#[cfg(target_arch = "wasm32")]
-pub use wasm_bindgen_rayon::init_thread_pool;
 
 /// Initialize WASM module (sets up panic hook and logger for better error messages)
 #[cfg(target_arch = "wasm32")]
@@ -45,7 +41,6 @@ pub fn wasm_init() {
 }
 
 /// Generate an ice puzzle with default configuration (same as Rust server).
-/// Thread pool must be initialized first via initThreadPool().
 ///
 /// # Arguments
 /// * `seed` - The seed string for deterministic generation
@@ -56,7 +51,8 @@ pub fn wasm_init() {
 #[wasm_bindgen(js_name = generateIce)]
 pub fn wasm_generate_ice(seed: &str) -> Result<JsValue, JsValue> {
     let config = GenerationConfig::default();
-    let puzzle = generate_ice_puzzle(seed, &config);
+    let puzzle = generate_ice_puzzle_with_cancel(seed, &config, None)
+        .map_err(|_| JsValue::from_str("generation cancelled"))?;
     serde_wasm_bindgen::to_value(&puzzle).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
@@ -73,12 +69,12 @@ pub fn wasm_generate_ice(seed: &str) -> Result<JsValue, JsValue> {
 pub fn wasm_generate_ice_with_config(seed: &str, config_js: JsValue) -> Result<JsValue, JsValue> {
     let config: GenerationConfig = serde_wasm_bindgen::from_value(config_js)
         .map_err(|e| JsValue::from_str(&format!("Invalid config: {}", e)))?;
-    let puzzle = generate_ice_puzzle(seed, &config);
+    let puzzle = generate_ice_puzzle_with_cancel(seed, &config, None)
+        .map_err(|_| JsValue::from_str("generation cancelled"))?;
     serde_wasm_bindgen::to_value(&puzzle).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
 /// Generate a puzzle with default configuration (same as Rust server).
-/// Thread pool must be initialized first via initThreadPool().
 ///
 /// # Arguments
 /// * `seed` - The seed string for deterministic generation
@@ -89,7 +85,8 @@ pub fn wasm_generate_ice_with_config(seed: &str, config_js: JsValue) -> Result<J
 #[wasm_bindgen(js_name = generate)]
 pub fn wasm_generate(seed: &str) -> Result<JsValue, JsValue> {
     let config = GenerationConfig::default();
-    let puzzle = generate_ice_puzzle(seed, &config);
+    let puzzle = generate_ice_puzzle_with_cancel(seed, &config, None)
+        .map_err(|_| JsValue::from_str("generation cancelled"))?;
     serde_wasm_bindgen::to_value(&puzzle).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
@@ -109,7 +106,8 @@ pub fn wasm_generate_with_config(
 ) -> Result<JsValue, JsValue> {
     let config: GenerationConfig = serde_wasm_bindgen::from_value(config_js)
         .map_err(|e| JsValue::from_str(&format!("Invalid config: {}", e)))?;
-    let puzzle = generate_ice_puzzle(seed, &config);
+    let puzzle = generate_ice_puzzle_with_cancel(seed, &config, None)
+        .map_err(|_| JsValue::from_str("generation cancelled"))?;
     serde_wasm_bindgen::to_value(&puzzle).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 

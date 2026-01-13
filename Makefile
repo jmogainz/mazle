@@ -44,12 +44,9 @@ endif
 #
 # Override with:
 #   make up WITH_DEPS=0      # Manual override
-#   make up FRONTEND_ONLY=1  # Convenience flag (keeps backend up if running)
 # --------------------------------
 ifeq ($(ENV),$(DEV_TEST_ENV))
   WITH_DEPS ?= 0
-else ifeq ($(FRONTEND_ONLY),1)
-  WITH_DEPS := 0
 else
   WITH_DEPS ?= 1
 endif
@@ -168,7 +165,10 @@ ifndef INCLUDED_ENV_LOCAL_UTILS
   include $(DEVOPS_TOOLKIT_PATH)/shared/make/utils/env_local.mk
 endif
 
+# Only load BWS .env.local in ENV=dev (dev-test should not require secrets).
+ifeq ($(ENV),dev)
 up:: env-local
+endif
 
 # --------------------------------
 # Targets (toolkit includes)

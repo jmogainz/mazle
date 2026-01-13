@@ -46,7 +46,7 @@ make up
 # Quick start (WASM fallback, no backend)
 make up ENV=dev-test
 
-# Dev mode, frontend only (backend must already be running)
+# Frontend only (connect to existing backend)
 make up ENV=dev WITH_DEPS=0
 
 # Stop all services
@@ -304,7 +304,7 @@ docker logs mazle-generator_instance 2>&1 | grep "fail rates:" | tail -1
 # Requires: VERCEL_TOKEN and FLY_API_TOKEN
 make up ENV=prod
 
-# Frontend only (backend must already be deployed)
+# Frontend only (connect to existing backend)
 # Requires: VERCEL_TOKEN
 make up ENV=prod WITH_DEPS=0
 

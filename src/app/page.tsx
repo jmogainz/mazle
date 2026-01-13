@@ -23,6 +23,7 @@ import {
   PuzzleData,
   generatePuzzleParallel,
   cancelRustRequest,
+  cancelWasmRequest,
   fetchDailyPuzzle,
   getDailySeed,
   GenerationProgress,
@@ -824,14 +825,21 @@ export default function Home() {
     }
 
     // Only cancel if no other same-seed requests are in-flight (handled in wasmGenerator)
-    const didCancel = cancelRustRequest(seedToCancel);
+    const didCancelWasm = cancelWasmRequest(seedToCancel);
+    const didCancelRust = cancelRustRequest(seedToCancel);
+    const didCancel = didCancelWasm || didCancelRust;
+
     if (didCancel) {
       console.log('[Dev] Stopping generation request (client abort)');
       controller.abort();
-      // Ask backend to cancel compute if we're the only waiter
-      fetch(`/api/generate/${encodeURIComponent(seedToCancel)}/cancel`, {
-        method: 'POST',
-      }).catch((err) => console.warn('[Dev] Backend cancel request failed', err));
+
+      if (didCancelRust) {
+        // Ask backend to cancel compute if we're the only waiter
+        fetch(`/api/generate/${encodeURIComponent(seedToCancel)}/cancel`, {
+          method: 'POST',
+        }).catch((err) => console.warn('[Dev] Backend cancel request failed', err));
+      }
+
       setIsGenerating(false);
       setGenerationProgress(null);
       generationAbortRef.current = null;

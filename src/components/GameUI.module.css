@@ -41,7 +41,7 @@
   align-items: center;
   width: 100%;
   font-family: var(--font-main);
-  padding: calc(0.35rem * var(--ui-scale)) 0 0 0;
+  padding: calc(0.35rem * var(--ui-scale)) 0 calc(0.35rem * var(--ui-scale)) 0;
   transition: padding 0.15s ease-out;
 }
 

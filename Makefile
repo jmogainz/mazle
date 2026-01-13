@@ -15,7 +15,7 @@ endif
 # Internal Variable Declaration
 # ------------------------------
 
-ENV ?= dev
+ENV ?= dev-test
 COMPOSE_PROJECT_NAME := mazle
 COMPOSE_NETWORK_NAME ?= mazle_network
 
@@ -182,8 +182,8 @@ ifndef INCLUDED_ENV_LOCAL_UTILS
   include $(DEVOPS_TOOLKIT_PATH)/shared/make/utils/env_local.mk
 endif
 
-# Only load BWS .env.local in ENV=dev (dev-test should not require secrets).
-ifeq ($(ENV),dev)
+# Load BWS .env.local in dev + dev-test.
+ifneq (,$(filter $(ENV),$(DEV_ENV) $(DEV_TEST_ENV)))
 up:: env-local
 endif
 

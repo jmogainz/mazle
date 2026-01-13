@@ -16,7 +16,7 @@ export const GAME_BUFFER_PX = 0;
 export const PENALTY_MS = 30000;
 
 // Closeness threshold configuration
-export const CLOSENESS_THRESHOLD_DEV = 0.97;
+export const CLOSENESS_THRESHOLD_DEV = 0.90;
 export const CLOSENESS_THRESHOLD_PROD = 1.0;
 
 // Local storage keys

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { usePathname, useRouter } from 'next/navigation';
 import { Header, GameUI, ShareCard, StatsModal, HelpModal, ErrorBoundary, Loader, DevTools, AdSlot } from '@/components';
+import UiDevModal from '@/components/UiDevModal';
 import { HELP_MENU_HASH } from '@/components/helpMenuHash';
 import MoreMenuModal from '@/components/MoreMenuModal';
 import OverlayShell from '@/components/OverlayShell';
@@ -51,6 +52,7 @@ import {
   getInProgressState,
   clearInProgressState,
   recordLeaderboardRank,
+  setTodaysResultForDev,
 } from '@/utils/storage';
 import { useAdConsent } from '@/utils/consent';
 import type { PlayerStats, DailyStats, GameState, Direction } from '@/game/types';
@@ -98,6 +100,9 @@ const _DEVTOOLS_BUILD_FLAG =
 
 const DEVTOOLS_PREVIEW_FEATURES_KEY = 'mazle_devtools_preview_features_v1';
 const UI_OVERHAUL_EXPERIMENTAL = false;
+const LEADERBOARD_LIMIT = 80;
+const UI_DEV_CODE = 'uiuiuiui';
+const IS_UI_DEV_ENV = process.env.NEXT_PUBLIC_ENV === 'dev';
 
 const IS_PROD = process.env.NEXT_PUBLIC_ENV === 'prod';
 const HELP_SEEN_KEY = `mazle_seen_help_${HELP_MENU_HASH}`;
@@ -120,6 +125,7 @@ export default function Home() {
   const [showStats, setShowStats] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showDevTools, setShowDevTools] = useState(false);
+  const [showUiDevModal, setShowUiDevModal] = useState(false);
   const [previewFeaturesEnabled, setPreviewFeaturesEnabled] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
@@ -201,7 +207,7 @@ export default function Home() {
     if (process.env.NODE_ENV === 'production' && !previewFeaturesEnabled) return;
     const runPrefetch = () => {
       prefetchAccount();
-      prefetchLeaderboard(todayNy, 50);
+      prefetchLeaderboard(todayNy, LEADERBOARD_LIMIT);
       if (UI_OVERHAUL_EXPERIMENTAL) {
         const monthStart = `${todayNy.slice(0, 7)}-01`;
         prefetchArchiveDays(monthStart, todayNy);
@@ -222,7 +228,7 @@ export default function Home() {
   useEffect(() => {
     if (!showShareCard && !showLeaderboard) return;
     prefetchLeaderboard(todayNy, 20);
-    prefetchLeaderboard(todayNy, 50);
+    prefetchLeaderboard(todayNy, LEADERBOARD_LIMIT);
   }, [showShareCard, showLeaderboard, todayNy]);
 
   // Update countdown timer every second when showing results
@@ -319,6 +325,7 @@ export default function Home() {
     showStats ||
     showShareCard ||
     showDevTools ||
+    showUiDevModal ||
     showMenu ||
     showLeaderboard ||
     showHallOfFame ||
@@ -402,6 +409,12 @@ export default function Home() {
         cheatBufferRef.current = '';
         setShowDevTools(prev => !prev);
       }
+
+      // UI Dev modal cheat (plain text)
+      if (IS_UI_DEV_ENV && cheatBufferRef.current.endsWith(UI_DEV_CODE)) {
+        cheatBufferRef.current = '';
+        setShowUiDevModal((prev) => !prev);
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -412,6 +425,65 @@ export default function Home() {
       }
     };
   }, []);
+
+  const applyTodayResultForUiDev = useCallback((kind: 'clear' | 'win' | 'loss') => {
+    if (!IS_UI_DEV_ENV) return;
+    const todayDateStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+
+    if (kind === 'clear') {
+      setTodaysResultForDev(null);
+      setStats(getPlayerStats());
+      setPreviousResult(null);
+      setGameResult(null);
+      setShowShareCard(false);
+      setShowInlineResult(false);
+      setReviewAttemptIndex(null);
+      setIsFreshCompletion(false);
+      setIsPlaying(false);
+      setInitialStats(null);
+      clearInProgressState();
+      return;
+    }
+
+    const failed = kind === 'loss';
+    const optimalMoves = puzzle?.optimalMoves ?? 10;
+    const baseTimeMs = 55_000 + Math.floor(Math.random() * 65_000);
+    const timeMs = failed ? baseTimeMs + 30_000 : baseTimeMs;
+
+    const nextResult: DailyStats = {
+      date: todayDateStr,
+      completed: !failed,
+      failed,
+      moveCount: failed ? Math.max(optimalMoves, optimalMoves + 4) : optimalMoves,
+      timeMs,
+      puzzleNumber: puzzleNumber || getPuzzleNumberFromNyDateString(todayDateStr),
+      attemptsUsed: failed ? undefined : 1,
+      attempts: [],
+    };
+
+    setTodaysResultForDev(nextResult);
+    setStats(getPlayerStats());
+    setPreviousResult(nextResult);
+    setGameResult({
+      moveCount: nextResult.moveCount,
+      timeMs: nextResult.timeMs,
+      attempts: nextResult.attempts,
+      failed,
+    });
+
+    setInitialStats({
+      lives: failed ? 0 : 3,
+      currentAttemptMoves: optimalMoves,
+      elapsedTimeMs: timeMs,
+      penaltyTimeMs: 0,
+      maxLives: devMaxLivesRef.current,
+    });
+
+    setIsPlaying(false);
+    setIsFreshCompletion(true);
+    setShowInlineResult(true);
+    setShowShareCard(true);
+  }, [puzzle?.optimalMoves, puzzleNumber]);
 
   // Mobile tap-to-open dev tools (10 taps in 2 seconds on the scoreboard)
   const handleDevToolsTap = useCallback(() => {
@@ -614,7 +686,7 @@ export default function Home() {
       const result = data as { moveCount: number; timeMs: number; optimalMoves: number; failed?: boolean; attempts?: any[] };
       setGameResult(result);
       prefetchLeaderboard(todayNy, 20);
-      prefetchLeaderboard(todayNy, 50);
+      prefetchLeaderboard(todayNy, LEADERBOARD_LIMIT);
       setShowShareCard(true);
       setIsPlaying(false); // Ensure game is marked as not playing to show blocked state
       setIsFreshCompletion(true); // Mark as fresh completion (not loaded from storage)
@@ -1068,6 +1140,7 @@ export default function Home() {
     showShareCard ||
     showHelp ||
     showStats ||
+    showUiDevModal ||
     showMenu ||
     showLeaderboard ||
     showAccount ||
@@ -1465,6 +1538,35 @@ export default function Home() {
             maxLives={devMaxLives}
             onClose={handleCloseShareCard}
             countdownText={`Next puzzle in ${formatCountdown(nextPuzzleCountdown)}`}
+          />
+        )}
+
+        {IS_UI_DEV_ENV && (
+          <UiDevModal
+            open={showUiDevModal}
+            onClose={() => setShowUiDevModal(false)}
+            onOpenStats={() => {
+              setStats(getPlayerStats());
+              setShowStats(true);
+              setShowUiDevModal(false);
+            }}
+            onOpenAccount={() => {
+              setShowAccount(true);
+              setShowUiDevModal(false);
+            }}
+            onOpenLeaderboard={() => {
+              setShowLeaderboard(true);
+              setShowUiDevModal(false);
+            }}
+            onOpenHallOfFame={() => {
+              setShowHallOfFame(true);
+              setShowUiDevModal(false);
+            }}
+            onOpenArchive={() => {
+              handleOpenArchive();
+              setShowUiDevModal(false);
+            }}
+            onApplyTodayResult={(kind) => applyTodayResultForUiDev(kind)}
           />
         )}
 

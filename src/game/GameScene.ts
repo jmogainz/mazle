@@ -259,9 +259,18 @@ export class GameScene extends Phaser.Scene {
     const size = TILE_SIZE;
     const s = size / 32; // Scale factor based on original design (32px)
 
+    const isArchive = this.puzzle.variant === 'archive';
+
     const padding = 2 * s; // Gap between tiles
     const radius = 8 * s;
     const depth = 4 * s;   // 3D lip height
+
+    const shadeColor = (color: number, factor: number): number => {
+      const r = Math.max(0, Math.min(255, Math.round(((color >> 16) & 0xff) * factor)));
+      const g = Math.max(0, Math.min(255, Math.round(((color >> 8) & 0xff) * factor)));
+      const b = Math.max(0, Math.min(255, Math.round((color & 0xff) * factor)));
+      return (r << 16) | (g << 8) | b;
+    };
 
     // Helper: Draw a "Waffle Style" 3D Tile
     const draw3DTile = (faceColor: number, edgeColor: number) => {
@@ -305,6 +314,11 @@ export class GameScene extends Phaser.Scene {
         // Intermediate path: lighter green
         actualFace = COLORS.HINT_PATH_FACE;
         actualEdge = COLORS.HINT_PATH_EDGE;
+      }
+
+      if (isArchive && hintLevel === 0) {
+        actualFace = shadeColor(actualFace, 0.88);
+        actualEdge = shadeColor(actualEdge, 0.88);
       }
 
       // 1. Draw Edge (Bottom Layer / Shadow)

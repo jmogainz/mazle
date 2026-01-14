@@ -17,6 +17,7 @@ import CharacterIcon from './CharacterIcon';
 import styles from './LeaderboardView.module.css';
 
 const DEVTOOLS_PREVIEW_FEATURES_KEY = 'mazle_devtools_preview_features_v1';
+const LEADERBOARD_LIMIT = 80;
 
 type LoadState<T> =
   | { status: 'idle' }
@@ -51,7 +52,7 @@ function LeaderboardView() {
     return previewFeaturesEnabled;
   }, [previewFeaturesEnabled]);
 
-  const cachedTop = useMemo(() => readCachedLeaderboardTop(todayDate, 50), [todayDate]);
+  const cachedTop = useMemo(() => readCachedLeaderboardTop(todayDate, LEADERBOARD_LIMIT), [todayDate]);
   const cachedMe = useMemo(() => readCachedLeaderboardMe(todayDate), [todayDate]);
   const [topState, setTopState] = useState<LoadState<Awaited<ReturnType<typeof api.leaderboardTop>>>>(
     cachedTop ? { status: 'loaded', data: cachedTop } : { status: 'loading' }
@@ -153,13 +154,13 @@ function LeaderboardView() {
   useEffect(() => {
     if (!showLockedFeatures) return;
 
-    const cached = readCachedLeaderboardTop(todayDate, 50);
+    const cached = readCachedLeaderboardTop(todayDate, LEADERBOARD_LIMIT);
     if (cached) {
       setTopState({ status: 'loaded', data: cached });
     }
 
     cachedApi
-      .leaderboardTop(todayDate, 50)
+      .leaderboardTop(todayDate, LEADERBOARD_LIMIT)
       .then((top) => setTopState({ status: 'loaded', data: top }))
       .catch((err) => {
         const message = err instanceof Error ? err.message : 'Failed to load';
@@ -213,7 +214,7 @@ function LeaderboardView() {
       fetchLeaderboardMeFresh(todayDate)
         .then((me) => setMeState({ status: 'loaded', data: me }))
         .catch(() => null);
-      fetchLeaderboardTopFresh(todayDate, 50)
+      fetchLeaderboardTopFresh(todayDate, LEADERBOARD_LIMIT)
         .then((top) => setTopState({ status: 'loaded', data: top }))
         .catch(() => null);
     } catch {

@@ -15,6 +15,11 @@ export enum TileType {
   BOULDER = 9,     // Pushable boulder - blocks movement but can be pushed
 }
 
+export enum MapType {
+  ICE = 'ice',
+  GROUND = 'ground',
+}
+
 export enum Direction {
   UP = 'up',
   DOWN = 'down',
@@ -35,6 +40,8 @@ export interface PuzzleData {
   goal: Position;
   optimalMoves: number;
   solutionPath?: Position[];
+  mapType?: MapType;
+  variant?: 'daily' | 'archive';
 
   // Psychology-based difficulty metrics (for dev mode display)
   difficultyScore?: number;           // Overall psychology score

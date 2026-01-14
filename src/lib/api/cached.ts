@@ -1,4 +1,4 @@
-import { realApi } from './real';
+import { getActiveApi, getApiMode } from './index';
 import type {
   ArchiveDaysResponse,
   LeaderboardAroundResponse,
@@ -22,6 +22,22 @@ const ARCHIVE_DAYS_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 function nowMs(): number {
   return Date.now();
+}
+
+function cacheScope(): string {
+  const mode = getApiMode();
+  if (mode !== 'mock') return 'real';
+  if (typeof window === 'undefined') return 'mock';
+  try {
+    const key = localStorage.getItem('mazle_mock_me_v1') ? 'user' : 'guest';
+    return `mock:${key}`;
+  } catch {
+    return 'mock';
+  }
+}
+
+function scopedKey(key: string): string {
+  return `${cacheScope()}:${key}`;
 }
 
 function getEpoch(key: string): number {
@@ -90,52 +106,60 @@ function primeCache<T>(key: string, fetcher: () => Promise<T>, ttlMs: number): v
 }
 
 function leaderboardTopKey(date: string, limit: number): string {
-  return `lb:top:${date}:${limit}`;
+  return scopedKey(`lb:top:${date}:${limit}`);
 }
 
 function leaderboardMeKey(date: string): string {
-  return `lb:me:${date}`;
+  return scopedKey(`lb:me:${date}`);
 }
 
 function leaderboardAroundKey(date: string, rank: number, window: number): string {
-  return `lb:around:${date}:${rank}:${window}`;
+  return scopedKey(`lb:around:${date}:${rank}:${window}`);
 }
 
 function archiveDaysKey(from: string, to: string): string {
-  return `archive:days:${from}:${to}`;
+  return scopedKey(`archive:days:${from}:${to}`);
 }
 
 export const cachedApi = {
-  me: async (): Promise<MeResponse> => fetchCached('me', () => realApi.me(), ME_TTL_MS),
+  me: async (): Promise<MeResponse> => fetchCached(scopedKey('me'), () => getActiveApi().me(), ME_TTL_MS),
 
   leaderboardTop: async (date: string, limit = 50): Promise<LeaderboardTopResponse> =>
-    fetchCached(leaderboardTopKey(date, limit), () => realApi.leaderboardTop(date, limit), LEADERBOARD_TTL_MS),
+    fetchCached(leaderboardTopKey(date, limit), () => getActiveApi().leaderboardTop(date, limit), LEADERBOARD_TTL_MS),
 
   leaderboardMe: async (date: string): Promise<LeaderboardMeResponse> =>
-    fetchCached(leaderboardMeKey(date), () => realApi.leaderboardMe(date), LEADERBOARD_TTL_MS),
+    fetchCached(leaderboardMeKey(date), () => getActiveApi().leaderboardMe(date), LEADERBOARD_TTL_MS),
 
   leaderboardAround: async (date: string, rank: number, window = 5): Promise<LeaderboardAroundResponse> =>
-    fetchCached(leaderboardAroundKey(date, rank, window), () => realApi.leaderboardAround(date, rank, window), LEADERBOARD_TTL_MS),
+    fetchCached(
+      leaderboardAroundKey(date, rank, window),
+      () => getActiveApi().leaderboardAround(date, rank, window),
+      LEADERBOARD_TTL_MS
+    ),
 };
 
 export async function fetchMeFresh(): Promise<MeResponse> {
-  return fetchFresh('me', () => realApi.me(), ME_TTL_MS);
+  return fetchFresh(scopedKey('me'), () => getActiveApi().me(), ME_TTL_MS);
 }
 
 export async function fetchLeaderboardTopFresh(date: string, limit = 50): Promise<LeaderboardTopResponse> {
-  return fetchFresh(leaderboardTopKey(date, limit), () => realApi.leaderboardTop(date, limit), LEADERBOARD_TTL_MS);
+  return fetchFresh(leaderboardTopKey(date, limit), () => getActiveApi().leaderboardTop(date, limit), LEADERBOARD_TTL_MS);
 }
 
 export async function fetchLeaderboardMeFresh(date: string): Promise<LeaderboardMeResponse> {
-  return fetchFresh(leaderboardMeKey(date), () => realApi.leaderboardMe(date), LEADERBOARD_TTL_MS);
+  return fetchFresh(leaderboardMeKey(date), () => getActiveApi().leaderboardMe(date), LEADERBOARD_TTL_MS);
 }
 
 export async function fetchLeaderboardAroundFresh(date: string, rank: number, window = 5): Promise<LeaderboardAroundResponse> {
-  return fetchFresh(leaderboardAroundKey(date, rank, window), () => realApi.leaderboardAround(date, rank, window), LEADERBOARD_TTL_MS);
+  return fetchFresh(
+    leaderboardAroundKey(date, rank, window),
+    () => getActiveApi().leaderboardAround(date, rank, window),
+    LEADERBOARD_TTL_MS
+  );
 }
 
 export function readCachedMe(): MeResponse | null {
-  return readCache<MeResponse>('me');
+  return readCache<MeResponse>(scopedKey('me'));
 }
 
 export function readCachedLeaderboardTop(date: string, limit = 50): LeaderboardTopResponse | null {
@@ -151,19 +175,19 @@ export function readCachedLeaderboardAround(date: string, rank: number, window =
 }
 
 export function prefetchAccount(): void {
-  primeCache('me', () => realApi.me(), ME_TTL_MS);
+  primeCache(scopedKey('me'), () => getActiveApi().me(), ME_TTL_MS);
 }
 
 export function prefetchLeaderboard(date: string, limit = 50): void {
-  primeCache(leaderboardTopKey(date, limit), () => realApi.leaderboardTop(date, limit), LEADERBOARD_TTL_MS);
+  primeCache(leaderboardTopKey(date, limit), () => getActiveApi().leaderboardTop(date, limit), LEADERBOARD_TTL_MS);
   primeCache(
     leaderboardMeKey(date),
     async () => {
-      const me = await realApi.leaderboardMe(date);
+      const me = await getActiveApi().leaderboardMe(date);
       if (me?.rank) {
         primeCache(
           leaderboardAroundKey(date, me.rank, 5),
-          () => realApi.leaderboardAround(date, me.rank, 5),
+          () => getActiveApi().leaderboardAround(date, me.rank, 5),
           LEADERBOARD_TTL_MS
         );
       }
@@ -174,7 +198,7 @@ export function prefetchLeaderboard(date: string, limit = 50): void {
 }
 
 export function prefetchArchiveDays(from: string, to: string): void {
-  primeCache(archiveDaysKey(from, to), () => realApi.archiveDays(from, to), ARCHIVE_DAYS_TTL_MS);
+  primeCache(archiveDaysKey(from, to), () => getActiveApi().archiveDays(from, to), ARCHIVE_DAYS_TTL_MS);
 }
 
 export function readCachedArchiveDays(from: string, to: string): ArchiveDaysResponse | null {
@@ -182,5 +206,5 @@ export function readCachedArchiveDays(from: string, to: string): ArchiveDaysResp
 }
 
 export async function getCachedArchiveDays(from: string, to: string): Promise<ArchiveDaysResponse> {
-  return fetchCached(archiveDaysKey(from, to), () => realApi.archiveDays(from, to), ARCHIVE_DAYS_TTL_MS);
+  return fetchCached(archiveDaysKey(from, to), () => getActiveApi().archiveDays(from, to), ARCHIVE_DAYS_TTL_MS);
 }

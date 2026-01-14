@@ -139,9 +139,9 @@ async function generate(id: number, seed: string, closenessThreshold?: number): 
         parallel: false, // Worker is single-threaded
         startBatch: 0,
       };
-      puzzle = wasm.generateWithConfig(seed, config);
+      puzzle = wasm.generateIceWithConfig(seed, config);
     } else {
-      puzzle = wasm.generate(seed);
+      puzzle = wasm.generateIce(seed);
     }
 
     const elapsed = performance.now() - startTime;

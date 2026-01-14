@@ -1,10 +1,12 @@
 import { PlayerStats, DailyStats, PuzzleData, TileType, Position } from '@/game/types';
 import { addDays } from '@/lib/date';
+import { getPuzzleNumberFromNyDateString } from '@/game/puzzleGenerator';
 
 const STATS_KEY = 'mazle_stats';
 const DAILY_KEY = 'mazle_daily';
 const PUZZLE_CACHE_KEY = 'mazle_puzzle_cache_v1';
 const IN_PROGRESS_KEY = 'mazle_in_progress_v1';
+const DEV_STATS_SEEDED_KEY = 'mazle_dev_seeded_stats_v1';
 
 // In-progress game state for resume after refresh
 export interface InProgressState {
@@ -48,9 +50,96 @@ function getDefaultStats(): PlayerStats {
   };
 }
 
+function isUiDevEnv(): boolean {
+  return process.env.NEXT_PUBLIC_ENV === 'dev';
+}
+
+function clampInt(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.max(min, Math.min(max, Math.floor(value)));
+}
+
+function devRandomInt(min: number, max: number): number {
+  return clampInt(min + Math.random() * (max - min + 1), min, max);
+}
+
+function seedDevStatsIfNeeded(): void {
+  if (typeof window === 'undefined') return;
+  if (!isUiDevEnv()) return;
+
+  try {
+    if (localStorage.getItem(DEV_STATS_SEEDED_KEY) === '1') return;
+
+    const existing = localStorage.getItem(STATS_KEY);
+    if (existing) {
+      const parsed = JSON.parse(existing) as PlayerStats;
+      if (parsed && typeof parsed === 'object' && Array.isArray(parsed.history) && parsed.history.length >= 20) {
+        localStorage.setItem(DEV_STATS_SEEDED_KEY, '1');
+        return;
+      }
+    }
+  } catch {
+    // Ignore seed pre-check failures
+  }
+
+  const today = getTodayString();
+  const yesterday = addDays(today, -1);
+
+  const history: DailyStats[] = [];
+  for (let i = 0; i < 20; i += 1) {
+    const date = addDays(yesterday, -i);
+    const puzzleNumber = getPuzzleNumberFromNyDateString(date);
+
+    const isStreakDay = i < 5;
+    const completed = isStreakDay ? true : Math.random() < 0.72;
+    const attemptsUsed = completed ? devRandomInt(1, 3) : undefined;
+    const timeMs = completed ? devRandomInt(32_000, 210_000) : devRandomInt(18_000, 260_000);
+    const moveCount = completed ? devRandomInt(8, 18) : devRandomInt(8, 26);
+    const failed = !completed;
+
+    const leaderboardRank = completed && Math.random() < 0.35 ? devRandomInt(1, 120) : undefined;
+
+    history.push({
+      date,
+      completed,
+      failed,
+      attemptsUsed: completed ? attemptsUsed : undefined,
+      timeMs,
+      moveCount,
+      puzzleNumber,
+      leaderboardRank,
+    });
+  }
+
+  history.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+  const totalGamesPlayed = history.length;
+  const totalGamesWon = history.filter((h) => h.completed).length;
+  const currentStreak = 5;
+  const maxStreak = Math.max(currentStreak, devRandomInt(6, 12));
+
+  const seeded: PlayerStats = {
+    currentStreak,
+    maxStreak,
+    totalGamesPlayed,
+    totalGamesWon,
+    lastPlayedDate: yesterday,
+    history,
+  };
+
+  try {
+    localStorage.setItem(STATS_KEY, JSON.stringify(seeded));
+    localStorage.setItem(DEV_STATS_SEEDED_KEY, '1');
+  } catch {
+    // Ignore seed write failures
+  }
+}
+
 // Get player stats from localStorage
 export function getPlayerStats(): PlayerStats {
   if (typeof window === 'undefined') return getDefaultStats();
+
+  seedDevStatsIfNeeded();
 
   try {
     const stored = localStorage.getItem(STATS_KEY);
@@ -110,6 +199,98 @@ export function savePlayerStats(stats: PlayerStats): void {
 // This ensures daily puzzle tracking matches the puzzle rollover time
 function getTodayString(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+}
+
+function sortByDateAsc<T extends { date: string }>(rows: T[]): T[] {
+  return [...rows].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+}
+
+function recomputeStatsFromHistory(history: DailyStats[]): PlayerStats {
+  const sorted = sortByDateAsc(history);
+  const totalGamesPlayed = sorted.length;
+  const totalGamesWon = sorted.filter((h) => h.completed).length;
+  const lastPlayedDate = sorted.length > 0 ? sorted[sorted.length - 1]!.date : null;
+
+  // Max streak over all time.
+  let maxStreak = 0;
+  let currentRun = 0;
+  let prevWinDate: string | null = null;
+  for (const entry of sorted) {
+    if (entry.completed) {
+      if (prevWinDate && entry.date === addDays(prevWinDate, 1)) {
+        currentRun += 1;
+      } else {
+        currentRun = 1;
+      }
+      prevWinDate = entry.date;
+      maxStreak = Math.max(maxStreak, currentRun);
+    } else {
+      currentRun = 0;
+      prevWinDate = null;
+    }
+  }
+
+  // Current streak (wins only), only if last played is today or yesterday.
+  const today = getTodayString();
+  const yesterday = addDays(today, -1);
+  let currentStreak = 0;
+  if (lastPlayedDate === today || lastPlayedDate === yesterday) {
+    // Walk backwards in date order and count consecutive wins.
+    const desc = [...sorted].reverse();
+    for (let i = 0; i < desc.length; i += 1) {
+      const row = desc[i]!;
+      if (!row.completed) break;
+      if (i === 0) {
+        currentStreak = 1;
+        continue;
+      }
+      const prev = desc[i - 1]!;
+      if (row.date !== addDays(prev.date, -1)) break;
+      currentStreak += 1;
+    }
+  }
+
+  return {
+    currentStreak,
+    maxStreak,
+    totalGamesPlayed,
+    totalGamesWon,
+    lastPlayedDate,
+    history: sorted,
+  };
+}
+
+export function setTodaysResultForDev(result: DailyStats | null): void {
+  if (typeof window === 'undefined') return;
+  if (!isUiDevEnv()) return;
+
+  try {
+    if (result == null) {
+      localStorage.removeItem(DAILY_KEY);
+    } else {
+      localStorage.setItem(DAILY_KEY, JSON.stringify(result));
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    const stats = getPlayerStats();
+    const today = getTodayString();
+
+    const filtered = stats.history.filter((h) => h.date !== today);
+    const nextHistory = result ? [...filtered, result] : filtered;
+    const nextStats = recomputeStatsFromHistory(nextHistory);
+    savePlayerStats(nextStats);
+  } catch {
+    // ignore
+  }
+
+  try {
+    localStorage.setItem(DEV_STATS_SEEDED_KEY, '1');
+  } catch {
+    // ignore
+  }
 }
 
 // Check if player has played today

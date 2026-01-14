@@ -1,5 +1,4 @@
 # Mazle Puzzle Generator - Pretraining Summary
-
 ## Problem Statement
 
 **Goal:** Train a neural network to replace the Rust-based puzzle generator, producing valid ice puzzles faster than the current ~10-60  minute generation time.
@@ -870,3 +869,183 @@ Best checkpoint: `output_v2_clean/` at step 4000
 - **V1 AR model:** `generator-rust/ml/model_ar.py`
 - **V1 Diffusion model:** `generator-rust/ml/model_diffusion.py`
 - **Verifier:** `generator-rust/ml/bridge/` (PyO3 Rust bindings)
+
+---
+
+## Phase 8: EMA Decay Tuning & Dataset Scaling (Jan 12-14, 2026)
+
+After the AdaLN experiments failed to improve results, we systematically explored EMA decay values and larger datasets.
+
+### Key Discovery: EMA 0.9999 Breakthrough
+
+We discovered that **EMA decay 0.9999** (vs standard 0.999) significantly improved results by providing a ~5000 step "warmup" period that delays degradation.
+
+**Initial EMA experiments on 50k data:**
+
+| EMA | Best PASS% | Best Step | Notes |
+|-----|------------|-----------|-------|
+| 0.999 | 1.6% | ~2000 | Original baseline |
+| 0.9999 | **2.7%** | 9000 | New best! |
+| 0.99995 | 0.4% | - | Too slow to converge |
+
+**Best result:** 2.7% PASS at step 9000 with EMA=0.9999, 50k data, 30 epochs
+
+Checkpoint: `output_v2_50k_ema9999/best_model.pt`
+
+### Understanding the Degradation Problem
+
+**Key insight:** The model degrades because cross-entropy loss doesn't encode path length. The model learns that simpler puzzles (fewer moves) are "easier" to get right tile-by-tile, so it drifts toward generating shorter puzzles over time.
+
+**Metrics to watch:**
+- `moves_mean` - Average optimal moves of solvable puzzles (should stay near 10)
+- When `moves_mean` drops from 6+ toward 4, PASS rate follows
+
+**EMA 0.9999** helps by averaging over ~5000 steps, which delays but doesn't prevent degradation.
+
+---
+
+## Phase 9: DPO Attempt (Direct Preference Optimization)
+
+We attempted DPO to teach the model to prefer 10-move puzzles over shorter ones.
+
+### DPO Data Generation
+
+Generated 9,757 preference pairs:
+- **Winners:** Real 10-move puzzles from training data
+- **Losers:** Model-generated puzzles with ≤7 moves (same start/goal positions)
+
+### DPO Training Results
+
+| Beta | Learning Rate | Result |
+|------|---------------|--------|
+| 0.1 | 1e-5 | Loss collapsed to 0, PASS dropped to 0.2% |
+| 0.5 | 1e-5 | Loss still collapsed quickly |
+| 1.0 | 1e-6 | Loss stayed higher but still degraded to 1.8% |
+
+**Best DPO result:** 1.8% PASS - worse than baseline 2.7%
+
+### Why DPO Failed: "Real vs Fake Texture" Detection
+
+**Critical insight:** The model learned a trivial shortcut - it detected subtle statistical differences ("texture") between real training data and model-generated data, rather than learning path mechanics.
+
+Evidence:
+- Loss collapsed to 0 almost instantly (within 100-200 steps)
+- Model could perfectly distinguish winner/loser without understanding WHY
+- Real training data has statistical "watermarks" that generated data lacks
+
+**Solution identified:** Self-Play DPO where BOTH winner and loser are model-generated (removes texture cheat). We implemented `generate_selfplay_dpo.py` but didn't run it due to slow generation speed (~0.7% pass rate = 160 attempts per valid puzzle).
+
+---
+
+## Phase 10: Comprehensive Hyperparameter Sweep (Jan 12-14, 2026)
+
+To definitively answer whether any hyperparameter configuration could beat 2.7%, we ran a systematic sweep of 20 experiments.
+
+### Sweep Configuration
+
+**Early stopping:** Stop when PASS degrades for 5 consecutive evaluations after peak
+**Evaluation:** 256 samples every 500 steps
+**Baseline to beat:** 2.7% PASS
+
+### Experiments Run
+
+| # | Name | Data | LR | Batch | Epochs | Preset | EMA |
+|---|------|------|-----|-------|--------|--------|-----|
+| 1 | data_200k_base | 200k | 1e-4 | 64 | 15 | base | 0.9999 |
+| 2 | data_300k_base | 300k | 1e-4 | 64 | 10 | base | 0.9999 |
+| 3 | data_200k_slow | 200k | 5e-5 | 64 | 20 | base | 0.9999 |
+| 4 | data_300k_slow | 300k | 5e-5 | 64 | 15 | base | 0.9999 |
+| 5 | data_300k_small_batch | 300k | 1e-4 | 32 | 15 | base | 0.9999 |
+| 6 | lr_5e5 | 50k | 5e-5 | 64 | 40 | base | 0.9999 |
+| 7 | lr_2e4 | 50k | 2e-4 | 64 | 20 | base | 0.9999 |
+| 8 | lr_3e4 | 50k | 3e-4 | 64 | 15 | base | 0.9999 |
+| 9 | batch_32 | 50k | 1e-4 | 32 | 40 | base | 0.9999 |
+| 10 | batch_128 | 50k | 1e-4 | 128 | 20 | base | 0.9999 |
+| 11 | batch_16 | 50k | 1e-4 | 16 | 60 | base | 0.9999 |
+| 12 | ema_999 | 50k | 1e-4 | 64 | 30 | base | 0.999 |
+| 13 | ema_99995 | 50k | 1e-4 | 64 | 30 | base | 0.99995 |
+| 14 | model_small | 50k | 1e-4 | 64 | 40 | small | 0.9999 |
+| 15 | model_large | 50k | 1e-4 | 32 | 30 | large | 0.9999 |
+| 16 | large_model_200k | 200k | 1e-4 | 32 | 15 | large | 0.9999 |
+| 17 | large_model_300k | 300k | 1e-4 | 32 | 10 | large | 0.9999 |
+| 18 | small_lr_small_batch | 50k | 5e-5 | 32 | 50 | base | 0.9999 |
+| 19 | data_25k_long | 25k | 1e-4 | 32 | 80 | base | 0.9999 |
+| 20 | augment_test | 50k | 1e-4 | 64 | 30 | base | 0.9999 |
+
+### Sweep Results (18/20 complete as of writing)
+
+| PASS% | Experiments |
+|-------|-------------|
+| **2.7%** | data_200k_base, model_large, large_model_200k |
+| 2.3% | data_300k_base, data_200k_slow |
+| 2.0% | lr_2e4, lr_3e4, batch_32 |
+| 1.6% | lr_5e5, batch_128, ema_999, large_model_300k |
+| 1.2% | data_300k_small_batch, model_small, small_lr_small_batch |
+| 0.8% | data_300k_slow |
+| 0.4% | batch_16, ema_99995 |
+
+### Key Findings
+
+1. **2.7% is a hard ceiling** - No hyperparameter variation beat it
+2. **Larger datasets didn't help** - 200k and 300k performed same or worse than 50k
+3. **Larger model tied but didn't beat** - large preset matched 2.7% but no improvement
+4. **Learning rate insensitive** - 5e-5 to 3e-4 all performed similarly
+5. **Batch size insensitive** - 16 to 128 all similar (extremes slightly worse)
+6. **EMA 0.9999 is optimal** - 0.999 too fast, 0.99995 too slow
+
+### Conclusions
+
+**The 2.7% ceiling appears fundamental to this architecture/loss combination.**
+
+The discrete diffusion transformer with cross-entropy loss cannot learn to control emergent global properties (path length) from local tile predictions. All variations we tried:
+- Different data scales (25k to 300k)
+- Different learning rates (5e-5 to 3e-4)
+- Different batch sizes (16 to 128)
+- Different model sizes (small to large)
+- Different EMA decays (0.999 to 0.99995)
+- DPO preference learning
+
+...all hit the same ~2.7% ceiling or performed worse.
+
+---
+
+## Current Status
+
+**Best checkpoint:** `output_v2_50k_ema9999/best_model.pt`
+- 2.7% full PASS rate (10 moves, unique optimal, no stuck)
+- ~37 attempts needed on average to get a valid puzzle
+- With K-candidates (K=100), effective success rate ~93%
+
+**Datasets available:**
+- `train-10move-25k.jsonl` (25k samples)
+- `train-10move-50k.jsonl` (50k samples)
+- `train-10move-100k.jsonl` (100k samples)
+- `train-10move-200k.jsonl` (200k samples)
+- `train-10move-300k.jsonl` (300k samples)
+
+**Scripts created:**
+- `run_experiments.py` - Hyperparameter sweep with early stopping
+- `generate_selfplay_dpo.py` - Self-play DPO data generator (not yet used)
+
+---
+
+## Next Steps (if continuing)
+
+1. **Accept 2.7% and use K-candidates** - Practical for production use
+2. **Self-Play DPO** - Both winner/loser model-generated to avoid texture cheat
+3. **Path-first generation** - Generate optimal path, then fill tiles to realize it
+4. **Hybrid approach** - Use neural model for initial guess, Rust verifier for rejection sampling
+5. **Different architecture** - Graph neural network that reasons about path structure explicitly
+
+---
+
+## Key Learnings Summary
+
+| # | Learning |
+|---|----------|
+| 11 | Stronger conditioning (AdaLN) doesn't solve the fundamental problem |
+| 12 | EMA 0.9999 delays degradation but doesn't prevent it |
+| 13 | DPO fails when model can detect "real vs fake" texture |
+| 14 | Larger datasets (200k-300k) don't improve results over 50k |
+| 15 | **2.7% appears to be the ceiling for this architecture** |
+| 16 | Cross-entropy loss cannot learn emergent global properties |

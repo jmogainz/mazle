@@ -30,34 +30,43 @@ function StatsModal({ stats, onClose }: StatsModalProps) {
 
         <h2 className={styles.title}>Statistics</h2>
 
-        <div className={styles.statsGrid}>
-          <div className={styles.stat}>
-            <span className={styles.statValue}>{stats.totalGamesPlayed}</span>
-            <span className={styles.statLabel}>Played</span>
+        <div className={styles.section}>
+          <div className={styles.sectionTitle}>Overview</div>
+          <div className={styles.overviewGrid}>
+            <div className={styles.stat}>
+              <span className={styles.statValue}>{stats.totalGamesPlayed}</span>
+              <span className={styles.statLabel}>Played</span>
+            </div>
+            <div className={styles.stat}>
+              <span className={styles.statValue}>{winRate}%</span>
+              <span className={styles.statLabel}>Win Rate</span>
+            </div>
+            <div className={styles.stat}>
+              <span className={styles.statValue}>{stats.currentStreak}</span>
+              <span className={styles.statLabel}>Current Streak</span>
+            </div>
+            <div className={styles.stat}>
+              <span className={styles.statValue}>{stats.maxStreak}</span>
+              <span className={styles.statLabel}>Max Streak</span>
+            </div>
           </div>
-          <div className={styles.stat}>
-            <span className={styles.statValue}>{winRate}%</span>
-            <span className={styles.statLabel}>Win Rate</span>
-          </div>
-          <div className={styles.stat}>
-            <span className={styles.statValue}>{stats.currentStreak}</span>
-            <span className={styles.statLabel}>Current Streak</span>
-          </div>
-          <div className={styles.stat}>
-            <span className={styles.statValue}>{stats.maxStreak}</span>
-            <span className={styles.statLabel}>Max Streak</span>
-          </div>
-          <div className={styles.stat}>
-            <span className={styles.statValue}>{podium1}</span>
-            <span className={styles.statLabel}>1st</span>
-          </div>
-          <div className={styles.stat}>
-            <span className={styles.statValue}>{podium2}</span>
-            <span className={styles.statLabel}>2nd</span>
-          </div>
-          <div className={styles.stat}>
-            <span className={styles.statValue}>{podium3}</span>
-            <span className={styles.statLabel}>3rd</span>
+        </div>
+
+        <div className={styles.section} style={{ marginTop: '1rem' }}>
+          <div className={styles.sectionTitle}>Podiums</div>
+          <div className={styles.podiumGrid}>
+            <div className={`${styles.stat} ${styles.podiumStat}`}>
+              <span className={styles.statValue}>{podium1}</span>
+              <span className={styles.statLabel}>🥇 1st</span>
+            </div>
+            <div className={`${styles.stat} ${styles.podiumStat}`}>
+              <span className={styles.statValue}>{podium2}</span>
+              <span className={styles.statLabel}>🥈 2nd</span>
+            </div>
+            <div className={`${styles.stat} ${styles.podiumStat}`}>
+              <span className={styles.statValue}>{podium3}</span>
+              <span className={styles.statLabel}>🥉 3rd</span>
+            </div>
           </div>
         </div>
 
@@ -69,7 +78,7 @@ function StatsModal({ stats, onClose }: StatsModalProps) {
                 <div key={index} className={`${styles.historyItem} ${game.completed ? '' : styles.historyItemFailed}`}>
                   <span className={styles.historyLeft}>
                     <span className={styles.historyPuzzle}>#{game.puzzleNumber}</span>
-                    <span className={styles.historyTime}>{formatTime(game.timeMs)}</span>
+                    <span className={styles.historyTime}>{game.completed ? formatTime(game.timeMs) : '—'}</span>
                   </span>
                   {game.completed ? (
                     <span className={styles.historyAttempts}>{game.attemptsUsed ?? 1}/3</span>

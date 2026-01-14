@@ -7,14 +7,17 @@ import { api, getApiMode } from '@/lib/api';
 import { cachedApi, fetchMeFresh, readCachedMe } from '@/lib/api/cached';
 import { getPrefs, setPrefs } from '@/lib/prefs';
 import { addDays } from '@/lib/date';
+import { getAllSkins, getSkinById, getUnlockedSkins } from '@/lib/skins';
 import { getNewYorkDateString } from '@/game/puzzleGenerator';
 import { formatTime, getGuestHistoryForAccountImport } from '@/utils/storage';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import CharacterIcon from './CharacterIcon';
 import styles from './AccountView.module.css';
 
+const IS_UI_DEV_ENV = process.env.NEXT_PUBLIC_ENV === 'dev';
 const DEVTOOLS_PREVIEW_FEATURES_KEY = 'mazle_devtools_preview_features_v1';
 const GUEST_IMPORT_PREFIX = 'mazle_guest_history_imported_v1:';
+const MOCK_ME_STORAGE_KEY = 'mazle_mock_me_v1';
 
 type LoadState<T> =
   | { status: 'loading' }
@@ -308,6 +311,47 @@ function AccountView() {
   const profile = me?.profile ?? { characterId: 'default', skinId: 'default' };
   const avgTime = stats.avgSolveTimeMs != null ? formatTime(stats.avgSolveTimeMs) : '—';
 
+  const skins = useMemo(() => getAllSkins(), []);
+  const unlockedSkins = useMemo(() => getUnlockedSkins(), []);
+  const activeSkin = useMemo(() => getSkinById(profile.skinId) ?? getSkinById('default') ?? skins[0]!, [profile.skinId, skins]);
+  const canChangeSkin = IS_UI_DEV_ENV && getApiMode() === 'mock' && me?.mode === 'user';
+  const activeUnlockedIndex = useMemo(() => {
+    const idx = unlockedSkins.findIndex((skin) => skin.id === activeSkin.id);
+    return idx >= 0 ? idx : 0;
+  }, [activeSkin.id, unlockedSkins]);
+
+  const prevUnlockedSkinId = unlockedSkins.length > 0
+    ? unlockedSkins[(activeUnlockedIndex - 1 + unlockedSkins.length) % unlockedSkins.length]!.id
+    : null;
+  const nextUnlockedSkinId = unlockedSkins.length > 0
+    ? unlockedSkins[(activeUnlockedIndex + 1) % unlockedSkins.length]!.id
+    : null;
+
+  const applySkin = useCallback(
+    (skinId: string) => {
+      const skin = getSkinById(skinId);
+      if (!skin || skin.locked) return;
+      if (!canChangeSkin) return;
+
+      try {
+        const raw = localStorage.getItem(MOCK_ME_STORAGE_KEY);
+        if (!raw) return;
+        const stored = JSON.parse(raw) as any;
+        if (!stored || typeof stored !== 'object') return;
+        stored.profile = {
+          ...(stored.profile ?? { characterId: 'default', skinId: 'default' }),
+          skinId,
+        };
+        localStorage.setItem(MOCK_ME_STORAGE_KEY, JSON.stringify(stored));
+      } catch {
+        // ignore
+      }
+
+      refreshMe(true, true).catch(() => null);
+    },
+    [canChangeSkin, refreshMe],
+  );
+
   return (
     <div className={styles.grid}>
       <div className={styles.panel}>
@@ -401,7 +445,11 @@ function AccountView() {
               <button
                 type="button"
                 className={styles.characterArrow}
-                disabled
+                disabled={!canChangeSkin || unlockedSkins.length <= 1 || !prevUnlockedSkinId}
+                onClick={() => {
+                  if (!prevUnlockedSkinId) return;
+                  applySkin(prevUnlockedSkinId);
+                }}
                 aria-label="Previous skin"
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -412,7 +460,11 @@ function AccountView() {
               <button
                 type="button"
                 className={styles.characterArrow}
-                disabled
+                disabled={!canChangeSkin || unlockedSkins.length <= 1 || !nextUnlockedSkinId}
+                onClick={() => {
+                  if (!nextUnlockedSkinId) return;
+                  applySkin(nextUnlockedSkinId);
+                }}
                 aria-label="Next skin"
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -420,6 +472,49 @@ function AccountView() {
                 </svg>
               </button>
             </div>
+
+            {IS_UI_DEV_ENV && (
+              <div className={styles.skinsSection}>
+                <div className={styles.skinMeta}>
+                  <div className={styles.skinName}>{activeSkin.name}</div>
+                  {activeSkin.locked && <div className={styles.skinLocked}>Locked</div>}
+                </div>
+                <div className={styles.skinPicker} role="list" aria-label="Skins">
+                  {skins.map((skin) => {
+                    const selected = skin.id === activeSkin.id;
+                    const locked = skin.locked;
+                    const disabled = locked || !canChangeSkin;
+                    return (
+                      <button
+                        key={skin.id}
+                        type="button"
+                        className={`${styles.skinButton} ${selected ? styles.skinButtonSelected : ''} ${locked ? styles.skinButtonLocked : ''}`}
+                        onClick={() => applySkin(skin.id)}
+                        disabled={disabled}
+                        aria-label={locked ? `${skin.name} (locked)` : `Select ${skin.name}`}
+                      >
+                        <span
+                          className={styles.skinSwatch}
+                          style={{ backgroundColor: skin.face, borderColor: skin.edge }}
+                          aria-hidden="true"
+                        />
+                        {locked && (
+                          <span className={styles.skinLock} aria-hidden="true">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M7 11V8a5 5 0 0 1 10 0v3" />
+                              <rect x="6" y="11" width="12" height="10" rx="2" />
+                            </svg>
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                {!canChangeSkin && (
+                  <div className={styles.skinHint}>Switch to Mock + Account to change skins.</div>
+                )}
+              </div>
+            )}
 
             {/* Sign-in / Sign-out Section */}
             {me.mode === 'guest' ? (

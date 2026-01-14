@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
+import { getSkinById } from '@/lib/skins';
 
 type CharacterIconProps = {
   characterId?: string | null;
@@ -10,9 +11,8 @@ type CharacterIconProps = {
 };
 
 function colorsFor(characterId: string, skinId: string): { face: string; edge: string } {
-  if (characterId === 'default' && skinId === 'default') {
-    return { face: '#ff4d4d', edge: '#cc0000' };
-  }
+  const skin = getSkinById(skinId);
+  if (skin) return { face: skin.face, edge: skin.edge };
 
   const hash = `${characterId}:${skinId}`;
   let acc = 2166136261;
@@ -49,4 +49,3 @@ export default function CharacterIcon({ characterId, skinId, size = 34, title }:
     </svg>
   );
 }
-

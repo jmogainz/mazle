@@ -84,12 +84,76 @@
 
 /* Month title inside each panel - slides with content */
 .monthTitle {
-  text-align: center;
   padding: 0.9rem 0 0.9rem;
   height: 3.5rem;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.monthTitleLeft {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  padding-left: 0.25rem;
+}
+
+.monthTitleRight {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 0.25rem;
+}
+
+.todayButton {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 0.45rem 0.7rem;
+  font-family: var(--font-nunito, 'Nunito', var(--font-system));
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+}
+
+.todayButton:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.viewToggle {
+  display: flex;
+  gap: 0.35rem;
+  background: rgba(0, 0, 0, 0.06);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 0.25rem;
+}
+
+.viewToggleButton {
+  width: 34px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--color-secondary);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.viewToggleButton:hover {
+  color: var(--color-text);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.viewToggleButtonActive {
+  color: var(--color-primary);
+  background: rgba(106, 170, 100, 0.12);
 }
 
 .monthTitleMain {
@@ -113,6 +177,8 @@
   border-radius: 12px;
   overflow: hidden;
   background: var(--color-background);
+  display: flex;
+  flex-direction: column;
 }
 
 .weekdays {
@@ -136,6 +202,120 @@
 .grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
+}
+
+.list {
+  flex: 1;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-background);
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.listRow {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-nunito, 'Nunito', var(--font-system));
+}
+
+.listRow:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.listRow:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.listRowToday {
+  border-color: rgba(106, 170, 100, 0.45);
+}
+
+.listRowLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.listRowTitle {
+  font-weight: 900;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.listRowSubtitle {
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--color-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.listRowRight {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.statusBadge {
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-radius: 999px;
+  padding: 0.3rem 0.55rem;
+  border: 1px solid transparent;
+}
+
+.statusSolved {
+  background: rgba(106, 170, 100, 0.14);
+  border-color: rgba(106, 170, 100, 0.25);
+  color: var(--color-text);
+}
+
+.statusDnf {
+  background: rgba(255, 77, 77, 0.12);
+  border-color: rgba(255, 77, 77, 0.22);
+  color: var(--color-text);
+}
+
+.statusUnplayed {
+  background: rgba(0, 0, 0, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--color-secondary);
+}
+
+.statusLocked {
+  background: rgba(0, 0, 0, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--color-secondary);
+}
+
+.listRowTime {
+  font-weight: 900;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
 }
 
 .cell {

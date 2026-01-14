@@ -8,6 +8,10 @@ import { formatTime } from '@/utils/storage';
 import CharacterIcon from './CharacterIcon';
 import styles from './HallOfFameView.module.css';
 
+type HallOfFameViewProps = {
+  initialDate?: string;
+};
+
 type LoadState<T> =
   | { status: 'loading' }
   | { status: 'loaded'; data: T }
@@ -18,12 +22,32 @@ function formatDateDisplay(dateStr: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-export default function HallOfFameView() {
+function isValidNyDateString(value: string | undefined): value is string {
+  if (!value) return false;
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function clampDateToBounds(date: string, min: string, max: string): string {
+  if (date < min) return min;
+  if (date > max) return max;
+  return date;
+}
+
+export default function HallOfFameView({ initialDate }: HallOfFameViewProps) {
   const todayDate = useMemo(() => getNewYorkDateString(), []);
   const [selectedDate, setSelectedDate] = useState(() => {
+    if (isValidNyDateString(initialDate)) {
+      return clampDateToBounds(initialDate, LAUNCH_DATE_NY, todayDate);
+    }
     const yesterday = addDays(todayDate, -1);
     return yesterday >= LAUNCH_DATE_NY ? yesterday : todayDate;
   });
+
+  useEffect(() => {
+    if (!isValidNyDateString(initialDate)) return;
+    const clamped = clampDateToBounds(initialDate, LAUNCH_DATE_NY, todayDate);
+    setSelectedDate((prev) => (prev === clamped ? prev : clamped));
+  }, [initialDate, todayDate]);
 
   const puzzleNumber = useMemo(() => getPuzzleNumberFromNyDateString(selectedDate), [selectedDate]);
   const [podiumState, setPodiumState] = useState<LoadState<Awaited<ReturnType<typeof api.hallOfFamePodium>>>>({

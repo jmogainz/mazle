@@ -1,6 +1,6 @@
 import ArchivePlayClient from './play-client';
 
-export default function PlayArchiveDatePage({ params }: { params: { date: string } }) {
-  const { date } = params;
+export default async function PlayArchiveDatePage({ params }: { params: Promise<{ date: string }> }) {
+  const { date } = await params;
   return <ArchivePlayClient date={date} />;
 }

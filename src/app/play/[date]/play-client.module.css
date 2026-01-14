@@ -6,6 +6,18 @@
   padding: 0 0.5rem;
 }
 
+.topRowLeft {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.topRowRight {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .backButton {
   background: var(--color-background);
   border: 1px solid var(--color-border);

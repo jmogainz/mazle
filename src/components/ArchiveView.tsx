@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { cachedApi, fetchMeFresh, readCachedMe, readCachedArchiveDays, getCachedArchiveDays } from '@/lib/api/cached';
 import { LAUNCH_DATE_NY, getPuzzleNumber } from '@/game/puzzleGenerator';
+import { formatTime, getPlayerStats } from '@/utils/storage';
 import {
   addDays,
   daysInMonth,
@@ -21,6 +22,11 @@ type LoadState<T> =
   | { status: 'loading' }
   | { status: 'loaded'; data: T }
   | { status: 'error'; message: string };
+
+function formatDateDisplay(dateStr: string): string {
+  const d = new Date(`${dateStr}T12:00:00`);
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+}
 
 function isValidNyDateString(value: string | null): value is string {
   if (!value) return false;
@@ -45,6 +51,7 @@ type ArchiveViewProps = {
 };
 
 const DEVTOOLS_PREVIEW_FEATURES_KEY = 'mazle_devtools_preview_features_v1';
+const ARCHIVE_VIEW_MODE_KEY = 'mazle_archive_view_mode_v1';
 
 function ArchiveView({ presentation = 'overlay', initialTodayNy, onClose }: ArchiveViewProps) {
   const router = useRouter();
@@ -79,6 +86,9 @@ function ArchiveView({ presentation = 'overlay', initialTodayNy, onClose }: Arch
   const [checkoutState, setCheckoutState] = useState<'idle' | 'unlocking' | 'failed'>('idle');
   const [selectedPlanId, setSelectedPlanId] = useState<'monthly' | 'lifetime' | null>(null);
   const [signInExpanded, setSignInExpanded] = useState(false);
+  const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
+  const [localStats] = useState(() => getPlayerStats());
+  const localHistoryByDate = useMemo(() => new Map(localStats.history.map((h) => [h.date, h])), [localStats]);
 
   // Use cached entitlements immediately so entitled users never see locks
   const entitled = meState.status === 'loaded'
@@ -191,10 +201,7 @@ function ArchiveView({ presentation = 'overlay', initialTodayNy, onClose }: Arch
           if (me.entitlements.archiveAccess) {
             if (requestedDate) {
               const href = `/play/${requestedDate}`;
-              if (presentation === 'overlay') {
-                window.location.replace(href);
-                return;
-              }
+              if (presentation === 'overlay') onClose?.();
               router.replace(href);
               return;
             }
@@ -217,13 +224,24 @@ function ArchiveView({ presentation = 'overlay', initialTodayNy, onClose }: Arch
     return () => {
       cancelled = true;
     };
-  }, [checkoutParam, presentation, requestedDate, router, showLockedFeatures]);
+  }, [checkoutParam, onClose, presentation, requestedDate, router, showLockedFeatures]);
 
   useEffect(() => {
     try {
       setPreviewFeaturesEnabled(localStorage.getItem(DEVTOOLS_PREVIEW_FEATURES_KEY) === '1');
     } catch {
       setPreviewFeaturesEnabled(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(ARCHIVE_VIEW_MODE_KEY);
+      if (stored === 'calendar' || stored === 'list') {
+        setViewMode(stored);
+      }
+    } catch {
+      // ignore
     }
   }, []);
 
@@ -324,13 +342,23 @@ function ArchiveView({ presentation = 'overlay', initialTodayNy, onClose }: Arch
       }
       const href = `/play/${encodeURIComponent(date)}`;
       if (presentation === 'overlay') {
-        window.location.assign(href);
+        onClose?.();
+        router.push(href);
         return;
       }
       router.push(href);
     },
     [dayLockByDate, entitled, onClose, openPaywallForDate, presentation, router, todayNy],
   );
+
+  const setViewModeAndPersist = useCallback((next: 'calendar' | 'list') => {
+    setViewMode(next);
+    try {
+      localStorage.setItem(ARCHIVE_VIEW_MODE_KEY, next);
+    } catch {
+      // ignore
+    }
+  }, []);
 
   const closePaywall = useCallback(() => {
     router.replace('/archive');
@@ -413,6 +441,31 @@ function ArchiveView({ presentation = 'overlay', initialTodayNy, onClose }: Arch
     return cells;
   }, [count, dayLockByDate, daysState.status, entitled, leadingBlankDays, monthId, todayNy]);
 
+  const monthDaysDesc = useMemo(() => {
+    const days: Array<{
+      date: string;
+      dayNumber: number;
+      disabled: boolean;
+      locked: boolean;
+      isToday: boolean;
+      history: ReturnType<typeof getPlayerStats>['history'][number] | null;
+    }> = [];
+
+    const defaultLocked = !entitled;
+
+    for (let day = count; day >= 1; day -= 1) {
+      const date = monthIdToDate(monthId, day);
+      if (date < LAUNCH_DATE_NY || date > todayNy) continue;
+      const isToday = date === todayNy;
+      const locked = isToday ? false : (dayLockByDate.get(date) ?? defaultLocked);
+      const disabled = !isToday && daysState.status !== 'loaded';
+      const history = localHistoryByDate.get(date) ?? null;
+      days.push({ date, dayNumber: day, disabled, locked, isToday, history });
+    }
+
+    return days;
+  }, [count, dayLockByDate, daysState.status, entitled, localHistoryByDate, monthId, todayNy]);
+
   const paywallSubtitle = offerState.status === 'loaded'
     ? 'Unlock the archive and remove ads. Choose monthly or lifetime.'
     : 'Loading plans…';
@@ -442,7 +495,7 @@ function ArchiveView({ presentation = 'overlay', initialTodayNy, onClose }: Arch
   }
 
   return (
-    <div className={styles.container}>
+      <div className={styles.container}>
       {toast && <div className={styles.banner}>{toast}</div>}
 
       {/* Navigation arrows - floating header */}
@@ -499,44 +552,138 @@ function ArchiveView({ presentation = 'overlay', initialTodayNy, onClose }: Arch
         {/* Current month panel */}
         <div className={styles.monthPanel}>
           <div className={styles.monthTitle}>
-            <div className={styles.monthTitleMain}>{monthLabel(monthId)}</div>
-          </div>
-          <div className={styles.calendar}>
-            <div className={styles.weekdays}>
-              {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
-                <div key={`cur-${i}`} className={styles.weekday}>{d}</div>
-              ))}
+            <div className={styles.monthTitleLeft}>
+              <button
+                type="button"
+                className={styles.todayButton}
+                onClick={() => {
+                  onClose?.();
+                  router.push('/');
+                }}
+              >
+                Today
+              </button>
             </div>
-            <div className={styles.grid}>
-              {monthCells.map((cell, idx) => {
-                if (cell.kind === 'blank') {
-                  return <div key={`b-${idx}`} className={styles.cell} />;
-                }
-                const isToday = cell.date === todayNy;
-                return (
-                  <div key={cell.date} className={`${styles.cell} ${isToday ? styles.todayCell : ''}`.trim()}>
-                    <button
-                      type="button"
-                      className={styles.dayButton}
-                      onClick={() => onDayClick(cell.date)}
-                      disabled={cell.disabled}
-                      aria-label={cell.locked ? `Locked day ${cell.date}` : `Play ${cell.date}`}
-                    >
-                      {cell.dayNumber}
-                    </button>
-                    {cell.locked && cell.date >= LAUNCH_DATE_NY && cell.date <= yesterdayNy && (
-                      <div className={styles.lockedBadge} aria-hidden="true">
-                        <div className={styles.customLock}>
-                          <div className={styles.lockShackle} />
-                          <div className={styles.lockBody} />
+
+            <div className={styles.monthTitleMain}>{monthLabel(monthId)}</div>
+
+            <div className={styles.monthTitleRight}>
+              <div className={styles.viewToggle} role="group" aria-label="Archive view mode">
+                <button
+                  type="button"
+                  className={`${styles.viewToggleButton} ${viewMode === 'calendar' ? styles.viewToggleButtonActive : ''}`}
+                  onClick={() => setViewModeAndPersist('calendar')}
+                  aria-label="Calendar view"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="4.5" width="18" height="16" rx="2" />
+                    <path d="M16 3v3M8 3v3M3 9h18" />
+                    <path d="M7 13h3M7 17h3M14 13h3M14 17h3" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.viewToggleButton} ${viewMode === 'list' ? styles.viewToggleButtonActive : ''}`}
+                  onClick={() => setViewModeAndPersist('list')}
+                  aria-label="List view"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 6h12M9 12h12M9 18h12" />
+                    <path d="M4 6h.01M4 12h.01M4 18h.01" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {viewMode === 'calendar' ? (
+            <div className={styles.calendar}>
+              <div className={styles.weekdays}>
+                {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
+                  <div key={`cur-${i}`} className={styles.weekday}>{d}</div>
+                ))}
+              </div>
+              <div className={styles.grid}>
+                {monthCells.map((cell, idx) => {
+                  if (cell.kind === 'blank') {
+                    return <div key={`b-${idx}`} className={styles.cell} />;
+                  }
+                  const isToday = cell.date === todayNy;
+                  return (
+                    <div key={cell.date} className={`${styles.cell} ${isToday ? styles.todayCell : ''}`.trim()}>
+                      <button
+                        type="button"
+                        className={styles.dayButton}
+                        onClick={() => onDayClick(cell.date)}
+                        disabled={cell.disabled}
+                        aria-label={cell.locked ? `Locked day ${cell.date}` : `Play ${cell.date}`}
+                      >
+                        {cell.dayNumber}
+                      </button>
+                      {cell.locked && cell.date >= LAUNCH_DATE_NY && cell.date <= yesterdayNy && (
+                        <div className={styles.lockedBadge} aria-hidden="true">
+                          <div className={styles.customLock}>
+                            <div className={styles.lockShackle} />
+                            <div className={styles.lockBody} />
+                          </div>
                         </div>
-                      </div>
-                    )}
-                  </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className={styles.list}>
+              {monthDaysDesc.map((day) => {
+                const hasHistory = !!day.history;
+                const solved = hasHistory && !!day.history?.completed;
+                const dnf = hasHistory && !day.history?.completed;
+
+                const statusLabel = day.locked
+                  ? 'Locked'
+                  : solved
+                    ? 'Solved'
+                    : dnf
+                      ? 'DNF'
+                      : 'Unplayed';
+
+                const timeLabel = solved && day.history ? formatTime(day.history.timeMs) : null;
+
+                return (
+                  <button
+                    key={day.date}
+                    type="button"
+                    className={`${styles.listRow} ${day.isToday ? styles.listRowToday : ''}`}
+                    onClick={() => onDayClick(day.date)}
+                    disabled={day.disabled}
+                  >
+                    <div className={styles.listRowLeft}>
+                      <div className={styles.listRowTitle}>{day.isToday ? 'Today' : formatDateDisplay(day.date)}</div>
+                      <div className={styles.listRowSubtitle}>Day {day.dayNumber}</div>
+                    </div>
+
+                    <div className={styles.listRowRight}>
+                      <span
+                        className={`${styles.statusBadge} ${
+                          day.locked
+                            ? styles.statusLocked
+                            : solved
+                              ? styles.statusSolved
+                              : dnf
+                                ? styles.statusDnf
+                                : styles.statusUnplayed
+                        }`}
+                      >
+                        {statusLabel}
+                      </span>
+                      <span className={styles.listRowTime}>{timeLabel ?? '—'}</span>
+                    </div>
+                  </button>
                 );
               })}
             </div>
-          </div>
+          )}
         </div>
 
         {/* Next month panel */}

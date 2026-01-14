@@ -85,7 +85,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
     const todayNy = getNewYorkDateString();
     const runPrefetch = () => {
       prefetchAccount();
-      prefetchLeaderboard(todayNy, 50);
+      prefetchLeaderboard(todayNy, 80);
     };
 
     const ric = (window as any).requestIdleCallback as ((cb: IdleRequestCallback, opts?: { timeout: number }) => number) | undefined;
@@ -142,7 +142,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
       .archivePuzzle(safeDate)
       .then((res) => {
         if (cancelled) return;
-        setPuzzle(res.puzzle);
+        setPuzzle({ ...res.puzzle, variant: 'archive' });
         setPuzzleNumber(res.puzzleNumber);
       })
       .catch((err) => {
@@ -309,13 +309,18 @@ export default function ArchivePlayClient({ date }: { date: string }) {
   const showResultsButton = showInlineResult;
   const showMenuButton = process.env.NODE_ENV !== 'production' || previewFeaturesEnabled;
 
+  const handleOpenStats = useCallback(() => {
+    setStats(getPlayerStats());
+    setShowStats(true);
+  }, []);
+
   const onBackToToday = useCallback(() => {
     router.push('/');
   }, [router]);
 
   const onBackToArchive = useCallback(() => {
-    window.location.assign('/archive');
-  }, []);
+    router.push('/archive');
+  }, [router]);
 
   const onUnlockArchive = useCallback(() => {
     if (!safeDate) return;
@@ -328,16 +333,13 @@ export default function ArchivePlayClient({ date }: { date: string }) {
         <Header
           streak={stats.currentStreak || 0}
           onHelpClick={() => setShowHelp(true)}
-          onStatsClick={() => {
-            setStats(getPlayerStats());
-            setShowStats(true);
-          }}
           onMenuClick={showMenuButton ? () => setShowMenu(true) : undefined}
           menuButtonRef={menuButtonRef}
         />
         <MoreMenuModal
           open={showMenu}
           onClose={() => setShowMenu(false)}
+          onOpenStats={handleOpenStats}
           onOpenLeaderboard={() => setShowLeaderboard(true)}
           onOpenHallOfFame={() => setShowHallOfFame(true)}
           onOpenAccount={() => setShowAccount(true)}
@@ -385,26 +387,30 @@ export default function ArchivePlayClient({ date }: { date: string }) {
         <Header
           streak={stats.currentStreak || 0}
           onHelpClick={() => setShowHelp(true)}
-          onStatsClick={() => {
-            setStats(getPlayerStats());
-            setShowStats(true);
-          }}
           onMenuClick={showMenuButton ? () => setShowMenu(true) : undefined}
           menuButtonRef={menuButtonRef}
         />
 
         <div className={baseStyles.gameWrapper}>
           <div className={styles.topRow}>
-            <button type="button" className={styles.backButton} onClick={onBackToArchive}>
-              ← Archive
-            </button>
-            <button type="button" className={styles.backButton} onClick={onBackToToday}>
-              Today
-            </button>
+            <div className={styles.topRowLeft}>
+              <button type="button" className={styles.backButton} onClick={onBackToArchive}>
+                ← Archive
+              </button>
+              <button type="button" className={styles.backButton} onClick={onBackToToday}>
+                Today
+              </button>
+            </div>
+            <div className={styles.topRowRight}>
+              <button type="button" className={styles.backButton} onClick={() => setShowHallOfFame(true)}>
+                Podium
+              </button>
+            </div>
           </div>
 
           <div className={baseStyles.puzzleNumberBanner}>
             <div className={styles.puzzleNumberBlock}>
+              <span className={styles.modeChip}>Archive</span>
               <span className={baseStyles.puzzleNumberText}>Mazle #{puzzleNumber}</span>
               <span className={styles.puzzleDateText}>{safeDate}</span>
             </div>
@@ -481,6 +487,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
         <MoreMenuModal
           open={showMenu}
           onClose={() => setShowMenu(false)}
+          onOpenStats={handleOpenStats}
           onOpenLeaderboard={() => setShowLeaderboard(true)}
           onOpenHallOfFame={() => setShowHallOfFame(true)}
           onOpenAccount={() => setShowAccount(true)}
@@ -507,7 +514,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
             variant="overlay"
             onClose={() => setShowHallOfFame(false)}
           >
-            <HallOfFameView />
+            <HallOfFameView initialDate={safeDate} />
             <AdSlot placement="leaderboard" />
           </OverlayShell>
         )}
@@ -532,8 +539,6 @@ export default function ArchivePlayClient({ date }: { date: string }) {
             optimalMoves={puzzle.optimalMoves}
             failed={gameResult.failed}
             attempts={gameResult.attempts}
-            leaderboardDate={(process.env.NODE_ENV !== 'production' || previewFeaturesEnabled) ? safeDate : undefined}
-            leaderboardAllowSubmit={false}
             mapType={puzzle.mapType}
             secondaryActionLabel="Back to Archive"
             onSecondaryAction={onBackToArchive}

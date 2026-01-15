@@ -786,6 +786,12 @@
   transition: opacity 0.3s ease-out;
 }
 
+/* Hide scoreboard during initial load if puzzle already played today */
+:global(html[data-puzzle-played='true']) .gameUiWrapper {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .gameUiHidden {
   opacity: 0;
   pointer-events: none;
@@ -872,7 +878,7 @@
 .darkOverlay {
   position: absolute;
   inset: 8px;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.25);
   border-radius: 6px;
   z-index: 1;
   pointer-events: none;
@@ -887,44 +893,13 @@
 /* Blur both the canvas AND dark overlay (so overlay edges are also blurred) */
 .gameFrameBlurred :global(canvas),
 .gameFrameBlurred .darkOverlay {
-  filter: blur(8px);
-}
-
-/* Lighter blur for menu modal */
-.gameFrameBlurredLight :global(canvas),
-.gameFrameBlurredLight .darkOverlay {
-  filter: blur(5px);
+  filter: blur(12px);
 }
 
 /* General blur class for UI elements */
 .blurred {
   filter: blur(2px);
   transition: filter 0.2s ease-out;
-}
-
-/* Blur overlay - separate element, not on container */
-.blurOverlay {
-  position: absolute;
-  /* Position to exactly cover the canvas, accounting for any parent padding */
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  border-radius: 10px;
-  z-index: 5;
-  pointer-events: none;
-  transition: opacity 0.15s ease-out;
-  overflow: hidden;
-  /* Ensure blur doesn't spill if frame is visible */
-}
-
-.blurOverlayHidden {
-  opacity: 0;
 }
 
 /* Life flash overlay */
@@ -1127,14 +1102,11 @@
   font-weight: 800;
   font-family: var(--font-main);
   color: var(--color-text);
-  /* Match MoreMenuModal aesthetic */
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  background: rgba(var(--color-surface-rgb), 0.75);
-  border: 2.5px solid #5a5a5a;
+  background: var(--color-background);
+  border: 2px solid var(--color-border);
   border-radius: 12px;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1), padding 0.15s ease-out, font-size 0.15s ease-out;
@@ -1143,9 +1115,8 @@
 
 .startButton:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.14);
-  background: rgba(var(--color-surface-rgb), 0.85);
-  border-color: #4a4a4a;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.35);
+  border-color: var(--color-secondary);
 }
 
 .startButton:active {

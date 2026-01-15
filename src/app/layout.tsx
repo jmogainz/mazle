@@ -167,6 +167,11 @@ export default function RootLayout({
             __html: `(function(){try{var p='system';try{var raw=localStorage.getItem('mazle_prefs_v1');if(raw){var j=JSON.parse(raw);if(j.themePreference)p=j.themePreference;}}catch(e){}var t=p;if(p==='system'){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.dataset.theme=t;document.documentElement.style.colorScheme=t;}catch(e){}})();`,
           }}
         />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var today=new Date().toLocaleDateString('en-CA',{timeZone:'America/New_York'});var raw=localStorage.getItem('mazle_daily');if(raw){var d=JSON.parse(raw);if(d.date===today){document.documentElement.dataset.puzzlePlayed='true';}}}catch(e){}})();`,
+          }}
+        />
         <ThemeApplier />
         <Script
           id="adsense"

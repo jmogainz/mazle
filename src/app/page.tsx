@@ -1249,6 +1249,13 @@ export default function Home() {
   const showLoader = !hasPuzzle || !isGameReady;
   const showMenuButton = process.env.NODE_ENV !== 'production' || previewFeaturesEnabled;
 
+  // Clear preload hint once puzzle loading completes (React now controls visibility)
+  useEffect(() => {
+    if (hasPuzzle) {
+      delete document.documentElement.dataset.puzzlePlayed;
+    }
+  }, [hasPuzzle]);
+
   const handleOpenArchive = useCallback(() => {
     if (UI_OVERHAUL_EXPERIMENTAL) {
       setShowArchive(true);
@@ -1344,7 +1351,7 @@ export default function Home() {
             <div ref={gameStageRef} className={styles.gameArea}>
               <div
                 ref={gameFrameRef}
-                className={`${styles.gameFrame} ${shouldBlur ? (showMenu && !showShareCard && !showHelp && !showStats && !showLeaderboard && !showAccount && !showDevTools ? styles.gameFrameBlurredLight : styles.gameFrameBlurred) : ''}`}
+                className={`${styles.gameFrame} ${shouldBlur ? styles.gameFrameBlurred : ''}`}
               >
                 {puzzle && (
                   <PhaserGame

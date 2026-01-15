@@ -839,7 +839,7 @@ def main():
     # Training
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--batch-size", type=int, default=64)
-    parser.add_argument("--preset", type=str, default="base", choices=["small", "base", "large"])
+    parser.add_argument("--preset", type=str, default="base", choices=["small", "base", "large", "deep"])
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--weight-decay", type=float, default=0.01)
     parser.add_argument("--clip-grad", type=float, default=1.0)
@@ -855,6 +855,14 @@ def main():
     parser.add_argument("--ema-decay", type=float, default=0.999)
     parser.add_argument("--augment", action="store_true", help="Enable data augmentation")
     parser.add_argument("--lr-min", type=float, default=1e-6)
+    
+    # Model architecture variants
+    parser.add_argument("--ff-activation", type=str, default="gelu", choices=["gelu", "swiglu", "geglu"])
+    parser.add_argument("--norm-type", type=str, default="layernorm", choices=["layernorm", "rmsnorm"])
+    parser.add_argument("--time-conditioning", type=str, default="add", choices=["add", "adaln_zero"])
+    parser.add_argument("--drop-path", type=float, default=0.0, help="DropPath/stochastic depth rate")
+    parser.add_argument("--residual-scale", action="store_true", help="Scale residuals by 1/sqrt(2L)")
+    parser.add_argument("--num-layers", type=int, default=None, help="Override number of layers")
 
     args = parser.parse_args()
 
@@ -878,11 +886,36 @@ def main():
     else:
         log_progress("WARNING: Rust verifier not available", out_dir)
 
-    # Model
+    # Model - apply architecture variant overrides
     config = config_for_preset(args.preset)
+    config.ff_activation = args.ff_activation
+    config.norm_type = args.norm_type
+    config.time_conditioning = args.time_conditioning
+    config.drop_path = args.drop_path
+    config.residual_scale = args.residual_scale
+    if args.num_layers is not None:
+        config.num_layers = args.num_layers
+    
     model = PuzzleGeneratorV2(config).to(device)
     param_count = sum(p.numel() for p in model.parameters())
-    log_progress(f"model params: {param_count/1e6:.1f}M (preset={args.preset})", out_dir)
+    
+    # Log config details
+    variant_str = []
+    if args.ff_activation != "gelu":
+        variant_str.append(f"ff={args.ff_activation}")
+    if args.norm_type != "layernorm":
+        variant_str.append(f"norm={args.norm_type}")
+    if args.time_conditioning != "add":
+        variant_str.append(f"time={args.time_conditioning}")
+    if args.drop_path > 0:
+        variant_str.append(f"droppath={args.drop_path}")
+    if args.residual_scale:
+        variant_str.append("resscale")
+    if args.num_layers is not None:
+        variant_str.append(f"layers={args.num_layers}")
+    
+    variant_info = f" [{', '.join(variant_str)}]" if variant_str else ""
+    log_progress(f"model params: {param_count/1e6:.1f}M (preset={args.preset}){variant_info}", out_dir)
 
     # Load checkpoint if specified
     if args.checkpoint:

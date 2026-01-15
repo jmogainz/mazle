@@ -46,6 +46,14 @@ class ModelConfig:
     # Diffusion/masking
     num_timesteps: int = 50  # Fewer steps, faster inference
     mask_schedule: str = "cosine"  # "linear" or "cosine"
+    
+    # Architecture variants (new)
+    ff_activation: str = "gelu"  # "gelu", "swiglu", "geglu"
+    norm_type: str = "layernorm"  # "layernorm", "rmsnorm"
+    time_conditioning: str = "add"  # "add", "adaln_zero"
+    pos_encoding: str = "learned"  # "learned", "relative_bias"
+    drop_path: float = 0.0  # Stochastic depth rate (0 = disabled)
+    residual_scale: bool = False  # Scale residuals by 1/sqrt(2*num_layers)
 
 
 def config_for_preset(preset: str) -> ModelConfig:
@@ -56,8 +64,87 @@ def config_for_preset(preset: str) -> ModelConfig:
         return ModelConfig(model_dim=256, num_layers=6, num_heads=8, ff_dim=1024)
     elif preset == "large":
         return ModelConfig(model_dim=384, num_layers=8, num_heads=12, ff_dim=1536)
+    elif preset == "deep":
+        # 12 layers with residual scaling
+        return ModelConfig(model_dim=256, num_layers=12, num_heads=8, ff_dim=1024, residual_scale=True)
     else:
         raise ValueError(f"Unknown preset: {preset}")
+
+
+class RMSNorm(nn.Module):
+    """Root Mean Square Layer Normalization."""
+    def __init__(self, dim: int, eps: float = 1e-6):
+        super().__init__()
+        self.eps = eps
+        self.weight = nn.Parameter(torch.ones(dim))
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Compute in fp32 for stability
+        dtype = x.dtype
+        x = x.float()
+        rms = torch.sqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
+        x = x / rms
+        return (self.weight * x).to(dtype)
+
+
+class SwiGLU(nn.Module):
+    """SwiGLU activation: x * silu(gate)"""
+    def __init__(self, in_dim: int, hidden_dim: int, out_dim: int, dropout: float = 0.1):
+        super().__init__()
+        # Use 2/3 hidden for each gate to keep param count similar
+        self.w1 = nn.Linear(in_dim, hidden_dim, bias=False)
+        self.w2 = nn.Linear(hidden_dim, out_dim, bias=False)
+        self.w3 = nn.Linear(in_dim, hidden_dim, bias=False)  # gate
+        self.dropout = nn.Dropout(dropout)
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.dropout(self.w2(F.silu(self.w1(x)) * self.w3(x)))
+
+
+class GEGLU(nn.Module):
+    """GEGLU activation: x * gelu(gate)"""
+    def __init__(self, in_dim: int, hidden_dim: int, out_dim: int, dropout: float = 0.1):
+        super().__init__()
+        self.w1 = nn.Linear(in_dim, hidden_dim, bias=False)
+        self.w2 = nn.Linear(hidden_dim, out_dim, bias=False)
+        self.w3 = nn.Linear(in_dim, hidden_dim, bias=False)
+        self.dropout = nn.Dropout(dropout)
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.dropout(self.w2(F.gelu(self.w1(x)) * self.w3(x)))
+
+
+class DropPath(nn.Module):
+    """Stochastic depth / drop path."""
+    def __init__(self, drop_prob: float = 0.0):
+        super().__init__()
+        self.drop_prob = drop_prob
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.drop_prob == 0.0 or not self.training:
+            return x
+        keep_prob = 1 - self.drop_prob
+        shape = (x.shape[0],) + (1,) * (x.ndim - 1)
+        random_tensor = x.new_empty(shape).bernoulli_(keep_prob)
+        if keep_prob > 0.0:
+            random_tensor.div_(keep_prob)
+        return x * random_tensor
+
+
+class AdaLNZero(nn.Module):
+    """AdaLN-Zero modulation for timestep conditioning (DiT-style)."""
+    def __init__(self, dim: int, cond_dim: int):
+        super().__init__()
+        # Projects conditioning to (scale1, shift1, gate1, scale2, shift2, gate2)
+        self.proj = nn.Linear(cond_dim, dim * 6)
+        # Zero-init so conditioning starts "off"
+        nn.init.zeros_(self.proj.weight)
+        nn.init.zeros_(self.proj.bias)
+    
+    def forward(self, cond: torch.Tensor) -> Tuple[torch.Tensor, ...]:
+        """Returns (scale1, shift1, gate1, scale2, shift2, gate2)"""
+        params = self.proj(cond)
+        return params.chunk(6, dim=-1)
 
 
 class SinusoidalPositionEmbedding(nn.Module):
@@ -84,7 +171,7 @@ class SinusoidalPositionEmbedding(nn.Module):
 
 
 class TransformerBlock(nn.Module):
-    """Standard transformer block with LayerNorm."""
+    """Transformer block with configurable variants."""
 
     def __init__(
         self,
@@ -92,36 +179,85 @@ class TransformerBlock(nn.Module):
         num_heads: int,
         ff_dim: int,
         dropout: float = 0.1,
+        ff_activation: str = "gelu",
+        norm_type: str = "layernorm",
+        time_conditioning: str = "add",
+        drop_path: float = 0.0,
+        residual_scale: float = 1.0,
     ):
         super().__init__()
-        self.norm1 = nn.LayerNorm(dim)
+        self.time_conditioning = time_conditioning
+        self.residual_scale = residual_scale
+        
+        # Normalization
+        if norm_type == "rmsnorm":
+            self.norm1 = RMSNorm(dim)
+            self.norm2 = RMSNorm(dim)
+        else:
+            self.norm1 = nn.LayerNorm(dim)
+            self.norm2 = nn.LayerNorm(dim)
+        
         self.attn = nn.MultiheadAttention(dim, num_heads, dropout=dropout, batch_first=True)
-        self.norm2 = nn.LayerNorm(dim)
-        self.ff = nn.Sequential(
-            nn.Linear(dim, ff_dim),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(ff_dim, dim),
-            nn.Dropout(dropout),
-        )
+        
+        # Feedforward with activation variant
+        if ff_activation == "swiglu":
+            # SwiGLU uses 2/3 hidden dim per gate
+            hidden = int(ff_dim * 2 / 3)
+            self.ff = SwiGLU(dim, hidden, dim, dropout)
+        elif ff_activation == "geglu":
+            hidden = int(ff_dim * 2 / 3)
+            self.ff = GEGLU(dim, hidden, dim, dropout)
+        else:  # gelu
+            self.ff = nn.Sequential(
+                nn.Linear(dim, ff_dim),
+                nn.GELU(),
+                nn.Dropout(dropout),
+                nn.Linear(ff_dim, dim),
+                nn.Dropout(dropout),
+            )
+        
+        # AdaLN-Zero for timestep conditioning
+        if time_conditioning == "adaln_zero":
+            self.adaln = AdaLNZero(dim, dim)
+        
+        # Stochastic depth
+        self.drop_path = DropPath(drop_path) if drop_path > 0 else nn.Identity()
 
     def forward(self, x: torch.Tensor, t_emb: torch.Tensor) -> torch.Tensor:
         """
         Args:
             x: (B, S, dim) input sequence
-            t_emb: (B, dim) timestep embedding (added after attention)
+            t_emb: (B, dim) timestep embedding
         """
-        # Self-attention with pre-norm
-        h = self.norm1(x)
-        h, _ = self.attn(h, h, h, need_weights=False)
-        x = x + h
-
-        # Add timestep embedding (broadcast to sequence)
-        x = x + t_emb.unsqueeze(1)
-
-        # Feedforward with pre-norm
-        h = self.norm2(x)
-        x = x + self.ff(h)
+        if self.time_conditioning == "adaln_zero":
+            # AdaLN-Zero: modulate norm outputs
+            scale1, shift1, gate1, scale2, shift2, gate2 = self.adaln(t_emb)
+            
+            # Attention with modulation
+            h = self.norm1(x)
+            h = h * (1 + scale1.unsqueeze(1)) + shift1.unsqueeze(1)
+            h, _ = self.attn(h, h, h, need_weights=False)
+            h = h * gate1.unsqueeze(1)
+            x = x + self.drop_path(h) * self.residual_scale
+            
+            # FF with modulation
+            h = self.norm2(x)
+            h = h * (1 + scale2.unsqueeze(1)) + shift2.unsqueeze(1)
+            h = self.ff(h)
+            h = h * gate2.unsqueeze(1)
+            x = x + self.drop_path(h) * self.residual_scale
+        else:
+            # Original: add timestep embedding after attention
+            h = self.norm1(x)
+            h, _ = self.attn(h, h, h, need_weights=False)
+            x = x + self.drop_path(h) * self.residual_scale
+            
+            # Add timestep embedding (broadcast to sequence)
+            x = x + t_emb.unsqueeze(1)
+            
+            # Feedforward
+            h = self.norm2(x)
+            x = x + self.drop_path(self.ff(h)) * self.residual_scale
 
         return x
 
@@ -187,19 +323,34 @@ class PuzzleGeneratorV2(nn.Module):
         self.start_pos_embed = nn.Embedding(self.grid_size, config.model_dim)
         self.goal_pos_embed = nn.Embedding(self.grid_size, config.model_dim)
 
-        # Transformer layers
+        # Transformer layers with configurable variants
+        # Compute residual scale if enabled
+        residual_scale = 1.0 / math.sqrt(2 * config.num_layers) if config.residual_scale else 1.0
+        
+        # DropPath rates linearly increasing with depth
+        drop_path_rates = [config.drop_path * i / (config.num_layers - 1) 
+                          for i in range(config.num_layers)] if config.drop_path > 0 else [0.0] * config.num_layers
+        
         self.layers = nn.ModuleList([
             TransformerBlock(
                 config.model_dim,
                 config.num_heads,
                 config.ff_dim,
                 dropout=config.dropout,
+                ff_activation=config.ff_activation,
+                norm_type=config.norm_type,
+                time_conditioning=config.time_conditioning,
+                drop_path=drop_path_rates[i],
+                residual_scale=residual_scale,
             )
-            for _ in range(config.num_layers)
+            for i in range(config.num_layers)
         ])
 
         # Output heads
-        self.output_norm = nn.LayerNorm(config.model_dim)
+        if config.norm_type == "rmsnorm":
+            self.output_norm = RMSNorm(config.model_dim)
+        else:
+            self.output_norm = nn.LayerNorm(config.model_dim)
 
         # Position heads (predict START/GOAL locations)
         self.start_head = PositionHead(config.model_dim, self.grid_size)
@@ -534,4 +685,150 @@ class PuzzleGeneratorV2(nn.Module):
             "tiles": torch.cat(all_tiles, dim=0),
             "start_pos": torch.cat(all_starts, dim=0),
             "goal_pos": torch.cat(all_goals, dim=0),
+        }
+
+    @torch.no_grad()
+    def generate_maskgit(
+        self,
+        batch_size: int,
+        device: torch.device,
+        generator: Optional[torch.Generator] = None,
+        temperature: float = 1.0,
+        num_steps: int = 20,
+    ) -> Dict[str, torch.Tensor]:
+        """
+        Generate puzzles using MaskGIT-style confidence-based unmasking.
+        
+        Instead of resampling all tiles and re-masking, this:
+        1. Starts with all MASK tokens
+        2. Each step: predict logits, unmask top-K most confident positions
+        3. Never re-mask (locked in decisions)
+        
+        Args:
+            batch_size: Number of puzzles to generate
+            device: Device to generate on
+            generator: torch.Generator for deterministic sampling
+            temperature: Sampling temperature
+            num_steps: Number of unmasking steps (default 20)
+        
+        Returns:
+            dict with tiles, start_pos, goal_pos
+        """
+        H, W = self.config.grid_height, self.config.grid_width
+        N = self.grid_size  # 169
+        
+        # Step 1: Initialize with all MASK tokens
+        x_t = torch.full((batch_size, N), self.mask_token_id, dtype=torch.long, device=device)
+        
+        # Step 2: Sample START/GOAL positions from initial all-mask state
+        t_init = torch.full((batch_size,), self.num_timesteps - 1, dtype=torch.long, device=device)
+        outputs = self.forward(x_t, t_init)
+        
+        # Sample START
+        start_logits = outputs["start_logits"] / temperature
+        if generator is not None:
+            gumbel = -torch.log(-torch.log(torch.rand(start_logits.shape, device=device, generator=generator).clamp(min=1e-10)))
+            start_pos = (start_logits + gumbel).argmax(dim=-1)
+        else:
+            start_pos = torch.multinomial(F.softmax(start_logits, dim=-1), 1).squeeze(-1)
+        
+        # Sample GOAL
+        goal_logits = outputs["goal_logits"] / temperature
+        if generator is not None:
+            gumbel = -torch.log(-torch.log(torch.rand(goal_logits.shape, device=device, generator=generator).clamp(min=1e-10)))
+            goal_pos = (goal_logits + gumbel).argmax(dim=-1)
+        else:
+            goal_pos = torch.multinomial(F.softmax(goal_logits, dim=-1), 1).squeeze(-1)
+        
+        # Step 3: Iterative confidence-based unmasking
+        # Schedule: unmask tokens following cosine schedule
+        # At step i, we want (1 - cos((i+1)/num_steps * pi/2))^2 fraction unmasked
+        for step in range(num_steps):
+            # How many tokens should be unmasked after this step
+            ratio = (step + 1) / num_steps
+            # Cosine schedule - more aggressive unmasking early
+            target_unmasked = int(N * (1 - math.cos(ratio * math.pi / 2) ** 2))
+            target_unmasked = min(target_unmasked, N)
+            
+            # Current mask
+            is_masked = (x_t == self.mask_token_id)  # (B, N)
+            num_masked = is_masked.sum(dim=-1)  # (B,)
+            
+            # If nothing left to unmask, we're done
+            if num_masked.max() == 0:
+                break
+            
+            # Map step to timestep for the model (higher step = lower t)
+            t_val = int(self.num_timesteps * (1 - ratio))
+            t = torch.full((batch_size,), t_val, dtype=torch.long, device=device)
+            
+            # Forward pass
+            outputs = self.forward(x_t, t, start_pos, goal_pos)
+            logits = outputs["tile_logits"] / temperature  # (B, N, vocab)
+            
+            # Get probabilities and confidence (max prob) for each position
+            probs = F.softmax(logits, dim=-1)  # (B, N, vocab)
+            confidence, predictions = probs.max(dim=-1)  # (B, N), (B, N)
+            
+            # Only consider masked positions for unmasking
+            # Set confidence of unmasked positions to infinity so they're "already done"
+            confidence = torch.where(is_masked, confidence, torch.tensor(float('inf'), device=device))
+            
+            # For each sample, find how many to unmask this step
+            for b in range(batch_size):
+                n_currently_masked = num_masked[b].item()
+                if n_currently_masked == 0:
+                    continue
+                
+                # How many should remain masked after this step
+                target_remaining = N - target_unmasked
+                n_to_unmask = max(0, int(n_currently_masked - target_remaining))
+                
+                if n_to_unmask > 0:
+                    # Get confidence of masked positions only
+                    masked_conf = confidence[b].clone()
+                    masked_conf[~is_masked[b]] = -float('inf')  # ignore already unmasked
+                    
+                    # Find top-k most confident masked positions
+                    _, top_indices = masked_conf.topk(min(n_to_unmask, int(n_currently_masked)))
+                    
+                    # Sample tokens for these positions
+                    if generator is not None:
+                        gumbel = -torch.log(-torch.log(torch.rand(logits[b, top_indices].shape, device=device, generator=generator).clamp(min=1e-10)))
+                        sampled = (logits[b, top_indices] + gumbel).argmax(dim=-1)
+                    else:
+                        sampled = torch.multinomial(probs[b, top_indices], 1).squeeze(-1)
+                    
+                    # Unmask these positions (lock them in)
+                    x_t[b, top_indices] = sampled
+        
+        # Final pass to fill any remaining masked tokens
+        is_masked = (x_t == self.mask_token_id)
+        if is_masked.any():
+            t = torch.zeros((batch_size,), dtype=torch.long, device=device)
+            outputs = self.forward(x_t, t, start_pos, goal_pos)
+            logits = outputs["tile_logits"] / temperature
+            probs = F.softmax(logits, dim=-1)
+            
+            for b in range(batch_size):
+                masked_pos = is_masked[b].nonzero(as_tuple=True)[0]
+                if len(masked_pos) > 0:
+                    if generator is not None:
+                        gumbel = -torch.log(-torch.log(torch.rand(logits[b, masked_pos].shape, device=device, generator=generator).clamp(min=1e-10)))
+                        sampled = (logits[b, masked_pos] + gumbel).argmax(dim=-1)
+                    else:
+                        sampled = torch.multinomial(probs[b, masked_pos], 1).squeeze(-1)
+                    x_t[b, masked_pos] = sampled
+        
+        # Reshape to 2D grid
+        tiles = x_t.reshape(batch_size, H, W)
+        
+        # Convert flat positions to (x, y)
+        start_xy = torch.stack([start_pos % W, start_pos // W], dim=-1)
+        goal_xy = torch.stack([goal_pos % W, goal_pos // W], dim=-1)
+        
+        return {
+            "tiles": tiles,
+            "start_pos": start_xy,
+            "goal_pos": goal_xy,
         }

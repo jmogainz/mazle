@@ -16,6 +16,7 @@ interface HeaderProps {
   logoRef?: React.Ref<HTMLDivElement>;
   logoClassName?: string;
   menuButtonRef?: React.Ref<HTMLButtonElement>;
+  showThemeToggle?: boolean;
 }
 
 export default function Header({
@@ -28,6 +29,7 @@ export default function Header({
   logoRef,
   logoClassName,
   menuButtonRef,
+  showThemeToggle = true,
 }: HeaderProps) {
   const getEffectiveIsDark = () => {
     const pref = getPrefs().themePreference;
@@ -86,36 +88,38 @@ export default function Header({
             <line x1="12" y1="17" x2="12.01" y2="17"></line>
           </svg>
         </Link>
-        <label className={styles.themeToggle}>
-          <input
-            type="checkbox"
-            checked={isDark ?? false}
-            onChange={toggleTheme}
-            className={styles.themeToggleInput}
-            aria-label="Toggle theme"
-          />
-          <span className={styles.themeToggleTrack} aria-hidden="true">
-            <span className={styles.themeToggleThumb}>
-              {isDark ? (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-                </svg>
-              ) : (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                  <circle cx="12" cy="12" r="5" />
-                  <line x1="12" y1="1" x2="12" y2="5" stroke="currentColor" strokeWidth="2" />
-                  <line x1="12" y1="19" x2="12" y2="23" stroke="currentColor" strokeWidth="2" />
-                  <line x1="4.22" y1="4.22" x2="7.05" y2="7.05" stroke="currentColor" strokeWidth="2" />
-                  <line x1="16.95" y1="16.95" x2="19.78" y2="19.78" stroke="currentColor" strokeWidth="2" />
-                  <line x1="1" y1="12" x2="5" y2="12" stroke="currentColor" strokeWidth="2" />
-                  <line x1="19" y1="12" x2="23" y2="12" stroke="currentColor" strokeWidth="2" />
-                  <line x1="4.22" y1="19.78" x2="7.05" y2="16.95" stroke="currentColor" strokeWidth="2" />
-                  <line x1="16.95" y1="5.64" x2="19.78" y2="4.22" stroke="currentColor" strokeWidth="2" />
-                </svg>
-              )}
+        {showThemeToggle && (
+          <label className={styles.themeToggle}>
+            <input
+              type="checkbox"
+              checked={isDark ?? false}
+              onChange={toggleTheme}
+              className={styles.themeToggleInput}
+              aria-label="Toggle theme"
+            />
+            <span className={styles.themeToggleTrack} aria-hidden="true">
+              <span className={styles.themeToggleThumb}>
+                {isDark ? (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                  </svg>
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                    <circle cx="12" cy="12" r="5" />
+                    <line x1="12" y1="1" x2="12" y2="5" stroke="currentColor" strokeWidth="2" />
+                    <line x1="12" y1="19" x2="12" y2="23" stroke="currentColor" strokeWidth="2" />
+                    <line x1="4.22" y1="4.22" x2="7.05" y2="7.05" stroke="currentColor" strokeWidth="2" />
+                    <line x1="16.95" y1="16.95" x2="19.78" y2="19.78" stroke="currentColor" strokeWidth="2" />
+                    <line x1="1" y1="12" x2="5" y2="12" stroke="currentColor" strokeWidth="2" />
+                    <line x1="19" y1="12" x2="23" y2="12" stroke="currentColor" strokeWidth="2" />
+                    <line x1="4.22" y1="19.78" x2="7.05" y2="16.95" stroke="currentColor" strokeWidth="2" />
+                    <line x1="16.95" y1="5.64" x2="19.78" y2="4.22" stroke="currentColor" strokeWidth="2" />
+                  </svg>
+                )}
+              </span>
             </span>
-          </span>
-        </label>
+          </label>
+        )}
       </div>
 
       <div className={`${styles.logo} ${logoClassName ?? ''}`.trim()} ref={logoRef}>

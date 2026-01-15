@@ -1297,6 +1297,7 @@ export default function Home() {
           logoClassName={styles.devToolsTapTarget}
           isMenuOpen={UI_OVERHAUL_EXPERIMENTAL ? showMenu : undefined}
           menuButtonRef={UI_OVERHAUL_EXPERIMENTAL ? menuButtonRef : undefined}
+          showThemeToggle={false}
         />
 
         <div className={styles.gameWrapper}>

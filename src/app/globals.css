@@ -26,17 +26,19 @@
 }
 
 :root[data-theme='dark'] {
-  --color-background: #0f0f1a;
-  --color-surface: #1a1a26;
-  --color-border: #2a2a3a;
+  /* Background must contrast with dark wall tiles (#202124 face, #0a0a0a edge)
+     Using a mid-tone slate-gray that's lighter than walls so they "pop" */
+  --color-background: #3a3f47;
+  --color-surface: #32373e;
+  --color-border: #4a5058;
   --color-primary: #6aaa64;
-  --color-secondary: #a4a6b3;
+  --color-secondary: #b8bcc4;
   --color-text: #f2f3f7;
   --color-success: #6aaa64;
   --color-error: #cf6679;
   --color-warning: #c9b458;
 
-  --color-surface-rgb: 26, 26, 38;
+  --color-surface-rgb: 50, 55, 62;
   --color-text-rgb: 242, 243, 247;
 }
 

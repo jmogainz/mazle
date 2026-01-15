@@ -230,7 +230,7 @@
 }
 
 .skinButton:hover:not(:disabled) {
-  border-color: rgba(255, 255, 255, 0.22);
+  border-color: rgba(var(--color-text-rgb), 0.22);
   transform: translateY(-1px);
 }
 

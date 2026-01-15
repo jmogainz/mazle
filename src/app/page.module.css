@@ -773,6 +773,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: calc(0.4rem * var(--ui-scale));
   min-height: 0;
   min-width: 0;
   width: 100%;

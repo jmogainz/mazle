@@ -28,7 +28,10 @@ APP_NAME := mazle
 # Database + migrations (devops-toolkit)
 export COMPOSE_DB_NAME := mazle_pg_db
 export MIGRATIONS_PATH := $(REPO_ROOT)/migrations
-export BWS_PROJECT_NAME_FOR_DB_SECRETS := $(APP_NAME)-$(ENV)
+
+# BWS projects: dev-test should reuse the dev Bitwarden project ("mazle-dev").
+BWS_ENV := $(if $(filter $(ENV),dev-test),dev,$(ENV))
+export BWS_PROJECT_NAME_FOR_DB_SECRETS := $(APP_NAME)-$(BWS_ENV)
 
 # stripe.compose.yaml configurations
 export STRIPE_WEBHOOK_CONNECTED_EVENTS := payment_intent.created
@@ -37,15 +40,19 @@ export STRIPE_WEBHOOK_ROUTE := /api/stripe/webhook
 export STRIPE_WEBHOOK_CHECK_ROUTE := /api/stripe/webhook/check
 STRIPE_WEBHOOK_CHECK_MODE ?= platform
 export STRIPE_WEBHOOK_CHECK_MODE
-STRIPE_LISTENER_BWS_PROJECT_NAME ?= $(APP_NAME)-$(ENV)
+STRIPE_LISTENER_BWS_PROJECT_NAME ?= $(APP_NAME)-$(BWS_ENV)
 export STRIPE_LISTENER_BWS_PROJECT_NAME
-STRIPE_WEBHOOK_CHECK_BWS_PROJECT_NAME ?= $(APP_NAME)-$(ENV)
+STRIPE_WEBHOOK_CHECK_BWS_PROJECT_NAME ?= $(APP_NAME)-$(BWS_ENV)
 export STRIPE_WEBHOOK_CHECK_BWS_PROJECT_NAME
 
 # Include env configuration early so we can use DEV_TEST_ENV, PROD_ENV etc.
 ifndef INCLUDED_ENV_CONFIGURATION
   include $(DEVOPS_TOOLKIT_PATH)/shared/make/utils/env_configuration.mk
 endif
+
+# Unified health check path for all tooling/scripts.
+# (Matches Vercel deployment health checks.)
+export HEALTHCHECK_PATH := /api/health
 
 # --------------------------------
 # Backend dependency configuration

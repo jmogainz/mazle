@@ -12,6 +12,14 @@ async function checkRedis(label: string, redis: ReturnType<typeof getKvRedis>) {
   await redis.get('__health');
 }
 
+async function checkGeneratorHealth(url: string) {
+  const healthUrl = `${url.replace(/\/$/, '')}/health`;
+  const response = await fetch(healthUrl, { signal: AbortSignal.timeout(3_000) });
+  if (!response.ok) {
+    throw new Error(`Generator health returned ${response.status}`);
+  }
+}
+
 export async function GET() {
   const checks: Record<string, { ok: boolean; error?: string }> = {};
   let ok = true;
@@ -38,6 +46,22 @@ export async function GET() {
   } catch (err) {
     ok = false;
     checks.leaderboard = { ok: false, error: err instanceof Error ? err.message : 'Leaderboard check failed' };
+  }
+
+  // Only check generator reachability when a generator URL is explicitly configured.
+  // (Avoids recursion if NEXT_PUBLIC_DEV_GENERATOR_URL points back at this app.)
+  const generatorUrl = process.env.GENERATOR_URL || process.env.NEXT_PUBLIC_GENERATOR_URL;
+  if (generatorUrl) {
+    try {
+      await checkGeneratorHealth(generatorUrl);
+      checks.generator = { ok: true };
+    } catch (err) {
+      ok = false;
+      checks.generator = {
+        ok: false,
+        error: err instanceof Error ? err.message : 'Generator check failed',
+      };
+    }
   }
 
   return NextResponse.json(

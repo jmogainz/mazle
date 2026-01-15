@@ -1,4 +1,14 @@
 /* Minimal dropdown - positioned dynamically below trigger button */
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1240; /* Just below the dropdown (1250) */
+  background: transparent;
+}
+
 .dropdown {
   position: fixed;
   /* Position will be set dynamically via inline styles */

@@ -7,103 +7,50 @@
   position: relative;
 }
 
-/* Header with floating nav arrows */
-.header {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3.5rem;
-  z-index: 10;
+/* Unified Header */
+.fixedHeader {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
+  flex-direction: column;
+  background: var(--color-background);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+  z-index: 10;
 }
 
-.header .navButton {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  pointer-events: auto;
+.navRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 0.5rem;
+}
+
+.actionRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem 0.75rem;
+  gap: 1rem;
+}
+
+.navButton {
   background: transparent;
   border: none;
   padding: 0.5rem;
   cursor: pointer;
   color: var(--color-secondary);
   transition: color 0.1s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.header .navButton:hover {
+.navButton:hover {
   color: var(--color-text);
 }
 
-.header .navButton:disabled {
+.navButton:disabled {
   opacity: 0.25;
   cursor: not-allowed;
-}
-
-.header .navButton:first-of-type {
-  left: 0.5rem;
-}
-
-.header .navButton:last-of-type {
-  right: 0.5rem;
-}
-
-/* Horizontal carousel with scroll-snap */
-.carousel {
-  flex: 1;
-  display: flex;
-  gap: 1.5rem;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scroll-snap-type: x mandatory;
-  scroll-behavior: smooth;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-
-.carousel::-webkit-scrollbar {
-  display: none;
-}
-
-/* Each month panel takes full width */
-.monthPanel {
-  flex: 0 0 100%;
-  width: 100%;
-  min-width: 100%;
-  scroll-snap-align: center;
-  scroll-snap-stop: always;
-  display: flex;
-  flex-direction: column;
-  padding: 0 0.5rem;
-  box-sizing: border-box;
-}
-
-/* Month title inside each panel - slides with content */
-.monthTitle {
-  padding: 0.9rem 0 0.9rem;
-  height: 3.5rem;
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  gap: 0.6rem;
-}
-
-.monthTitleLeft {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  padding-left: 0.25rem;
-}
-
-.monthTitleRight {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding-right: 0.25rem;
 }
 
 .todayButton {
@@ -159,10 +106,43 @@
 .monthTitleMain {
   font-family: var(--font-nunito, 'Nunito', var(--font-system));
   font-weight: 900;
-  font-size: 1.1rem;
+  font-size: 1.15rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--color-text);
+  text-align: center;
+}
+
+/* Horizontal carousel with scroll-snap */
+.carousel {
+  flex: 1;
+  display: flex;
+  gap: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.carousel::-webkit-scrollbar {
+  display: none;
+}
+
+/* Each month panel takes full width */
+.monthPanel {
+  flex: 0 0 100%;
+  width: 100%;
+  min-width: 100%;
+  scroll-snap-align: center;
+  scroll-snap-stop: always;
+  display: flex;
+  flex-direction: column;
+  padding: 1rem 0.5rem;
+  box-sizing: border-box;
+  overflow-y: auto;
 }
 
 .monthTitleSub {

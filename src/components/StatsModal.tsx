@@ -1,8 +1,10 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { PlayerStats } from '@/game/types';
 import { formatTime } from '@/utils/storage';
+import { readCachedMe, cachedApi } from '@/lib/api/cached';
+import CharacterIcon from './CharacterIcon';
 import styles from './StatsModal.module.css';
 
 interface StatsModalProps {
@@ -11,13 +13,27 @@ interface StatsModalProps {
 }
 
 function StatsModal({ stats, onClose }: StatsModalProps) {
+  const [me, setMe] = useState(() => readCachedMe());
+
+  useEffect(() => {
+    cachedApi.me().then(setMe).catch(() => null);
+  }, []);
+
   const winRate = stats.totalGamesPlayed > 0
     ? Math.round((stats.totalGamesWon / stats.totalGamesPlayed) * 100)
     : 0;
 
+  const times = stats.history.filter(h => h.completed && h.timeMs > 0).map(h => h.timeMs);
+  const avgTimeMs = times.length > 0 ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : 0;
+
   const podium1 = stats.history.reduce((acc, game) => acc + (game.leaderboardRank === 1 ? 1 : 0), 0);
   const podium2 = stats.history.reduce((acc, game) => acc + (game.leaderboardRank === 2 ? 1 : 0), 0);
   const podium3 = stats.history.reduce((acc, game) => acc + (game.leaderboardRank === 3 ? 1 : 0), 0);
+
+  const displayName = me?.displayName || 'Guest Trainer';
+  const profile = me?.profile || { characterId: 'default', skinId: 'default' };
+
+  const recentHistory = useMemo(() => stats.history.slice(-20).reverse(), [stats.history]);
 
   return (
     <div className={styles.overlay} onClick={onClose}>
@@ -28,68 +44,96 @@ function StatsModal({ stats, onClose }: StatsModalProps) {
           </svg>
         </button>
 
-        <h2 className={styles.title}>Statistics</h2>
-
-        <div className={styles.section}>
-          <div className={styles.sectionTitle}>Overview</div>
-          <div className={styles.overviewGrid}>
-            <div className={styles.stat}>
-              <span className={styles.statValue}>{stats.totalGamesPlayed}</span>
-              <span className={styles.statLabel}>Played</span>
-            </div>
-            <div className={styles.stat}>
-              <span className={styles.statValue}>{winRate}%</span>
-              <span className={styles.statLabel}>Win Rate</span>
-            </div>
-            <div className={styles.stat}>
-              <span className={styles.statValue}>{stats.currentStreak}</span>
-              <span className={styles.statLabel}>Current Streak</span>
-            </div>
-            <div className={styles.stat}>
-              <span className={styles.statValue}>{stats.maxStreak}</span>
-              <span className={styles.statLabel}>Max Streak</span>
-            </div>
+        {/* Player Header */}
+        <div className={styles.passportHeader}>
+          <div className={styles.avatarBox}>
+            <CharacterIcon characterId={profile.characterId} skinId={profile.skinId} size={64} />
+          </div>
+          <div className={styles.identityInfo}>
+            <div className={styles.passportLabel}>Player Card</div>
+            <div className={styles.trainerName}>{displayName}</div>
+            <div className={styles.trainerId}>ID #{Math.abs(displayName.split('').reduce((a,b)=>{a=((a<<5)-a)+b.charCodeAt(0);return a&a},0)).toString().slice(0, 8)}</div>
           </div>
         </div>
 
-        <div className={styles.section} style={{ marginTop: '1rem' }}>
-          <div className={styles.sectionTitle}>Podiums</div>
-          <div className={styles.podiumGrid}>
-            <div className={`${styles.stat} ${styles.podiumStat}`}>
-              <span className={styles.statValue}>{podium1}</span>
-              <span className={styles.statLabel}>🥇 1st</span>
-            </div>
-            <div className={`${styles.stat} ${styles.podiumStat}`}>
-              <span className={styles.statValue}>{podium2}</span>
-              <span className={styles.statLabel}>🥈 2nd</span>
-            </div>
-            <div className={`${styles.stat} ${styles.podiumStat}`}>
-              <span className={styles.statValue}>{podium3}</span>
-              <span className={styles.statLabel}>🥉 3rd</span>
-            </div>
-          </div>
-        </div>
-
-        {stats.history.length > 0 && (
-          <div className={styles.history}>
-            <h3 className={styles.historyTitle}>Recent Games</h3>
-            <div className={styles.historyList}>
-              {stats.history.slice(-7).reverse().map((game, index) => (
-                <div key={index} className={`${styles.historyItem} ${game.completed ? '' : styles.historyItemFailed}`}>
-                  <span className={styles.historyLeft}>
-                    <span className={styles.historyPuzzle}>#{game.puzzleNumber}</span>
-                    <span className={styles.historyTime}>{game.completed ? formatTime(game.timeMs) : '—'}</span>
-                  </span>
-                  {game.completed ? (
-                    <span className={styles.historyAttempts}>{game.attemptsUsed ?? 1}/3</span>
-                  ) : (
-                    <span className={styles.historyDnf}>DNF</span>
-                  )}
+        <div className={styles.scrollableContent}>
+          {/* Podium Section */}
+          <div className={styles.section}>
+            <div className={styles.sectionTitle}>Trophy Room</div>
+            <div className={styles.miniPodium}>
+              <div className={styles.podiumColumn}>
+                <div className={styles.podiumCount}>{podium2}</div>
+                <div className={`${styles.podiumBar} ${styles.podiumSilver}`}>
+                  🥈
                 </div>
-              ))}
+                <div className={styles.podiumLabel}>2nd</div>
+              </div>
+              <div className={styles.podiumColumn}>
+                <div className={styles.podiumCount}>{podium1}</div>
+                <div className={`${styles.podiumBar} ${styles.podiumGold}`}>
+                  🥇
+                </div>
+                <div className={styles.podiumLabel}>1st</div>
+              </div>
+              <div className={styles.podiumColumn}>
+                <div className={styles.podiumCount}>{podium3}</div>
+                <div className={`${styles.podiumBar} ${styles.podiumBronze}`}>
+                  🥉
+                </div>
+                <div className={styles.podiumLabel}>3rd</div>
+              </div>
             </div>
           </div>
-        )}
+
+          {/* Stats Grid */}
+          <div className={styles.section} style={{ marginTop: '1.5rem' }}>
+            <div className={styles.sectionTitle}>Performance</div>
+            <div className={styles.statsGrid}>
+              <div className={styles.statChip}>
+                <span className={styles.statValue}>{stats.totalGamesPlayed}</span>
+                <span className={styles.statLabel}>Solved</span>
+              </div>
+              <div className={styles.statChip}>
+                <span className={styles.statValue}>{winRate}%</span>
+                <span className={styles.statLabel}>Win Rate</span>
+              </div>
+              <div className={styles.statChip}>
+                <span className={styles.statValue}>{stats.currentStreak}</span>
+                <span className={styles.statLabel}>Streak</span>
+              </div>
+              <div className={styles.statChip}>
+                <span className={styles.statValue}>{stats.maxStreak}</span>
+                <span className={styles.statLabel}>Max</span>
+              </div>
+              <div className={styles.statChip}>
+                <span className={styles.statValue}>{avgTimeMs > 0 ? formatTime(avgTimeMs) : '—'}</span>
+                <span className={styles.statLabel}>Avg Time</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Recent Games */}
+          {recentHistory.length > 0 && (
+            <div className={styles.historySection}>
+              <div className={styles.sectionTitle}>Recent Games</div>
+              <div className={styles.historyList}>
+                {recentHistory.map((game, index) => (
+                  <div key={index} className={`${styles.historyItem} ${game.completed ? '' : styles.historyItemFailed}`}>
+                    <span className={styles.historyLeft}>
+                      <span className={styles.historyPuzzle}>#{game.puzzleNumber}</span>
+                      <span className={styles.historyTime}>{game.completed ? formatTime(game.timeMs) : '—'}</span>
+                    </span>
+                    {game.completed ? (
+                      <span className={styles.historyAttempts}>{game.attemptsUsed ?? 1}/3</span>
+                    ) : (
+                      <span className={styles.historyDnf}>DNF</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

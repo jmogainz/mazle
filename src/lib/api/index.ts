@@ -47,6 +47,7 @@ export const api: ApiImpl = {
   resultsImport: (body) => getActiveApi().resultsImport(body),
   hallOfFamePodium: (date) => getActiveApi().hallOfFamePodium(date),
   settingsUpdate: (body) => getActiveApi().settingsUpdate(body),
+  profileUpdate: (body) => getActiveApi().profileUpdate(body),
   archiveOffer: () => getActiveApi().archiveOffer(),
   createCheckout: (body) => getActiveApi().createCheckout(body),
   archiveDays: (from, to) => getActiveApi().archiveDays(from, to),

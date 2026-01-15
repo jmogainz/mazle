@@ -16,6 +16,8 @@ import type {
   LeaderboardSubmitResponse,
   LeaderboardTopResponse,
   MeResponse,
+  ProfileUpdateRequest,
+  ProfileUpdateResponse,
   ResultsImportRequest,
   ResultsImportResponse,
   ResultsRecordRequest,
@@ -466,6 +468,24 @@ export const mockApi = {
     };
     writeLocal(MOCK_ME_KEY, next);
     return { ok: true, settings: next.settings };
+  },
+
+  profileUpdate: async (body: ProfileUpdateRequest): Promise<ProfileUpdateResponse> => {
+    const me = readLocal<StoredMockMe>(MOCK_ME_KEY);
+    if (!me) {
+      // Guest: noop for now
+      return { ok: true, profile: { characterId: 'default', skinId: 'default' } };
+    }
+
+    const next: StoredMockMe = {
+      ...me,
+      profile: {
+        characterId: body.characterId ?? me.profile.characterId,
+        skinId: body.skinId ?? me.profile.skinId,
+      },
+    };
+    writeLocal(MOCK_ME_KEY, next);
+    return { ok: true, profile: next.profile };
   },
 
   archiveOffer: async (): Promise<ArchiveOfferResponse> => {

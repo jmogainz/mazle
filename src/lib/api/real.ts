@@ -15,6 +15,8 @@ import type {
   LeaderboardSubmitResponse,
   LeaderboardTopResponse,
   MeResponse,
+  ProfileUpdateRequest,
+  ProfileUpdateResponse,
   ResultsImportRequest,
   ResultsImportResponse,
   ResultsRecordRequest,
@@ -73,6 +75,13 @@ export const realApi = {
 
   settingsUpdate: async (body: SettingsUpdateRequest): Promise<SettingsUpdateResponse> =>
     fetchJson('/api/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+
+  profileUpdate: async (body: ProfileUpdateRequest): Promise<ProfileUpdateResponse> =>
+    fetchJson('/api/profile', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),

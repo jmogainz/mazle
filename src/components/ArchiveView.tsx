@@ -341,9 +341,13 @@ function ArchiveView({ presentation = 'overlay', initialTodayNy, onClose }: Arch
         return;
       }
       const href = `/play/${encodeURIComponent(date)}`;
-      if (presentation === 'overlay') {
-        onClose?.();
+      if (presentation === 'overlay' && !onClose) {
         router.push(href);
+        return;
+      }
+      onClose?.();
+      if (presentation === 'overlay') {
+        requestAnimationFrame(() => router.push(href));
         return;
       }
       router.push(href);
@@ -498,30 +502,76 @@ function ArchiveView({ presentation = 'overlay', initialTodayNy, onClose }: Arch
       <div className={styles.container}>
       {toast && <div className={styles.banner}>{toast}</div>}
 
-      {/* Navigation arrows - floating header */}
-      <div className={styles.header}>
-        <button
-          type="button"
-          className={styles.navButton}
-          onClick={navPrev}
-          disabled={!canPrev}
-          aria-label="Previous month"
-        >
-          <svg width="20" height="16" viewBox="0 0 20 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M19 8H1M1 8L8 1M1 8L8 15" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          className={styles.navButton}
-          onClick={navNext}
-          disabled={!canNext}
-          aria-label="Next month"
-        >
-          <svg width="20" height="16" viewBox="0 0 20 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M1 8H19M19 8L12 1M19 8L12 15" />
-          </svg>
-        </button>
+      {/* Unified Header */}
+      <div className={styles.fixedHeader}>
+        {/* Row 1: Month Navigation */}
+        <div className={styles.navRow}>
+          <button
+            type="button"
+            className={styles.navButton}
+            onClick={navPrev}
+            disabled={!canPrev}
+            aria-label="Previous month"
+          >
+            <svg width="20" height="16" viewBox="0 0 20 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 8H1M1 8L8 1M1 8L8 15" />
+            </svg>
+          </button>
+
+          <div className={styles.monthTitleMain}>{monthLabel(monthId)}</div>
+
+          <button
+            type="button"
+            className={styles.navButton}
+            onClick={navNext}
+            disabled={!canNext}
+            aria-label="Next month"
+          >
+            <svg width="20" height="16" viewBox="0 0 20 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M1 8H19M19 8L12 1M19 8L12 15" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Row 2: Actions */}
+        <div className={styles.actionRow}>
+          <button
+            type="button"
+            className={styles.todayButton}
+            onClick={() => {
+              onClose?.();
+              router.push('/');
+            }}
+          >
+            Today
+          </button>
+
+          <div className={styles.viewToggle} role="group" aria-label="Archive view mode">
+            <button
+              type="button"
+              className={`${styles.viewToggleButton} ${viewMode === 'calendar' ? styles.viewToggleButtonActive : ''}`}
+              onClick={() => setViewModeAndPersist('calendar')}
+              aria-label="Calendar view"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="4.5" width="18" height="16" rx="2" />
+                <path d="M16 3v3M8 3v3M3 9h18" />
+                <path d="M7 13h3M7 17h3M14 13h3M14 17h3" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              className={`${styles.viewToggleButton} ${viewMode === 'list' ? styles.viewToggleButtonActive : ''}`}
+              onClick={() => setViewModeAndPersist('list')}
+              aria-label="List view"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 6h12M9 12h12M9 18h12" />
+                <path d="M4 6h.01M4 12h.01M4 18h.01" />
+              </svg>
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Carousel container */}
@@ -533,9 +583,6 @@ function ArchiveView({ presentation = 'overlay', initialTodayNy, onClose }: Arch
         {/* Previous month panel */}
         {prevMonthId && (
           <div className={styles.monthPanel}>
-            <div className={styles.monthTitle}>
-              <div className={styles.monthTitleMain}>{monthLabel(prevMonthId)}</div>
-            </div>
             <div className={styles.calendar}>
               <div className={styles.weekdays}>
                 {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
@@ -551,51 +598,6 @@ function ArchiveView({ presentation = 'overlay', initialTodayNy, onClose }: Arch
 
         {/* Current month panel */}
         <div className={styles.monthPanel}>
-          <div className={styles.monthTitle}>
-            <div className={styles.monthTitleLeft}>
-              <button
-                type="button"
-                className={styles.todayButton}
-                onClick={() => {
-                  onClose?.();
-                  router.push('/');
-                }}
-              >
-                Today
-              </button>
-            </div>
-
-            <div className={styles.monthTitleMain}>{monthLabel(monthId)}</div>
-
-            <div className={styles.monthTitleRight}>
-              <div className={styles.viewToggle} role="group" aria-label="Archive view mode">
-                <button
-                  type="button"
-                  className={`${styles.viewToggleButton} ${viewMode === 'calendar' ? styles.viewToggleButtonActive : ''}`}
-                  onClick={() => setViewModeAndPersist('calendar')}
-                  aria-label="Calendar view"
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="3" y="4.5" width="18" height="16" rx="2" />
-                    <path d="M16 3v3M8 3v3M3 9h18" />
-                    <path d="M7 13h3M7 17h3M14 13h3M14 17h3" />
-                  </svg>
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.viewToggleButton} ${viewMode === 'list' ? styles.viewToggleButtonActive : ''}`}
-                  onClick={() => setViewModeAndPersist('list')}
-                  aria-label="List view"
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M9 6h12M9 12h12M9 18h12" />
-                    <path d="M4 6h.01M4 12h.01M4 18h.01" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </div>
-
           {viewMode === 'calendar' ? (
             <div className={styles.calendar}>
               <div className={styles.weekdays}>
@@ -689,9 +691,6 @@ function ArchiveView({ presentation = 'overlay', initialTodayNy, onClose }: Arch
         {/* Next month panel */}
         {nextMonthId && (
           <div className={styles.monthPanel}>
-            <div className={styles.monthTitle}>
-              <div className={styles.monthTitleMain}>{monthLabel(nextMonthId)}</div>
-            </div>
             <div className={styles.calendar}>
               <div className={styles.weekdays}>
                 {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (

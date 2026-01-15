@@ -1273,9 +1273,12 @@ export default function Home() {
                     <div className={`${styles.darkOverlay} ${shouldBlur ? styles.darkOverlayVisible : ''}`} />
                     {lifeFlash && <div className={styles.lifeFlash} />}
                     {!isPlaying && !showInlineResult && !showShareCard && (
-                      <div className={styles.startOverlay}>
+                      <div 
+                        className={styles.startOverlay}
+                        onClick={previousResult ? handleViewResult : undefined}
+                      >
                         {previousResult ? (
-                          <div className={styles.previousResult}>
+                          <div className={styles.previousResult} onClick={(e) => e.stopPropagation()}>
                             <p className={styles.previousResultTitle}>
                               {previousResult.completed
                                 ? 'You completed today\u2019s puzzle!'

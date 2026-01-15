@@ -91,6 +91,28 @@ export async function updateUserSettings(
   return ensureUserSettings(userId);
 }
 
+export async function updateUserProfile(
+  userId: string,
+  patch: Partial<UserProfile>
+): Promise<UserProfile> {
+  await ensureDbSchema();
+  const pool = getDbPool();
+  await pool.query('insert into user_profiles (user_id) values ($1) on conflict do nothing', [userId]);
+
+  if (patch.characterId != null || patch.skinId != null) {
+    await pool.query(
+      `update user_profiles
+       set character_id=coalesce($2, character_id),
+           skin_id=coalesce($3, skin_id),
+           updated_at=now()
+       where user_id=$1`,
+      [userId, patch.characterId ?? null, patch.skinId ?? null]
+    );
+  }
+
+  return ensureUserProfile(userId);
+}
+
 export async function recordDailyResult(
   userId: string,
   input: { date: string; completed: boolean; timeMs: number | null; attemptsUsed: number | null }

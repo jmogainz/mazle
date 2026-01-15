@@ -255,12 +255,6 @@ export default function ArchivePlayClient({ date }: { date: string }) {
     gameControlsRef.current = controls;
     setIsGameReady(true);
     controls.setPaused(shouldPause);
-
-    const hasSeenHelp = localStorage.getItem('mazle_seen_help');
-    if (!hasSeenHelp) {
-      setShowHelp(true);
-      localStorage.setItem('mazle_seen_help', 'true');
-    }
   }, [shouldPause]);
 
   const handleBegin = useCallback(() => {
@@ -306,6 +300,14 @@ export default function ArchivePlayClient({ date }: { date: string }) {
 
   const isPostGame = !isPlaying && !!gameResult;
   const shouldBlur = showShareCard || (!isPlaying && isGameReady && !showInlineResult);
+  const useLightBlur =
+    showMenu &&
+    !showShareCard &&
+    !showHelp &&
+    !showStats &&
+    !showLeaderboard &&
+    !showAccount &&
+    !showHallOfFame;
   const showResultsButton = showInlineResult;
   const showMenuButton = process.env.NODE_ENV !== 'production' || previewFeaturesEnabled;
 
@@ -429,7 +431,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
           <div ref={gameStageRef} className={baseStyles.gameArea}>
             <div
               ref={gameFrameRef}
-              className={baseStyles.gameFrame}
+              className={`${baseStyles.gameFrame} ${shouldBlur ? (useLightBlur ? baseStyles.gameFrameBlurredLight : baseStyles.gameFrameBlurred) : ''}`}
               style={{
                 width: gameFrameSizePx ? `${gameFrameSizePx.width}px` : undefined,
                 height: gameFrameSizePx ? `${gameFrameSizePx.height}px` : undefined,
@@ -441,7 +443,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
                 viewportHeight={baseHeight}
                 onReady={handleGameReady}
               />
-              <div className={`${baseStyles.blurOverlay} ${!shouldBlur ? baseStyles.blurOverlayHidden : ''}`} />
+              <div className={`${baseStyles.darkOverlay} ${shouldBlur ? baseStyles.darkOverlayVisible : ''}`} />
               {!isPlaying && isGameReady && !showInlineResult && !showShareCard && (
                 <div className={baseStyles.startOverlay}>
                   {isPostGame ? (

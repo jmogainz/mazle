@@ -107,15 +107,24 @@ export default function ShareCard({
     ? `${shareTitle}\n${attemptIndicator}\n\nhttps://mazle.me`
     : `${shareTitle}\n${attemptIndicator} ${formatTime(timeMs)}\n\nhttps://mazle.me`;
 
+  const resolveAttemptProgress = (attempt: any): number => {
+    if (typeof attempt?.deviationIndex === 'number' && attempt.deviationIndex >= 0) {
+      const movesBeforeDeviation = Math.max(0, attempt.deviationIndex - 1);
+      return Math.min(optimalMoves, movesBeforeDeviation);
+    }
+    if (typeof attempt?.correctMoves === 'number' && Number.isFinite(attempt.correctMoves)) {
+      return Math.min(optimalMoves, Math.max(0, Math.round(attempt.correctMoves)));
+    }
+    return typeof attempt?.moveCount === 'number' ? Math.max(0, Math.round(attempt.moveCount)) : 0;
+  };
+
+  const progressValues = attempts.map((a: any) => resolveAttemptProgress(a));
+
   // Calculate max blocks for progress bar visualization
-  const maxBlocks = Math.max(optimalMoves, ...attempts.map((a: any) => a?.moveCount ?? optimalMoves));
+  const maxBlocks = Math.max(optimalMoves, ...progressValues);
 
   // Calculate the best attempt progress
-  const bestAttempt = Math.max(...attempts.map((a: any) => a?.moveCount ?? 0), 0);
-
-  const calcProgress = (attempt: any) => {
-    return attempt?.moveCount ?? 0;
-  };
+  const bestAttempt = Math.max(...progressValues, 0);
 
   // Build the attempt bars data
   const attemptBars = (): { progress: number; status: 'success' | 'fail' | 'empty' }[] => {
@@ -123,7 +132,7 @@ export default function ShareCard({
 
     // Failed attempts
     for (const attempt of attempts) {
-      rows.push({ progress: calcProgress(attempt), status: 'fail' });
+      rows.push({ progress: resolveAttemptProgress(attempt), status: 'fail' });
     }
 
     // Success row (if not failed)
@@ -201,7 +210,7 @@ export default function ShareCard({
           attempts: failed ? attempts.length : attempts.length + 1,
           timeMs,
           optimalMoves,
-          attemptScores: attempts.map((a: any) => calcProgress(a)),
+          attemptScores: attempts.map((a: any) => resolveAttemptProgress(a)),
           rating: feedbackRating,
         }),
       });

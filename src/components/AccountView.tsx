@@ -8,10 +8,12 @@ import { cachedApi, fetchMeFresh, readCachedMe } from '@/lib/api/cached';
 import { getPrefs, setPrefs } from '@/lib/prefs';
 import { addDays } from '@/lib/date';
 import { getAllSkins, getSkinById, getUnlockedSkins } from '@/lib/skins';
+import { getAllCharacters, getCharacterById } from '@/lib/characters';
 import { getNewYorkDateString } from '@/game/puzzleGenerator';
 import { formatTime, getGuestHistoryForAccountImport } from '@/utils/storage';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import CharacterIcon from './CharacterIcon';
+import SkinWheelItem from './SkinWheelItem';
 import styles from './AccountView.module.css';
 
 const IS_UI_DEV_ENV = process.env.NEXT_PUBLIC_ENV === 'dev';
@@ -108,9 +110,34 @@ function AccountView() {
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   const [previewFeaturesEnabled, setPreviewFeaturesEnabled] = useState(false);
   const [signInExpanded, setSignInExpanded] = useState(false);
+  const [skinWheelIndex, setSkinWheelIndex] = useState(0);
+  const [isSnapping, setIsSnapping] = useState(false);
+  const [unlockHintSkinId, setUnlockHintSkinId] = useState<string | null>(null);
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const [dragOffset, setDragOffset] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [provisionalIndex, setProvisionalIndex] = useState<number | null>(null);
+  const trackRef = React.useRef<HTMLDivElement>(null);
+  const dragItemWidth = React.useRef<number>(0);
+  const dragStartRef = React.useRef<number>(0);
 
-  // Responsive sizing for small screens
-  const characterIconSize = useResponsiveSize(100, 75);
+  const me = meState.status === 'loaded' ? meState.data : null;
+  const localHistory = useMemo(() => getGuestHistoryForAccountImport(), []);
+  const localStats = useMemo(() => computeLocalAccountStats(localHistory), [localHistory]);
+  const stats = me?.stats ?? localStats;
+  const profile = me?.profile ?? { characterId: 'default', skinId: 'default' };
+  const avgTime = stats.avgSolveTimeMs != null ? formatTime(stats.avgSolveTimeMs) : '—';
+
+  const skins = useMemo(() => getAllSkins(), []);
+
+  // Create a buffered array for infinite looping: 11 sets of skins
+  // This provides a massive runway so the user never reaches the edge.
+  const displaySkins = useMemo(() => [...skins, ...skins, ...skins, ...skins, ...skins, ...skins, ...skins, ...skins, ...skins, ...skins, ...skins], [skins]);
+  const BUFFER_OFFSET = skins.length * 5; // Center is the 6th set (index 5 * len)
+
+  const characters = useMemo(() => getAllCharacters(), []);
+  const activeCharacter = useMemo(() => getCharacterById(profile.characterId) ?? characters[0]!, [profile.characterId, characters]);
+  const activeCharacterIndex = useMemo(() => characters.findIndex(c => c.id === activeCharacter.id), [activeCharacter.id, characters]);
 
   const refreshMe = useCallback(async (silent = false, force = false) => {
     if (!silent) {
@@ -208,6 +235,15 @@ function AccountView() {
     }
   }, []);
 
+  // Sync wheel index with profile skin on load
+  useEffect(() => {
+    const logicalIdx = skins.findIndex((s) => s.id === profile.skinId);
+    if (logicalIdx >= 0) {
+      // Always start in the exact middle set (3rd one)
+      setSkinWheelIndex(logicalIdx + BUFFER_OFFSET);
+    }
+  }, [profile.skinId, skins, BUFFER_OFFSET]);
+
   const showLockedFeatures = useMemo(() => {
     if (process.env.NODE_ENV !== 'production') return true;
     return previewFeaturesEnabled;
@@ -304,53 +340,169 @@ function AccountView() {
     router.push('/archive');
   }, [router]);
 
-  const me = meState.status === 'loaded' ? meState.data : null;
-  const localHistory = useMemo(() => getGuestHistoryForAccountImport(), []);
-  const localStats = useMemo(() => computeLocalAccountStats(localHistory), [localHistory]);
-  const stats = me?.stats ?? localStats;
-  const profile = me?.profile ?? { characterId: 'default', skinId: 'default' };
-  const avgTime = stats.avgSolveTimeMs != null ? formatTime(stats.avgSolveTimeMs) : '—';
+  const applyProfile = useCallback(
+    async (changes: { skinId?: string; characterId?: string }) => {
+      // Validate inputs locally first
+      if (changes.skinId) {
+        const s = getSkinById(changes.skinId);
+        if (!s || s.locked) return;
+      }
+      if (changes.characterId) {
+        const c = getCharacterById(changes.characterId);
+        if (!c || c.locked) return;
+      }
 
-  const skins = useMemo(() => getAllSkins(), []);
-  const unlockedSkins = useMemo(() => getUnlockedSkins(), []);
-  const activeSkin = useMemo(() => getSkinById(profile.skinId) ?? getSkinById('default') ?? skins[0]!, [profile.skinId, skins]);
-  const canChangeSkin = IS_UI_DEV_ENV && getApiMode() === 'mock' && me?.mode === 'user';
-  const activeUnlockedIndex = useMemo(() => {
-    const idx = unlockedSkins.findIndex((skin) => skin.id === activeSkin.id);
-    return idx >= 0 ? idx : 0;
-  }, [activeSkin.id, unlockedSkins]);
+      const me = readCachedMe();
+      if (!me) return;
 
-  const prevUnlockedSkinId = unlockedSkins.length > 0
-    ? unlockedSkins[(activeUnlockedIndex - 1 + unlockedSkins.length) % unlockedSkins.length]!.id
-    : null;
-  const nextUnlockedSkinId = unlockedSkins.length > 0
-    ? unlockedSkins[(activeUnlockedIndex + 1) % unlockedSkins.length]!.id
-    : null;
-
-  const applySkin = useCallback(
-    (skinId: string) => {
-      const skin = getSkinById(skinId);
-      if (!skin || skin.locked) return;
-      if (!canChangeSkin) return;
+      // Optimistic update for UI responsiveness
+      // Note: This only affects the cachedMe if we were using a context, 
+      // but since we rely on `refreshMe` to update `meState`, we'll see the flicker unless we do more complex state management.
+      // However, api.profileUpdate is fast.
 
       try {
-        const raw = localStorage.getItem(MOCK_ME_STORAGE_KEY);
-        if (!raw) return;
-        const stored = JSON.parse(raw) as any;
-        if (!stored || typeof stored !== 'object') return;
-        stored.profile = {
-          ...(stored.profile ?? { characterId: 'default', skinId: 'default' }),
-          skinId,
-        };
-        localStorage.setItem(MOCK_ME_STORAGE_KEY, JSON.stringify(stored));
+        if (me.mode === 'user') {
+          await api.profileUpdate(changes);
+        } else {
+          // For mock/guest mode, we might still be using the mock API which handles localStorage
+          if (getApiMode() === 'mock') {
+            await api.profileUpdate(changes);
+          }
+        }
+        await refreshMe(true, true);
       } catch {
         // ignore
       }
-
-      refreshMe(true, true).catch(() => null);
     },
-    [canChangeSkin, refreshMe],
+    [refreshMe],
   );
+
+  const handleNextCharacter = () => {
+    const nextIdx = (activeCharacterIndex + 1) % characters.length;
+    const nextChar = characters[nextIdx];
+    if (nextChar && !nextChar.locked) {
+      applyProfile({ characterId: nextChar.id });
+    }
+  };
+
+  const handlePrevCharacter = () => {
+    const prevIdx = (activeCharacterIndex - 1 + characters.length) % characters.length;
+    const prevChar = characters[prevIdx];
+    if (prevChar && !prevChar.locked) {
+      applyProfile({ characterId: prevChar.id });
+    }
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    // Cache layout metrics ONCE at start of drag to avoid thrashing during move
+    if (trackRef.current) {
+      const track = trackRef.current;
+      const firstItem = track.children[0] as HTMLElement;
+      if (firstItem) {
+        const gap = parseFloat(getComputedStyle(track).gap) || 0;
+        dragItemWidth.current = firstItem.offsetWidth + gap;
+      }
+    }
+
+    setTouchStartX(e.touches[0].clientX);
+    dragStartRef.current = e.touches[0].clientX;
+    setIsDragging(true);
+    // Note: We do NOT reset dragOffset state here, we rely on the CSS var update in move
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (touchStartX === null || !trackRef.current) return;
+    const currentX = e.touches[0].clientX;
+    const offset = currentX - dragStartRef.current;
+
+    // PERF: Bypass React render cycle for smooth 60fps drag
+    // Directly update the CSS variable on the DOM element
+    trackRef.current.style.setProperty('--drag-offset', `${offset}px`);
+
+    // Only update React state if the integer index would actually change
+    if (dragItemWidth.current > 0) {
+      // Calculate index shift: dragging right (offset > 0) reduces index
+      const indexShift = Math.round(offset / dragItemWidth.current);
+      const newProvisional = skinWheelIndex - indexShift;
+
+      // Only trigger re-render if the highlighted item actually changes
+      if (newProvisional !== (provisionalIndex ?? skinWheelIndex)) {
+        setProvisionalIndex(newProvisional);
+      }
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX === null) return;
+    const touchEndX = e.changedTouches[0].clientX;
+    const diff = dragStartRef.current - touchEndX;
+    const threshold = 30;
+
+    setIsDragging(false);
+    setTouchStartX(null);
+    setProvisionalIndex(null);
+
+    // Clear the direct DOM override so React/CSS transition can take over
+    if (trackRef.current) {
+      trackRef.current.style.removeProperty('--drag-offset');
+    }
+
+    if (Math.abs(diff) > threshold) {
+      let targetIdx = skinWheelIndex;
+
+      if (dragItemWidth.current > 0) {
+        const shift = Math.round(diff / dragItemWidth.current);
+        // Ensure at least 1 shift if past threshold
+        targetIdx = skinWheelIndex + (shift || (diff > 0 ? 1 : -1));
+      } else {
+        // Fallback if metrics failed
+        targetIdx = skinWheelIndex + (diff > 0 ? 1 : -1);
+      }
+
+      setSkinWheelIndex(targetIdx);
+      const logicalIdx = (targetIdx % skins.length + skins.length) % skins.length;
+      const skin = skins[logicalIdx];
+      if (skin && !skin.locked) applyProfile({ skinId: skin.id });
+    }
+  };
+
+  // Handle infinite loop snapping - aggressive centering
+  const handleTransitionEnd = useCallback(() => {
+    const len = skins.length;
+    if (len === 0) return;
+
+    // Teleport back to the center set (Set 6) while preserving the logical skin
+    const logicalIdx = (skinWheelIndex % len + len) % len;
+    const targetIdx = logicalIdx + BUFFER_OFFSET;
+
+    if (skinWheelIndex !== targetIdx) {
+      setIsSnapping(true);
+      setSkinWheelIndex(targetIdx);
+    }
+  }, [skinWheelIndex, skins.length, BUFFER_OFFSET]);
+
+  // Safety Sync: If we ever drift too far from the center, snap back instantly.
+  // This handles extremely fast clicking where transitionEnd might not keep up.
+  useEffect(() => {
+    const len = skins.length;
+    if (len === 0 || isSnapping) return;
+
+    const drift = Math.abs(skinWheelIndex - BUFFER_OFFSET);
+    // If we've drifted more than 2 full sets away from the center set
+    if (drift > len * 2) {
+      const logicalIdx = (skinWheelIndex % len + len) % len;
+      setIsSnapping(true);
+      setSkinWheelIndex(logicalIdx + BUFFER_OFFSET);
+    }
+  }, [skinWheelIndex, skins, BUFFER_OFFSET, isSnapping]);
+
+  // Disable snapping after one tick
+  useEffect(() => {
+    if (isSnapping) {
+      const timer = setTimeout(() => setIsSnapping(false), 50);
+      return () => clearTimeout(timer);
+    }
+  }, [isSnapping]);
 
   return (
     <div className={styles.grid}>
@@ -440,15 +592,24 @@ function AccountView() {
               )}
             </div>
 
-            {/* Character Display with Skin Selector */}
-            <div className={styles.characterDisplay}>
+            {/* Character Selector Row */}
+            <div className={styles.characterSelector}>
+              <button type="button" className={styles.characterArrow} onClick={handlePrevCharacter}>&lt;</button>
+              <div className={styles.characterName}>{activeCharacter.name}</div>
+              <button type="button" className={styles.characterArrow} onClick={handleNextCharacter}>&gt;</button>
+            </div>
+
+            {/* Skin Picker Wheel - Carousel */}
+            <div className={styles.skinWheel}>
               <button
                 type="button"
-                className={styles.characterArrow}
-                disabled={!canChangeSkin || unlockedSkins.length <= 1 || !prevUnlockedSkinId}
+                className={styles.skinWheelArrow}
                 onClick={() => {
-                  if (!prevUnlockedSkinId) return;
-                  applySkin(prevUnlockedSkinId);
+                  const nextIdx = skinWheelIndex - 1;
+                  setSkinWheelIndex(nextIdx);
+                  const logicalIdx = (nextIdx % skins.length + skins.length) % skins.length;
+                  const skin = skins[logicalIdx];
+                  if (skin && !skin.locked) applyProfile({ skinId: skin.id });
                 }}
                 aria-label="Previous skin"
               >
@@ -456,14 +617,51 @@ function AccountView() {
                   <polyline points="15 18 9 12 15 6" />
                 </svg>
               </button>
-              <CharacterIcon characterId={profile.characterId} skinId={profile.skinId} size={characterIconSize} />
+
+              <div
+                className={styles.skinWheelViewport}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+              >
+                <div
+                  ref={trackRef}
+                  className={`${styles.skinWheelTrack} ${isSnapping || isDragging ? styles.skinWheelTrackSnapping : ''}`}
+                  onTransitionEnd={handleTransitionEnd}
+                  style={{
+                    '--index': skinWheelIndex,
+                  } as React.CSSProperties}
+                >
+                  {displaySkins.map((skin, idx) => {
+                    if (!skin) return null;
+                    const isActive = idx === (provisionalIndex ?? skinWheelIndex);
+                    return (
+                      <SkinWheelItem
+                        key={`${skin.id}-${idx}`}
+                        skin={skin}
+                        isActive={isActive}
+                        characterId={profile.characterId}
+                        onClick={() => {
+                          if (isActive && skin.locked) return;
+                          setSkinWheelIndex(idx);
+                          applyProfile({ skinId: skin.id });
+                        }}
+                        showUnlockHint={false}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+
               <button
                 type="button"
-                className={styles.characterArrow}
-                disabled={!canChangeSkin || unlockedSkins.length <= 1 || !nextUnlockedSkinId}
+                className={styles.skinWheelArrow}
                 onClick={() => {
-                  if (!nextUnlockedSkinId) return;
-                  applySkin(nextUnlockedSkinId);
+                  const nextIdx = skinWheelIndex + 1;
+                  setSkinWheelIndex(nextIdx);
+                  const logicalIdx = (nextIdx % skins.length + skins.length) % skins.length;
+                  const skin = skins[logicalIdx];
+                  if (skin && !skin.locked) applyProfile({ skinId: skin.id });
                 }}
                 aria-label="Next skin"
               >
@@ -473,57 +671,26 @@ function AccountView() {
               </button>
             </div>
 
-            {IS_UI_DEV_ENV && (
-              <div className={styles.skinsSection}>
-                <div className={styles.skinMeta}>
-                  <div className={styles.skinName}>{activeSkin.name}</div>
-                  {activeSkin.locked && <div className={styles.skinLocked}>Locked</div>}
-                </div>
-                <div className={styles.skinPicker} role="list" aria-label="Skins">
-                  {skins.map((skin) => {
-                    const selected = skin.id === activeSkin.id;
-                    const locked = skin.locked;
-                    const disabled = locked || !canChangeSkin;
-                    return (
-                      <button
-                        key={skin.id}
-                        type="button"
-                        className={`${styles.skinButton} ${selected ? styles.skinButtonSelected : ''} ${locked ? styles.skinButtonLocked : ''}`}
-                        onClick={() => applySkin(skin.id)}
-                        disabled={disabled}
-                        aria-label={locked ? `${skin.name} (locked)` : `Select ${skin.name}`}
-                      >
-                        <span
-                          className={styles.skinSwatch}
-                          style={{ backgroundColor: skin.face, borderColor: skin.edge }}
-                          aria-hidden="true"
-                        />
-                        {locked && (
-                          <span className={styles.skinLock} aria-hidden="true">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M7 11V8a5 5 0 0 1 10 0v3" />
-                              <rect x="6" y="11" width="12" height="10" rx="2" />
-                            </svg>
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-                {!canChangeSkin && (
-                  <div className={styles.skinHint}>Switch to Mock + Account to change skins.</div>
+            {/* Skin name under center */}
+            <div className={styles.skinWheelMeta}>
+              <div className={styles.skinWheelNameContainer}>
+                <div className={styles.skinWheelName}>{skins[((provisionalIndex ?? skinWheelIndex) % skins.length + skins.length) % skins.length]?.name ?? ''}</div>
+                {skins[((provisionalIndex ?? skinWheelIndex) % skins.length + skins.length) % skins.length]?.locked && (
+                  <span className={styles.skinWheelNameLock}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M7 11V8a5 5 0 0 1 10 0v3" />
+                      <rect x="6" y="11" width="12" height="10" rx="2" />
+                    </svg>
+                  </span>
                 )}
               </div>
-            )}
+            </div>
 
             {/* Sign-in / Sign-out Section */}
             {me.mode === 'guest' ? (
               <>
-                <div className={styles.modeHint} style={{ textAlign: 'center', marginBottom: '0.75rem' }}>
-                  Sign in to save your name and keep purchases across devices.
-                </div>
                 {!signInExpanded ? (
-                  <div className={styles.buttonRow}>
+                  <div className={styles.buttonRow} style={{ flexDirection: 'column', gap: '0.5rem' }}>
                     <button
                       type="button"
                       className={styles.primaryButton}
@@ -532,6 +699,9 @@ function AccountView() {
                     >
                       Create Account
                     </button>
+                    <div className={styles.signInHint}>
+                      Save your name and sync purchases across devices.
+                    </div>
                   </div>
                 ) : (
                   <div className={styles.signInOptions}>
@@ -600,20 +770,6 @@ function AccountView() {
         <div className={styles.panel}>
           <div className={styles.sectionTitle}>Settings</div>
           <div className={styles.toggleRow}>
-            <div>
-              <div className={styles.toggleLabel}>Auto-Submit</div>
-              <div className={styles.toggleHint}>Auto-submit wins to leaderboard</div>
-            </div>
-            <div className={styles.toggleControl}>
-              <input
-                className={styles.checkbox}
-                type="checkbox"
-                checked={autoSubmitWins}
-                onChange={handleToggleAutoSubmit}
-              />
-            </div>
-          </div>
-          <div className={styles.toggleRow} style={{ marginTop: '0.9rem' }}>
             <div>
               <div className={styles.toggleLabel}>Theme</div>
               <div className={styles.toggleHint}>Choose your preferred appearance</div>
@@ -701,6 +857,20 @@ function AccountView() {
                   </>
                 )}
               </div>
+            </div>
+          </div>
+          <div className={styles.toggleRow} style={{ marginTop: '0.9rem' }}>
+            <div>
+              <div className={styles.toggleLabel}>Auto-Submit</div>
+              <div className={styles.toggleHint}>Auto-submit wins to leaderboard</div>
+            </div>
+            <div className={styles.toggleControl}>
+              <input
+                className={styles.checkbox}
+                type="checkbox"
+                checked={autoSubmitWins}
+                onChange={handleToggleAutoSubmit}
+              />
             </div>
           </div>
         </div>

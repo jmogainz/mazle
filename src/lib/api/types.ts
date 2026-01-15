@@ -98,12 +98,12 @@ export type LeaderboardTopResponse = {
 
 export type LeaderboardMeResponse =
   | {
-      date: string;
-      rank: number;
-      displayName: string;
-      timeMs: number;
-      attemptsUsed: number;
-    }
+    date: string;
+    rank: number;
+    displayName: string;
+    timeMs: number;
+    attemptsUsed: number;
+  }
   | null;
 
 export type LeaderboardAroundResponse = {
@@ -169,6 +169,16 @@ export type SettingsUpdateRequest = Partial<{
 export type SettingsUpdateResponse = {
   ok: true;
   settings: UserSettings;
+};
+
+export type ProfileUpdateRequest = Partial<{
+  characterId: string;
+  skinId: string;
+}>;
+
+export type ProfileUpdateResponse = {
+  ok: true;
+  profile: UserProfile;
 };
 
 export type ArchiveDay = {

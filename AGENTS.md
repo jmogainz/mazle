@@ -17,6 +17,10 @@ A daily Wordle-style puzzle game inspired by Pokémon ice gym puzzles. Players n
 - There is no Make target for the task.
 - You need a one-off command that does not replace the normal build/run/deploy flow.
 
+**Exception:** You may use `cargo build` / `cargo run` **only for ML-related work inside `generator-rust/`** (e.g., `generator-rust/ml` or `generator-rust/ml/bridge`) when a Make target is not available.
+
+**ALWAYS use the Make targets provided below** for all other build, test, and deployment workflows. All orchestration runs through the root `Makefile` and `generator-rust/Makefile`.
+
 If you choose a direct command for build/run/deploy, call it out explicitly and explain why Make isn’t used.
 
 ---

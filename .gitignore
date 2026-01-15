@@ -45,6 +45,7 @@ generator-rust/target/
 
 # Local datasets
 data/
+generator-rust/data/
 
 # Local cargo caches (used for Rust/PyO3 bridge builds)
 .cargo/
@@ -52,6 +53,9 @@ data/
 
 # Local Python venv for ML tooling
 generator-rust/ml/.venv/
+generator-rust/ml/bridge/target/
+**/__pycache__/
+*.py[cod]
 
 # WASM build marker (tracks rebuild state, not needed in repo)
 src/wasm/generator/.build-marker
@@ -61,3 +65,9 @@ public/wasm/
 
 **/.shuttle_deploy_url
 bkp/
+generator-rust/ml/output*/
+generator-rust/ml/output*.pid
+output*.log
+output*.pid
+*.log
+

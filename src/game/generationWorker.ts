@@ -10,6 +10,7 @@ interface GenerateRequest {
   type: 'generate';
   id: number;
   seed: string;
+  startBatch?: number;
   closenessThreshold?: number;
 }
 
@@ -113,7 +114,12 @@ async function initialize(): Promise<void> {
 /**
  * Generate a puzzle (synchronous, blocks this worker thread).
  */
-async function generate(id: number, seed: string, closenessThreshold?: number): Promise<void> {
+async function generate(
+  id: number,
+  seed: string,
+  startBatch?: number,
+  closenessThreshold?: number
+): Promise<void> {
   if (!wasm || !initialized) {
     const response: ErrorResponse = {
       type: 'error',
@@ -130,16 +136,23 @@ async function generate(id: number, seed: string, closenessThreshold?: number): 
 
     // Generate puzzle (this blocks until complete)
     let puzzle;
-    if (closenessThreshold !== undefined) {
+    const shouldUseConfig =
+      closenessThreshold !== undefined || (startBatch !== undefined && startBatch > 0);
+
+    if (shouldUseConfig) {
       // Create config object matching Rust's GenerationConfig
-      const config = {
-        closenessThreshold,
+      const config: Record<string, unknown> = {
         // Default other values as they aren't exposed yet
         targetPsychologyScore: 2000,
         parallel: false, // Worker is single-threaded
-        startBatch: 0,
+        startBatch: startBatch ?? 0,
       };
-      puzzle = wasm.generateIceWithConfig(seed, config);
+
+      if (closenessThreshold !== undefined) {
+        config.closenessThreshold = closenessThreshold;
+      }
+
+      puzzle = wasm.generateWithConfig(seed, config);
     } else {
       puzzle = wasm.generateIce(seed);
     }
@@ -177,7 +190,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       await initialize();
       break;
     case 'generate':
-      await generate(data.id, data.seed, data.closenessThreshold);
+      await generate(data.id, data.seed, data.startBatch, data.closenessThreshold);
       break;
   }
 };

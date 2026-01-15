@@ -17,7 +17,7 @@ export const PENALTY_MS = 30000;
 
 // Closeness threshold configuration
 export const CLOSENESS_THRESHOLD_DEV = 0.90;
-export const CLOSENESS_THRESHOLD_PROD = 1.0;
+export const CLOSENESS_THRESHOLD_PROD = 0.90;
 
 // Local storage keys
 export const STORAGE_KEYS = {

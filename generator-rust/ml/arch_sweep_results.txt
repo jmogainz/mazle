@@ -1,0 +1,8 @@
+ARCHITECTURE SWEEP RESULTS
+============================================================
+Baseline: 2.7% PASS
+
+3.1% - swiglu (SwiGLU activation) ✓
+1.2% - rmsnorm (RMSNorm instead of LayerNorm) 
+2.0% - adaln_zero (AdaLN-Zero timestep conditioning) 
+2.3% - deep_12L (12 layers with residual scaling) 

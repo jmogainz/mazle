@@ -36,7 +36,8 @@ export default function Header({
     return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
   };
 
-  const [isDark, setIsDark] = useState(() => (typeof window === 'undefined' ? false : getEffectiveIsDark()));
+  // Start with null to avoid hydration mismatch, then sync with actual theme
+  const [isDark, setIsDark] = useState<boolean | null>(null);
 
   useEffect(() => {
     const handlePrefsChange = () => {
@@ -88,10 +89,10 @@ export default function Header({
         <label className={styles.themeToggle}>
           <input
             type="checkbox"
-            checked={isDark}
+            checked={isDark ?? false}
             onChange={toggleTheme}
             className={styles.themeToggleInput}
-            aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            aria-label="Toggle theme"
           />
           <span className={styles.themeToggleTrack} aria-hidden="true">
             <span className={styles.themeToggleThumb}>

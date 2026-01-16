@@ -758,6 +758,9 @@ export class GameScene extends Phaser.Scene {
     // Clear previous analysis if any (this also resets analysisCompleted to false)
     this.clearAnalysis();
 
+    // Clear hint overlays so they don't shake during solution replay
+    this.clearHintOverlays();
+
     const path = this.puzzle.solutionPath;
     const s = TILE_SIZE / 32;
     const moveDelay = 150; // ms per move

@@ -74,8 +74,22 @@ DEPS := DEP_GENERATOR_RUST:$(BACKEND_GATEWAY_PATH):8080
 
 # Ngrok Configuration (Managed by DevOps Toolkit)
 # Set to 1 to enable Ngrok tunnel (same default for all envs).
-ENABLE_NGROK_FOR_DEV ?= 1
+ENABLE_NGROK_FOR_DEV ?= 0
 export ENABLE_NGROK_FOR_DEV
+
+# Cloudflared Configuration (Managed by DevOps Toolkit)
+# Set to 1 to enable Cloudflare tunnel (dev/dev-test only).
+ENABLE_CLOUDFLARED_FOR_DEV ?= 1
+export ENABLE_CLOUDFLARED_FOR_DEV
+# Cloudflare tunnel hostname (named tunnel expected).
+CLOUDFLARED_HOSTNAME ?= $(subst _,-,$(UNIQUE_RUNNER_ID)).mazle.io
+export CLOUDFLARED_HOSTNAME
+# Cloudflare tunnel name (per-runner).
+CLOUDFLARED_TUNNEL_NAME ?= $(APP_NAME)-$(subst _,-,$(UNIQUE_RUNNER_ID))
+export CLOUDFLARED_TUNNEL_NAME
+# BWS project used to fetch Cloudflare API credentials (dev-test maps to dev).
+CLOUDFLARE_BWS_PROJECT ?= $(APP_NAME)-$(BWS_ENV)
+export CLOUDFLARE_BWS_PROJECT
 
 ifndef INCLUDED_COMPOSE_PROJECT_CONFIGURATION
   include $(DEVOPS_TOOLKIT_PATH)/backend/make/compose/compose-project-configurations/compose_project_configuration.mk

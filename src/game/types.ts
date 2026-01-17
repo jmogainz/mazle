@@ -46,17 +46,17 @@ export interface PuzzleData {
   // Psychology-based difficulty metrics (for dev mode display)
   difficultyScore?: number;           // Overall psychology score
   selectedBatch?: number;             // Batch number where puzzle was selected
-  
+
   // TIER 1: Core difficulty metrics (what actually makes puzzles hard)
   nearOptimalPaths?: number;          // Count of paths within optimal+2 moves
   pathOverlap?: number;               // 0-1, min overlap (best alternative's overlap with optimal)
   pathOverlapAvg?: number;            // 0-1, avg overlap across all alternatives
   earlyDivergence?: number;           // 0-1, when alternatives diverge (higher = earlier = harder)
-  
+
   // TIER 2: Per-move confusion
   directionChanges?: number;          // How many times optimal path changes direction
   decisionAmbiguity?: number;         // Avg valid moves at each position on optimal path
-  
+
   // TIER 3: Legacy metrics (less relevant for binary lives game mechanic)
   counterIntuitiveMoves?: number;     // Moves that go away from goal
   attractiveDecoys?: number;          // Wrong moves that look better than optimal
@@ -130,8 +130,8 @@ export const COLORS = {
 
   // Wall (Blocker)
   WALL_FACE: 0x202124,
-  WALL_EDGE: 0x0a0a0a,
-  
+  WALL_EDGE: 0x403d52,
+
   // Start (Yellow - "Wrong Pos")
   START_FACE: 0xd7b74a,
   START_EDGE: 0xbd9e3c,
@@ -168,7 +168,7 @@ export const COLORS = {
   // UI
   UI_PRIMARY: 0x000000,
   UI_SECONDARY: 0x787c7e,
-  
+
   // Boulders
   BOULDER: 0x787c7e,
   BOULDER_SHADOW: 0x5e6163,

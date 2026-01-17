@@ -13,7 +13,8 @@ import LeaderboardView from '@/components/LeaderboardView';
 import ArchiveView from '@/components/ArchiveView';
 import HallOfFameView from '@/components/HallOfFameView';
 import { api } from '@/lib/api';
-import { prefetchAccount, prefetchArchiveDays, prefetchLeaderboard } from '@/lib/api/cached';
+import { cachedApi, prefetchAccount, prefetchArchiveDays, prefetchHallOfFame, prefetchLeaderboard } from '@/lib/api/cached';
+import { addDays } from '@/lib/date';
 import { getPrefs } from '@/lib/prefs';
 import {
   CHEAT_TIMEOUT_MS,
@@ -45,8 +46,12 @@ import {
 } from '@/game';
 import {
   getPlayerStats,
+  mergePlayerStats,
+  savePlayerStats,
   saveTodaysResult,
+  upsertTodaysResult,
   getTodaysResult,
+  getStorageScope,
   getCachedPuzzle,
   cachePuzzle,
   saveInProgressState,
@@ -54,9 +59,10 @@ import {
   clearInProgressState,
   recordLeaderboardRank,
   setTodaysResultForDev,
+  setStorageScope,
 } from '@/utils/storage';
 import { useAdConsent } from '@/utils/consent';
-import type { PlayerStats, DailyStats, GameState, Direction } from '@/game/types';
+import type { PlayerStats, DailyStats, GameState, Direction, Position } from '@/game/types';
 import type { GameControls } from '@/game/PhaserGame';
 import { useGlobalSwipeMoves } from '@/game/useGlobalSwipeMoves';
 import { formatTime } from '@/utils/storage';
@@ -87,6 +93,102 @@ function formatCountdown(time: { hours: number; minutes: number; seconds: number
   const m = time.minutes.toString().padStart(2, '0');
   const s = time.seconds.toString().padStart(2, '0');
   return h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
+}
+
+const GUEST_IMPORT_OWNER_KEY = 'mazle_guest_history_owner_user_v1';
+
+type ServerDailyResult = {
+  date: string;
+  completed: boolean;
+  timeMs: number | null;
+  attemptsUsed: number | null;
+};
+
+function readGuestOwner(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return localStorage.getItem(GUEST_IMPORT_OWNER_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function canAdoptGuestHistory(userId: string): boolean {
+  const owner = readGuestOwner();
+  return !owner || owner === userId;
+}
+
+function ensureGuestOwner(userId: string): void {
+  if (typeof window === 'undefined') return;
+  const owner = readGuestOwner();
+  if (owner && owner !== userId) return;
+  try {
+    localStorage.setItem(GUEST_IMPORT_OWNER_KEY, userId);
+  } catch {
+    // ignore
+  }
+}
+
+function resolveAttemptsUsed(result: DailyStats): number | null {
+  if (!result || result.failed) return null;
+  if (typeof result.attemptsUsed === 'number' && Number.isFinite(result.attemptsUsed)) {
+    return Math.min(3, Math.max(1, Math.floor(result.attemptsUsed)));
+  }
+  const failedAttempts = result.attempts?.length ?? 0;
+  return Math.min(3, Math.max(1, failedAttempts + 1));
+}
+
+function buildPlaceholderAttempts(attemptsUsed: number | null | undefined): Array<{ moveCount: number; path: Position[] }> {
+  if (!attemptsUsed || attemptsUsed <= 1) return [];
+  return Array.from({ length: Math.max(0, attemptsUsed - 1) }, () => ({ moveCount: 0, path: [] }));
+}
+
+function buildDailyStatsFromServer(result: ServerDailyResult): DailyStats {
+  const completed = !!result.completed;
+  const attemptsUsed = completed && typeof result.attemptsUsed === 'number' ? result.attemptsUsed : undefined;
+  const timeMs = typeof result.timeMs === 'number' && Number.isFinite(result.timeMs) ? result.timeMs : 0;
+  return {
+    date: result.date,
+    completed,
+    failed: !completed,
+    timeMs,
+    moveCount: 0,
+    puzzleNumber: getPuzzleNumberFromNyDateString(result.date),
+    attemptsUsed,
+    attempts: buildPlaceholderAttempts(attemptsUsed),
+  };
+}
+
+function mergeServerResultIntoLocal(server: ServerDailyResult, local: DailyStats | null): DailyStats {
+  const base = buildDailyStatsFromServer(server);
+  if (!local || local.date !== server.date) return base;
+
+  const next: DailyStats = { ...base };
+  if (typeof local.puzzleNumber === 'number' && Number.isFinite(local.puzzleNumber)) {
+    next.puzzleNumber = local.puzzleNumber;
+  }
+  if (typeof local.moveCount === 'number' && Number.isFinite(local.moveCount) && local.moveCount > 0) {
+    next.moveCount = local.moveCount;
+  }
+
+  if (!server.completed) {
+    if (typeof local.timeMs === 'number' && Number.isFinite(local.timeMs) && local.timeMs > 0) {
+      next.timeMs = local.timeMs;
+    }
+    if (Array.isArray(local.attempts)) {
+      next.attempts = local.attempts;
+    }
+    if (typeof local.attemptsUsed === 'number') {
+      next.attemptsUsed = local.attemptsUsed;
+    }
+    return next;
+  }
+
+  if (local.completed && typeof local.timeMs === 'number' && local.timeMs === base.timeMs && Array.isArray(local.attempts)) {
+    next.attempts = local.attempts;
+  }
+
+  return next;
 }
 
 // Dynamic import for Phaser (client-side only)
@@ -193,6 +295,7 @@ export default function Home() {
   const [liveAttempts, setLiveAttempts] = useState<GameState['attempts']>([]);
   const [reviewAttemptIndex, setReviewAttemptIndex] = useState<number | null>(null);
   const [showReplayButton, setShowReplayButton] = useState(false);
+  const identitySyncEpochRef = useRef(0);
 
   // Keep devMaxLivesRef in sync
   useEffect(() => {
@@ -217,6 +320,13 @@ export default function Home() {
         const monthStart = `${todayNy.slice(0, 7)}-01`;
         prefetchArchiveDays(monthStart, todayNy);
       }
+      // Prefetch hall of fame for yesterday (default view) ± 2 days
+      const yesterday = addDays(todayNy, -1);
+      const hofDates: string[] = [];
+      for (let i = -2; i <= 2; i++) {
+        hofDates.push(addDays(yesterday, i));
+      }
+      prefetchHallOfFame(hofDates);
     };
 
     const ric = (window as any).requestIdleCallback as ((cb: IdleRequestCallback, opts?: { timeout: number }) => number) | undefined;
@@ -230,11 +340,172 @@ export default function Home() {
     return () => window.clearTimeout(id);
   }, [todayNy, previewFeaturesEnabled]);
 
+  const applyStoredResult = useCallback((result: DailyStats | null) => {
+    if (isPlayingRef.current) return;
+    if (result && result.date !== todayNy) return;
+
+    if (!result) {
+      setPreviousResult(null);
+      setGameResult(null);
+      setInitialStats(null);
+      return;
+    }
+
+    setPreviousResult(result);
+    setGameResult({
+      moveCount: result.moveCount,
+      timeMs: result.timeMs,
+      attempts: result.attempts,
+      failed: result.failed ?? !result.completed,
+    });
+    setShowShareCard(false);
+    setShowInlineResult(false);
+    setIsPlaying(false);
+    setIsFreshCompletion(false);
+    pendingRestoreRef.current = null;
+    setHasPendingRestore(false);
+    clearInProgressState();
+  }, [todayNy, clearInProgressState]);
+
+  useEffect(() => {
+    if (!previousResult || !puzzle) return;
+    const failed = previousResult.failed ?? !previousResult.completed;
+    const failedAttempts = previousResult.attempts?.length ?? 0;
+    const livesRemaining = failed ? 0 : 3 - failedAttempts;
+    setInitialStats({
+      lives: livesRemaining,
+      currentAttemptMoves: puzzle.optimalMoves,
+      elapsedTimeMs: previousResult.timeMs,
+      penaltyTimeMs: 0,
+    });
+  }, [previousResult, puzzle]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const epoch = identitySyncEpochRef.current + 1;
+    identitySyncEpochRef.current = epoch;
+
+    const run = async () => {
+      let meError = false;
+      let me = null as Awaited<ReturnType<typeof cachedApi.me>> | null;
+      try {
+        me = await cachedApi.me();
+      } catch {
+        meError = true;
+        me = null;
+      }
+      if (cancelled || identitySyncEpochRef.current !== epoch) return;
+
+      const userId = me?.mode === 'user' ? me.userId : null;
+      const fallbackScope = meError ? getStorageScope() : 'guest';
+      const scope = userId ? `user:${userId}` : fallbackScope;
+      setStorageScope(scope);
+
+      if (!userId) {
+        setStats(getPlayerStats(scope));
+        const localResult = getTodaysResult(scope);
+        applyStoredResult(localResult);
+        return;
+      }
+
+      const userScope = `user:${userId}`;
+      const guestScope = 'guest';
+      const canAdopt = canAdoptGuestHistory(userId);
+
+      if (canAdopt) {
+        const userStats = getPlayerStats(userScope);
+        const guestStats = getPlayerStats(guestScope);
+        if (guestStats.history.length > 0) {
+          const merged = mergePlayerStats(userStats, guestStats);
+          if (
+            merged.history.length !== userStats.history.length ||
+            merged.totalGamesPlayed !== userStats.totalGamesPlayed ||
+            merged.totalGamesWon !== userStats.totalGamesWon
+          ) {
+            ensureGuestOwner(userId);
+            savePlayerStats(merged, userScope);
+          }
+        }
+      }
+
+      let serverResult: ServerDailyResult | null = null;
+      try {
+        const res = await api.resultsDay(todayNy);
+        serverResult = res.result ?? null;
+      } catch {
+        serverResult = null;
+      }
+
+      if (cancelled || identitySyncEpochRef.current !== epoch) return;
+
+      const localUserResult = getTodaysResult(userScope);
+      const localGuestResult = canAdopt ? getTodaysResult(guestScope) : null;
+
+      if (serverResult) {
+        const merged = mergeServerResultIntoLocal(serverResult, localUserResult ?? localGuestResult);
+        upsertTodaysResult(merged, userScope);
+        setStats(getPlayerStats(userScope));
+        applyStoredResult(merged);
+        return;
+      }
+
+      let candidate = localUserResult ?? localGuestResult;
+      if (candidate && candidate.date === todayNy) {
+        if (!localUserResult && localGuestResult && canAdopt) {
+          ensureGuestOwner(userId);
+        }
+
+        if (!localUserResult) {
+          saveTodaysResult(candidate, userScope);
+        }
+
+        const attemptsUsed = resolveAttemptsUsed(candidate);
+        try {
+          const recordRes = await api.resultsRecord(
+            candidate.completed
+              ? { date: todayNy, completed: true, timeMs: candidate.timeMs, attemptsUsed: attemptsUsed ?? undefined }
+              : { date: todayNy, completed: false }
+          );
+          if (recordRes?.result) {
+            const merged = mergeServerResultIntoLocal(recordRes.result, candidate);
+            upsertTodaysResult(merged, userScope);
+            candidate = merged;
+          }
+        } catch {
+          // ignore record failures; local state is still valid
+        }
+
+        setStats(getPlayerStats(userScope));
+        applyStoredResult(candidate);
+        return;
+      }
+
+      setStats(getPlayerStats(userScope));
+      applyStoredResult(null);
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [todayNy, applyStoredResult]);
+
   useEffect(() => {
     if (!showShareCard && !showLeaderboard) return;
     prefetchLeaderboard(todayNy, 20);
     prefetchLeaderboard(todayNy, LEADERBOARD_LIMIT);
   }, [showShareCard, showLeaderboard, todayNy]);
+
+  // Prefetch hall of fame when share card or hall of fame modal is shown
+  useEffect(() => {
+    if (!showShareCard && !showHallOfFame) return;
+    const yesterday = addDays(todayNy, -1);
+    const hofDates: string[] = [];
+    for (let i = -2; i <= 2; i++) {
+      hofDates.push(addDays(yesterday, i));
+    }
+    prefetchHallOfFame(hofDates);
+  }, [showShareCard, showHallOfFame, todayNy]);
 
   // Update countdown timer every second when showing results
   useEffect(() => {
@@ -830,6 +1101,15 @@ export default function Home() {
   useEffect(() => {
     const unsubscribe = onGameEvent('analysisComplete', () => {
       setShowReplayButton(true);
+    });
+    return unsubscribe;
+  }, []);
+
+  // Listen for openAccount event (from LeaderboardView "Sign in to submit" button)
+  useEffect(() => {
+    const unsubscribe = onGameEvent('openAccount', () => {
+      setShowLeaderboard(false);
+      setShowAccount(true);
     });
     return unsubscribe;
   }, []);

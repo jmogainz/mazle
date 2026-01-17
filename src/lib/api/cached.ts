@@ -1,6 +1,7 @@
 import { getActiveApi, getApiMode } from './index';
 import type {
   ArchiveDaysResponse,
+  HallOfFamePodiumResponse,
   LeaderboardAroundResponse,
   LeaderboardMeResponse,
   LeaderboardTopResponse,
@@ -19,6 +20,7 @@ const EPOCH = new Map<string, number>();
 const ME_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const LEADERBOARD_TTL_MS = 5 * 60 * 1000; // 5 minutes (longer for better navigation UX)
 const ARCHIVE_DAYS_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const HALL_OF_FAME_TTL_MS = 10 * 60 * 1000; // 10 minutes (historical data, rarely changes)
 
 function nowMs(): number {
   return Date.now();
@@ -117,8 +119,28 @@ function leaderboardAroundKey(date: string, rank: number, window: number): strin
   return scopedKey(`lb:around:${date}:${rank}:${window}`);
 }
 
+// Invalidate all leaderboard cache entries for a given date
+export function invalidateLeaderboardCache(date: string): void {
+  const scope = cacheScope();
+  const prefix = `${scope}:lb:`;
+  const datePrefix = `${prefix}top:${date}:`;
+  const meKey = `${scope}:lb:me:${date}`;
+  const aroundPrefix = `${prefix}around:${date}:`;
+  
+  for (const key of CACHE.keys()) {
+    if (key.startsWith(datePrefix) || key === meKey || key.startsWith(aroundPrefix)) {
+      CACHE.delete(key);
+      bumpEpoch(key); // Invalidate any in-flight requests too
+    }
+  }
+}
+
 function archiveDaysKey(from: string, to: string): string {
   return scopedKey(`archive:days:${from}:${to}`);
+}
+
+function hallOfFamePodiumKey(date: string): string {
+  return scopedKey(`hof:podium:${date}`);
 }
 
 export const cachedApi = {
@@ -139,6 +161,13 @@ export const cachedApi = {
       leaderboardAroundKey(date, rank, window),
       () => getActiveApi().leaderboardAround(date, rank, window),
       LEADERBOARD_TTL_MS
+    ),
+
+  hallOfFamePodium: async (date: string): Promise<HallOfFamePodiumResponse> =>
+    fetchCached(
+      hallOfFamePodiumKey(date),
+      () => getActiveApi().hallOfFamePodium(date),
+      HALL_OF_FAME_TTL_MS
     ),
 };
 
@@ -215,4 +244,14 @@ export function readCachedArchiveDays(from: string, to: string): ArchiveDaysResp
 
 export async function getCachedArchiveDays(from: string, to: string): Promise<ArchiveDaysResponse> {
   return fetchCached(archiveDaysKey(from, to), () => getActiveApi().archiveDays(from, to), ARCHIVE_DAYS_TTL_MS);
+}
+
+export function prefetchHallOfFame(dates: string[]): void {
+  for (const date of dates) {
+    primeCache(hallOfFamePodiumKey(date), () => getActiveApi().hallOfFamePodium(date), HALL_OF_FAME_TTL_MS);
+  }
+}
+
+export function readCachedHallOfFamePodium(date: string): HallOfFamePodiumResponse | null {
+  return readCache<HallOfFamePodiumResponse>(hallOfFamePodiumKey(date));
 }

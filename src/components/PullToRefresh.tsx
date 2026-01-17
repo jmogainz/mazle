@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import PullToRefreshLib from 'pulltorefreshjs';
 import styles from './PullToRefresh.module.css';
 
@@ -9,6 +9,10 @@ interface PullToRefreshProps {
   children: React.ReactNode;
   className?: string;
   disabled?: boolean;
+  /** Enable fade/scale effect on items at scroll edges */
+  edgeFade?: boolean;
+  /** CSS selector for items to apply edge fade to (default: direct children of first child) */
+  edgeFadeSelector?: string;
 }
 
 const PULL_THRESHOLD = 80;
@@ -169,8 +173,86 @@ listeners can take over.
 }
 `;
 
-export default function PullToRefresh({ onRefresh, children, className = '', disabled = false }: PullToRefreshProps) {
+export default function PullToRefresh({ 
+  onRefresh, 
+  children, 
+  className = '', 
+  disabled = false,
+  edgeFade = false,
+  edgeFadeSelector,
+}: PullToRefreshProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Edge fade effect - scale and fade items at scroll edges
+  const updateEdgeFade = useCallback(() => {
+    const container = containerRef.current;
+    if (!container || !edgeFade) return;
+
+    const viewHeight = container.clientHeight;
+    const scrollTop = container.scrollTop;
+
+    // Find items to apply effect to
+    const selector = edgeFadeSelector || '.ptr-fade-item';
+    const items = container.querySelectorAll(selector);
+    
+    items.forEach((item) => {
+      const el = item as HTMLElement;
+      const rect = el.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      
+      // Position relative to container viewport
+      const relativeTop = rect.top - containerRect.top;
+      const relativeBottom = rect.bottom - containerRect.top;
+      const itemHeight = rect.height;
+
+      let fractionVisible = 1;
+
+      if (relativeBottom > viewHeight) {
+        // Crossing bottom edge
+        const visiblePixels = Math.max(0, viewHeight - relativeTop);
+        fractionVisible = Math.min(1, visiblePixels / itemHeight);
+      } else if (relativeTop < 0) {
+        // Crossing top edge
+        const visiblePixels = Math.max(0, relativeBottom);
+        fractionVisible = Math.min(1, visiblePixels / itemHeight);
+      }
+
+      if (fractionVisible < 1) {
+        // Scale from 0.92 to 1.0, opacity from 0.4 to 1.0
+        const scale = 0.92 + 0.08 * fractionVisible;
+        const opacity = 0.4 + 0.6 * fractionVisible;
+        el.style.transform = `scale(${scale})`;
+        el.style.opacity = `${opacity}`;
+      } else {
+        if (el.style.transform) el.style.transform = '';
+        if (el.style.opacity) el.style.opacity = '';
+      }
+    });
+  }, [edgeFade, edgeFadeSelector]);
+
+  // Set up edge fade scroll listener
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !edgeFade) return;
+
+    let rafId: number;
+    const handleScroll = () => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(updateEdgeFade);
+    };
+
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('resize', handleScroll);
+    
+    // Initial update
+    updateEdgeFade();
+
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', handleScroll);
+      cancelAnimationFrame(rafId);
+    };
+  }, [edgeFade, updateEdgeFade]);
 
   useEffect(() => {
     if (disabled) return;

@@ -6,6 +6,121 @@
   overflow: hidden;
 }
 
+.track {
+  flex: 1;
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+.track::-webkit-scrollbar {
+  display: none;
+}
+
+.panel {
+  flex: 0 0 100%;
+  width: 100%;
+  min-width: 100%;
+  scroll-snap-align: center;
+  scroll-snap-stop: always;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+}
+
+.content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  touch-action: pan-y;
+  user-select: none;
+  overflow: hidden;
+}
+
+@keyframes slideInFromRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInFromLeft {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.slideLeft {
+  animation: slideInFromRight 0.2s ease-out;
+}
+
+.slideRight {
+  animation: slideInFromLeft 0.2s ease-out;
+}
+
+.carousel {
+  display: flex;
+  flex: 1;
+  gap: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.carousel::-webkit-scrollbar {
+  display: none;
+}
+
+.dayPanel {
+  flex: 0 0 100%;
+  width: 100%;
+  min-width: 100%;
+  padding: 0 0.5rem;
+  box-sizing: border-box;
+  scroll-snap-align: center;
+  scroll-snap-stop: always;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.dayPanel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.dayPanel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dayPanel::-webkit-scrollbar-thumb {
+  background-color: var(--color-border);
+  border-radius: 20px;
+}
+
 .header {
   display: flex;
   align-items: center;
@@ -93,7 +208,7 @@
 }
 
 .podiumAvatar {
-  margin-bottom: -6px; /* Aggressively pull name up */
+  margin-bottom: 2px;
 }
 
 .podiumName {
@@ -144,4 +259,3 @@
   font-variant-numeric: tabular-nums;
   margin-top: auto; /* Push to bottom of flex container */
 }
-

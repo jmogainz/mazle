@@ -79,6 +79,16 @@ CREATE TABLE IF NOT EXISTS daily_results (
 );
 CREATE INDEX IF NOT EXISTS daily_results_user_date_idx ON daily_results(user_id, date desc);
 
+-- guest_daily_results is now stored in Redis with 10-day TTL, not PostgreSQL
+
+CREATE TABLE IF NOT EXISTS guest_user_links (
+  guest_id uuid PRIMARY KEY,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  linked_at timestamptz NOT NULL DEFAULT now(),
+  migrated_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS guest_user_links_user_id_idx ON guest_user_links(user_id);
+
 CREATE TABLE IF NOT EXISTS leaderboard_submissions (
   date date NOT NULL,
   subject_type text NOT NULL CHECK (subject_type IN ('guest','user')),
@@ -110,6 +120,7 @@ CREATE INDEX IF NOT EXISTS leaderboard_podium_date_idx ON leaderboard_podium(dat
 DROP TABLE IF EXISTS leaderboard_podium;
 DROP TABLE IF EXISTS leaderboard_submissions;
 DROP TABLE IF EXISTS daily_results;
+DROP TABLE IF EXISTS guest_user_links;
 DROP TABLE IF EXISTS daily_puzzles;
 DROP TABLE IF EXISTS stripe_events;
 DROP TABLE IF EXISTS purchases;

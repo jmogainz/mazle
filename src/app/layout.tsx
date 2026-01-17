@@ -169,7 +169,7 @@ export default function RootLayout({
         />
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var today=new Date().toLocaleDateString('en-CA',{timeZone:'America/New_York'});var raw=localStorage.getItem('mazle_daily');if(raw){var d=JSON.parse(raw);if(d.date===today){document.documentElement.dataset.puzzlePlayed='true';}}}catch(e){}})();`,
+            __html: `(function(){try{var today=new Date().toLocaleDateString('en-CA',{timeZone:'America/New_York'});var scope='guest';try{var storedScope=localStorage.getItem('mazle_storage_scope_v1');if(storedScope)scope=storedScope;}catch(e){}var raw=localStorage.getItem('mazle_daily:'+scope)||localStorage.getItem('mazle_daily');if(raw){var d=JSON.parse(raw);if(d.date===today){document.documentElement.dataset.puzzlePlayed='true';}}}catch(e){}})();`,
           }}
         />
         <ThemeApplier />

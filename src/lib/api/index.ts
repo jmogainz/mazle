@@ -44,6 +44,7 @@ export const api: ApiImpl = {
   leaderboardAround: (date, rank, window) => getActiveApi().leaderboardAround(date, rank, window),
   leaderboardSubmit: (body) => getActiveApi().leaderboardSubmit(body),
   resultsRecord: (body) => getActiveApi().resultsRecord(body),
+  resultsDay: (date) => getActiveApi().resultsDay(date),
   resultsImport: (body) => getActiveApi().resultsImport(body),
   hallOfFamePodium: (date) => getActiveApi().hallOfFamePodium(date),
   settingsUpdate: (body) => getActiveApi().settingsUpdate(body),

@@ -12,8 +12,8 @@ import HallOfFameView from '@/components/HallOfFameView';
 import { onGameEvent, emitGameEvent, TILE_SIZE, getNewYorkDateString, type Direction, type PuzzleData } from '@/game';
 import type { GameControls } from '@/game/PhaserGame';
 import { api } from '@/lib/api';
-import { prefetchAccount, prefetchLeaderboard } from '@/lib/api/cached';
-import { getPlayerStats } from '@/utils/storage';
+import { cachedApi, prefetchAccount, prefetchLeaderboard } from '@/lib/api/cached';
+import { getPlayerStats, getStorageScope, setStorageScope } from '@/utils/storage';
 import { useGlobalSwipeMoves } from '@/game/useGlobalSwipeMoves';
 import baseStyles from '@/app/page.module.css';
 import styles from './play-client.module.css';
@@ -78,6 +78,29 @@ export default function ArchivePlayClient({ date }: { date: string }) {
     } catch {
       setPreviewFeaturesEnabled(false);
     }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    cachedApi
+      .me()
+      .then((me) => {
+        const scope = me?.mode === 'user' && me.userId ? `user:${me.userId}` : 'guest';
+        setStorageScope(scope);
+        if (!cancelled) {
+          setStats(getPlayerStats(scope));
+        }
+      })
+      .catch(() => {
+        const fallbackScope = getStorageScope();
+        setStorageScope(fallbackScope);
+        if (!cancelled) {
+          setStats(getPlayerStats(fallbackScope));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -181,8 +204,14 @@ export default function ArchivePlayClient({ date }: { date: string }) {
       });
     });
 
+    const unsubscribeOpenAccount = onGameEvent('openAccount', () => {
+      setShowLeaderboard(false);
+      setShowAccount(true);
+    });
+
     return () => {
       unsubscribeComplete();
+      unsubscribeOpenAccount();
     };
   }, []);
 

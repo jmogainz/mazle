@@ -106,7 +106,7 @@
   flex: 1;
   min-height: 0;
   /* Required for flex scrolling */
-  padding-bottom: 0.5rem;
+  padding-bottom: 0;
 }
 
 /* Sticky footer for user rank */
@@ -211,6 +211,7 @@
   font-family: var(--font-main);
   text-transform: uppercase;
   letter-spacing: 0.02em;
+  text-decoration: none;
 }
 
 .submitButtonSmall:active {
@@ -222,10 +223,43 @@
   cursor: not-allowed;
 }
 
+.submitButtonSmall.submitting {
+  opacity: 1;
+  background: linear-gradient(90deg, var(--color-primary) 0%, #7dc576 50%, var(--color-primary) 100%);
+  background-size: 200% 100%;
+  animation: shimmerButton 1.5s ease-in-out infinite;
+}
+
+@keyframes shimmerButton {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+.submitButtonContent {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+.submitSpinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 .list {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
+  padding-bottom: 0.5rem;
 }
 
 .loadMoreRow {
@@ -276,9 +310,97 @@
   box-shadow: 0 0 0 1px rgba(106, 170, 100, 0.2);
 }
 
+/* Highlighted user row - same layout as regular rows but visually distinct */
+.rowMeHighlight {
+  border-color: var(--color-primary);
+  background: var(--color-surface);
+}
+
+/* Pending/unsubmitted user row - yellow theme */
+.rowMePending {
+  border-color: var(--color-warning, #D4A500);
+  background: var(--color-surface);
+}
+
+/* Sticky anchors for user row (overlay, no layout shift) */
+.stickyAnchor {
+  position: sticky;
+  height: 0;
+  width: 100%;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.stickyAnchorTop {
+  top: 0;
+}
+
+.stickyAnchorBottom {
+  bottom: 0;
+}
+
+/* Sticky positioning for user row */
+.stickyTop,
+.stickyBottom {
+  position: absolute;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  visibility: hidden;
+  opacity: 1;
+}
+
+.stickyTop {
+  top: 0;
+}
+
+.stickyBottom {
+  bottom: 0;
+}
+
+
+.rowClickable {
+  cursor: pointer;
+}
+
+.rowClickable:active {
+  transform: scale(0.98);
+}
+
+/* Submit prompt styling */
+.submitPrompt {
+  display: flex;
+  justify-content: center;
+  padding: 0.5rem 0;
+}
+
 .rowRank {
   font-weight: 900;
   color: var(--color-secondary);
+}
+
+/* Podium rank colors */
+.rankGold {
+  color: #D4A500;
+}
+
+.rankSilver {
+  color: #c0c0c0;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+}
+
+@supports (-webkit-background-clip: text) or (background-clip: text) {
+  .rankSilver {
+    background: linear-gradient(180deg, #f4f4f4 0%, #b8b8b8 55%, #8a8a8a 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    text-shadow: none;
+  }
+}
+
+.rankBronze {
+  color: #CD7F32;
 }
 
 .rowName {
@@ -296,10 +418,43 @@
   color: var(--color-text);
 }
 
+/* Spoiler blur for times when user hasn't played */
+.timeHidden {
+  filter: blur(6px);
+  user-select: none;
+  pointer-events: none;
+  opacity: 0.7;
+  transition: filter 0.3s ease, opacity 0.3s ease;
+}
+
 .rowAttempts {
   font-variant-numeric: tabular-nums;
   color: var(--color-secondary);
   font-weight: 800;
+}
+
+/* Spoiler hint banner */
+.spoilerBanner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+  background: var(--color-surface);
+  border: 1px dashed var(--color-border);
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--color-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.spoilerBanner svg {
+  width: 14px;
+  height: 14px;
+  opacity: 0.7;
 }
 
 .hintText {
@@ -394,6 +549,11 @@
   width: 30%;
 }
 
+/* Highlight for user's podium position */
+.podiumColumnMe .podiumName {
+  color: var(--color-primary);
+}
+
 .podiumBar {
   display: flex;
   flex-direction: column;
@@ -437,7 +597,7 @@
 }
 
 .podiumAvatar {
-  margin-bottom: -6px; /* Aggressively pull name up */
+  margin-bottom: 2px;
 }
 
 .podiumTime {
@@ -446,6 +606,13 @@
   color: rgba(0, 0, 0, 0.6);
   font-variant-numeric: tabular-nums;
   margin-top: auto; /* Push to bottom of flex container */
+}
+
+/* Spoiler blur for podium times */
+.podiumTimeHidden {
+  filter: blur(5px);
+  user-select: none;
+  opacity: 0.6;
 }
 
 /* Shimmer skeleton loading */

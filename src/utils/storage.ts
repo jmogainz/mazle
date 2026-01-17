@@ -7,6 +7,127 @@ const DAILY_KEY = 'mazle_daily';
 const PUZZLE_CACHE_KEY = 'mazle_puzzle_cache_v1';
 const IN_PROGRESS_KEY = 'mazle_in_progress_v1';
 const DEV_STATS_SEEDED_KEY = 'mazle_dev_seeded_stats_v1';
+const STORAGE_SCOPE_KEY = 'mazle_storage_scope_v1';
+const STORAGE_SCOPE_CHANGED_EVENT = 'mazle_storage_scope_changed_v1';
+const DEFAULT_SCOPE = 'guest';
+
+export type StorageScope = string;
+
+function resolveScope(scope?: StorageScope): StorageScope {
+  if (scope && typeof scope === 'string') return scope;
+  if (typeof window === 'undefined') return DEFAULT_SCOPE;
+  try {
+    const stored = localStorage.getItem(STORAGE_SCOPE_KEY);
+    if (stored && typeof stored === 'string') return stored;
+  } catch {
+    // ignore
+  }
+  return DEFAULT_SCOPE;
+}
+
+function scopedKey(base: string, scope?: StorageScope): string {
+  return `${base}:${resolveScope(scope)}`;
+}
+
+function readRaw(key: string): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeRaw(key: string, value: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // ignore
+  }
+}
+
+function removeRaw(key: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // ignore
+  }
+}
+
+function readScopedJson<T>(base: string, scope?: StorageScope): T | null {
+  if (typeof window === 'undefined') return null;
+  const resolved = resolveScope(scope);
+  const key = scopedKey(base, resolved);
+  const raw = readRaw(key);
+  if (raw) {
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      return null;
+    }
+  }
+
+  // Legacy fallback only for guest scope
+  if (resolved !== DEFAULT_SCOPE) return null;
+  const legacyRaw = readRaw(base);
+  if (!legacyRaw) return null;
+  try {
+    const parsed = JSON.parse(legacyRaw) as T;
+    writeRaw(key, legacyRaw);
+    removeRaw(base);
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeScopedJson(base: string, value: unknown, scope?: StorageScope): void {
+  if (typeof window === 'undefined') return;
+  const key = scopedKey(base, scope);
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // ignore
+  }
+}
+
+function removeScoped(base: string, scope?: StorageScope): void {
+  removeRaw(scopedKey(base, scope));
+}
+
+export function getStorageScope(): StorageScope {
+  return resolveScope();
+}
+
+export function setStorageScope(scope: StorageScope): void {
+  if (typeof window === 'undefined') return;
+  const next = scope || DEFAULT_SCOPE;
+  let prev: string | null = null;
+  try {
+    prev = localStorage.getItem(STORAGE_SCOPE_KEY);
+  } catch {
+    prev = null;
+  }
+  if (prev === next) return;
+  try {
+    localStorage.setItem(STORAGE_SCOPE_KEY, next);
+  } catch {
+    // ignore
+  }
+  try {
+    window.dispatchEvent(new Event(STORAGE_SCOPE_CHANGED_EVENT));
+  } catch {
+    // ignore
+  }
+}
+
+export function onStorageScopeChanged(handler: () => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+  window.addEventListener(STORAGE_SCOPE_CHANGED_EVENT, handler);
+  return () => window.removeEventListener(STORAGE_SCOPE_CHANGED_EVENT, handler);
+}
 
 // In-progress game state for resume after refresh
 export interface InProgressState {
@@ -63,20 +184,17 @@ function devRandomInt(min: number, max: number): number {
   return clampInt(min + Math.random() * (max - min + 1), min, max);
 }
 
-function seedDevStatsIfNeeded(): void {
+function seedDevStatsIfNeeded(scope?: StorageScope): void {
   if (typeof window === 'undefined') return;
   if (!isUiDevEnv()) return;
 
   try {
-    if (localStorage.getItem(DEV_STATS_SEEDED_KEY) === '1') return;
+    if (readRaw(scopedKey(DEV_STATS_SEEDED_KEY, scope)) === '1') return;
 
-    const existing = localStorage.getItem(STATS_KEY);
-    if (existing) {
-      const parsed = JSON.parse(existing) as PlayerStats;
-      if (parsed && typeof parsed === 'object' && Array.isArray(parsed.history) && parsed.history.length >= 20) {
-        localStorage.setItem(DEV_STATS_SEEDED_KEY, '1');
-        return;
-      }
+    const parsed = readScopedJson<PlayerStats>(STATS_KEY, scope);
+    if (parsed && typeof parsed === 'object' && Array.isArray(parsed.history) && parsed.history.length >= 20) {
+      writeRaw(scopedKey(DEV_STATS_SEEDED_KEY, scope), '1');
+      return;
     }
   } catch {
     // Ignore seed pre-check failures
@@ -127,28 +245,23 @@ function seedDevStatsIfNeeded(): void {
     history,
   };
 
-  try {
-    localStorage.setItem(STATS_KEY, JSON.stringify(seeded));
-    localStorage.setItem(DEV_STATS_SEEDED_KEY, '1');
-  } catch {
-    // Ignore seed write failures
-  }
+  writeScopedJson(STATS_KEY, seeded, scope);
+  writeRaw(scopedKey(DEV_STATS_SEEDED_KEY, scope), '1');
 }
 
 // Get player stats from localStorage
-export function getPlayerStats(): PlayerStats {
+export function getPlayerStats(scope?: StorageScope): PlayerStats {
   if (typeof window === 'undefined') return getDefaultStats();
 
-  seedDevStatsIfNeeded();
+  seedDevStatsIfNeeded(scope);
 
   try {
-    const stored = localStorage.getItem(STATS_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored) as PlayerStats;
+    const parsed = readScopedJson<PlayerStats>(STATS_KEY, scope);
+    if (parsed) {
       if (!parsed || typeof parsed !== 'object') return getDefaultStats();
       if (!Array.isArray(parsed.history)) {
         const next: PlayerStats = { ...getDefaultStats(), ...parsed, history: [] };
-        savePlayerStats(next);
+        savePlayerStats(next, scope);
         return next;
       }
 
@@ -171,7 +284,7 @@ export function getPlayerStats(): PlayerStats {
 
       if (changed) {
         const next: PlayerStats = { ...parsed, history: sanitizedHistory };
-        savePlayerStats(next);
+        savePlayerStats(next, scope);
         return next;
       }
 
@@ -185,11 +298,11 @@ export function getPlayerStats(): PlayerStats {
 }
 
 // Save player stats to localStorage
-export function savePlayerStats(stats: PlayerStats): void {
+export function savePlayerStats(stats: PlayerStats, scope?: StorageScope): void {
   if (typeof window === 'undefined') return;
 
   try {
-    localStorage.setItem(STATS_KEY, JSON.stringify(stats));
+    writeScopedJson(STATS_KEY, stats, scope);
   } catch {
     console.error('Failed to save stats');
   }
@@ -260,47 +373,61 @@ function recomputeStatsFromHistory(history: DailyStats[]): PlayerStats {
   };
 }
 
-export function setTodaysResultForDev(result: DailyStats | null): void {
+export function mergePlayerStats(primary: PlayerStats, secondary: PlayerStats): PlayerStats {
+  const byDate = new Map<string, DailyStats>();
+  for (const entry of secondary.history) {
+    if (entry?.date) byDate.set(entry.date, entry);
+  }
+  for (const entry of primary.history) {
+    if (entry?.date) byDate.set(entry.date, entry);
+  }
+  let merged = Array.from(byDate.values());
+  if (merged.length > 2000) {
+    merged = merged.slice(-2000);
+  }
+  return recomputeStatsFromHistory(merged);
+}
+
+export function setTodaysResultForDev(result: DailyStats | null, scope?: StorageScope): void {
   if (typeof window === 'undefined') return;
   if (!isUiDevEnv()) return;
 
   try {
     if (result == null) {
-      localStorage.removeItem(DAILY_KEY);
+      removeScoped(DAILY_KEY, scope);
     } else {
-      localStorage.setItem(DAILY_KEY, JSON.stringify(result));
+      writeScopedJson(DAILY_KEY, result, scope);
     }
   } catch {
     // ignore
   }
 
   try {
-    const stats = getPlayerStats();
+    const stats = getPlayerStats(scope);
     const today = getTodayString();
 
     const filtered = stats.history.filter((h) => h.date !== today);
     const nextHistory = result ? [...filtered, result] : filtered;
     const nextStats = recomputeStatsFromHistory(nextHistory);
-    savePlayerStats(nextStats);
+    savePlayerStats(nextStats, scope);
   } catch {
     // ignore
   }
 
   try {
-    localStorage.setItem(DEV_STATS_SEEDED_KEY, '1');
+    writeRaw(scopedKey(DEV_STATS_SEEDED_KEY, scope), '1');
   } catch {
     // ignore
   }
 }
 
 // Check if player has played today
-export function hasPlayedToday(): boolean {
+export function hasPlayedToday(scope?: StorageScope): boolean {
   if (typeof window === 'undefined') return false;
 
   try {
-    const stored = localStorage.getItem(DAILY_KEY);
-    if (stored) {
-      const daily = JSON.parse(stored);
+    const daily = readScopedJson<DailyStats>(DAILY_KEY, scope);
+    if (daily) {
       return daily.date === getTodayString();
     }
   } catch {
@@ -311,16 +438,13 @@ export function hasPlayedToday(): boolean {
 }
 
 // Get today's result if already played
-export function getTodaysResult(): DailyStats | null {
+export function getTodaysResult(scope?: StorageScope): DailyStats | null {
   if (typeof window === 'undefined') return null;
 
   try {
-    const stored = localStorage.getItem(DAILY_KEY);
-    if (stored) {
-      const daily = JSON.parse(stored);
-      if (daily.date === getTodayString()) {
-        return daily as DailyStats;
-      }
+    const daily = readScopedJson<DailyStats>(DAILY_KEY, scope);
+    if (daily && daily.date === getTodayString()) {
+      return daily as DailyStats;
     }
   } catch {
     console.error('Failed to get daily result');
@@ -330,14 +454,14 @@ export function getTodaysResult(): DailyStats | null {
 }
 
 // Save today's result
-export function saveTodaysResult(result: DailyStats): void {
+export function saveTodaysResult(result: DailyStats, scope?: StorageScope): void {
   if (typeof window === 'undefined') return;
 
   try {
-    localStorage.setItem(DAILY_KEY, JSON.stringify(result));
+    writeScopedJson(DAILY_KEY, result, scope);
 
     // Update overall stats
-    const stats = getPlayerStats();
+    const stats = getPlayerStats(scope);
     const today = getTodayString();
     const yesterday = addDays(today, -1);
 
@@ -373,32 +497,50 @@ export function saveTodaysResult(result: DailyStats): void {
       stats.history = stats.history.slice(-2000);
     }
 
-    savePlayerStats(stats);
+    savePlayerStats(stats, scope);
   } catch {
     console.error('Failed to save daily result');
   }
 }
 
-export function recordLeaderboardRank(date: string, rank: number): void {
+export function upsertTodaysResult(result: DailyStats, scope?: StorageScope): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    writeScopedJson(DAILY_KEY, result, scope);
+
+    const stats = getPlayerStats(scope);
+    const today = getTodayString();
+    const { attempts, ...rest } = result as any;
+    const filtered = stats.history.filter((h) => h.date !== today);
+    let nextHistory = [...filtered, rest as DailyStats];
+    if (nextHistory.length > 2000) {
+      nextHistory = nextHistory.slice(-2000);
+    }
+    const nextStats = recomputeStatsFromHistory(nextHistory);
+    savePlayerStats(nextStats, scope);
+  } catch {
+    console.error('Failed to upsert daily result');
+  }
+}
+
+export function recordLeaderboardRank(date: string, rank: number, scope?: StorageScope): void {
   if (typeof window === 'undefined') return;
   if (!Number.isFinite(rank) || rank < 1) return;
   const normalizedRank = Math.floor(rank);
 
   try {
-    const stored = localStorage.getItem(DAILY_KEY);
-    if (stored) {
-      const daily = JSON.parse(stored) as DailyStats;
-      if (daily?.date === date) {
-        const next: DailyStats = { ...daily, leaderboardRank: normalizedRank };
-        localStorage.setItem(DAILY_KEY, JSON.stringify(next));
-      }
+    const daily = readScopedJson<DailyStats>(DAILY_KEY, scope);
+    if (daily?.date === date) {
+      const next: DailyStats = { ...daily, leaderboardRank: normalizedRank };
+      writeScopedJson(DAILY_KEY, next, scope);
     }
   } catch {
     // Ignore localStorage update failures
   }
 
   try {
-    const stats = getPlayerStats();
+    const stats = getPlayerStats(scope);
     let changed = false;
     for (const entry of stats.history) {
       if (entry.date !== date) continue;
@@ -408,7 +550,7 @@ export function recordLeaderboardRank(date: string, rank: number): void {
       }
       break;
     }
-    if (changed) savePlayerStats(stats);
+    if (changed) savePlayerStats(stats, scope);
   } catch {
     // Ignore localStorage update failures
   }
@@ -420,7 +562,7 @@ export function getGuestHistoryForAccountImport(): Array<{
   timeMs: number | null;
   attemptsUsed: number | null;
 }> {
-  const stats = getPlayerStats();
+  const stats = getPlayerStats(DEFAULT_SCOPE);
   const byDate = new Map<string, DailyStats>();
   for (const entry of stats.history) {
     if (!entry?.date || typeof entry.date !== 'string') continue;
@@ -430,7 +572,7 @@ export function getGuestHistoryForAccountImport(): Array<{
   }
 
   const today = getTodayString();
-  const todayResult = getTodaysResult();
+  const todayResult = getTodaysResult(DEFAULT_SCOPE);
   if (todayResult && todayResult.date === today) {
     byDate.set(today, todayResult);
   }
@@ -542,7 +684,7 @@ export function cachePuzzle(seed: string, puzzle: PuzzleData): void {
 }
 
 // Save in-progress game state for resume after refresh
-export function saveInProgressState(seed: string, state: Omit<InProgressState, 'date' | 'seed'>): void {
+export function saveInProgressState(seed: string, state: Omit<InProgressState, 'date' | 'seed'>, scope?: StorageScope): void {
   if (typeof window === 'undefined') return;
 
   try {
@@ -551,32 +693,30 @@ export function saveInProgressState(seed: string, state: Omit<InProgressState, '
       date: getTodayString(),
       seed,
     };
-    localStorage.setItem(IN_PROGRESS_KEY, JSON.stringify(fullState));
+    writeScopedJson(IN_PROGRESS_KEY, fullState, scope);
   } catch (error) {
     console.error('Failed to save in-progress state', error);
   }
 }
 
 // Get in-progress game state if it matches today's date and seed
-export function getInProgressState(seed: string): InProgressState | null {
+export function getInProgressState(seed: string, scope?: StorageScope): InProgressState | null {
   if (typeof window === 'undefined') return null;
 
   try {
-    const stored = localStorage.getItem(IN_PROGRESS_KEY);
-    if (!stored) return null;
-
-    const state = JSON.parse(stored) as InProgressState;
+    const state = readScopedJson<InProgressState>(IN_PROGRESS_KEY, scope);
+    if (!state) return null;
 
     // Validate it's for today and the same puzzle
     if (state.date !== getTodayString() || state.seed !== seed) {
       // Stale state, clear it
-      localStorage.removeItem(IN_PROGRESS_KEY);
+      removeScoped(IN_PROGRESS_KEY, scope);
       return null;
     }
 
     // Basic validation
     if (typeof state.playerPos?.x !== 'number' || typeof state.playerPos?.y !== 'number') {
-      localStorage.removeItem(IN_PROGRESS_KEY);
+      removeScoped(IN_PROGRESS_KEY, scope);
       return null;
     }
 
@@ -588,11 +728,11 @@ export function getInProgressState(seed: string): InProgressState | null {
 }
 
 // Clear in-progress state (called on game complete)
-export function clearInProgressState(): void {
+export function clearInProgressState(scope?: StorageScope): void {
   if (typeof window === 'undefined') return;
 
   try {
-    localStorage.removeItem(IN_PROGRESS_KEY);
+    removeScoped(IN_PROGRESS_KEY, scope);
   } catch (error) {
     console.error('Failed to clear in-progress state', error);
   }

@@ -355,6 +355,7 @@
   --item-scale: 1;
   --item-opacity: 1;
   --item-grayscale: 0;
+  --item-press-scale: 1;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -363,15 +364,26 @@
   border: none;
   background: transparent;
   cursor: pointer;
+  outline: none;
   opacity: var(--item-opacity);
-  transform: scale(var(--item-scale));
+  transform: scale(calc(var(--item-scale) * var(--item-press-scale)));
   filter: grayscale(var(--item-grayscale));
   transition: transform 0.3s ease-out, opacity 0.3s ease-out, filter 0.3s ease-out;
+  -webkit-tap-highlight-color: transparent;
   flex-shrink: 0;
   width: var(--item-width);
   height: calc(var(--item-width) * 1.15);
   padding: 0;
   scroll-snap-align: center;
+}
+
+.skinWheelItem:active {
+  --item-press-scale: 1.06;
+}
+
+.skinWheelItem:focus,
+.skinWheelItem:focus-visible {
+  outline: none;
 }
 
 .skinWheelItemIcon {

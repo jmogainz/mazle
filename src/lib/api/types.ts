@@ -141,6 +141,16 @@ export type ResultsRecordResponse = {
   };
 };
 
+export type ResultsDayResponse = {
+  ok: true;
+  result: {
+    date: string;
+    completed: boolean;
+    timeMs: number | null;
+    attemptsUsed: number | null;
+  } | null;
+};
+
 export type ResultsImportRow = {
   date: string;
   completed: boolean;

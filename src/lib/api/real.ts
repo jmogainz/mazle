@@ -17,6 +17,7 @@ import type {
   MeResponse,
   ProfileUpdateRequest,
   ProfileUpdateResponse,
+  ResultsDayResponse,
   ResultsImportRequest,
   ResultsImportResponse,
   ResultsRecordRequest,
@@ -68,6 +69,9 @@ export const realApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }),
+
+  resultsDay: async (date?: string): Promise<ResultsDayResponse> =>
+    fetchJson(`/api/results/day${date ? `?date=${encodeURIComponent(date)}` : ''}`, { method: 'GET' }),
 
   resultsImport: async (body: ResultsImportRequest): Promise<ResultsImportResponse> =>
     fetchJson('/api/results/import', {

@@ -2,6 +2,7 @@
 
 import React, { useMemo } from 'react';
 import { getSkinById } from '@/lib/skins';
+import styles from './CharacterIcon.module.css';
 
 type CharacterIconProps = {
   characterId?: string | null;
@@ -91,7 +92,7 @@ export default function CharacterIcon({ characterId, skinId, size = 34, title }:
       style={{ display: 'block', overflow: 'visible' }}
     >
       {title ? <title>{title}</title> : null}
-      <ellipse cx="16" cy="27" rx="9" ry="3" fill="rgba(0,0,0,0.15)" />
+      <ellipse cx="16" cy="27" rx="9" ry="3" className={styles.shadow} />
       {renderShape()}
       {/* Eyes - adjusted for pyramid */}
       <g transform={shape === 'pyramid' ? 'translate(0, 2)' : ''}>

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import { cachedApi } from '@/lib/api/cached';
 import { getPrefs, onPrefsChanged, setPrefs } from '@/lib/prefs';
 import styles from './Header.module.css';
 
@@ -40,6 +41,18 @@ export default function Header({
 
   // Start with null to avoid hydration mismatch, then sync with actual theme
   const [isDark, setIsDark] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    cachedApi
+      .me()
+      .then((me) => {
+        const serverTheme = me?.mode === 'user' ? me.settings?.theme : null;
+        if (serverTheme === 'system' || serverTheme === 'light' || serverTheme === 'dark') {
+          setPrefs({ themePreference: serverTheme });
+        }
+      })
+      .catch(() => null);
+  }, []);
 
   useEffect(() => {
     const handlePrefsChange = () => {

@@ -6,7 +6,7 @@ import { signIn } from 'next-auth/react';
 import { api } from '@/lib/api';
 import { cachedApi, fetchMeFresh, readCachedMe, readCachedArchiveDays, getCachedArchiveDays } from '@/lib/api/cached';
 import { LAUNCH_DATE_NY, getPuzzleNumber } from '@/game/puzzleGenerator';
-import { formatTime, getPlayerStats } from '@/utils/storage';
+import { formatTime, getPlayerStats, getStorageScope, setStorageScope } from '@/utils/storage';
 import {
   addDays,
   daysInMonth,
@@ -88,7 +88,7 @@ function ArchiveView({ presentation = 'overlay', initialTodayNy, onClose }: Arch
   const [selectedPlanId, setSelectedPlanId] = useState<'monthly' | 'lifetime' | null>(null);
   const [signInExpanded, setSignInExpanded] = useState(false);
   const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
-  const [localStats] = useState(() => getPlayerStats());
+  const [localStats, setLocalStats] = useState(() => getPlayerStats());
   const localHistoryByDate = useMemo(() => new Map(localStats.history.map((h) => [h.date, h])), [localStats]);
 
   // Use cached entitlements immediately so entitled users never see locks
@@ -124,6 +124,29 @@ function ArchiveView({ presentation = 'overlay', initialTodayNy, onClose }: Arch
     if (!showLockedFeatures) return;
     refreshMe(!!cachedMe);
   }, [refreshMe, showLockedFeatures, cachedMe]);
+
+  useEffect(() => {
+    let cancelled = false;
+    cachedApi
+      .me()
+      .then((me) => {
+        const scope = me?.mode === 'user' && me.userId ? `user:${me.userId}` : 'guest';
+        setStorageScope(scope);
+        if (!cancelled) {
+          setLocalStats(getPlayerStats(scope));
+        }
+      })
+      .catch(() => {
+        const fallbackScope = getStorageScope();
+        setStorageScope(fallbackScope);
+        if (!cancelled) {
+          setLocalStats(getPlayerStats(fallbackScope));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!requestedDate) return;

@@ -10,7 +10,7 @@ import { addDays } from '@/lib/date';
 import { getAllSkins, getSkinById, getUnlockedSkins } from '@/lib/skins';
 import { getCharacterById } from '@/lib/characters';
 import { getNewYorkDateString } from '@/game/puzzleGenerator';
-import { formatTime, getGuestHistoryForAccountImport } from '@/utils/storage';
+import { formatTime, getGuestHistoryForAccountImport, setStorageScope } from '@/utils/storage';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import CharacterIcon from './CharacterIcon';
 import SkinWheelItem from './SkinWheelItem';
@@ -18,6 +18,7 @@ import styles from './AccountView.module.css';
 
 const DEVTOOLS_PREVIEW_FEATURES_KEY = 'mazle_devtools_preview_features_v1';
 const GUEST_IMPORT_PREFIX = 'mazle_guest_history_imported_v1:';
+const GUEST_IMPORT_OWNER_KEY = 'mazle_guest_history_owner_user_v1';
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -176,6 +177,13 @@ function AccountView() {
   useEffect(() => {
     if (meState.status !== 'loaded') return;
     const me = meState.data;
+    const scope = me.mode === 'user' && me.userId ? `user:${me.userId}` : 'guest';
+    setStorageScope(scope);
+  }, [meState]);
+
+  useEffect(() => {
+    if (meState.status !== 'loaded') return;
+    const me = meState.data;
     if (me.mode !== 'user') return;
     const serverValue = me.settings?.leaderboardAutoSubmit;
     if (typeof serverValue !== 'boolean') return;
@@ -207,6 +215,21 @@ function AccountView() {
     if (meState.status !== 'loaded') return;
     const me = meState.data;
     if (me.mode !== 'user' || !me.userId) return;
+
+    let ownerId: string | null = null;
+    try {
+      ownerId = localStorage.getItem(GUEST_IMPORT_OWNER_KEY);
+    } catch {
+      ownerId = null;
+    }
+    if (ownerId && ownerId !== me.userId) return;
+    if (!ownerId) {
+      try {
+        localStorage.setItem(GUEST_IMPORT_OWNER_KEY, me.userId);
+      } catch {
+        // ignore
+      }
+    }
 
     const key = `${GUEST_IMPORT_PREFIX}${me.userId}`;
     let alreadyImported = false;
@@ -475,9 +498,9 @@ function AccountView() {
     };
   }, [handleScroll, handleScrollEnd]);
 
-  // Arrow navigation
+  // Arrow navigation with wrap-around
   const handlePrev = useCallback(() => {
-    const newIndex = Math.max(0, skinWheelIndex - 1);
+    const newIndex = skinWheelIndex <= 0 ? skins.length - 1 : skinWheelIndex - 1;
     setSkinWheelIndex(newIndex);
     scrollToIndex(newIndex);
     const skin = skins[newIndex];
@@ -487,7 +510,7 @@ function AccountView() {
   }, [skinWheelIndex, skins, applyProfile, scrollToIndex]);
 
   const handleNext = useCallback(() => {
-    const newIndex = Math.min(skins.length - 1, skinWheelIndex + 1);
+    const newIndex = skinWheelIndex >= skins.length - 1 ? 0 : skinWheelIndex + 1;
     setSkinWheelIndex(newIndex);
     scrollToIndex(newIndex);
     const skin = skins[newIndex];
@@ -605,7 +628,6 @@ function AccountView() {
                 type="button"
                 className={styles.skinWheelArrow}
                 onClick={handlePrev}
-                disabled={skinWheelIndex <= 0}
                 aria-label="Previous skin"
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -648,7 +670,6 @@ function AccountView() {
                 type="button"
                 className={styles.skinWheelArrow}
                 onClick={handleNext}
-                disabled={skinWheelIndex >= skins.length - 1}
                 aria-label="Next skin"
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

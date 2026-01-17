@@ -18,6 +18,7 @@ import type {
   MeResponse,
   ProfileUpdateRequest,
   ProfileUpdateResponse,
+  ResultsDayResponse,
   ResultsImportRequest,
   ResultsImportResponse,
   ResultsRecordRequest,
@@ -441,6 +442,18 @@ export const mockApi = {
     const next = { ...stored, [body.date]: normalized };
     writeStoredResults(next);
     return { ok: true, created: !existed, result: { date: body.date, completed: normalized.completed, timeMs: normalized.timeMs, attemptsUsed: normalized.attemptsUsed } };
+  },
+
+  resultsDay: async (date?: string): Promise<ResultsDayResponse> => {
+    const target = date ?? getNewYorkDateString();
+    const stored = readStoredResults();
+    const row = stored[target];
+    return {
+      ok: true,
+      result: row
+        ? { date: target, completed: row.completed, timeMs: row.timeMs, attemptsUsed: row.attemptsUsed }
+        : null,
+    };
   },
 
   resultsImport: async (body: ResultsImportRequest): Promise<ResultsImportResponse> => {

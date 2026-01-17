@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { resolveMeIdentity } from '@/lib/server/identity';
 import { setGuestIdCookie } from '@/lib/server/cookies';
 import { jsonError, readJsonBody } from '@/lib/server/responses';
-import { isTodayOrYesterdayNyDate, recordDailyResult } from '@/lib/server/account';
+import { isTodayOrYesterdayNyDate, recordDailyResult, recordGuestDailyResult } from '@/lib/server/account';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -21,9 +21,6 @@ function isValidNyDateString(value: string | null): value is string {
 
 export async function POST(request: Request) {
   const me = await resolveMeIdentity(request);
-  if (!me.userId) {
-    return jsonError(401, 'AUTH_REQUIRED', 'Sign in to record results.');
-  }
 
   let body: Body;
   try {
@@ -60,7 +57,9 @@ export async function POST(request: Request) {
   }
 
   try {
-    const recorded = await recordDailyResult(me.userId, { date: body.date, completed, timeMs, attemptsUsed });
+    const recorded = me.userId
+      ? await recordDailyResult(me.userId, { date: body.date, completed, timeMs, attemptsUsed })
+      : await recordGuestDailyResult(me.guestId, { date: body.date, completed, timeMs, attemptsUsed });
     const res = NextResponse.json(
       {
         ok: true,

@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { getToken } from 'next-auth/jwt';
 import { ensureDbSchema, getDbPool } from './db';
 import { env } from './env';
+import { migrateGuestDailyResults } from './account';
 import { getLeaderboardRedis } from './redis';
 import { LB_NAMES_KEY } from './leaderboard';
 import { getGuestProfile, guestDisplayNameExists, reserveGuestDisplayName, saveGuestProfile } from './guestStore';
@@ -96,6 +97,12 @@ async function getOrCreateGuest(guestIdCandidate: string | null): Promise<{ gues
     if (existing) {
       return { guestId: existing.guestId, displayName: existing.displayName, setCookie: false };
     }
+    
+    // Guest profile expired in Redis but the guest ID is still valid from cookie.
+    // Recreate the profile so we can migrate their data (guest_daily_results uses guest_id).
+    const displayName = await generateUniqueDisplayNameForGuest(guestIdCandidate);
+    await saveGuestProfile(guestIdCandidate, displayName);
+    return { guestId: guestIdCandidate, displayName, setCookie: false };
   }
 
   const guestId = crypto.randomUUID();
@@ -118,7 +125,14 @@ async function ensureUserDisplayName(userId: string, preferredName: string | nul
   const current = await getUserDisplayName(userId);
   if (current) return current;
 
-  const next = preferredName ?? (await generateUniqueDisplayNameForUser());
+  // Check if preferred name is available (not taken by another user)
+  let next: string;
+  if (preferredName && !(await isUserDisplayNameTaken(preferredName, userId))) {
+    next = preferredName;
+  } else {
+    next = await generateUniqueDisplayNameForUser();
+  }
+  
   await pool.query('update users set display_name=$2, updated_at=now() where id=$1 and display_name is null', [userId, next]);
   return (await getUserDisplayName(userId)) ?? next;
 }
@@ -134,6 +148,7 @@ async function linkGuestToUser(userId: string, guestId: string): Promise<void> {
   const userDisplayName = guestName ? await ensureUserDisplayName(userId, guestName) : await ensureUserDisplayName(userId, null);
 
   await migrateTodayLeaderboardIfPresent({ userId, guestId, userDisplayName }).catch(() => null);
+  await migrateGuestDailyResults(guestId, userId).catch(() => null);
 }
 
 export async function getEntitlementsForUser(userId: string): Promise<{ archiveAccess: boolean; adsRemoved: boolean }> {

@@ -1108,7 +1108,6 @@ export default function Home() {
   // Listen for openAccount event (from LeaderboardView "Sign in to submit" button)
   useEffect(() => {
     const unsubscribe = onGameEvent('openAccount', () => {
-      setShowLeaderboard(false);
       setShowAccount(true);
     });
     return unsubscribe;

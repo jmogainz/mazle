@@ -165,7 +165,8 @@ function buildLeaderboardEntries(date: string, users: SeedUser[]): LeaderboardEn
   const rand = seededRandom(hashString(`lb:${date}`) || 1);
   const shuffled = shuffle(users, rand);
   const base = 35_000 + Math.floor(rand() * 15_000);
-  const times = shuffled.map(() => base + Math.floor(rand() * 180_000));
+  // Full millisecond granularity for leaderboard times
+  const times = shuffled.map(() => base + Math.floor(rand() * 180_000) + Math.floor(rand() * 1000));
   times.sort((a, b) => a - b);
 
   const submittedBase = Date.parse(`${date}T12:00:00.000Z`);
@@ -206,7 +207,8 @@ function buildDailyResults(
     if (rand() > playRate) continue;
     const completed = rand() < completeRate;
     const attemptsUsed = completed ? 1 + Math.floor(rand() * 3) : null;
-    const timeMs = completed ? 30_000 + Math.floor(rand() * 180_000) : null;
+    // Full millisecond granularity: 30-210 seconds with ms precision
+    const timeMs = completed ? 30_000 + Math.floor(rand() * 180_000) + Math.floor(rand() * 1000) : null;
     rows.push({ userId: user.id, date, completed, timeMs, attemptsUsed });
   }
   return rows;

@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { cachedApi, prefetchHallOfFame, readCachedHallOfFamePodium } from '@/lib/api/cached';
 import { addDays } from '@/lib/date';
 import { getNewYorkDateString, getPuzzleNumberFromNyDateString, LAUNCH_DATE_NY } from '@/game/puzzleGenerator';
-import { formatTime } from '@/utils/storage';
+import { formatTimeMs } from '@/utils/storage';
 import CharacterIcon from './CharacterIcon';
 import styles from './HallOfFameView.module.css';
 import type { HallOfFamePodiumResponse } from '@/lib/api/types';
@@ -201,7 +201,7 @@ export default function HallOfFameView({ initialDate }: HallOfFameViewProps) {
               <div className={styles.podiumName}>{second?.displayName ?? '—'}</div>
               <div className={`${styles.podiumBar} ${styles.podiumSilver}`}>
                 <div className={styles.podiumRankBadge}>🥈</div>
-                <div className={styles.podiumTime}>{second ? formatTime(second.timeMs) : '—'}</div>
+                <div className={styles.podiumTime}>{second ? formatTimeMs(second.timeMs) : '—'}</div>
               </div>
             </div>
             <div className={styles.podiumColumn}>
@@ -211,7 +211,7 @@ export default function HallOfFameView({ initialDate }: HallOfFameViewProps) {
               <div className={styles.podiumName}>{first?.displayName ?? '—'}</div>
               <div className={`${styles.podiumBar} ${styles.podiumGold}`}>
                 <div className={styles.podiumRankBadge}>🥇</div>
-                <div className={styles.podiumTime}>{first ? formatTime(first.timeMs) : '—'}</div>
+                <div className={styles.podiumTime}>{first ? formatTimeMs(first.timeMs) : '—'}</div>
               </div>
             </div>
             <div className={styles.podiumColumn}>
@@ -221,7 +221,7 @@ export default function HallOfFameView({ initialDate }: HallOfFameViewProps) {
               <div className={styles.podiumName}>{third?.displayName ?? '—'}</div>
               <div className={`${styles.podiumBar} ${styles.podiumBronze}`}>
                 <div className={styles.podiumRankBadge}>🥉</div>
-                <div className={styles.podiumTime}>{third ? formatTime(third.timeMs) : '—'}</div>
+                <div className={styles.podiumTime}>{third ? formatTimeMs(third.timeMs) : '—'}</div>
               </div>
             </div>
           </div>

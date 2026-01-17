@@ -222,7 +222,8 @@ function buildMockLeaderboardEntries(date: string): Array<{ displayName: string;
 
   const baseEntries = names.map((name, idx) => {
     const jitter = Math.floor(rand() * 900);
-    const timeMs = base + idx * 1_250 + jitter;
+    const millis = Math.floor(rand() * 1000); // Add millisecond granularity
+    const timeMs = base + idx * 1_250 + jitter + millis;
     const attemptsUsed = 1 + Math.floor(rand() * 3);
     return { displayName: name, timeMs, attemptsUsed, isMe: false } as const;
   });

@@ -12,7 +12,7 @@ import {
   readCachedMe,
 } from '@/lib/api/cached';
 import { getNewYorkDateString, getPuzzleNumberFromNyDateString } from '@/game/puzzleGenerator';
-import { formatTime, getTodaysResult, recordLeaderboardRank } from '@/utils/storage';
+import { formatTimeMs, getTodaysResult, recordLeaderboardRank } from '@/utils/storage';
 import { emitGameEvent, onGameEvent } from '@/game/events';
 import CharacterIcon from './CharacterIcon';
 import PullToRefresh from './PullToRefresh';
@@ -570,7 +570,9 @@ function LeaderboardView() {
       ? position === 'top' ? styles.stickyTop : styles.stickyBottom
       : '';
 
-    const rankDisplay = myEntryData.rank != null && myEntryData.rank > 0 ? `#${myEntryData.rank}` : '—';
+    const rankDisplay = myEntryData.rank != null && myEntryData.rank > 0 
+      ? `#${myEntryData.rank}` 
+      : <span className={styles.pendingRank}><span /><span /><span /></span>;
 
     // Color rank based on podium position
     const rankColorClass = myEntryData.rank === 1 ? styles.rankGold
@@ -596,7 +598,7 @@ function LeaderboardView() {
       >
         <div className={`${styles.rowRank} ${rankColorClass}`.trim()}>{rankDisplay}</div>
         <div className={styles.rowName}>{myEntryData.displayName}</div>
-        <div className={styles.rowTime}>{formatTime(myEntryData.timeMs)}</div>
+        <div className={styles.rowTime}>{formatTimeMs(myEntryData.timeMs)}</div>
         <div className={styles.rowAttempts}>{myEntryData.attemptsUsed}/3</div>
       </div>
     );
@@ -700,7 +702,7 @@ function LeaderboardView() {
             <div className={styles.podiumName}>{second?.displayName}</div>
             <div className={`${styles.podiumBar} ${styles.podiumSilver}`}>
               <div className={styles.podiumRankBadge}>🥈</div>
-              <div className={`${styles.podiumTime} ${!hasPlayedToday ? styles.podiumTimeHidden : ''}`.trim()}>{second ? formatTime(second.timeMs) : ''}</div>
+              <div className={`${styles.podiumTime} ${!hasPlayedToday ? styles.podiumTimeHidden : ''}`.trim()}>{second ? formatTimeMs(second.timeMs) : ''}</div>
             </div>
           </div>
           <div className={`${styles.podiumColumn} ${first?.isMe ? styles.podiumColumnMe : ''}`.trim()}>
@@ -710,7 +712,7 @@ function LeaderboardView() {
             <div className={styles.podiumName}>{first?.displayName}</div>
             <div className={`${styles.podiumBar} ${styles.podiumGold}`}>
               <div className={styles.podiumRankBadge}>🥇</div>
-              <div className={`${styles.podiumTime} ${!hasPlayedToday ? styles.podiumTimeHidden : ''}`.trim()}>{first ? formatTime(first.timeMs) : ''}</div>
+              <div className={`${styles.podiumTime} ${!hasPlayedToday ? styles.podiumTimeHidden : ''}`.trim()}>{first ? formatTimeMs(first.timeMs) : ''}</div>
             </div>
           </div>
           <div className={`${styles.podiumColumn} ${third?.isMe ? styles.podiumColumnMe : ''}`.trim()}>
@@ -720,7 +722,7 @@ function LeaderboardView() {
             <div className={styles.podiumName}>{third?.displayName}</div>
             <div className={`${styles.podiumBar} ${styles.podiumBronze}`}>
               <div className={styles.podiumRankBadge}>🥉</div>
-              <div className={`${styles.podiumTime} ${!hasPlayedToday ? styles.podiumTimeHidden : ''}`.trim()}>{third ? formatTime(third.timeMs) : ''}</div>
+              <div className={`${styles.podiumTime} ${!hasPlayedToday ? styles.podiumTimeHidden : ''}`.trim()}>{third ? formatTimeMs(third.timeMs) : ''}</div>
             </div>
           </div>
         </div>
@@ -778,7 +780,7 @@ function LeaderboardView() {
                   >
                     <div className={styles.rowRank}>#{e.rank}</div>
                     <div className={styles.rowName}>{e.displayName}</div>
-                    <div className={styles.rowTime}>{formatTime(e.timeMs)}</div>
+                    <div className={styles.rowTime}>{formatTimeMs(e.timeMs)}</div>
                     <div className={styles.rowAttempts}>{e.attemptsUsed}/3</div>
                   </div>
                 );
@@ -787,7 +789,7 @@ function LeaderboardView() {
                 <div key={`${e.rank}-${e.displayName}`} className={styles.row}>
                   <div className={styles.rowRank}>#{e.rank}</div>
                   <div className={styles.rowName}>{e.displayName}</div>
-                  <div className={`${styles.rowTime} ${!hasPlayedToday ? styles.timeHidden : ''}`.trim()}>{formatTime(e.timeMs)}</div>
+                  <div className={`${styles.rowTime} ${!hasPlayedToday ? styles.timeHidden : ''}`.trim()}>{formatTimeMs(e.timeMs)}</div>
                   <div className={styles.rowAttempts}>{e.attemptsUsed}/3</div>
                 </div>
               );
@@ -801,7 +803,7 @@ function LeaderboardView() {
               >
                 <div className={styles.rowRank}>#{myRank}</div>
                 <div className={styles.rowName}>{myEntryData.displayName}</div>
-                <div className={styles.rowTime}>{formatTime(myEntryData.timeMs)}</div>
+                <div className={styles.rowTime}>{formatTimeMs(myEntryData.timeMs)}</div>
                 <div className={styles.rowAttempts}>{myEntryData.attemptsUsed}/3</div>
               </div>
             )}

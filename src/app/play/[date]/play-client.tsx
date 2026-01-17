@@ -205,7 +205,6 @@ export default function ArchivePlayClient({ date }: { date: string }) {
     });
 
     const unsubscribeOpenAccount = onGameEvent('openAccount', () => {
-      setShowLeaderboard(false);
       setShowAccount(true);
     });
 

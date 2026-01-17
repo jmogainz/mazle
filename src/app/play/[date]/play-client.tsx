@@ -9,7 +9,7 @@ import OverlayShell from '@/components/OverlayShell';
 import AccountView from '@/components/AccountView';
 import LeaderboardView from '@/components/LeaderboardView';
 import HallOfFameView from '@/components/HallOfFameView';
-import { onGameEvent, TILE_SIZE, getNewYorkDateString, type Direction, type PuzzleData } from '@/game';
+import { onGameEvent, emitGameEvent, TILE_SIZE, getNewYorkDateString, type Direction, type PuzzleData } from '@/game';
 import type { GameControls } from '@/game/PhaserGame';
 import { api } from '@/lib/api';
 import { prefetchAccount, prefetchLeaderboard } from '@/lib/api/cached';
@@ -85,7 +85,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
     const todayNy = getNewYorkDateString();
     const runPrefetch = () => {
       prefetchAccount();
-      prefetchLeaderboard(todayNy, 80);
+      prefetchLeaderboard(todayNy, 200);
     };
 
     const ric = (window as any).requestIdleCallback as ((cb: IdleRequestCallback, opts?: { timeout: number }) => number) | undefined;
@@ -168,6 +168,8 @@ export default function ArchivePlayClient({ date }: { date: string }) {
       setGameResult(result);
       setShowShareCard(true);
       setIsPlaying(false);
+      // Notify LeaderboardView to refresh with latest data
+      emitGameEvent('leaderboardRefresh', {});
 
       const failedAttempts = result.attempts?.length ?? 0;
       const livesRemaining = result.failed ? 0 : 3 - failedAttempts;

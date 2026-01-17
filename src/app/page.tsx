@@ -31,6 +31,7 @@ import {
   getPuzzleNumberFromNyDateString,
   getNewYorkDateString,
   onGameEvent,
+  emitGameEvent,
   PuzzleData,
   generatePuzzleParallel,
   cancelRustRequest,
@@ -100,7 +101,7 @@ const _DEVTOOLS_BUILD_FLAG =
 
 const DEVTOOLS_PREVIEW_FEATURES_KEY = 'mazle_devtools_preview_features_v1';
 const UI_OVERHAUL_EXPERIMENTAL = false;
-const LEADERBOARD_LIMIT = 80;
+const LEADERBOARD_LIMIT = 200;
 const UI_DEV_CODE = 'uiuiuiui';
 const IS_UI_DEV_ENV = process.env.NEXT_PUBLIC_ENV === 'dev';
 
@@ -695,6 +696,8 @@ export default function Home() {
       setGameResult(result);
       prefetchLeaderboard(todayNy, 20);
       prefetchLeaderboard(todayNy, LEADERBOARD_LIMIT);
+      // Notify LeaderboardView to refresh with latest data
+      emitGameEvent('leaderboardRefresh', {});
       setShowShareCard(true);
       setIsPlaying(false); // Ensure game is marked as not playing to show blocked state
       setIsFreshCompletion(true); // Mark as fresh completion (not loaded from storage)

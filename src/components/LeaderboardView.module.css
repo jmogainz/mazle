@@ -100,30 +100,13 @@
   padding: 0.9rem;
 }
 
-/* Scrollable container for the list */
+/* Scrollable container for the list - now handled by PullToRefresh */
 .scrollArea {
   position: relative;
   flex: 1;
-  overflow-y: auto;
   min-height: 0;
   /* Required for flex scrolling */
   padding-bottom: 0.5rem;
-  /* Custom Scrollbar */
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-border) transparent;
-}
-
-.scrollArea::-webkit-scrollbar {
-  width: 6px;
-}
-
-.scrollArea::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.scrollArea::-webkit-scrollbar-thumb {
-  background-color: var(--color-border);
-  border-radius: 20px;
 }
 
 /* Sticky footer for user rank */
@@ -243,6 +226,36 @@
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
+}
+
+.loadMoreRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.6rem 0;
+  color: var(--color-secondary);
+  font-size: 0.75rem;
+}
+
+.loadMoreSpinner {
+  width: 18px;
+  height: 18px;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.loadMoreHint {
+  font-size: 0.75rem;
+  color: var(--color-secondary);
+}
+
+.loadMoreEnd {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--color-secondary);
+  padding: 0.6rem 0 0.2rem;
 }
 
 .row {
@@ -433,4 +446,55 @@
   color: rgba(0, 0, 0, 0.6);
   font-variant-numeric: tabular-nums;
   margin-top: auto; /* Push to bottom of flex container */
+}
+
+/* Shimmer skeleton loading */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-surface) 25%,
+    rgba(255, 255, 255, 0.15) 50%,
+    var(--color-surface) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+.skeletonText {
+  composes: skeleton;
+  height: 1em;
+  min-width: 40px;
+}
+
+.skeletonAvatar {
+  composes: skeleton;
+  border-radius: 50%;
+}
+
+.skeletonBar {
+  composes: skeleton;
+  border-radius: 8px;
+}
+
+.podiumLoading {
+  opacity: 1;
+}
+
+.podiumLoading .podiumName,
+.podiumLoading .podiumTime {
+  visibility: hidden;
+}
+
+.podiumLoading .podiumBar {
+  background: var(--color-surface);
 }

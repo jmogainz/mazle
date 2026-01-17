@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { ensureDbSchema, getDbPool } from '@/lib/server/db';
+import { ensureDevSystemSeeded } from '@/lib/server/devSeed';
 import { getSessionUserId } from '@/lib/server/identity';
 import { jsonError } from '@/lib/server/responses';
 
@@ -19,6 +20,11 @@ export async function GET(request: Request) {
   }
 
   try {
+    const publicEnv = process.env.NEXT_PUBLIC_ENV;
+    if (publicEnv && publicEnv !== 'prod') {
+      await ensureDevSystemSeeded();
+    }
+
     await ensureDbSchema();
     const pool = getDbPool();
     const userId = await getSessionUserId(request);
@@ -55,4 +61,3 @@ export async function GET(request: Request) {
     return jsonError(500, 'HALL_OF_FAME_FAILED', message);
   }
 }
-

@@ -211,8 +211,10 @@ function buildLeaderboardNames(date: string, count: number): string[] {
   return Array.from(names);
 }
 
-function buildMockLeaderboardTop(date: string, limit: number): LeaderboardTopResponse {
-  const names = buildLeaderboardNames(date, 80);
+const MOCK_LEADERBOARD_TOTAL = 1000;
+
+function buildMockLeaderboardEntries(date: string): Array<{ displayName: string; timeMs: number; attemptsUsed: number; isMe: boolean }> {
+  const names = buildLeaderboardNames(date, MOCK_LEADERBOARD_TOTAL);
   const seed = hashString(`lbTimes:${date}`) || 1;
   const rand = seededRandom(seed);
   const base = 38_000 + Math.floor(rand() * 9_000);
@@ -236,26 +238,38 @@ function buildMockLeaderboardTop(date: string, limit: number): LeaderboardTopRes
   if (candidate) merged.push(candidate);
 
   merged.sort((a, b) => (a.timeMs !== b.timeMs ? a.timeMs - b.timeMs : a.attemptsUsed - b.attemptsUsed));
+  return merged;
+}
 
-  const entries = merged.slice(0, limit).map((entry, idx) => ({
-    rank: idx + 1,
+function buildMockLeaderboardTop(date: string, limit: number, offset: number): LeaderboardTopResponse {
+  const merged = buildMockLeaderboardEntries(date);
+  const total = merged.length;
+  const slice = merged.slice(offset, offset + limit);
+
+  const entries = slice.map((entry, idx) => ({
+    rank: offset + idx + 1,
     displayName: entry.displayName,
     timeMs: entry.timeMs,
     attemptsUsed: entry.attemptsUsed,
     isMe: entry.isMe || undefined,
   }));
 
-  const podium = entries.slice(0, 3).map((entry) => ({
-    rank: entry.rank as 1 | 2 | 3,
-    displayName: entry.displayName,
-    timeMs: entry.timeMs,
-    attemptsUsed: entry.attemptsUsed,
-    characterId: 'default',
-    skinId: 'default',
-    isMe: entry.isMe,
-  }));
+  const podium =
+    offset === 0
+      ? merged.slice(0, 3).map((entry, idx) => ({
+          rank: (idx + 1) as 1 | 2 | 3,
+          displayName: entry.displayName,
+          timeMs: entry.timeMs,
+          attemptsUsed: entry.attemptsUsed,
+          characterId: 'default',
+          skinId: 'default',
+          isMe: entry.isMe,
+        }))
+      : undefined;
 
-  return { date, entries, podium };
+  const nextOffset = offset + entries.length < total ? offset + entries.length : null;
+
+  return { date, entries, podium, total, nextOffset };
 }
 
 function buildMockHallOfFame(date: string): HallOfFamePodiumResponse {
@@ -329,13 +343,14 @@ export const mockApi = {
     return { displayName: updated.displayName };
   },
 
-  leaderboardTop: async (date: string, limit = 50): Promise<LeaderboardTopResponse> => {
+  leaderboardTop: async (date: string, limit = 50, offset = 0): Promise<LeaderboardTopResponse> => {
     const today = getNewYorkDateString();
     if (date !== today) {
       return Promise.reject(new Error('Only today’s leaderboard is available.'));
     }
     const capped = Math.max(1, Math.min(200, limit || 50));
-    return buildMockLeaderboardTop(date, capped);
+    const safeOffset = Math.max(0, Math.floor(offset || 0));
+    return buildMockLeaderboardTop(date, capped, safeOffset);
   },
 
   leaderboardMe: async (date: string): Promise<LeaderboardMeResponse> => {
@@ -345,13 +360,13 @@ export const mockApi = {
     const me = readLocal<StoredMockMe>(MOCK_ME_KEY);
     if (!me) return null;
 
-    const top = buildMockLeaderboardTop(date, 200);
-    const idx = top.entries.findIndex((e) => e.isMe);
+    const merged = buildMockLeaderboardEntries(date);
+    const idx = merged.findIndex((e) => e.isMe);
     if (idx < 0) return null;
-    const entry = top.entries[idx];
+    const entry = merged[idx];
     return {
       date,
-      rank: entry.rank,
+      rank: idx + 1,
       displayName: entry.displayName,
       timeMs: entry.timeMs,
       attemptsUsed: entry.attemptsUsed,
@@ -362,11 +377,18 @@ export const mockApi = {
     const today = getNewYorkDateString();
     if (date !== today) return { date, entries: [] };
 
-    const top = buildMockLeaderboardTop(date, 200);
-    const idx = Math.max(0, Math.min(top.entries.length - 1, Math.floor(rank) - 1));
+    const merged = buildMockLeaderboardEntries(date);
+    const idx = Math.max(0, Math.min(merged.length - 1, Math.floor(rank) - 1));
     const start = Math.max(0, idx - Math.max(1, Math.floor(window)));
-    const end = Math.min(top.entries.length, idx + Math.max(1, Math.floor(window)) + 1);
-    return { date, entries: top.entries.slice(start, end) };
+    const end = Math.min(merged.length, idx + Math.max(1, Math.floor(window)) + 1);
+    const entries = merged.slice(start, end).map((entry, entryIdx) => ({
+      rank: start + entryIdx + 1,
+      displayName: entry.displayName,
+      timeMs: entry.timeMs,
+      attemptsUsed: entry.attemptsUsed,
+      isMe: entry.isMe || undefined,
+    }));
+    return { date, entries };
   },
 
   leaderboardSubmit: async (body: LeaderboardSubmitRequest): Promise<LeaderboardSubmitResponse> => {
@@ -396,7 +418,7 @@ export const mockApi = {
     };
     writeLeaderboardSubmission(submission);
 
-    const top = buildMockLeaderboardTop(body.date, 200);
+    const top = buildMockLeaderboardTop(body.date, 200, 0);
     const meEntry = top.entries.find((e) => e.isMe);
     return { ok: true, rank: meEntry?.rank, updated };
   },

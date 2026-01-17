@@ -9,6 +9,7 @@ type OverlayShellProps = {
   subtitle?: string;
   children: React.ReactNode;
   variant?: 'overlay' | 'page';
+  align?: 'center' | 'top';
   closeHref?: string;
   ariaLabel?: string;
   onClose?: () => void;
@@ -19,6 +20,7 @@ export default function OverlayShell({
   subtitle,
   children,
   variant = 'overlay',
+  align = 'center',
   closeHref,
   ariaLabel,
   onClose,
@@ -44,7 +46,9 @@ export default function OverlayShell({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [defaultClose]);
 
-  const containerClass = variant === 'overlay' ? styles.backdrop : styles.page;
+  const containerClass = variant === 'overlay'
+    ? `${styles.backdrop} ${align === 'top' ? styles.backdropTop : ''}`
+    : styles.page;
   const cardClass = variant === 'overlay' ? styles.card : `${styles.card} ${styles.cardPage}`;
 
   return (

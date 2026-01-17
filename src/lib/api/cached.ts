@@ -105,8 +105,8 @@ function primeCache<T>(key: string, fetcher: () => Promise<T>, ttlMs: number): v
   void fetchCached(key, fetcher, ttlMs).catch(() => null);
 }
 
-function leaderboardTopKey(date: string, limit: number): string {
-  return scopedKey(`lb:top:${date}:${limit}`);
+function leaderboardTopKey(date: string, limit: number, offset: number): string {
+  return scopedKey(`lb:top:${date}:${limit}:${offset}`);
 }
 
 function leaderboardMeKey(date: string): string {
@@ -124,8 +124,12 @@ function archiveDaysKey(from: string, to: string): string {
 export const cachedApi = {
   me: async (): Promise<MeResponse> => fetchCached(scopedKey('me'), () => getActiveApi().me(), ME_TTL_MS),
 
-  leaderboardTop: async (date: string, limit = 50): Promise<LeaderboardTopResponse> =>
-    fetchCached(leaderboardTopKey(date, limit), () => getActiveApi().leaderboardTop(date, limit), LEADERBOARD_TTL_MS),
+  leaderboardTop: async (date: string, limit = 50, offset = 0): Promise<LeaderboardTopResponse> =>
+    fetchCached(
+      leaderboardTopKey(date, limit, offset),
+      () => getActiveApi().leaderboardTop(date, limit, offset),
+      LEADERBOARD_TTL_MS
+    ),
 
   leaderboardMe: async (date: string): Promise<LeaderboardMeResponse> =>
     fetchCached(leaderboardMeKey(date), () => getActiveApi().leaderboardMe(date), LEADERBOARD_TTL_MS),
@@ -142,8 +146,12 @@ export async function fetchMeFresh(): Promise<MeResponse> {
   return fetchFresh(scopedKey('me'), () => getActiveApi().me(), ME_TTL_MS);
 }
 
-export async function fetchLeaderboardTopFresh(date: string, limit = 50): Promise<LeaderboardTopResponse> {
-  return fetchFresh(leaderboardTopKey(date, limit), () => getActiveApi().leaderboardTop(date, limit), LEADERBOARD_TTL_MS);
+export async function fetchLeaderboardTopFresh(date: string, limit = 50, offset = 0): Promise<LeaderboardTopResponse> {
+  return fetchFresh(
+    leaderboardTopKey(date, limit, offset),
+    () => getActiveApi().leaderboardTop(date, limit, offset),
+    LEADERBOARD_TTL_MS
+  );
 }
 
 export async function fetchLeaderboardMeFresh(date: string): Promise<LeaderboardMeResponse> {
@@ -162,8 +170,8 @@ export function readCachedMe(): MeResponse | null {
   return readCache<MeResponse>(scopedKey('me'));
 }
 
-export function readCachedLeaderboardTop(date: string, limit = 50): LeaderboardTopResponse | null {
-  return readCache<LeaderboardTopResponse>(leaderboardTopKey(date, limit));
+export function readCachedLeaderboardTop(date: string, limit = 50, offset = 0): LeaderboardTopResponse | null {
+  return readCache<LeaderboardTopResponse>(leaderboardTopKey(date, limit, offset));
 }
 
 export function readCachedLeaderboardMe(date: string): LeaderboardMeResponse | null {
@@ -179,7 +187,7 @@ export function prefetchAccount(): void {
 }
 
 export function prefetchLeaderboard(date: string, limit = 50): void {
-  primeCache(leaderboardTopKey(date, limit), () => getActiveApi().leaderboardTop(date, limit), LEADERBOARD_TTL_MS);
+  primeCache(leaderboardTopKey(date, limit, 0), () => getActiveApi().leaderboardTop(date, limit, 0), LEADERBOARD_TTL_MS);
   primeCache(
     leaderboardMeKey(date),
     async () => {

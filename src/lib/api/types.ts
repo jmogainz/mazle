@@ -94,6 +94,8 @@ export type LeaderboardTopResponse = {
   date: string;
   entries: LeaderboardEntry[];
   podium?: LeaderboardPodiumEntry[];
+  total?: number;
+  nextOffset?: number | null;
 };
 
 export type LeaderboardMeResponse =

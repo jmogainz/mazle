@@ -5,6 +5,7 @@ import { env } from './env';
 import { getLeaderboardRedis } from './redis';
 import { LB_NAMES_KEY } from './leaderboard';
 import { getGuestProfile, guestDisplayNameExists, reserveGuestDisplayName, saveGuestProfile } from './guestStore';
+import { randomDisplayNameCandidate } from './displayNames';
 
 export type MeIdentity = {
   mode: 'guest' | 'user';
@@ -20,51 +21,12 @@ export type MeIdentity = {
 
 export const GUEST_COOKIE = 'mazle_guest_id';
 
-const DISPLAY_NAME_MAX_LEN = 24;
-
-const ADJECTIVES = [
-  'Frosty',
-  'Swift',
-  'Misty',
-  'Brave',
-  'Calm',
-  'Clever',
-  'Bold',
-  'Chill',
-  'Sunny',
-  'Glowy',
-  'Sly',
-  'Nimble',
-];
-
-const NOUNS = [
-  'Zubat',
-  'Pikachu',
-  'Eevee',
-  'Snorlax',
-  'Psyduck',
-  'Cubone',
-  'Lapras',
-  'Abra',
-  'Onix',
-  'Jigglypuff',
-  'Vulpix',
-  'Magikarp',
-];
-
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 function randomInt(min: number, max: number): number {
   return crypto.randomInt(min, max + 1);
-}
-
-function randomDisplayNameCandidate(): string {
-  const adjective = ADJECTIVES[randomInt(0, ADJECTIVES.length - 1)];
-  const noun = NOUNS[randomInt(0, NOUNS.length - 1)];
-  const num = randomInt(10, 99);
-  return `${adjective}${noun}${num}`.slice(0, DISPLAY_NAME_MAX_LEN);
 }
 
 async function isUserDisplayNameTaken(name: string, excludeUserId?: string | null): Promise<boolean> {
@@ -83,7 +45,7 @@ async function isUserDisplayNameTaken(name: string, excludeUserId?: string | nul
 
 async function generateUniqueDisplayNameForUser(): Promise<string> {
   for (let i = 0; i < 30; i++) {
-    const candidate = randomDisplayNameCandidate();
+    const candidate = randomDisplayNameCandidate(randomInt);
     // eslint-disable-next-line no-await-in-loop
     const userTaken = await isUserDisplayNameTaken(candidate);
     if (userTaken) continue;
@@ -96,7 +58,7 @@ async function generateUniqueDisplayNameForUser(): Promise<string> {
 
 async function generateUniqueDisplayNameForGuest(guestId: string): Promise<string> {
   for (let i = 0; i < 30; i++) {
-    const candidate = randomDisplayNameCandidate();
+    const candidate = randomDisplayNameCandidate(randomInt);
     // eslint-disable-next-line no-await-in-loop
     const userTaken = await isUserDisplayNameTaken(candidate);
     if (userTaken) continue;

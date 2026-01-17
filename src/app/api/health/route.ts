@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { ensureDbSchema } from '@/lib/server/db';
+import { ensureDevSystemSeeded } from '@/lib/server/devSeed';
 import { getKvRedis, getLeaderboardRedis } from '@/lib/server/redis';
 
 export const dynamic = 'force-dynamic';
@@ -23,6 +24,16 @@ async function checkGeneratorHealth(url: string) {
 export async function GET() {
   const checks: Record<string, { ok: boolean; error?: string }> = {};
   let ok = true;
+
+  const publicEnv = process.env.NEXT_PUBLIC_ENV;
+  if (publicEnv && publicEnv !== 'prod') {
+    try {
+      const seeded = await ensureDevSystemSeeded();
+      checks.devSeed = { ok: seeded };
+    } catch (err) {
+      checks.devSeed = { ok: false, error: err instanceof Error ? err.message : 'Dev seed failed' };
+    }
+  }
 
   try {
     await ensureDbSchema();

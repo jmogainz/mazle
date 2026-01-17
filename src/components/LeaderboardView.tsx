@@ -13,11 +13,14 @@ import {
 } from '@/lib/api/cached';
 import { getNewYorkDateString, getPuzzleNumberFromNyDateString } from '@/game/puzzleGenerator';
 import { formatTime, getTodaysResult, recordLeaderboardRank } from '@/utils/storage';
+import { onGameEvent } from '@/game/events';
 import CharacterIcon from './CharacterIcon';
+import PullToRefresh from './PullToRefresh';
 import styles from './LeaderboardView.module.css';
 
 const DEVTOOLS_PREVIEW_FEATURES_KEY = 'mazle_devtools_preview_features_v1';
-const LEADERBOARD_LIMIT = 80;
+const LEADERBOARD_PAGE_SIZE = 200;
+const LOAD_MORE_THRESHOLD_PX = 180;
 
 type LoadState<T> =
   | { status: 'idle' }
@@ -52,7 +55,7 @@ function LeaderboardView() {
     return previewFeaturesEnabled;
   }, [previewFeaturesEnabled]);
 
-  const cachedTop = useMemo(() => readCachedLeaderboardTop(todayDate, LEADERBOARD_LIMIT), [todayDate]);
+  const cachedTop = useMemo(() => readCachedLeaderboardTop(todayDate, LEADERBOARD_PAGE_SIZE, 0), [todayDate]);
   const cachedMe = useMemo(() => readCachedLeaderboardMe(todayDate), [todayDate]);
   const [topState, setTopState] = useState<LoadState<Awaited<ReturnType<typeof api.leaderboardTop>>>>(
     cachedTop ? { status: 'loaded', data: cachedTop } : { status: 'loading' }
@@ -62,86 +65,35 @@ function LeaderboardView() {
   );
   const [viewerMode, setViewerMode] = useState<'unknown' | 'guest' | 'user'>('unknown');
   const [submitState, setSubmitState] = useState<'idle' | 'submitting' | 'submitted' | 'failed'>('idle');
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
-  const scrollRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const loadMoreEpochRef = useRef(0);
+  const loadingMoreRef = useRef(false);
 
+  const refreshLeaderboard = useCallback(async () => {
+    try {
+      loadMoreEpochRef.current += 1;
+      loadingMoreRef.current = false;
+      setIsLoadingMore(false);
+      const [top, me] = await Promise.all([
+        fetchLeaderboardTopFresh(todayDate, LEADERBOARD_PAGE_SIZE, 0),
+        fetchLeaderboardMeFresh(todayDate),
+      ]);
+      setTopState({ status: 'loaded', data: top });
+      setMeState({ status: 'loaded', data: me });
+    } catch {
+      // Keep existing data on refresh failure
+    }
+  }, [todayDate]);
+
+  // Listen for leaderboardRefresh event (fired after puzzle completion)
   useEffect(() => {
-    const scrollContainer = scrollRef.current;
-    // We attach listRef to the list container. 
-    // If it's not present (e.g. loading or error), we might not have it.
-    // However, if we just want to update when it exists:
-    if (!scrollContainer) return;
-    
-    // If listRef is null, we can still attach scroll listener but it won't do anything.
-    // But we want to re-run this when listRef becomes available.
-    // The dependency array handles this? No, refs don't trigger re-renders.
-    // But topState changes trigger re-renders which re-runs this effect.
-    
-    let rafId: number;
-    const update = () => {
-      const listContainer = listRef.current;
-      if (!listContainer) return;
-
-      const viewHeight = scrollContainer.clientHeight;
-      const scrollTop = scrollContainer.scrollTop;
-
-      const children = listContainer.children;
-      for (let i = 0; i < children.length; i++) {
-        const child = children[i] as HTMLElement;
-        const childHeight = child.offsetHeight;
-        // relativeTop is the position of the top edge of the child relative to the viewport top
-        const relativeTop = child.offsetTop - scrollTop;
-        // relativeBottom is the position of the bottom edge relative to the viewport top
-        const relativeBottom = relativeTop + childHeight;
-
-        let fractionVisible = 1;
-
-        if (relativeBottom > viewHeight) {
-          // Crossing bottom edge
-          // Visible pixels = how much is above the bottom edge
-          const visiblePixels = Math.max(0, viewHeight - relativeTop);
-          fractionVisible = Math.min(1, visiblePixels / childHeight);
-        } else if (relativeTop < 0) {
-          // Crossing top edge
-          // Visible pixels = how much is below the top edge
-          const visiblePixels = Math.max(0, relativeBottom);
-          fractionVisible = Math.min(1, visiblePixels / childHeight);
-        }
-
-        if (fractionVisible < 1) {
-           // Scale from 0.9 to 1.0 based on visibility
-           const scale = 0.9 + 0.1 * fractionVisible;
-           // Opacity from 0.3 to 1.0 based on visibility
-           const opacity = 0.3 + 0.7 * fractionVisible;
-           
-           child.style.transform = `scale(${scale})`;
-           child.style.opacity = `${opacity}`;
-        } else {
-           if (child.style.transform) child.style.transform = '';
-           if (child.style.opacity) child.style.opacity = '';
-        }
-      }
-    };
-
-    const handleScroll = () => {
-      cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(update);
-    };
-
-    scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
-    // Also update on window resize
-    window.addEventListener('resize', handleScroll);
-    
-    // Initial update
-    update();
-    
-    return () => {
-      scrollContainer.removeEventListener('scroll', handleScroll);
-      window.removeEventListener('resize', handleScroll);
-      cancelAnimationFrame(rafId);
-    };
-  }, [topState]);
+    const unsubscribe = onGameEvent('leaderboardRefresh', () => {
+      refreshLeaderboard();
+    });
+    return unsubscribe;
+  }, [refreshLeaderboard]);
 
   useEffect(() => {
     if (!showLockedFeatures) return;
@@ -154,13 +106,13 @@ function LeaderboardView() {
   useEffect(() => {
     if (!showLockedFeatures) return;
 
-    const cached = readCachedLeaderboardTop(todayDate, LEADERBOARD_LIMIT);
+    const cached = readCachedLeaderboardTop(todayDate, LEADERBOARD_PAGE_SIZE, 0);
     if (cached) {
       setTopState({ status: 'loaded', data: cached });
     }
 
     cachedApi
-      .leaderboardTop(todayDate, LEADERBOARD_LIMIT)
+      .leaderboardTop(todayDate, LEADERBOARD_PAGE_SIZE, 0)
       .then((top) => setTopState({ status: 'loaded', data: top }))
       .catch((err) => {
         const message = err instanceof Error ? err.message : 'Failed to load';
@@ -181,6 +133,76 @@ function LeaderboardView() {
       .then((me) => setMeState({ status: 'loaded', data: me }))
       .catch(() => setMeState({ status: 'error', message: 'Failed to load' }));
   }, [todayDate, showLockedFeatures]);
+
+  const loadMore = useCallback(async () => {
+    if (topState.status !== 'loaded') return;
+    const requestedOffset = topState.data.nextOffset;
+    if (requestedOffset == null) return;
+    if (loadingMoreRef.current) return;
+
+    loadingMoreRef.current = true;
+    setIsLoadingMore(true);
+    const epoch = loadMoreEpochRef.current;
+
+    try {
+      const page = await api.leaderboardTop(todayDate, LEADERBOARD_PAGE_SIZE, requestedOffset);
+      if (loadMoreEpochRef.current !== epoch) return;
+
+      setTopState((prev) => {
+        if (prev.status !== 'loaded') return prev;
+        const seen = new Set(prev.data.entries.map((entry) => entry.rank));
+        const appended = page.entries.filter((entry) => !seen.has(entry.rank));
+        const merged = prev.data.entries.concat(appended);
+        const total = page.total ?? prev.data.total;
+        const nextOffset =
+          page.nextOffset ??
+          (appended.length > 0 && total != null
+            ? requestedOffset + appended.length < total
+              ? requestedOffset + appended.length
+              : null
+            : null);
+
+        return {
+          status: 'loaded',
+          data: {
+            ...prev.data,
+            entries: merged,
+            total,
+            nextOffset,
+            podium: prev.data.podium ?? page.podium,
+          },
+        };
+      });
+    } catch {
+      // ignore load more failures
+    } finally {
+      loadingMoreRef.current = false;
+      setIsLoadingMore(false);
+    }
+  }, [todayDate, topState]);
+
+  useEffect(() => {
+    const listContainer = listRef.current;
+    if (!listContainer) return;
+    
+    const scrollContainer = listContainer.closest('[class*="container"]') as HTMLElement;
+    if (!scrollContainer) return;
+
+    const handleScroll = () => {
+      if (topState.status !== 'loaded') return;
+      const remaining = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight;
+      if (remaining <= LOAD_MORE_THRESHOLD_PX) {
+        loadMore();
+      }
+    };
+
+    scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
+    handleScroll();
+
+    return () => {
+      scrollContainer.removeEventListener('scroll', handleScroll);
+    };
+  }, [loadMore, topState.status]);
 
   const attemptsUsed = computeAttemptsUsed(todayResult);
   const canSubmitLocal = !!todayResult && todayResult.date === todayDate && !todayResult.failed && attemptsUsed != null;
@@ -214,8 +236,13 @@ function LeaderboardView() {
       fetchLeaderboardMeFresh(todayDate)
         .then((me) => setMeState({ status: 'loaded', data: me }))
         .catch(() => null);
-      fetchLeaderboardTopFresh(todayDate, LEADERBOARD_LIMIT)
-        .then((top) => setTopState({ status: 'loaded', data: top }))
+      fetchLeaderboardTopFresh(todayDate, LEADERBOARD_PAGE_SIZE, 0)
+        .then((top) => {
+          loadMoreEpochRef.current += 1;
+          loadingMoreRef.current = false;
+          setIsLoadingMore(false);
+          setTopState({ status: 'loaded', data: top });
+        })
         .catch(() => null);
     } catch {
       setSubmitState('failed');
@@ -227,6 +254,8 @@ function LeaderboardView() {
   }, [router]);
 
   const entries = topState.status === 'loaded' ? topState.data.entries : [];
+  const hasMore = topState.status === 'loaded' && topState.data.nextOffset != null;
+  const totalCount = topState.status === 'loaded' ? topState.data.total ?? null : null;
   const podium = useMemo(() => {
     if (topState.status !== 'loaded') return [];
     if (topState.data.podium && topState.data.podium.length > 0) return topState.data.podium;
@@ -240,7 +269,7 @@ function LeaderboardView() {
       isMe: e.isMe,
     }));
   }, [topState]);
-  const restEntries = entries.length >= 3 ? entries.slice(3) : entries;
+  const restEntries = entries.filter((entry) => entry.rank > 3);
 
   const podiumByRank = useMemo(() => new Map(podium.map((p) => [p.rank, p])), [podium]);
   const first = podiumByRank.get(1);
@@ -263,7 +292,16 @@ function LeaderboardView() {
     const displayName = accountMe?.displayName ?? 'You';
 
     if (meState.status === 'loading' || meState.status === 'idle') {
-      return <div className={styles.hintText}>Loading your rank…</div>;
+      return (
+        <div className={styles.meRow}>
+          <div className={styles.skeletonText} style={{ width: 80 }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <div className={styles.skeletonText} style={{ width: 40 }} />
+            <div className={styles.skeletonText} style={{ width: 28 }} />
+            <div className={styles.skeletonText} style={{ width: 36 }} />
+          </div>
+        </div>
+      );
     }
     if (meState.status === 'error') {
       return <div className={styles.hintText}>Unable to load your rank.</div>;
@@ -364,43 +402,34 @@ function LeaderboardView() {
       )}
 
       {topState.status === 'loading' && (
-        <div className={styles.podium} style={{ opacity: 0.4, filter: 'blur(2px)' }}>
+        <div className={`${styles.podium} ${styles.podiumLoading}`}>
           <div className={styles.podiumColumn}>
             <div className={styles.podiumAvatar}>
-              <CharacterIcon size={40} />
+              <div className={styles.skeletonAvatar} style={{ width: 40, height: 40 }} />
             </div>
-            <div className={styles.podiumName}>Player2</div>
-            <div className={`${styles.podiumBar} ${styles.podiumSilver}`}>
-              <div className={styles.podiumRankBadge}>🥈</div>
-              <div className={styles.podiumTime}>0:00</div>
-            </div>
+            <div className={`${styles.skeletonText}`} style={{ width: '70%', marginBottom: 4 }} />
+            <div className={`${styles.skeletonBar}`} style={{ width: '100%', height: 45 }} />
           </div>
           <div className={styles.podiumColumn}>
             <div className={styles.podiumAvatar}>
-              <CharacterIcon size={48} />
+              <div className={styles.skeletonAvatar} style={{ width: 48, height: 48 }} />
             </div>
-            <div className={styles.podiumName}>Player1</div>
-            <div className={`${styles.podiumBar} ${styles.podiumGold}`}>
-              <div className={styles.podiumRankBadge}>🥇</div>
-              <div className={styles.podiumTime}>0:00</div>
-            </div>
+            <div className={`${styles.skeletonText}`} style={{ width: '70%', marginBottom: 4 }} />
+            <div className={`${styles.skeletonBar}`} style={{ width: '100%', height: 60 }} />
           </div>
           <div className={styles.podiumColumn}>
             <div className={styles.podiumAvatar}>
-              <CharacterIcon size={40} />
+              <div className={styles.skeletonAvatar} style={{ width: 40, height: 40 }} />
             </div>
-            <div className={styles.podiumName}>Player3</div>
-            <div className={`${styles.podiumBar} ${styles.podiumBronze}`}>
-              <div className={styles.podiumRankBadge}>🥉</div>
-              <div className={styles.podiumTime}>0:00</div>
-            </div>
+            <div className={`${styles.skeletonText}`} style={{ width: '70%', marginBottom: 4 }} />
+            <div className={`${styles.skeletonBar}`} style={{ width: '100%', height: 35 }} />
           </div>
         </div>
       )}
 
       {topState.status === 'error' && <div className={styles.error}>{topState.message}</div>}
 
-      <div className={styles.scrollArea} ref={scrollRef}>
+      <PullToRefresh onRefresh={refreshLeaderboard} className={styles.scrollArea}>
         {topState.status === 'loaded' && restEntries.length > 0 && (
           <div className={styles.list} ref={listRef}>
             {restEntries.map((e) => (
@@ -411,6 +440,20 @@ function LeaderboardView() {
                 <div className={styles.rowAttempts}>{e.attemptsUsed}/3</div>
               </div>
             ))}
+
+            {(hasMore || isLoadingMore) && (
+              <div className={styles.loadMoreRow}>
+                {isLoadingMore ? (
+                  <div className={styles.loadMoreSpinner} />
+                ) : (
+                  <div className={styles.loadMoreHint}>Scroll for more</div>
+                )}
+              </div>
+            )}
+
+            {!hasMore && !isLoadingMore && totalCount != null && (
+              <div className={styles.loadMoreEnd}>End of leaderboard · {totalCount} players</div>
+            )}
           </div>
         )}
 
@@ -421,26 +464,16 @@ function LeaderboardView() {
         {topState.status === 'loading' && (
           <div className={styles.list} ref={listRef}>
             {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className={styles.row} style={{ opacity: 0.4 }}>
+              <div key={i} className={styles.row}>
                 <div className={styles.rowRank}>#{i + 4}</div>
-                <div
-                  className={styles.rowName}
-                  style={{ background: 'var(--color-surface)', borderRadius: 4, width: '60%', height: '1em' }}
-                >
-                  &nbsp;
-                </div>
-                <div
-                  className={styles.rowTime}
-                  style={{ background: 'var(--color-surface)', borderRadius: 4, width: 50, height: '1em' }}
-                >
-                  &nbsp;
-                </div>
-                <div className={styles.rowAttempts}>–/3</div>
+                <div className={styles.skeletonText} style={{ width: '60%' }} />
+                <div className={styles.skeletonText} style={{ width: 50 }} />
+                <div className={styles.skeletonText} style={{ width: 28 }} />
               </div>
             ))}
           </div>
         )}
-      </div>
+      </PullToRefresh>
 
       <div className={styles.footer}>
         <div className={styles.sectionTitle} style={{ marginBottom: '0.5rem' }}>

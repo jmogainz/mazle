@@ -25,6 +25,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const dateParam = url.searchParams.get('date');
   const limitParam = url.searchParams.get('limit');
+  const offsetParam = url.searchParams.get('offset');
 
   if (!isValidNyDateString(dateParam)) {
     return jsonError(400, 'INVALID_DATE', 'Missing or invalid date.');
@@ -36,6 +37,8 @@ export async function GET(request: Request) {
   }
 
   const limit = Math.max(1, Math.min(200, Number(limitParam ?? '50') || 50));
+  const offsetRaw = Number(offsetParam ?? '0');
+  const offset = Number.isFinite(offsetRaw) ? Math.max(0, Math.floor(offsetRaw)) : 0;
 
   const redis = getLeaderboardRedis();
   if (!redis) {
@@ -48,7 +51,12 @@ export async function GET(request: Request) {
     const mySubjectKey = subjectKeyFor({ userId: me.subjectType === 'user' ? me.subjectId : null, guestId: me.guestId });
 
     const zkey = leaderboardZsetKey(dateParam);
-    const raw = await redis.zrange<(string | number)[]>(zkey, 0, limit - 1, { withScores: true });
+    const start = offset;
+    const end = offset + limit - 1;
+    const [raw, total] = await Promise.all([
+      redis.zrange<(string | number)[]>(zkey, start, end, { withScores: true }),
+      redis.zcard(zkey),
+    ]);
 
     const members: string[] = [];
     const scores: number[] = [];
@@ -72,7 +80,7 @@ export async function GET(request: Request) {
       const { timeMs, attemptsUsed } = decodeLeaderboardScore(scores[idx] ?? 0);
       const displayName = (subjectKey && nameMap[subjectKey]) || 'Player';
       return {
-        rank: idx + 1,
+        rank: offset + idx + 1,
         displayName,
         timeMs,
         attemptsUsed,
@@ -80,7 +88,10 @@ export async function GET(request: Request) {
       };
     });
 
-    const top3SubjectKeys = parsed.slice(0, 3).map((p) => p.subjectKey).filter((k): k is string => !!k);
+    const top3SubjectKeys =
+      offset === 0
+        ? parsed.slice(0, 3).map((p) => p.subjectKey).filter((k): k is string => !!k)
+        : [];
 
     const profilesBySubjectKey = new Map<string, { characterId: string; skinId: string }>();
     if (top3SubjectKeys.length > 0) {
@@ -114,7 +125,7 @@ export async function GET(request: Request) {
     }
 
     const podium =
-      entries.length > 0
+      offset === 0 && entries.length > 0
         ? entries.slice(0, 3).map((entry) => {
             const subjectKey = parsed[entry.rank - 1]?.subjectKey;
             const profile = subjectKey ? profilesBySubjectKey.get(subjectKey) : null;
@@ -130,7 +141,12 @@ export async function GET(request: Request) {
           })
         : undefined;
 
-    const res = NextResponse.json({ date: dateParam, entries, podium }, { headers: { 'Cache-Control': 'no-store' } });
+    const nextOffset = offset + entries.length < total ? offset + entries.length : null;
+
+    const res = NextResponse.json(
+      { date: dateParam, entries, podium, total, nextOffset },
+      { headers: { 'Cache-Control': 'no-store' } }
+    );
     if (me.setGuestCookie) {
       setGuestIdCookie(res, me.guestId);
     }

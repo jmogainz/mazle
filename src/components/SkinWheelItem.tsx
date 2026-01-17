@@ -5,21 +5,22 @@ import { SkinDefinition } from '@/lib/skins';
 
 type SkinWheelItemProps = {
     skin: SkinDefinition;
-    isActive: boolean;
+    isCentered?: boolean;
+    style?: React.CSSProperties;
     characterId: string;
     onClick: () => void;
-    showUnlockHint: boolean;
 };
 
-const SkinWheelItem = memo(({ skin, isActive, characterId, onClick, showUnlockHint }: SkinWheelItemProps) => {
+const SkinWheelItem = memo(({ skin, isCentered = false, style, characterId, onClick }: SkinWheelItemProps) => {
     const isLocked = skin.locked;
 
     return (
         <button
             type="button"
-            className={`${styles.skinWheelItem} ${isActive ? styles.skinWheelItemCenter : styles.skinWheelItemSide} ${isLocked ? styles.skinWheelItemLocked : ''}`}
+            className={`${styles.skinWheelItem} ${isCentered ? styles.skinWheelItemCenter : ''} ${isLocked ? styles.skinWheelItemLocked : ''}`}
             onClick={onClick}
             aria-label={isLocked ? `${skin.name} (locked)` : `Select ${skin.name}`}
+            style={style}
         >
             <div className={styles.skinWheelItemIcon}>
                 <CharacterIcon
@@ -30,7 +31,7 @@ const SkinWheelItem = memo(({ skin, isActive, characterId, onClick, showUnlockHi
             </div>
             {isLocked && (
                 <span className={styles.skinWheelLock}>
-                    <svg width={isActive ? "22" : "18"} height={isActive ? "22" : "18"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <svg width={isCentered ? "22" : "18"} height={isCentered ? "22" : "18"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M7 11V8a5 5 0 0 1 10 0v3" />
                         <rect x="6" y="11" width="12" height="10" rx="2" />
                     </svg>

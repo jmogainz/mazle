@@ -752,7 +752,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: calc(0.4rem * var(--ui-scale));
+  gap: 0;
   min-height: 0;
   min-width: 0;
   width: 100%;
@@ -764,6 +764,7 @@
   width: 100%;
   opacity: 1;
   transition: opacity 0.3s ease-out;
+  margin-bottom: var(--game-gap-top);
 }
 
 /* Hide scoreboard during initial load if puzzle already played today */
@@ -924,9 +925,10 @@
   align-items: flex-start;
   gap: calc(0.5rem * var(--ui-scale));
   min-height: calc(48px * var(--ui-scale));
-  padding-top: calc(0.5rem * var(--ui-scale));
-  padding-bottom: calc(0.25rem * var(--ui-scale));
-  transition: min-height 0.15s ease-out, padding 0.15s ease-out;
+  margin-top: var(--game-gap-bottom);
+  padding-top: 4px;
+  padding-bottom: 4px;
+  transition: min-height 0.15s ease-out;
   position: relative;
 }
 

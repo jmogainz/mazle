@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { signIn } from 'next-auth/react';
 import { api } from '@/lib/api';
 import { cachedApi, fetchMeFresh, readCachedMe, readCachedArchiveDays, getCachedArchiveDays } from '@/lib/api/cached';
 import { LAUNCH_DATE_NY, getPuzzleNumber } from '@/game/puzzleGenerator';
@@ -368,12 +369,12 @@ function ArchiveView({ presentation = 'overlay', initialTodayNy, onClose }: Arch
     router.replace('/archive');
   }, [router]);
 
-  const handleSignIn = useCallback(() => {
+  const handleSignIn = useCallback((provider: 'google' | 'apple') => {
     const callbackUrl = requestedDate
       ? `/archive?paywall=1&d=${encodeURIComponent(requestedDate)}`
       : '/archive?paywall=1';
-    window.location.href = `/api/auth/signin?callbackUrl=${encodeURIComponent(callbackUrl)}`;
-  }, [refreshMe, requestedDate]);
+    signIn(provider, { callbackUrl });
+  }, [requestedDate]);
 
   const handleCheckout = useCallback(async () => {
     if (!requestedDate) return;
@@ -786,7 +787,7 @@ function ArchiveView({ presentation = 'overlay', initialTodayNy, onClose }: Arch
                           <button
                             type="button"
                             className={styles.googleButton}
-                            onClick={handleSignIn}
+                            onClick={() => handleSignIn('google')}
                             disabled={paywallBusy}
                           >
                             <div className={styles.googleButtonState}></div>

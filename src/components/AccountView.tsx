@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { signIn, signOut } from 'next-auth/react';
 import { api, getApiMode } from '@/lib/api';
@@ -8,7 +8,7 @@ import { cachedApi, fetchMeFresh, readCachedMe } from '@/lib/api/cached';
 import { getPrefs, setPrefs } from '@/lib/prefs';
 import { addDays } from '@/lib/date';
 import { getAllSkins, getSkinById, getUnlockedSkins } from '@/lib/skins';
-import { getAllCharacters, getCharacterById } from '@/lib/characters';
+import { getCharacterById } from '@/lib/characters';
 import { getNewYorkDateString } from '@/game/puzzleGenerator';
 import { formatTime, getGuestHistoryForAccountImport } from '@/utils/storage';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
@@ -16,10 +16,12 @@ import CharacterIcon from './CharacterIcon';
 import SkinWheelItem from './SkinWheelItem';
 import styles from './AccountView.module.css';
 
-const IS_UI_DEV_ENV = process.env.NEXT_PUBLIC_ENV === 'dev';
 const DEVTOOLS_PREVIEW_FEATURES_KEY = 'mazle_devtools_preview_features_v1';
 const GUEST_IMPORT_PREFIX = 'mazle_guest_history_imported_v1:';
-const MOCK_ME_STORAGE_KEY = 'mazle_mock_me_v1';
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
 
 type LoadState<T> =
   | { status: 'loading' }
@@ -98,7 +100,9 @@ function AccountView() {
   const [meState, setMeState] = useState<LoadState<Awaited<ReturnType<typeof api.me>>>>(
     cachedMe ? { status: 'loaded', data: cachedMe } : { status: 'loading' }
   );
-  const [busy, setBusy] = useState<'idle' | 'signin' | 'signout'>('idle');
+  const [busy, setBusy] = useState<'idle' | 'signin-google' | 'signin-apple' | 'signout'>('idle');
+  const isSigningInGoogle = busy === 'signin-google';
+  const isSigningInApple = busy === 'signin-apple';
   const [autoSubmitWins, setAutoSubmitWins] = useState(() => getPrefs().leaderboardAutoSubmitWins);
   const [themePreference, setThemePreference] = useState(() => getPrefs().themePreference);
   const [nameDraft, setNameDraft] = useState('');
@@ -109,17 +113,37 @@ function AccountView() {
   const [showEditTooltip, setShowEditTooltip] = useState(false);
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   const [previewFeaturesEnabled, setPreviewFeaturesEnabled] = useState(false);
-  const [signInExpanded, setSignInExpanded] = useState(false);
   const [skinWheelIndex, setSkinWheelIndex] = useState(0);
-  const [isSnapping, setIsSnapping] = useState(false);
-  const [unlockHintSkinId, setUnlockHintSkinId] = useState<string | null>(null);
-  const [touchStartX, setTouchStartX] = useState<number | null>(null);
-  const [dragOffset, setDragOffset] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
-  const [provisionalIndex, setProvisionalIndex] = useState<number | null>(null);
-  const trackRef = React.useRef<HTMLDivElement>(null);
-  const dragItemWidth = React.useRef<number>(0);
-  const dragStartRef = React.useRef<number>(0);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const isScrollingRef = useRef(false);
+
+  useEffect(() => {
+    if (!isSigningInGoogle && !isSigningInApple) return;
+    if (typeof window === 'undefined') return;
+
+    const resetBusy = () => setBusy('idle');
+    const handleVisibility = () => {
+      if (!document.hidden) resetBusy();
+    };
+    const handleFirstInput = () => resetBusy();
+
+    window.addEventListener('focus', resetBusy);
+    window.addEventListener('pageshow', resetBusy);
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('pointerdown', handleFirstInput, { once: true });
+    window.addEventListener('touchstart', handleFirstInput, { once: true });
+    window.addEventListener('keydown', handleFirstInput, { once: true });
+
+    return () => {
+      window.removeEventListener('focus', resetBusy);
+      window.removeEventListener('pageshow', resetBusy);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('pointerdown', handleFirstInput);
+      window.removeEventListener('touchstart', handleFirstInput);
+      window.removeEventListener('keydown', handleFirstInput);
+    };
+  }, [isSigningInApple, isSigningInGoogle]);
+
 
   const me = meState.status === 'loaded' ? meState.data : null;
   const localHistory = useMemo(() => getGuestHistoryForAccountImport(), []);
@@ -129,15 +153,6 @@ function AccountView() {
   const avgTime = stats.avgSolveTimeMs != null ? formatTime(stats.avgSolveTimeMs) : '—';
 
   const skins = useMemo(() => getAllSkins(), []);
-
-  // Create a buffered array for infinite looping: 11 sets of skins
-  // This provides a massive runway so the user never reaches the edge.
-  const displaySkins = useMemo(() => [...skins, ...skins, ...skins, ...skins, ...skins, ...skins, ...skins, ...skins, ...skins, ...skins, ...skins], [skins]);
-  const BUFFER_OFFSET = skins.length * 5; // Center is the 6th set (index 5 * len)
-
-  const characters = useMemo(() => getAllCharacters(), []);
-  const activeCharacter = useMemo(() => getCharacterById(profile.characterId) ?? characters[0]!, [profile.characterId, characters]);
-  const activeCharacterIndex = useMemo(() => characters.findIndex(c => c.id === activeCharacter.id), [activeCharacter.id, characters]);
 
   const refreshMe = useCallback(async (silent = false, force = false) => {
     if (!silent) {
@@ -235,14 +250,22 @@ function AccountView() {
     }
   }, []);
 
-  // Sync wheel index with profile skin on load
+  // Sync wheel index with profile skin on load and scroll to it
   useEffect(() => {
-    const logicalIdx = skins.findIndex((s) => s.id === profile.skinId);
-    if (logicalIdx >= 0) {
-      // Always start in the exact middle set (3rd one)
-      setSkinWheelIndex(logicalIdx + BUFFER_OFFSET);
+    const idx = skins.findIndex((s) => s.id === profile.skinId);
+    if (idx >= 0) {
+      setSkinWheelIndex(idx);
+      // Scroll to the item after a tick to ensure DOM is ready
+      requestAnimationFrame(() => {
+        const container = scrollContainerRef.current;
+        if (!container) return;
+        const item = container.children[idx] as HTMLElement | undefined;
+        if (item) {
+          item.scrollIntoView({ behavior: 'instant', inline: 'center', block: 'nearest' });
+        }
+      });
     }
-  }, [profile.skinId, skins, BUFFER_OFFSET]);
+  }, [profile.skinId, skins]);
 
   const showLockedFeatures = useMemo(() => {
     if (process.env.NODE_ENV !== 'production') return true;
@@ -300,8 +323,16 @@ function AccountView() {
 
   const startSignIn = useCallback(
     async (provider: 'google' | 'apple') => {
+      setBusy(`signin-${provider}`);
+      await new Promise<void>((resolve) => {
+        if (typeof window === 'undefined') {
+          resolve();
+          return;
+        }
+        window.requestAnimationFrame(() => resolve());
+      });
+
       if (getApiMode() === 'mock') {
-        setBusy('signin');
         api
           .claim({})
           .then(() => refreshMe(false, true))
@@ -309,9 +340,10 @@ function AccountView() {
         return;
       }
 
-      setBusy('signin');
       const callbackUrl =
-        typeof window !== 'undefined' && window.location.pathname.startsWith('/account') ? '/account' : '/';
+        typeof window !== 'undefined'
+          ? `${window.location.pathname}${window.location.search}${window.location.hash}`
+          : '/';
       await signIn(provider, { callbackUrl });
     },
     [refreshMe],
@@ -332,7 +364,9 @@ function AccountView() {
 
     setBusy('signout');
     const callbackUrl =
-      typeof window !== 'undefined' && window.location.pathname.startsWith('/account') ? '/account' : '/';
+      typeof window !== 'undefined'
+        ? `${window.location.pathname}${window.location.search}${window.location.hash}`
+        : '/';
     await signOut({ callbackUrl });
   }, [isSignedIn, refreshMe]);
 
@@ -377,132 +411,105 @@ function AccountView() {
     [refreshMe],
   );
 
-  const handleNextCharacter = () => {
-    const nextIdx = (activeCharacterIndex + 1) % characters.length;
-    const nextChar = characters[nextIdx];
-    if (nextChar && !nextChar.locked) {
-      applyProfile({ characterId: nextChar.id });
+  // Scroll to a specific skin index with smooth animation
+  const scrollToIndex = useCallback((index: number, behavior: ScrollBehavior = 'smooth') => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const item = container.children[index] as HTMLElement | undefined;
+    if (item) {
+      item.scrollIntoView({ behavior, inline: 'center', block: 'nearest' });
     }
-  };
+  }, []);
 
-  const handlePrevCharacter = () => {
-    const prevIdx = (activeCharacterIndex - 1 + characters.length) % characters.length;
-    const prevChar = characters[prevIdx];
-    if (prevChar && !prevChar.locked) {
-      applyProfile({ characterId: prevChar.id });
-    }
-  };
+  // Handle scroll events to detect which item is centered
+  const handleScroll = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container || isScrollingRef.current) return;
 
-  const handleTouchStart = (e: React.TouchEvent) => {
-    // Cache layout metrics ONCE at start of drag to avoid thrashing during move
-    if (trackRef.current) {
-      const track = trackRef.current;
-      const firstItem = track.children[0] as HTMLElement;
-      if (firstItem) {
-        const gap = parseFloat(getComputedStyle(track).gap) || 0;
-        dragItemWidth.current = firstItem.offsetWidth + gap;
+    // Find which item is closest to center
+    const containerRect = container.getBoundingClientRect();
+    const centerX = containerRect.left + containerRect.width / 2;
+
+    let closestIdx = 0;
+    let closestDistance = Infinity;
+
+    Array.from(container.children).forEach((child, idx) => {
+      const rect = child.getBoundingClientRect();
+      const itemCenterX = rect.left + rect.width / 2;
+      const distance = Math.abs(itemCenterX - centerX);
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestIdx = idx;
       }
+    });
+
+    if (closestIdx !== skinWheelIndex) {
+      setSkinWheelIndex(closestIdx);
     }
+  }, [skinWheelIndex]);
 
-    setTouchStartX(e.touches[0].clientX);
-    dragStartRef.current = e.touches[0].clientX;
-    setIsDragging(true);
-    // Note: We do NOT reset dragOffset state here, we rely on the CSS var update in move
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (touchStartX === null || !trackRef.current) return;
-    const currentX = e.touches[0].clientX;
-    const offset = currentX - dragStartRef.current;
-
-    // PERF: Bypass React render cycle for smooth 60fps drag
-    // Directly update the CSS variable on the DOM element
-    trackRef.current.style.setProperty('--drag-offset', `${offset}px`);
-
-    // Only update React state if the integer index would actually change
-    if (dragItemWidth.current > 0) {
-      // Calculate index shift: dragging right (offset > 0) reduces index
-      const indexShift = Math.round(offset / dragItemWidth.current);
-      const newProvisional = skinWheelIndex - indexShift;
-
-      // Only trigger re-render if the highlighted item actually changes
-      if (newProvisional !== (provisionalIndex ?? skinWheelIndex)) {
-        setProvisionalIndex(newProvisional);
-      }
+  // Handle scroll end to select the skin
+  const handleScrollEnd = useCallback(() => {
+    const skin = skins[skinWheelIndex];
+    if (skin && !skin.locked) {
+      applyProfile({ skinId: skin.id });
     }
-  };
+  }, [skinWheelIndex, skins, applyProfile]);
 
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (touchStartX === null) return;
-    const touchEndX = e.changedTouches[0].clientX;
-    const diff = dragStartRef.current - touchEndX;
-    const threshold = 30;
-
-    setIsDragging(false);
-    setTouchStartX(null);
-    setProvisionalIndex(null);
-
-    // Clear the direct DOM override so React/CSS transition can take over
-    if (trackRef.current) {
-      trackRef.current.style.removeProperty('--drag-offset');
-    }
-
-    if (Math.abs(diff) > threshold) {
-      let targetIdx = skinWheelIndex;
-
-      if (dragItemWidth.current > 0) {
-        const shift = Math.round(diff / dragItemWidth.current);
-        // Ensure at least 1 shift if past threshold
-        targetIdx = skinWheelIndex + (shift || (diff > 0 ? 1 : -1));
-      } else {
-        // Fallback if metrics failed
-        targetIdx = skinWheelIndex + (diff > 0 ? 1 : -1);
-      }
-
-      setSkinWheelIndex(targetIdx);
-      const logicalIdx = (targetIdx % skins.length + skins.length) % skins.length;
-      const skin = skins[logicalIdx];
-      if (skin && !skin.locked) applyProfile({ skinId: skin.id });
-    }
-  };
-
-  // Handle infinite loop snapping - aggressive centering
-  const handleTransitionEnd = useCallback(() => {
-    const len = skins.length;
-    if (len === 0) return;
-
-    // Teleport back to the center set (Set 6) while preserving the logical skin
-    const logicalIdx = (skinWheelIndex % len + len) % len;
-    const targetIdx = logicalIdx + BUFFER_OFFSET;
-
-    if (skinWheelIndex !== targetIdx) {
-      setIsSnapping(true);
-      setSkinWheelIndex(targetIdx);
-    }
-  }, [skinWheelIndex, skins.length, BUFFER_OFFSET]);
-
-  // Safety Sync: If we ever drift too far from the center, snap back instantly.
-  // This handles extremely fast clicking where transitionEnd might not keep up.
+  // Debounced scroll end detection
   useEffect(() => {
-    const len = skins.length;
-    if (len === 0 || isSnapping) return;
+    const container = scrollContainerRef.current;
+    if (!container) return;
 
-    const drift = Math.abs(skinWheelIndex - BUFFER_OFFSET);
-    // If we've drifted more than 2 full sets away from the center set
-    if (drift > len * 2) {
-      const logicalIdx = (skinWheelIndex % len + len) % len;
-      setIsSnapping(true);
-      setSkinWheelIndex(logicalIdx + BUFFER_OFFSET);
-    }
-  }, [skinWheelIndex, skins, BUFFER_OFFSET, isSnapping]);
+    let scrollTimeout: ReturnType<typeof setTimeout>;
+    const onScroll = () => {
+      handleScroll();
+      clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(handleScrollEnd, 150);
+    };
 
-  // Disable snapping after one tick
-  useEffect(() => {
-    if (isSnapping) {
-      const timer = setTimeout(() => setIsSnapping(false), 50);
-      return () => clearTimeout(timer);
+    container.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      container.removeEventListener('scroll', onScroll);
+      clearTimeout(scrollTimeout);
+    };
+  }, [handleScroll, handleScrollEnd]);
+
+  // Arrow navigation
+  const handlePrev = useCallback(() => {
+    const newIndex = Math.max(0, skinWheelIndex - 1);
+    setSkinWheelIndex(newIndex);
+    scrollToIndex(newIndex);
+    const skin = skins[newIndex];
+    if (skin && !skin.locked) {
+      applyProfile({ skinId: skin.id });
     }
-  }, [isSnapping]);
+  }, [skinWheelIndex, skins, applyProfile, scrollToIndex]);
+
+  const handleNext = useCallback(() => {
+    const newIndex = Math.min(skins.length - 1, skinWheelIndex + 1);
+    setSkinWheelIndex(newIndex);
+    scrollToIndex(newIndex);
+    const skin = skins[newIndex];
+    if (skin && !skin.locked) {
+      applyProfile({ skinId: skin.id });
+    }
+  }, [skinWheelIndex, skins, applyProfile, scrollToIndex]);
+
+  // Handle clicking on a specific skin item
+  const handleSkinClick = useCallback((idx: number) => {
+    const skin = skins[idx];
+    if (!skin) return;
+
+    // If already centered and locked, do nothing
+    if (idx === skinWheelIndex && skin.locked) return;
+
+    setSkinWheelIndex(idx);
+    scrollToIndex(idx);
+    if (!skin.locked) {
+      applyProfile({ skinId: skin.id });
+    }
+  }, [skins, skinWheelIndex, applyProfile, scrollToIndex]);
 
   return (
     <div className={styles.grid}>
@@ -592,25 +599,13 @@ function AccountView() {
               )}
             </div>
 
-            {/* Character Selector Row */}
-            <div className={styles.characterSelector}>
-              <button type="button" className={styles.characterArrow} onClick={handlePrevCharacter}>&lt;</button>
-              <div className={styles.characterName}>{activeCharacter.name}</div>
-              <button type="button" className={styles.characterArrow} onClick={handleNextCharacter}>&gt;</button>
-            </div>
-
-            {/* Skin Picker Wheel - Carousel */}
+            {/* Skin Picker Wheel - Simplified Scroll-Snap Carousel */}
             <div className={styles.skinWheel}>
               <button
                 type="button"
                 className={styles.skinWheelArrow}
-                onClick={() => {
-                  const nextIdx = skinWheelIndex - 1;
-                  setSkinWheelIndex(nextIdx);
-                  const logicalIdx = (nextIdx % skins.length + skins.length) % skins.length;
-                  const skin = skins[logicalIdx];
-                  if (skin && !skin.locked) applyProfile({ skinId: skin.id });
-                }}
+                onClick={handlePrev}
+                disabled={skinWheelIndex <= 0}
                 aria-label="Previous skin"
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -618,35 +613,31 @@ function AccountView() {
                 </svg>
               </button>
 
-              <div
-                className={styles.skinWheelViewport}
-                onTouchStart={handleTouchStart}
-                onTouchMove={handleTouchMove}
-                onTouchEnd={handleTouchEnd}
-              >
+              <div className={styles.skinWheelViewport}>
                 <div
-                  ref={trackRef}
-                  className={`${styles.skinWheelTrack} ${isSnapping || isDragging ? styles.skinWheelTrackSnapping : ''}`}
-                  onTransitionEnd={handleTransitionEnd}
-                  style={{
-                    '--index': skinWheelIndex,
-                  } as React.CSSProperties}
+                  ref={scrollContainerRef}
+                  className={styles.skinWheelTrack}
                 >
-                  {displaySkins.map((skin, idx) => {
-                    if (!skin) return null;
-                    const isActive = idx === (provisionalIndex ?? skinWheelIndex);
+                  {skins.map((skin, idx) => {
+                    const distance = Math.abs(idx - skinWheelIndex);
+                    const t = clamp(distance / 3.5, 0, 1);
+                    const eased = t * t * (3 - 2 * t);
+                    const scale = clamp(1.12 - eased * 0.28, 0.84, 1.12);
+                    const opacity = clamp(1 - eased * 0.45, 0.55, 1);
+                    const grayscale = clamp(eased * 0.55, 0, 0.7);
+                    const isCentered = idx === skinWheelIndex;
                     return (
                       <SkinWheelItem
-                        key={`${skin.id}-${idx}`}
+                        key={skin.id}
                         skin={skin}
-                        isActive={isActive}
+                        isCentered={isCentered}
+                        style={{
+                          '--item-scale': scale,
+                          '--item-opacity': opacity,
+                          '--item-grayscale': grayscale,
+                        } as React.CSSProperties}
                         characterId={profile.characterId}
-                        onClick={() => {
-                          if (isActive && skin.locked) return;
-                          setSkinWheelIndex(idx);
-                          applyProfile({ skinId: skin.id });
-                        }}
-                        showUnlockHint={false}
+                        onClick={() => handleSkinClick(idx)}
                       />
                     );
                   })}
@@ -656,13 +647,8 @@ function AccountView() {
               <button
                 type="button"
                 className={styles.skinWheelArrow}
-                onClick={() => {
-                  const nextIdx = skinWheelIndex + 1;
-                  setSkinWheelIndex(nextIdx);
-                  const logicalIdx = (nextIdx % skins.length + skins.length) % skins.length;
-                  const skin = skins[logicalIdx];
-                  if (skin && !skin.locked) applyProfile({ skinId: skin.id });
-                }}
+                onClick={handleNext}
+                disabled={skinWheelIndex >= skins.length - 1}
                 aria-label="Next skin"
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -674,8 +660,8 @@ function AccountView() {
             {/* Skin name under center */}
             <div className={styles.skinWheelMeta}>
               <div className={styles.skinWheelNameContainer}>
-                <div className={styles.skinWheelName}>{skins[((provisionalIndex ?? skinWheelIndex) % skins.length + skins.length) % skins.length]?.name ?? ''}</div>
-                {skins[((provisionalIndex ?? skinWheelIndex) % skins.length + skins.length) % skins.length]?.locked && (
+                <div className={styles.skinWheelName}>{skins[skinWheelIndex]?.name ?? ''}</div>
+                {skins[skinWheelIndex]?.locked && (
                   <span className={styles.skinWheelNameLock}>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M7 11V8a5 5 0 0 1 10 0v3" />
@@ -688,68 +674,55 @@ function AccountView() {
 
             {/* Sign-in / Sign-out Section */}
             {me.mode === 'guest' ? (
-              <>
-                {!signInExpanded ? (
-                  <div className={styles.buttonRow} style={{ flexDirection: 'column', gap: '0.5rem' }}>
-                    <button
-                      type="button"
-                      className={styles.primaryButton}
-                      onClick={() => setSignInExpanded(true)}
-                      disabled={busy !== 'idle'}
-                    >
-                      Create Account
-                    </button>
-                    <div className={styles.signInHint}>
-                      Save your name and sync purchases across devices.
+              <div className={styles.signInSection}>
+                <div className={styles.signInHint}>
+                  Save your name and sync across devices.
+                </div>
+                <button
+                  type="button"
+                  className={styles.googleButton}
+                  onClick={() => startSignIn('google')}
+                  disabled={busy !== 'idle'}
+                  aria-busy={isSigningInGoogle}
+                >
+                  <div className={styles.googleButtonState}></div>
+                  <div className={styles.googleButtonContentWrapper}>
+                    <div className={styles.googleButtonIcon}>
+                      <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" style={{ display: 'block' }}>
+                        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
+                        <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
+                        <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
+                        <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
+                        <path fill="none" d="M0 0h48v48H0z"></path>
+                      </svg>
                     </div>
+                    <span className={styles.googleButtonContents}>
+                      {isSigningInGoogle ? 'Signing in…' : 'Sign in with Google'}
+                    </span>
+                    <span style={{ display: 'none' }}>Sign in with Google</span>
                   </div>
-                ) : (
-                  <div className={styles.signInOptions}>
-                    <button
-                      type="button"
-                      className={styles.googleButton}
-                      onClick={() => startSignIn('google')}
-                      disabled={busy !== 'idle'}
-                    >
-                      <div className={styles.googleButtonState}></div>
-                      <div className={styles.googleButtonContentWrapper}>
-                        <div className={styles.googleButtonIcon}>
-                          <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" style={{ display: 'block' }}>
-                            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
-                            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
-                            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
-                            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
-                            <path fill="none" d="M0 0h48v48H0z"></path>
-                          </svg>
-                        </div>
-                        <span className={styles.googleButtonContents}>
-                          {busy === 'signin' ? 'Signing in…' : 'Sign in with Google'}
-                        </span>
-                        <span style={{ display: 'none' }}>Sign in with Google</span>
+                </button>
+                {isAppleEnabled() && (
+                  <button
+                    type="button"
+                    className={styles.appleButton}
+                    onClick={() => startSignIn('apple')}
+                    disabled={busy !== 'idle'}
+                    aria-busy={isSigningInApple}
+                  >
+                    <div className={styles.appleButtonContentWrapper}>
+                      <div className={styles.appleButtonIcon}>
+                        <svg viewBox="0 0 16 16" focusable="false" aria-hidden="true">
+                          <path d="M11.182.008C11.148-.03 9.923.023 8.857 1.18c-1.066 1.156-.902 2.482-.878 2.516.024.034 1.52.087 2.475-1.258.955-1.345.762-2.391.728-2.43zm3.314 11.733c-.048-.096-2.325-1.234-2.113-3.422.212-2.189 1.675-2.789 1.698-2.854.023-.065-.597-.79-1.254-1.157a3.692 3.692 0 0 0-1.563-.434c-.108-.003-.483-.095-1.254.116-.508.139-1.653.589-1.968.607-.316.018-1.256-.522-2.267-.665-.647-.125-1.333.131-1.824.328-.49.196-1.422.754-2.074 2.237-.652 1.482-.311 3.83-.067 4.56.244.729.625 1.924 1.273 2.796.576.984 1.34 1.667 1.659 1.899.319.232 1.219.386 1.843.067.502-.308 1.408-.485 1.766-.472.357.013 1.061.154 1.782.539.571.197 1.111.115 1.652-.105.541-.221 1.324-1.059 2.238-2.758.347-.79.505-1.217.473-1.282z" />
+                        </svg>
                       </div>
-                    </button>
-                    {isAppleEnabled() && (
-                      <button
-                        type="button"
-                        className={styles.appleButton}
-                        onClick={() => startSignIn('apple')}
-                        disabled={busy !== 'idle'}
-                      >
-                        <div className={styles.appleButtonContentWrapper}>
-                          <div className={styles.appleButtonIcon}>
-                            <svg viewBox="0 0 16 16" focusable="false" aria-hidden="true">
-                              <path d="M11.182.008C11.148-.03 9.923.023 8.857 1.18c-1.066 1.156-.902 2.482-.878 2.516.024.034 1.52.087 2.475-1.258.955-1.345.762-2.391.728-2.43zm3.314 11.733c-.048-.096-2.325-1.234-2.113-3.422.212-2.189 1.675-2.789 1.698-2.854.023-.065-.597-.79-1.254-1.157a3.692 3.692 0 0 0-1.563-.434c-.108-.003-.483-.095-1.254.116-.508.139-1.653.589-1.968.607-.316.018-1.256-.522-2.267-.665-.647-.125-1.333.131-1.824.328-.49.196-1.422.754-2.074 2.237-.652 1.482-.311 3.83-.067 4.56.244.729.625 1.924 1.273 2.796.576.984 1.34 1.667 1.659 1.899.319.232 1.219.386 1.843.067.502-.308 1.408-.485 1.766-.472.357.013 1.061.154 1.782.539.571.197 1.111.115 1.652-.105.541-.221 1.324-1.059 2.238-2.758.347-.79.505-1.217.473-1.282z" />
-                            </svg>
-                          </div>
-                          <span className={styles.appleButtonContents}>
-                            {busy === 'signin' ? 'Signing in…' : 'Sign in with Apple'}
-                          </span>
-                        </div>
-                      </button>
-                    )}
-                  </div>
+                      <span className={styles.appleButtonContents}>
+                        {isSigningInApple ? 'Signing in…' : 'Sign in with Apple'}
+                      </span>
+                    </div>
+                  </button>
                 )}
-              </>
+              </div>
             ) : (
               <div className={styles.buttonRow}>
                 <button

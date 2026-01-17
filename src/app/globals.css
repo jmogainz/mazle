@@ -28,6 +28,8 @@
   /* Minimum scale for readability */
   --ui-scale-max: 1;
   /* Maximum scale */
+  --game-gap-top: 8px;
+  --game-gap-bottom: 10px;
 }
 
 :root[data-theme='dark'] {

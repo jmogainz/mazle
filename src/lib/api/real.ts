@@ -37,8 +37,14 @@ export const realApi = {
       body: JSON.stringify(body),
     }),
 
-  leaderboardTop: async (date: string, limit = 50): Promise<LeaderboardTopResponse> =>
-    fetchJson(`/api/leaderboard/top?date=${encodeURIComponent(date)}&limit=${limit}`, { method: 'GET' }),
+  leaderboardTop: async (date: string, limit = 50, offset = 0): Promise<LeaderboardTopResponse> => {
+    const params = new URLSearchParams({
+      date,
+      limit: String(limit),
+      offset: String(offset),
+    });
+    return fetchJson(`/api/leaderboard/top?${params.toString()}`, { method: 'GET' });
+  },
 
   leaderboardMe: async (date: string): Promise<LeaderboardMeResponse> =>
     fetchJson(`/api/leaderboard/me?date=${encodeURIComponent(date)}`, { method: 'GET' }),

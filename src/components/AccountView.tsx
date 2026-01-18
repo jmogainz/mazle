@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { signIn, signOut } from 'next-auth/react';
-import { api, getApiMode } from '@/lib/api';
+import { api } from '@/lib/api';
 import { cachedApi, fetchMeFresh, readCachedMe } from '@/lib/api/cached';
 import { getPrefs, setPrefs } from '@/lib/prefs';
 import { addDays } from '@/lib/date';
@@ -355,14 +355,6 @@ function AccountView() {
         window.requestAnimationFrame(() => resolve());
       });
 
-      if (getApiMode() === 'mock') {
-        api
-          .claim({})
-          .then(() => refreshMe(false, true))
-          .finally(() => setBusy('idle'));
-        return;
-      }
-
       const callbackUrl =
         typeof window !== 'undefined'
           ? `${window.location.pathname}${window.location.search}${window.location.hash}`
@@ -374,16 +366,6 @@ function AccountView() {
 
   const handleSignOut = useCallback(async () => {
     if (!isSignedIn) return;
-    if (getApiMode() === 'mock') {
-      setBusy('signout');
-      try {
-        localStorage.removeItem('mazle_mock_me_v1');
-      } catch {
-        // ignore
-      }
-      refreshMe(false, true).finally(() => setBusy('idle'));
-      return;
-    }
 
     setBusy('signout');
     const callbackUrl =
@@ -412,19 +394,9 @@ function AccountView() {
       const me = readCachedMe();
       if (!me) return;
 
-      // Optimistic update for UI responsiveness
-      // Note: This only affects the cachedMe if we were using a context, 
-      // but since we rely on `refreshMe` to update `meState`, we'll see the flicker unless we do more complex state management.
-      // However, api.profileUpdate is fast.
-
       try {
         if (me.mode === 'user') {
           await api.profileUpdate(changes);
-        } else {
-          // For mock/guest mode, we might still be using the mock API which handles localStorage
-          if (getApiMode() === 'mock') {
-            await api.profileUpdate(changes);
-          }
         }
         await refreshMe(true, true);
       } catch {

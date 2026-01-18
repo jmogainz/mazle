@@ -17,6 +17,18 @@
   overflow: hidden;
   position: relative;
   /* For absolute positioning of header arrows */
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 /* Horizontal carousel with scroll-snap */
@@ -600,9 +612,9 @@
   flex-direction: column;
   align-items: center;
   justify-content: flex-end;
-  min-width: 80px;
-  max-width: 100px;
-  width: 30%;
+  min-width: 90px;
+  max-width: 120px;
+  width: 32%;
 }
 
 /* Highlight for user's podium position */

@@ -4,6 +4,18 @@
   height: 100%;
   max-height: 75vh;
   overflow: hidden;
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 .track {
@@ -32,7 +44,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 0.5rem;
+  padding: 0.9rem;
 }
 
 .content {
@@ -184,11 +196,6 @@
   border-radius: 10px;
 }
 
-.panel {
-  padding: 0.9rem;
-  overflow: hidden;
-}
-
 .podium {
   display: flex;
   align-items: flex-end;
@@ -202,9 +209,9 @@
   flex-direction: column;
   align-items: center;
   justify-content: flex-end;
-  min-width: 80px;
-  max-width: 100px;
-  width: 30%;
+  min-width: 90px;
+  max-width: 120px;
+  width: 32%;
 }
 
 .podiumAvatar {
@@ -216,12 +223,8 @@
   font-size: 0.75rem;
   color: var(--color-text);
   text-align: center;
-  width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   margin-bottom: 0.1rem;
-  line-height: 1; /* Tightened line height */
+  line-height: 1;
 }
 
 .podiumBar {

@@ -26,7 +26,7 @@ import type {
   SettingsUpdateResponse,
 } from './types';
 
-export const realApi = {
+export const api = {
   me: async (): Promise<MeResponse> => fetchJson('/api/me', { method: 'GET' }),
 
   guest: async (): Promise<GuestResponse> => fetchJson('/api/guest', { method: 'POST' }),

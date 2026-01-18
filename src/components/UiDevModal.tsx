@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { api, getApiMode, setApiMode } from '@/lib/api';
+import { api } from '@/lib/api';
 import { getNewYorkDateString, getPuzzleNumberFromNyDateString } from '@/game/puzzleGenerator';
 import { getPlayerStats, getTodaysResult, recordLeaderboardRank } from '@/utils/storage';
 import styles from './UiDevModal.module.css';
@@ -27,9 +27,8 @@ export default function UiDevModal({
   onOpenArchive,
   onApplyTodayResult,
 }: UiDevModalProps) {
-  const [mode, setMode] = useState<'real' | 'mock'>(() => getApiMode());
   const [meMode, setMeMode] = useState<'unknown' | 'guest' | 'user'>('unknown');
-  const [busy, setBusy] = useState<'idle' | 'switching' | 'submitting'>('idle');
+  const [busy, setBusy] = useState<'idle' | 'submitting'>('idle');
   const [toast, setToast] = useState<string | null>(null);
 
   const todayNy = useMemo(() => getNewYorkDateString(), []);
@@ -38,7 +37,6 @@ export default function UiDevModal({
 
   useEffect(() => {
     if (!open) return;
-    setMode(getApiMode());
     api
       .me()
       .then((me) => setMeMode(me.mode))
@@ -59,31 +57,6 @@ export default function UiDevModal({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [open, onClose]);
-
-  const setApiModeAndReload = useCallback((next: 'real' | 'mock') => {
-    setApiMode(next);
-    window.location.reload();
-  }, []);
-
-  const switchIdentity = useCallback(async () => {
-    if (mode !== 'mock') {
-      setToast('Switch API mode to Mock first.');
-      return;
-    }
-    setBusy('switching');
-    try {
-      if (meMode === 'user') {
-        await api.guest();
-        setToast('Switched to Guest.');
-      } else {
-        await api.claim({});
-        setToast('Switched to Account.');
-      }
-      window.location.reload();
-    } finally {
-      setBusy('idle');
-    }
-  }, [meMode, mode]);
 
   const submitToLeaderboard = useCallback(async () => {
     const result = getTodaysResult();
@@ -146,52 +119,16 @@ export default function UiDevModal({
         {toast && <div className={styles.notice}>{toast}</div>}
 
         <div className={styles.section}>
-          <div className={styles.sectionTitle}>API</div>
-          <div className={styles.row}>
-            <div className={styles.rowLabel}>
-              <div className={styles.rowTitle}>Data source</div>
-              <div className={styles.rowHint}>Mock gives full UI data (80 LB, podium history, dummy archive).</div>
-            </div>
-            <div className={styles.radioGroup}>
-              <button
-                type="button"
-                className={`${styles.radioButton} ${mode === 'mock' ? styles.radioButtonActive : ''}`}
-                onClick={() => setApiModeAndReload('mock')}
-              >
-                <span className={`${styles.radioDot} ${mode === 'mock' ? styles.radioDotActive : ''}`} aria-hidden="true" />
-                Mock
-              </button>
-              <button
-                type="button"
-                className={`${styles.radioButton} ${mode === 'real' ? styles.radioButtonActive : ''}`}
-                onClick={() => setApiModeAndReload('real')}
-              >
-                <span className={`${styles.radioDot} ${mode === 'real' ? styles.radioDotActive : ''}`} aria-hidden="true" />
-                Real
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className={styles.section}>
           <div className={styles.sectionTitle}>Identity</div>
           <div className={styles.row}>
             <div className={styles.rowLabel}>
               <div className={styles.rowTitle}>Mode</div>
-              <div className={styles.rowHint}>UI-only guest/account toggle (no real auth).</div>
+              <div className={styles.rowHint}>Current identity mode.</div>
             </div>
             <div className={styles.controls}>
               <span className={`${styles.pill} ${meMode === 'unknown' ? styles.pillMuted : ''}`}>
                 {meMode === 'unknown' ? 'Loading…' : meMode === 'user' ? 'Account' : 'Guest'}
               </span>
-              <button
-                type="button"
-                className={styles.button}
-                onClick={switchIdentity}
-                disabled={busy !== 'idle'}
-              >
-                {busy === 'switching' ? 'Switching…' : meMode === 'user' ? 'Switch to Guest' : 'Switch to Account'}
-              </button>
             </div>
           </div>
         </div>

@@ -172,7 +172,7 @@ function getDefaultStats(): PlayerStats {
 }
 
 function isUiDevEnv(): boolean {
-  return process.env.NEXT_PUBLIC_ENV === 'dev';
+  return process.env.NEXT_PUBLIC_ENV === 'dev' || process.env.NEXT_PUBLIC_ENV === 'dev-test';
 }
 
 function clampInt(value: number, min: number, max: number): number {

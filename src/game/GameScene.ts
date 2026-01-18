@@ -1889,10 +1889,23 @@ export class GameScene extends Phaser.Scene {
     this.reviewTileContainers.forEach(c => c.destroy());
     this.reviewTileContainers = [];
 
-    // If clearing (null index) or invalid index, stop here
+4    // If clearing (null index) or invalid index, restore solution and stop here
     if (attemptIndex === null || attemptIndex < 0 || !this.gameState.attempts[attemptIndex]) {
+      // Restore solution analysis visibility
+      this.analysisObjects.forEach(obj => {
+        if ('setAlpha' in obj && typeof obj.setAlpha === 'function') {
+          obj.setAlpha(1);
+        }
+      });
       return;
     }
+
+    // Hide solution analysis to show only the failed attempt
+    this.analysisObjects.forEach(obj => {
+      if ('setAlpha' in obj && typeof obj.setAlpha === 'function') {
+        obj.setAlpha(0);
+      }
+    });
 
     const attempt = this.gameState.attempts[attemptIndex];
     const path = attempt.path;

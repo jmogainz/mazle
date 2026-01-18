@@ -16,6 +16,7 @@ import CharacterIcon from './CharacterIcon';
 import SkinWheelItem from './SkinWheelItem';
 import styles from './AccountView.module.css';
 
+const IS_UI_DEV_ENV = process.env.NEXT_PUBLIC_ENV === 'dev' || process.env.NEXT_PUBLIC_ENV === 'dev-test';
 const DEVTOOLS_PREVIEW_FEATURES_KEY = 'mazle_devtools_preview_features_v1';
 const GUEST_IMPORT_PREFIX = 'mazle_guest_history_imported_v1:';
 const GUEST_IMPORT_OWNER_KEY = 'mazle_guest_history_owner_user_v1';

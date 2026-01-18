@@ -205,7 +205,7 @@ const DEVTOOLS_PREVIEW_FEATURES_KEY = 'mazle_devtools_preview_features_v1';
 const UI_OVERHAUL_EXPERIMENTAL = false;
 const LEADERBOARD_LIMIT = 200;
 const UI_DEV_CODE = 'uiuiuiui';
-const IS_UI_DEV_ENV = process.env.NEXT_PUBLIC_ENV === 'dev';
+const IS_UI_DEV_ENV = process.env.NEXT_PUBLIC_ENV === 'dev' || process.env.NEXT_PUBLIC_ENV === 'dev-test';
 
 const IS_PROD = process.env.NEXT_PUBLIC_ENV === 'prod';
 const HELP_SEEN_KEY = `mazle_seen_help_${HELP_MENU_HASH}`;
@@ -295,6 +295,7 @@ export default function Home() {
   const [liveAttempts, setLiveAttempts] = useState<GameState['attempts']>([]);
   const [reviewAttemptIndex, setReviewAttemptIndex] = useState<number | null>(null);
   const [showReplayButton, setShowReplayButton] = useState(false);
+  const [analysisAnimationComplete, setAnalysisAnimationComplete] = useState(false);
   const identitySyncEpochRef = useRef(0);
 
   // Keep devMaxLivesRef in sync
@@ -1101,6 +1102,7 @@ export default function Home() {
   useEffect(() => {
     const unsubscribe = onGameEvent('analysisComplete', () => {
       setShowReplayButton(true);
+      setAnalysisAnimationComplete(true);
     });
     return unsubscribe;
   }, []);
@@ -1373,6 +1375,7 @@ export default function Home() {
 
   const handleReplayAnalysis = useCallback(() => {
     setShowReplayButton(false); // Hide button while replaying
+    setAnalysisAnimationComplete(false); // Reset animation state
     gameControlsRef.current?.replayAnalysis();
   }, []);
 
@@ -1438,6 +1441,7 @@ export default function Home() {
     setShowInlineResult(true);
     setIsPlaying(false);
     setShowShareCard(false);
+    setAnalysisAnimationComplete(false); // Reset so animation plays fresh
   }, [showAnalysis]);
 
   const handleShowShareCard = useCallback(() => {
@@ -1629,6 +1633,8 @@ export default function Home() {
                 onReviewAttempt={setReviewAttemptIndex}
                 reviewAttemptIndex={reviewAttemptIndex}
                 loading={!hasPuzzle}
+                analysisAnimationComplete={analysisAnimationComplete}
+                isResultModalActive={showShareCard}
               />
             </div>
 
@@ -1663,7 +1669,7 @@ export default function Home() {
                     <div className={`${styles.darkOverlay} ${shouldBlur ? styles.darkOverlayVisible : ''}`} />
                     {lifeFlash && <div className={styles.lifeFlash} />}
                     {!isPlaying && !showInlineResult && !showShareCard && (
-                      <div 
+                      <div
                         className={styles.startOverlay}
                         onClick={previousResult ? handleViewResult : undefined}
                       >

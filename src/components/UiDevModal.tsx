@@ -106,7 +106,7 @@ export default function UiDevModal({
           <div className={styles.titleBlock}>
             <div className={styles.title}>UI Dev Tools</div>
             <div className={styles.subtitle}>
-              Fast UI scenarios for `ENV=dev` (trigger: type `UIUIUIUI`)
+              Fast UI scenarios for `ENV=dev` or `ENV=dev-test` (trigger: type `UIUIUIUI`)
             </div>
           </div>
           <button type="button" className={styles.closeButton} onClick={onClose} aria-label="Close">
@@ -205,4 +205,3 @@ export default function UiDevModal({
     </div>
   );
 }
-

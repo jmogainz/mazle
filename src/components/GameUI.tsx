@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { GameState } from '@/game/types';
 import { onGameEvent } from '@/game/events';
 import { formatTime } from '@/utils/storage';
+import { STORAGE_KEYS } from '@/constants/game';
 import styles from './GameUI.module.css';
 
 interface InitialGameState {
@@ -27,6 +28,8 @@ interface GameUIProps {
   onReviewAttempt?: (index: number | null) => void;
   reviewAttemptIndex?: number | null;
   loading?: boolean; // When true, show skeleton placeholders
+  analysisAnimationComplete?: boolean; // When true, solution animation has finished
+  isResultModalActive?: boolean; // When true, the scorecard/share card is visible
 }
 
 export default function GameUI({
@@ -42,6 +45,8 @@ export default function GameUI({
   onReviewAttempt,
   reviewAttemptIndex,
   loading = false,
+  analysisAnimationComplete = false,
+  isResultModalActive = false,
 }: GameUIProps) {
   const [currentAttemptMoves, setCurrentAttemptMoves] = useState(initialState?.currentAttemptMoves ?? 0);
   const [maxLives, setMaxLives] = useState(propMaxLives ?? initialState?.maxLives ?? 3);
@@ -54,10 +59,13 @@ export default function GameUI({
   const [showTooltip, setShowTooltip] = useState(false);
   const [penaltyFlash, setPenaltyFlash] = useState(false);
   const [reviewHintTarget, setReviewHintTarget] = useState<number | null>(null);
+  const [showLivesTooltip, setShowLivesTooltip] = useState(false);
+  const [isTooltipFadingOut, setIsTooltipFadingOut] = useState(false);
   const displayLabel = puzzleLabel ?? `#${puzzleNumber}`;
 
   // Track if we've shown the review hint this game
   const hasShownReviewHintRef = useRef(false);
+  const hasTriggeredLivesTooltipRef = useRef(false);
 
   // Sync maxLives and lives when prop changes (dev tools adjustment)
   useEffect(() => {
@@ -66,7 +74,7 @@ export default function GameUI({
       setLives(propMaxLives);
     }
   }, [propMaxLives, maxLives]);
-  
+
   // Reset hint flag when game restarts (lives returns to max)
   useEffect(() => {
     if (lives === maxLives) {
@@ -74,7 +82,16 @@ export default function GameUI({
       setReviewHintTarget(null);
     }
   }, [lives, maxLives]);
-  
+
+  // Detect if device supports touch (mobile) or not (desktop)
+  const isTouchDevice = typeof window !== 'undefined' &&
+    ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+
+  // Tooltip text adapts to device type (touch vs mouse)
+  const tooltipText = isTouchDevice ? 'Tap to see failed attempts' : 'Click to see failed attempts';
+
+
+
   // ... existing useEffects ...
 
   // Initialize startTime on client only to avoid hydration mismatch
@@ -105,6 +122,56 @@ export default function GameUI({
       }
     }
   }, [initialState]);
+
+  // Handle lives tooltip hint behavior
+  useEffect(() => {
+    // Only trigger if game is over (frozen), not loading, and not already triggered
+    if (frozen && !loading && !hasTriggeredLivesTooltipRef.current) {
+      if (typeof window === 'undefined') return;
+
+      const seen = localStorage.getItem(STORAGE_KEYS.LIVES_TOOLTIP_SEEN);
+      if (seen) return;
+
+      const isLoss = lives === 0;
+
+      // TRIGGER CONDITIONS:
+      // Loss: Solution animation done AND Scorecard closed
+      // Win: Solution animation done (Scorecard is already closed to see analysis)
+      const isTriggerReady = isLoss
+        ? (analysisAnimationComplete && !isResultModalActive)
+        : analysisAnimationComplete;
+
+      if (!isTriggerReady) return;
+
+      hasTriggeredLivesTooltipRef.current = true;
+
+      let fadeTimer: NodeJS.Timeout;
+      let cleanupTimer: NodeJS.Timeout;
+
+      // Wait 1 second after trigger condition is met
+      const showTimer = setTimeout(() => {
+        setShowLivesTooltip(true);
+
+        // Stay for 5 seconds then fade out
+        fadeTimer = setTimeout(() => {
+          setIsTooltipFadingOut(true);
+
+          // Wait for fade animation to finish
+          cleanupTimer = setTimeout(() => {
+            setShowLivesTooltip(false);
+            setIsTooltipFadingOut(false);
+            localStorage.setItem(STORAGE_KEYS.LIVES_TOOLTIP_SEEN, 'true');
+          }, 400); // Slightly longer than 0.35s animation
+        }, 5000);
+      }, 1000);
+
+      return () => {
+        clearTimeout(showTimer);
+        clearTimeout(fadeTimer);
+        clearTimeout(cleanupTimer);
+      };
+    }
+  }, [frozen, analysisAnimationComplete, loading, isResultModalActive, lives]);
 
 
   useEffect(() => {
@@ -141,7 +208,7 @@ export default function GameUI({
       if (!hintsEnabled && !hasShownReviewHintRef.current) {
         hasShownReviewHintRef.current = true;
         setReviewHintTarget(newLives); // The index of the just-lost life is 'newLives'
-        
+
         // Clear after 5 seconds
         setTimeout(() => {
           setReviewHintTarget(null);
@@ -196,6 +263,11 @@ export default function GameUI({
       <div className={styles.statsRow}>
         {/* Lives */}
         <div className={styles.statGroup}>
+          {showLivesTooltip && (
+            <div className={`${styles.livesTooltip} ${isTooltipFadingOut ? styles.tooltipFadeOut : ''}`}>
+              {tooltipText}
+            </div>
+          )}
           <div className={styles.livesContainer}>
             {loading ? (
               // Skeleton lives
@@ -203,72 +275,75 @@ export default function GameUI({
                 <div key={i} className={`${styles.lifeNode} ${styles.skeletonLife}`} />
               ))
             ) : (
-	              // Real lives
-	              Array.from({ length: maxLives }).map((_, i) => {
-	                /*
-	                UI overhaul notes (preserved):
+              // Real lives
+              Array.from({ length: maxLives }).map((_, i) => {
+                /*
+                UI overhaul notes (preserved):
 
-	                // Logic:
-	                // i < lives: Active/Remaining lives (usually just one "current" unless we change logic, but let's assume lives=count)
-	                // i >= lives: Lost lives (history)
-	                //
-	                // Actually, standard logic:
-	                // lives = 3. i=0,1,2.
-	                // If lives=3 (start), all active.
-	                // If lives=2, index 0,1 active? Or index 2 lost?
-	                // Usually: 3 lives means we have 3 attempts.
-	                // If lives=2, we have used 1.
-	                // The visual is typically: "Remaining Lives".
-	                // So if lives=3: [X] [X] [X]
-	                // If lives=2: [X] [X] [ ]
-	                // So index < lives are active. index >= lives are lost.
-	                //
-	                // Mapping attempt index to life node:
-	                // Attempt 0 corresponds to the *first* lost life node?
-	                // Let's say maxLives=3.
-	                // Attempt 1 fails. lives -> 2. We have 1 attempt in history (index 0).
-	                // Which node represents attempt 0?
-	                // Standard approach: Right-to-left or Left-to-right loss?
-	                // Current CSS: i < lives ? lifeActive : lifeLost.
-	                // This implies "Active" ones are on the left (0..lives-1).
-	                // "Lost" ones are on the right (lives..maxLives-1).
-	                // Example: Start (lives=3): [0:Active] [1:Active] [2:Active]
-	                // Lose 1 (lives=2): [0:Active] [1:Active] [2:Lost] -> Attempt 0 stored.
-	                // So "Lost" node at index 2 corresponds to Attempt 0?
-	                // Lose another (lives=1): [0:Active] [1:Lost] [2:Lost] -> Attempt 1 stored.
-	                // So "Lost" node at index 1 corresponds to Attempt 1.
-	                // This reverse mapping is confusing for selection.
-	                //
-	                // Better Mapping:
-	                // Let's say attempts are pushed to an array: [Attempt0, Attempt1].
-	                // We have `maxLives` slots.
-	                // Slot 0: Attempt 0 (if lost) OR Current Life (if active).
-	                // Slot 1: Attempt 1 (if lost) OR Current Life (if active).
-	                // This suggests we should render slots based on *attempts made*.
-	                // But the current UI is "Lives Remaining".
-	                // Let's stick to the visual: "Lost lives are clickable".
-	                // If I have 3 lives, and I lose one, I have 2 left.
-	                // The "Lost" indicator is distinct.
-	                // Let's make *any* lost life clickable to see the attempt that *caused* that loss.
-	                //
-	                // Calculating the attempt index for a lost life node:
-	                // If we fill from right-to-left (standard for hearts/lives):
-	                // lives=3: [ ][ ][ ]
-	                // lives=2: [ ][ ][X] (X is index 2. Attempt #0).
-	                // lives=1: [ ][X][X] (Index 1 is Attempt #1. Index 2 is Attempt #0).
-	                // lives=0: [X][X][X] (Index 0 is Attempt #2).
-	                // Formula: attemptIndex = (maxLives - 1) - i
-	                // Check:
-	                // i=2, max=3 -> 2-2 = 0. Correct.
-	                // i=1, max=3 -> 2-1 = 1. Correct.
-	                // i=0, max=3 -> 2-0 = 2. Correct.
-	                */
-	                const isLost = i >= lives;
-	                const isActive = i < lives;
-	                const attemptIndex = (maxLives - 1) - i;
-	                const canSelect = !hintsEnabled && onReviewAttempt;
-	                const isSelected = reviewAttemptIndex === attemptIndex;
-	                const isHintTarget = reviewHintTarget === i;
+                // Logic:
+                // i < lives: Active/Remaining lives (usually just one "current" unless we change logic, but let's assume lives=count)
+                // i >= lives: Lost lives (history)
+                //
+                // Actually, standard logic:
+                // lives = 3. i=0,1,2.
+                // If lives=3 (start), all active.
+                // If lives=2, index 0,1 active? Or index 2 lost?
+                // Usually: 3 lives means we have 3 attempts.
+                // If lives=2, we have used 1.
+                // The visual is typically: "Remaining Lives".
+                // So if lives=3: [X] [X] [X]
+                // If lives=2: [X] [X] [ ]
+                // So index < lives are active. index >= lives are lost.
+                //
+                // Mapping attempt index to life node:
+                // Attempt 0 corresponds to the *first* lost life node?
+                // Let's say maxLives=3.
+                // Attempt 1 fails. lives -> 2. We have 1 attempt in history (index 0).
+                // Which node represents attempt 0?
+                // Standard approach: Right-to-left or Left-to-right loss?
+                // Current CSS: i < lives ? lifeActive : lifeLost.
+                // This implies "Active" ones are on the left (0..lives-1).
+                // "Lost" ones are on the right (lives..maxLives-1).
+                // Example: Start (lives=3): [0:Active] [1:Active] [2:Active]
+                // Lose 1 (lives=2): [0:Active] [1:Active] [2:Lost] -> Attempt 0 stored.
+                // So "Lost" node at index 2 corresponds to Attempt 0?
+                // Lose another (lives=1): [0:Active] [1:Lost] [2:Lost] -> Attempt 1 stored.
+                // So "Lost" node at index 1 corresponds to Attempt 1.
+                // This reverse mapping is confusing for selection.
+                //
+                // Better Mapping:
+                // Let's say attempts are pushed to an array: [Attempt0, Attempt1].
+                // We have `maxLives` slots.
+                // Slot 0: Attempt 0 (if lost) OR Current Life (if active).
+                // Slot 1: Attempt 1 (if lost) OR Current Life (if active).
+                // This suggests we should render slots based on *attempts made*.
+                // But the current UI is "Lives Remaining".
+                // Let's stick to the visual: "Lost lives are clickable".
+                // If I have 3 lives, and I lose one, I have 2 left.
+                // The "Lost" indicator is distinct.
+                // Let's make *any* lost life clickable to see the attempt that *caused* that loss.
+                //
+                // Calculating the attempt index for a lost life node:
+                // If we fill from right-to-left (standard for hearts/lives):
+                // lives=3: [ ][ ][ ]
+                // lives=2: [ ][ ][X] (X is index 2. Attempt #0).
+                // lives=1: [ ][X][X] (Index 1 is Attempt #1. Index 2 is Attempt #0).
+                // lives=0: [X][X][X] (Index 0 is Attempt #2).
+                // Formula: attemptIndex = (maxLives - 1) - i
+                // Check:
+                // i=2, max=3 -> 2-2 = 0. Correct.
+                // i=1, max=3 -> 2-1 = 1. Correct.
+                // i=0, max=3 -> 2-0 = 2. Correct.
+                */
+                const isLost = i >= lives;
+                const isActive = i < lives;
+                const attemptIndex = (maxLives - 1) - i;
+                // Allow reviewing attempts when:
+                // 1. Hints are disabled (during gameplay), OR
+                // 2. Post-game (frozen) AND solution animation has completed
+                const canSelect = (!hintsEnabled || (frozen && analysisAnimationComplete)) && onReviewAttempt;
+                const isSelected = reviewAttemptIndex === attemptIndex;
+                const isHintTarget = reviewHintTarget === i;
 
                 const handleClick = () => {
                   if (!canSelect) return;

@@ -473,27 +473,43 @@
 }
 
 
-/* Spoiler hint banner */
+/* Spoiler anchor - uses sticky positioning */
+.spoilerAnchor {
+  position: sticky;
+  bottom: 0;
+  height: 0;
+  width: 100%;
+  z-index: 20;
+  pointer-events: none;
+}
+
+/* Spoiler hint banner - matches row styling exactly */
+.spoilerRow {
+  grid-template-columns: 1fr;
+  justify-items: center;
+  background: var(--color-surface);
+}
+
+.spoilerRowSticky {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+
 .spoilerBanner {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.4rem;
-  padding: 0.5rem 0.75rem;
-  margin-bottom: 0.75rem;
-  background: var(--color-surface);
-  border: 1px dashed var(--color-border);
-  border-radius: 8px;
-  font-size: 0.75rem;
-  font-weight: 700;
+  gap: 0.5rem;
+  font-weight: 800;
   color: var(--color-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
 }
 
 .spoilerBanner svg {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   opacity: 0.7;
 }
 

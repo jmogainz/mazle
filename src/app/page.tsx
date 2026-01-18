@@ -1530,6 +1530,7 @@ export default function Home() {
     (hasPuzzle && !isPlaying && isGameReady && !showInlineResult);
   const showLoader = !hasPuzzle || !isGameReady;
   const showMenuButton = process.env.NODE_ENV !== 'production' || previewFeaturesEnabled;
+  const showControlsRow = showInlineResult && !showSwipeHint && !showShareCard;
 
   // Clear preload hint once puzzle loading completes (React now controls visibility)
   useEffect(() => {
@@ -1778,42 +1779,43 @@ export default function Home() {
             </div>
 
             <div className={`${styles.controlsArea} ${showMenu ? styles.blurred : ''}`}>
-              {showInlineResult && !showSwipeHint && !showShareCard && (
-                <div className={styles.controlsRow}>
-                  <button
-                    className={styles.iconButton}
-                    onClick={() => setShowLeaderboard(true)}
-                    aria-label="Leaderboard"
-                    title="Leaderboard"
-                  >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M3 21V10h6V3h6v4h6v14H3zM9 10v11M15 7v14" />
-                    </svg>
-                  </button>
-                  <button
-                    className={styles.shareButton}
-                    onClick={handleShowShareCard}
-                  >
-                    Share
-                  </button>
-                  <button
-                    className={styles.iconButton}
-                    onClick={() => {
-                      setStats(getPlayerStats());
-                      setShowStats(true);
-                    }}
-                    aria-label="Statistics"
-                    title="Statistics"
-                  >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M3 3v18h18" />
-                      <path d="M18 17V9" />
-                      <path d="M13 17V5" />
-                      <path d="M8 17v-3" />
-                    </svg>
-                  </button>
-                </div>
-              )}
+              <div
+                className={`${styles.controlsRow} ${showControlsRow ? styles.controlsRowVisible : styles.controlsRowHidden}`.trim()}
+                aria-hidden={!showControlsRow}
+              >
+                <button
+                  className={styles.iconButton}
+                  onClick={() => setShowLeaderboard(true)}
+                  aria-label="Leaderboard"
+                  title="Leaderboard"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 21V10h6V3h6v4h6v14H3zM9 10v11M15 7v14" />
+                  </svg>
+                </button>
+                <button
+                  className={styles.shareButton}
+                  onClick={handleShowShareCard}
+                >
+                  Share
+                </button>
+                <button
+                  className={styles.iconButton}
+                  onClick={() => {
+                    setStats(getPlayerStats());
+                    setShowStats(true);
+                  }}
+                  aria-label="Statistics"
+                  title="Statistics"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 3v18h18" />
+                    <path d="M18 17V9" />
+                    <path d="M13 17V5" />
+                    <path d="M8 17v-3" />
+                  </svg>
+                </button>
+              </div>
               {showSwipeHint && (
                 <div className={styles.swipeHint} onAnimationEnd={() => setShowSwipeHint(false)}>
                   Swipe anywhere to move

@@ -21,6 +21,7 @@ import styles from './LeaderboardView.module.css';
 const DEVTOOLS_PREVIEW_FEATURES_KEY = 'mazle_devtools_preview_features_v1';
 const LEADERBOARD_PAGE_SIZE = 200;
 const LOAD_MORE_THRESHOLD_PX = 180;
+const MAX_LOADED_ENTRIES = 1000; // Performance limit - excludes podium
 
 type StickyPosition = 'top' | 'inline' | 'bottom';
 
@@ -111,6 +112,35 @@ function LeaderboardView() {
     return unsubscribe;
   }, [refreshLeaderboard]);
 
+  // Prefetch entries around user's rank if beyond loaded range (eliminates delay on tap)
+  useEffect(() => {
+    if (meState.status !== 'loaded' || !meState.data?.rank) return;
+    if (topState.status !== 'loaded') return;
+
+    const myRank = meState.data.rank;
+    // Only prefetch if rank is beyond podium and not already loaded
+    if (myRank <= 3) return;
+
+    const alreadyLoaded = topState.data.entries.some(e => e.rank === myRank);
+    if (alreadyLoaded) return;
+
+    // Prefetch entries around user's rank
+    api.leaderboardAround(todayDate, myRank, 10)
+      .then((around) => {
+        setTopState((prev) => {
+          if (prev.status !== 'loaded') return prev;
+          const seen = new Set(prev.data.entries.map((e) => e.rank));
+          const newEntries = around.entries.filter((e) => !seen.has(e.rank));
+          if (newEntries.length === 0) return prev; // No new entries, don't update
+          const merged = [...prev.data.entries, ...newEntries].sort((a, b) => a.rank - b.rank);
+          return { ...prev, data: { ...prev.data, entries: merged } };
+        });
+      })
+      .catch(() => {
+        // Ignore prefetch failures - user can still tap and trigger fetch
+      });
+  }, [meState, topState.status, todayDate]); // Only depend on status, not full topState to avoid loops
+
   useEffect(() => {
     if (!showLockedFeatures) return;
     cachedApi
@@ -168,7 +198,11 @@ function LeaderboardView() {
         if (prev.status !== 'loaded') return prev;
         const seen = new Set(prev.data.entries.map((entry) => entry.rank));
         const appended = page.entries.filter((entry) => !seen.has(entry.rank));
-        const merged = prev.data.entries.concat(appended);
+        let merged = prev.data.entries.concat(appended);
+        // Trim from top (lower ranks) if exceeding limit
+        if (merged.length > MAX_LOADED_ENTRIES) {
+          merged = merged.slice(-MAX_LOADED_ENTRIES);
+        }
         const total = page.total ?? prev.data.total;
         const nextOffset =
           page.nextOffset ??
@@ -415,22 +449,103 @@ function LeaderboardView() {
     return Math.max(...restEntries.map(e => e.rank));
   }, [restEntries]);
 
+  // Detect gaps in loaded entries (where rank jumps by more than 1)
+  const gaps = useMemo(() => {
+    if (restEntries.length < 2) return [];
+    const result: { above: number; below: number }[] = [];
+    for (let i = 1; i < restEntries.length; i++) {
+      const prevRank = restEntries[i - 1].rank;
+      const currRank = restEntries[i].rank;
+      if (currRank - prevRank > 1) {
+        result.push({ above: prevRank, below: currRank });
+      }
+    }
+    return result;
+  }, [restEntries]);
+
+  // Track which gaps are being filled to prevent duplicate requests
+  const fillingGapsRef = useRef<Set<string>>(new Set());
+
+  // Fill a specific gap by loading entries from just above the "below" rank (scroll up into gap)
+  const fillGapFromBelow = useCallback(async (above: number, below: number) => {
+    const gapKey = `up-${above}-${below}`;
+    if (fillingGapsRef.current.has(gapKey)) return;
+    fillingGapsRef.current.add(gapKey);
+
+    try {
+      // Load 200 entries ending just before "below" rank
+      const targetOffset = Math.max(0, below - 4 - LEADERBOARD_PAGE_SIZE);
+      const page = await api.leaderboardTop(todayDate, LEADERBOARD_PAGE_SIZE, targetOffset);
+
+      setTopState((prev) => {
+        if (prev.status !== 'loaded') return prev;
+        const seen = new Set(prev.data.entries.map((e) => e.rank));
+        const newEntries = page.entries.filter((e) => !seen.has(e.rank));
+        if (newEntries.length === 0) return prev;
+        let merged = [...prev.data.entries, ...newEntries].sort((a, b) => a.rank - b.rank);
+        // Trim from bottom (higher ranks) if exceeding limit
+        if (merged.length > MAX_LOADED_ENTRIES) {
+          merged = merged.slice(0, MAX_LOADED_ENTRIES);
+        }
+        return { ...prev, data: { ...prev.data, entries: merged, total: page.total ?? prev.data.total } };
+      });
+    } catch {
+      // Ignore fill failures
+    } finally {
+      fillingGapsRef.current.delete(gapKey);
+    }
+  }, [todayDate]);
+
+  // Fill a specific gap by loading entries from just below the "above" rank (scroll down into gap)
+  const fillGapFromAbove = useCallback(async (above: number, below: number) => {
+    const gapKey = `down-${above}-${below}`;
+    if (fillingGapsRef.current.has(gapKey)) return;
+    fillingGapsRef.current.add(gapKey);
+
+    try {
+      // Load 200 entries starting just after "above" rank
+      const targetOffset = above - 3;
+      const page = await api.leaderboardTop(todayDate, LEADERBOARD_PAGE_SIZE, targetOffset);
+
+      setTopState((prev) => {
+        if (prev.status !== 'loaded') return prev;
+        const seen = new Set(prev.data.entries.map((e) => e.rank));
+        const newEntries = page.entries.filter((e) => !seen.has(e.rank));
+        if (newEntries.length === 0) return prev;
+        let merged = [...prev.data.entries, ...newEntries].sort((a, b) => a.rank - b.rank);
+        // Trim from top (lower ranks) if exceeding limit
+        if (merged.length > MAX_LOADED_ENTRIES) {
+          merged = merged.slice(-MAX_LOADED_ENTRIES);
+        }
+        return { ...prev, data: { ...prev.data, entries: merged, total: page.total ?? prev.data.total } };
+      });
+    } catch {
+      // Ignore fill failures
+    } finally {
+      fillingGapsRef.current.delete(gapKey);
+    }
+  }, [todayDate]);
+
   // Load entries above current range using offset-based pagination (200 at a time)
   const loadUp = useCallback(async () => {
     if (loadingUpRef.current || !minLoadedRank || minLoadedRank <= 4) return;
     loadingUpRef.current = true;
     setIsLoadingUp(true);
-    
+
     try {
       // Calculate offset to load entries before current min
       const targetOffset = Math.max(0, minLoadedRank - 4 - LEADERBOARD_PAGE_SIZE);
       const page = await api.leaderboardTop(todayDate, LEADERBOARD_PAGE_SIZE, targetOffset);
-      
+
       setTopState((prev) => {
         if (prev.status !== 'loaded') return prev;
         const seen = new Set(prev.data.entries.map((e) => e.rank));
         const newEntries = page.entries.filter((e) => !seen.has(e.rank));
-        const merged = [...newEntries, ...prev.data.entries].sort((a, b) => a.rank - b.rank);
+        let merged = [...newEntries, ...prev.data.entries].sort((a, b) => a.rank - b.rank);
+        // Trim from bottom (higher ranks) if exceeding limit
+        if (merged.length > MAX_LOADED_ENTRIES) {
+          merged = merged.slice(0, MAX_LOADED_ENTRIES);
+        }
         return { ...prev, data: { ...prev.data, entries: merged, total: page.total ?? prev.data.total } };
       });
     } catch {
@@ -441,23 +556,27 @@ function LeaderboardView() {
     }
   }, [todayDate, minLoadedRank]);
 
-  // Load entries below current range using offset-based pagination (200 at a time)  
+  // Load entries below current range using offset-based pagination (200 at a time)
   const loadDown = useCallback(async () => {
     if (loadingDownRef.current || !maxLoadedRank) return;
     if (totalCount && maxLoadedRank >= totalCount) return;
     loadingDownRef.current = true;
     setIsLoadingDown(true);
-    
+
     try {
       // Offset is maxLoadedRank - 3 (since rank 4 is offset 0)
       const targetOffset = maxLoadedRank - 3;
       const page = await api.leaderboardTop(todayDate, LEADERBOARD_PAGE_SIZE, targetOffset);
-      
+
       setTopState((prev) => {
         if (prev.status !== 'loaded') return prev;
         const seen = new Set(prev.data.entries.map((e) => e.rank));
         const newEntries = page.entries.filter((e) => !seen.has(e.rank));
-        const merged = [...prev.data.entries, ...newEntries].sort((a, b) => a.rank - b.rank);
+        let merged = [...prev.data.entries, ...newEntries].sort((a, b) => a.rank - b.rank);
+        // Trim from top (lower ranks) if exceeding limit
+        if (merged.length > MAX_LOADED_ENTRIES) {
+          merged = merged.slice(-MAX_LOADED_ENTRIES);
+        }
         return { ...prev, data: { ...prev.data, entries: merged, total: page.total ?? prev.data.total } };
       });
     } catch {
@@ -468,31 +587,83 @@ function LeaderboardView() {
     }
   }, [todayDate, maxLoadedRank, totalCount]);
 
+  // Auto-fill small gaps (prefetch for smooth scrolling)
+  // Only fills if gap is small enough to not need scroll-based loading
+  useEffect(() => {
+    if (gaps.length === 0) return;
+    if (topState.status !== 'loaded') return;
+
+    const currentCount = topState.data.entries.length;
+    const firstGap = gaps[0];
+    const gapSize = firstGap.below - firstGap.above - 1;
+
+    // Only auto-fill small gaps (1 page or less)
+    // Larger gaps are filled incrementally via scroll
+    if (gapSize > LEADERBOARD_PAGE_SIZE) return;
+
+    // Skip if would exceed limit
+    if (currentCount + gapSize > MAX_LOADED_ENTRIES) return;
+
+    fillGapFromAbove(firstGap.above, firstGap.below);
+  }, [gaps, fillGapFromAbove, topState]);
+
   // Scroll handler for bidirectional pagination
   useEffect(() => {
     const listContainer = listRef.current;
     if (!listContainer) return;
-    
+
     const scrollContainer = listContainer.closest('[class*="container"]') as HTMLElement;
     if (!scrollContainer) return;
     scrollContainerRef.current = scrollContainer;
 
     const handleScroll = () => {
       if (topState.status !== 'loaded') return;
-      
+
       // Check for loading more at bottom (threshold before reaching end)
       const remaining = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight;
       if (remaining <= LOAD_MORE_THRESHOLD_PX) {
         loadMore();
         loadDown();
       }
-      
+
       // Check for loading more at top (when scrolled near top AND there's a gap above)
       // Only load up if minLoadedRank > 4 (meaning we jumped to a position)
       if (scrollContainer.scrollTop <= LOAD_MORE_THRESHOLD_PX && minLoadedRank && minLoadedRank > 4) {
         loadUp();
       }
-      
+
+      // Detect if we're near a gap and fill it incrementally
+      // Find visible entries by checking which elements are in view
+      if (gaps.length > 0) {
+        const listItems = listContainer.querySelectorAll('[data-rank]');
+        const containerRect = scrollContainer.getBoundingClientRect();
+        const viewTop = containerRect.top;
+        const viewBottom = containerRect.bottom;
+
+        for (const item of listItems) {
+          const rect = item.getBoundingClientRect();
+          // Check if item is visible (within viewport with some threshold)
+          if (rect.bottom >= viewTop - 100 && rect.top <= viewBottom + 100) {
+            const rank = parseInt(item.getAttribute('data-rank') || '0', 10);
+            if (!rank) continue;
+
+            // Check if this rank is at a gap boundary
+            for (const gap of gaps) {
+              // If visible entry is at top of gap (rank === above), load down into gap
+              if (rank === gap.above) {
+                fillGapFromAbove(gap.above, gap.below);
+                break;
+              }
+              // If visible entry is at bottom of gap (rank === below), load up into gap
+              if (rank === gap.below) {
+                fillGapFromBelow(gap.above, gap.below);
+                break;
+              }
+            }
+          }
+        }
+      }
+
       updateStickyPosition();
     };
 
@@ -502,7 +673,7 @@ function LeaderboardView() {
     return () => {
       scrollContainer.removeEventListener('scroll', handleScroll);
     };
-  }, [loadMore, loadUp, loadDown, topState.status, updateStickyPosition, minLoadedRank]);
+  }, [loadMore, loadUp, loadDown, topState.status, updateStickyPosition, minLoadedRank, gaps, fillGapFromAbove, fillGapFromBelow]);
 
   const podiumByRank = useMemo(() => new Map(podium.map((p) => [p.rank, p])), [podium]);
   const first = podiumByRank.get(1);
@@ -682,17 +853,6 @@ function LeaderboardView() {
         <div className={styles.dayTitleSub}>Today</div>
       </div>
 
-      {!hasPlayedToday && topState.status === 'loaded' && (
-        <div className={styles.spoilerBanner}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-            <circle cx="12" cy="12" r="3" />
-            <line x1="1" y1="1" x2="23" y2="23" />
-          </svg>
-          Times hidden until you play
-        </div>
-      )}
-
       {topState.status === 'loaded' && podium.length >= 3 && (
         <div className={styles.podium}>
           <div className={`${styles.podiumColumn} ${second?.isMe ? styles.podiumColumnMe : ''}`.trim()}>
@@ -776,6 +936,7 @@ function LeaderboardView() {
                   <div 
                     key={`${e.rank}-${e.displayName}`} 
                     ref={myRowRef}
+                    data-rank={e.rank}
                     className={`${styles.row} ${styles.rowMeHighlight}`.trim()}
                   >
                     <div className={styles.rowRank}>#{e.rank}</div>
@@ -786,7 +947,7 @@ function LeaderboardView() {
                 );
               }
               return (
-                <div key={`${e.rank}-${e.displayName}`} className={styles.row}>
+                <div key={`${e.rank}-${e.displayName}`} data-rank={e.rank} className={styles.row}>
                   <div className={styles.rowRank}>#{e.rank}</div>
                   <div className={styles.rowName}>{e.displayName}</div>
                   <div className={`${styles.rowTime} ${!hasPlayedToday ? styles.timeHidden : ''}`.trim()}>{formatTimeMs(e.timeMs)}</div>
@@ -838,6 +999,21 @@ function LeaderboardView() {
                 <div className={styles.skeletonText} style={{ width: 28 }} />
               </div>
             ))}
+          </div>
+        )}
+
+        {!hasPlayedToday && topState.status === 'loaded' && (
+          <div className={styles.spoilerAnchor}>
+            <div className={`${styles.row} ${styles.spoilerRow} ${styles.spoilerRowSticky}`.trim()}>
+              <div className={styles.spoilerBanner}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                  <line x1="1" y1="1" x2="23" y2="23" />
+                </svg>
+                Times hidden until you play
+              </div>
+            </div>
           </div>
         )}
 

@@ -114,9 +114,15 @@
   transition: background 0.2s, color 0.2s;
 }
 
-.closeButton:hover {
-  background: var(--color-surface);
-  color: var(--color-text);
+@media (hover: hover) {
+  .closeButton:hover {
+    background: var(--color-surface);
+    color: var(--color-text);
+  }
+}
+
+.closeButton:active {
+  transform: scale(0.92);
 }
 
 .content {

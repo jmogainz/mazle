@@ -123,9 +123,15 @@
   transition: width 0.15s ease-out, height 0.15s ease-out;
 }
 
-.iconButton:hover {
-  background: var(--color-surface);
-  color: var(--color-primary);
+@media (hover: hover) {
+  .iconButton:hover {
+    background: var(--color-surface);
+    color: var(--color-primary);
+  }
+}
+
+.iconButton:active {
+  transform: scale(0.92);
 }
 
 .themeToggle {
@@ -138,8 +144,14 @@
   transition: background 0.15s ease-out;
 }
 
-.themeToggle:hover {
-  background: var(--color-surface);
+@media (hover: hover) {
+  .themeToggle:hover {
+    background: var(--color-surface);
+  }
+}
+
+.themeToggle:active {
+  transform: scale(0.95);
 }
 
 .themeToggleInput {

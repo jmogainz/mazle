@@ -151,8 +151,14 @@
   line-height: 1;
 }
 
-.navButton:hover {
-  color: var(--color-text);
+@media (hover: hover) {
+  .navButton:hover {
+    color: var(--color-text);
+  }
+}
+
+.navButton:active {
+  transform: scale(0.92);
 }
 
 .navButton:disabled {

@@ -44,8 +44,14 @@
   justify-content: center;
 }
 
-.navButton:hover {
-  color: var(--color-text);
+@media (hover: hover) {
+  .navButton:hover {
+    color: var(--color-text);
+  }
+}
+
+.navButton:active {
+  transform: scale(0.92);
 }
 
 .navButton:disabled {
@@ -66,9 +72,15 @@
   transition: background 0.1s, border-color 0.1s, color 0.1s;
 }
 
-.todayButton:hover {
-  background: rgba(var(--color-text-rgb), 0.08);
-  border-color: rgba(var(--color-text-rgb), 0.22);
+@media (hover: hover) {
+  .todayButton:hover {
+    background: rgba(var(--color-text-rgb), 0.08);
+    border-color: rgba(var(--color-text-rgb), 0.22);
+  }
+}
+
+.todayButton:active {
+  transform: scale(0.96);
 }
 
 .viewToggle {
@@ -93,9 +105,15 @@
   transition: background 0.1s, color 0.1s;
 }
 
-.viewToggleButton:hover {
-  color: var(--color-text);
-  background: rgba(var(--color-text-rgb), 0.06);
+@media (hover: hover) {
+  .viewToggleButton:hover {
+    color: var(--color-text);
+    background: rgba(var(--color-text-rgb), 0.06);
+  }
+}
+
+.viewToggleButton:active {
+  transform: scale(0.92);
 }
 
 .viewToggleButtonActive {
@@ -214,8 +232,15 @@
   font-family: var(--font-nunito, 'Nunito', var(--font-system));
 }
 
-.listRow:hover {
-  border-color: rgba(var(--color-text-rgb), 0.22);
+@media (hover: hover) {
+  .listRow:hover {
+    border-color: rgba(var(--color-text-rgb), 0.22);
+  }
+}
+
+.listRow:active:not(:disabled) {
+  transform: scale(0.995);
+  background: rgba(var(--color-text-rgb), 0.04);
 }
 
 .listRow:disabled {
@@ -333,6 +358,10 @@
   padding: 0.2rem;
 }
 
+.dayButton:active:not(:disabled) {
+  transform: scale(0.9);
+}
+
 .dayButton:disabled {
   cursor: default;
   opacity: 0.4;
@@ -406,6 +435,10 @@
 .hintBar .subtle {
   text-align: left;
   padding: 0;
+}
+
+.hintButton:active:not(:disabled) {
+  transform: scale(0.96);
 }
 
 .hintButton:disabled {
@@ -485,6 +518,14 @@
   font-family: var(--font-nunito), 'Nunito', var(--font-system);
 }
 
+.primary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.secondary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
 .secondary:disabled,
 .primary:disabled {
   opacity: 0.6;
@@ -527,6 +568,10 @@
   font-family: var(--font-nunito), 'Nunito', var(--font-system);
 }
 
+.planOption:active {
+  transform: scale(0.98);
+}
+
 .planOptionSelected {
   border-color: var(--color-primary);
   background: rgba(var(--color-primary-rgb), 0.05);
@@ -557,6 +602,10 @@
   margin: 0.25rem auto 0;
   display: block;
   font-family: var(--font-nunito), 'Nunito', var(--font-system);
+}
+
+.notNowButton:active {
+  transform: scale(0.95);
 }
 
 .disclaimer {
@@ -681,14 +730,16 @@
   opacity: 0.12;
 }
 
-.googleButton:not(:disabled):hover {
-  -webkit-box-shadow: 0 1px 2px 0 rgba(60, 64, 67, .30), 0 1px 3px 1px rgba(60, 64, 67, .15);
-  box-shadow: 0 1px 2px 0 rgba(60, 64, 67, .30), 0 1px 3px 1px rgba(60, 64, 67, .15);
-}
+@media (hover: hover) {
+  .googleButton:not(:disabled):hover {
+    -webkit-box-shadow: 0 1px 2px 0 rgba(60, 64, 67, .30), 0 1px 3px 1px rgba(60, 64, 67, .15);
+    box-shadow: 0 1px 2px 0 rgba(60, 64, 67, .30), 0 1px 3px 1px rgba(60, 64, 67, .15);
+  }
 
-.googleButton:not(:disabled):hover .googleButtonState {
-  background-color: #303030;
-  opacity: 0.08;
+  .googleButton:not(:disabled):hover .googleButtonState {
+    background-color: #303030;
+    opacity: 0.08;
+  }
 }
 
 .googleButtonContentWrapper {

@@ -18,7 +18,6 @@ import CharacterIcon from './CharacterIcon';
 import PullToRefresh from './PullToRefresh';
 import styles from './LeaderboardView.module.css';
 
-const DEVTOOLS_PREVIEW_FEATURES_KEY = 'mazle_devtools_preview_features_v1';
 const LEADERBOARD_PAGE_SIZE = 200;
 const LOAD_MORE_THRESHOLD_PX = 180;
 const MAX_LOADED_ENTRIES = 1000; // Performance limit - excludes podium
@@ -47,20 +46,6 @@ function LeaderboardView() {
   const hasPlayedToday = useMemo(() => {
     return !!todayResult && todayResult.date === todayDate;
   }, [todayResult, todayDate]);
-
-  const [previewFeaturesEnabled, setPreviewFeaturesEnabled] = useState(false);
-  useEffect(() => {
-    try {
-      setPreviewFeaturesEnabled(localStorage.getItem(DEVTOOLS_PREVIEW_FEATURES_KEY) === '1');
-    } catch {
-      setPreviewFeaturesEnabled(false);
-    }
-  }, []);
-
-  const showLockedFeatures = useMemo(() => {
-    if (process.env.NODE_ENV !== 'production') return true;
-    return previewFeaturesEnabled;
-  }, [previewFeaturesEnabled]);
 
   const cachedTop = useMemo(() => readCachedLeaderboardTop(todayDate, LEADERBOARD_PAGE_SIZE, 0), [todayDate]);
   const cachedMe = useMemo(() => readCachedLeaderboardMe(todayDate), [todayDate]);
@@ -142,16 +127,13 @@ function LeaderboardView() {
   }, [meState, topState.status, todayDate]); // Only depend on status, not full topState to avoid loops
 
   useEffect(() => {
-    if (!showLockedFeatures) return;
     cachedApi
       .me()
       .then((me) => setViewerMode(me.mode))
       .catch(() => setViewerMode('unknown'));
-  }, [showLockedFeatures]);
+  }, []);
 
   useEffect(() => {
-    if (!showLockedFeatures) return;
-
     const cached = readCachedLeaderboardTop(todayDate, LEADERBOARD_PAGE_SIZE, 0);
     if (cached) {
       setTopState({ status: 'loaded', data: cached });
@@ -164,11 +146,9 @@ function LeaderboardView() {
         const message = err instanceof Error ? err.message : 'Failed to load';
         setTopState({ status: 'error', message });
       });
-  }, [todayDate, showLockedFeatures]);
+  }, [todayDate]);
 
   useEffect(() => {
-    if (!showLockedFeatures) return;
-
     const cached = readCachedLeaderboardMe(todayDate);
     if (cached) {
       setMeState({ status: 'loaded', data: cached });
@@ -178,7 +158,7 @@ function LeaderboardView() {
       .leaderboardMe(todayDate)
       .then((me) => setMeState({ status: 'loaded', data: me }))
       .catch(() => setMeState({ status: 'error', message: 'Failed to load' }));
-  }, [todayDate, showLockedFeatures]);
+  }, [todayDate]);
 
   const loadMore = useCallback(async () => {
     if (topState.status !== 'loaded') return;
@@ -831,17 +811,6 @@ function LeaderboardView() {
       </div>
     );
   };
-
-  if (!showLockedFeatures) {
-    return (
-      <div className={styles.grid}>
-        <div className={styles.panel}>
-          <div className={styles.sectionTitle}>Leaderboard coming soon</div>
-          <div className={styles.hintText}>We&apos;re still polishing this feature.</div>
-        </div>
-      </div>
-    );
-  }
 
   // Compute user's rank position for inline rendering
   const myRank = myEntryData?.rank;

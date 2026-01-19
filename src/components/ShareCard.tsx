@@ -78,7 +78,7 @@ export default function ShareCard({
   footerText,
   countdownText,
 }: ShareCardProps) {
-  const [shareState, setShareState] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const [shareState, setShareState] = useState<'idle' | 'sharing' | 'copied' | 'failed'>('idle');
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedbackText, setFeedbackText] = useState('');
   const [feedbackRating, setFeedbackRating] = useState<number | null>(null);
@@ -170,12 +170,18 @@ export default function ShareCard({
 
     if (isMobileDevice && navigator.share) {
       try {
+        // Set sharing state to prevent visual flash when iOS share sheet opens
+        setShareState('sharing');
+        // Wait for DOM to update before opening share sheet
+        await new Promise(resolve => requestAnimationFrame(resolve));
         await navigator.share({
           title: shareTitle,
           text: shareText,
         });
+        setShareState('idle');
         return; // Native share succeeded, no need to show copied state
       } catch (err) {
+        setShareState('idle');
         // User cancelled or share failed - fall through to copy
         if (err instanceof Error && err.name === 'AbortError') {
           return; // User cancelled, don't copy
@@ -375,7 +381,7 @@ export default function ShareCard({
         {/* Share & Feedback Section */}
         <div className={styles.shareSection}>
           <button
-            className={`${styles.shareButton} ${shareState === 'copied' ? styles.copied : ''} ${shareState === 'failed' ? styles.failed : ''}`}
+            className={`${styles.shareButton} ${shareState === 'sharing' ? styles.sharing : ''} ${shareState === 'copied' ? styles.copied : ''} ${shareState === 'failed' ? styles.failed : ''}`}
             onClick={handleShare}
           >
             <span className={styles.shareBtnIcon}>

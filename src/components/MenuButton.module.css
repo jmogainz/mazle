@@ -20,9 +20,15 @@
   background: var(--color-background);
 }
 
-.button:hover {
-  background: var(--color-surface);
-  color: var(--color-primary);
+@media (hover: hover) {
+  .button:hover {
+    background: var(--color-surface);
+    color: var(--color-primary);
+  }
+}
+
+.button:active {
+  transform: scale(0.92);
 }
 
 .lines {

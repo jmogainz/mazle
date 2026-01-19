@@ -89,8 +89,14 @@
   transition: color 0.2s;
 }
 
-.closeButton:hover {
-  color: var(--color-text);
+@media (hover: hover) {
+  .closeButton:hover {
+    color: var(--color-text);
+  }
+}
+
+.closeButton:active {
+  transform: scale(0.92);
 }
 
 .closeIcon {

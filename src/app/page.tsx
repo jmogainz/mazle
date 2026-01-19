@@ -10,7 +10,6 @@ import MoreMenuModal from '@/components/MoreMenuModal';
 import OverlayShell from '@/components/OverlayShell';
 import AccountView from '@/components/AccountView';
 import LeaderboardView from '@/components/LeaderboardView';
-import ArchiveView from '@/components/ArchiveView';
 import HallOfFameView from '@/components/HallOfFameView';
 import { api } from '@/lib/api';
 import { cachedApi, prefetchAccount, prefetchArchiveDays, prefetchHallOfFame, prefetchLeaderboard } from '@/lib/api/cached';
@@ -201,8 +200,6 @@ const PhaserGame = dynamic(() => import('@/game/PhaserGame'), {
 const _DEVTOOLS_BUILD_FLAG =
   process.env.NEXT_PUBLIC_DEVTOOLS_ENABLED === 'true';
 
-const DEVTOOLS_PREVIEW_FEATURES_KEY = 'mazle_devtools_preview_features_v1';
-const UI_OVERHAUL_EXPERIMENTAL = false;
 const LEADERBOARD_LIMIT = 200;
 const UI_DEV_CODE = 'uiuiuiui';
 const IS_UI_DEV_ENV = process.env.NEXT_PUBLIC_ENV === 'dev' || process.env.NEXT_PUBLIC_ENV === 'dev-test';
@@ -229,12 +226,10 @@ export default function Home() {
   const [showHelp, setShowHelp] = useState(false);
   const [showDevTools, setShowDevTools] = useState(false);
   const [showUiDevModal, setShowUiDevModal] = useState(false);
-  const [previewFeaturesEnabled, setPreviewFeaturesEnabled] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showHallOfFame, setShowHallOfFame] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
-  const [showArchive, setShowArchive] = useState(false);
   const [selectedBackend, setSelectedBackend] = useState<GeneratorBackend>('auto');
   const [lastUsedBackend, setLastUsedBackend] = useState<'rust-backend' | 'wasm' | null>(null);
   const [gameResult, setGameResult] = useState<{ moveCount: number; timeMs: number; failed?: boolean; attempts?: any[] } | null>(null);
@@ -304,23 +299,11 @@ export default function Home() {
   }, [devMaxLives]);
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(DEVTOOLS_PREVIEW_FEATURES_KEY);
-      setPreviewFeaturesEnabled(stored === '1');
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'production' && !previewFeaturesEnabled) return;
     const runPrefetch = () => {
       prefetchAccount();
       prefetchLeaderboard(todayNy, LEADERBOARD_LIMIT);
-      if (UI_OVERHAUL_EXPERIMENTAL) {
-        const monthStart = `${todayNy.slice(0, 7)}-01`;
-        prefetchArchiveDays(monthStart, todayNy);
-      }
+      const monthStart = `${todayNy.slice(0, 7)}-01`;
+      prefetchArchiveDays(monthStart, todayNy);
       // Prefetch hall of fame for yesterday (default view) ± 2 days
       const yesterday = addDays(todayNy, -1);
       const hofDates: string[] = [];
@@ -339,7 +322,7 @@ export default function Home() {
 
     const id = window.setTimeout(runPrefetch, 800);
     return () => window.clearTimeout(id);
-  }, [todayNy, previewFeaturesEnabled]);
+  }, [todayNy]);
 
   const applyStoredResult = useCallback((result: DailyStats | null) => {
     if (isPlayingRef.current) return;
@@ -610,8 +593,7 @@ export default function Home() {
     showMenu ||
     showLeaderboard ||
     showHallOfFame ||
-    showAccount ||
-    (UI_OVERHAUL_EXPERIMENTAL && showArchive);
+    showAccount;
   const shouldPause = isRouteOverlayOpen || isModalOpen;
 
   useEffect(() => {
@@ -1377,6 +1359,10 @@ export default function Home() {
     setShowReplayButton(false); // Hide button while replaying
     setAnalysisAnimationComplete(false); // Reset animation state
     gameControlsRef.current?.replayAnalysis();
+    // Blur active element to clear any stuck hover/focus state on mobile
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
   }, []);
 
   const handleGameReady = useCallback((controls: GameControls) => {
@@ -1529,11 +1515,9 @@ export default function Home() {
     showMenu ||
     showLeaderboard ||
     showAccount ||
-    (UI_OVERHAUL_EXPERIMENTAL && showArchive) ||
     showDevTools ||
     (hasPuzzle && !isPlaying && isGameReady && !showInlineResult);
   const showLoader = !hasPuzzle || !isGameReady;
-  const showMenuButton = process.env.NODE_ENV !== 'production' || previewFeaturesEnabled;
   const showControlsRow = showInlineResult && !showSwipeHint && !showShareCard;
 
   // Clear preload hint once puzzle loading completes (React now controls visibility)
@@ -1544,10 +1528,6 @@ export default function Home() {
   }, [hasPuzzle]);
 
   const handleOpenArchive = useCallback(() => {
-    if (UI_OVERHAUL_EXPERIMENTAL) {
-      setShowArchive(true);
-      return;
-    }
     router.push('/archive');
   }, [router]);
 
@@ -1579,7 +1559,7 @@ export default function Home() {
           puzzleInfo={puzzleLabel ?? (puzzleNumber > 0 ? `#${puzzleNumber}` : undefined)}
           puzzleInfoLoading={isGenerating || (!puzzle && !gameResult)}
           onHelpClick={() => setShowHelp(true)}
-          onMenuClick={showMenuButton ? () => setShowMenu(!showMenu) : undefined}
+          onMenuClick={() => setShowMenu(!showMenu)}
           logoRef={devToolsTapTargetRef}
           logoClassName={styles.devToolsTapTarget}
           isMenuOpen={showMenu}
@@ -1912,18 +1892,6 @@ export default function Home() {
           >
             <AccountView />
             <AdSlot placement="account" />
-          </OverlayShell>
-        )}
-
-        {UI_OVERHAUL_EXPERIMENTAL && showArchive && (
-          <OverlayShell
-            title="Archive"
-            subtitle="Play past Mazles"
-            variant="overlay"
-            onClose={() => setShowArchive(false)}
-          >
-            <ArchiveView presentation="overlay" initialTodayNy={todayNy} onClose={() => setShowArchive(false)} />
-            <AdSlot placement="archive" />
           </OverlayShell>
         )}
 

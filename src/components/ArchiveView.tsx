@@ -51,7 +51,6 @@ type ArchiveViewProps = {
   onClose?: () => void;
 };
 
-const DEVTOOLS_PREVIEW_FEATURES_KEY = 'mazle_devtools_preview_features_v1';
 const ARCHIVE_VIEW_MODE_KEY = 'mazle_archive_view_mode_v1';
 
 function ArchiveView({ presentation = 'overlay', initialTodayNy, onClose }: ArchiveViewProps) {
@@ -75,7 +74,6 @@ function ArchiveView({ presentation = 'overlay', initialTodayNy, onClose }: Arch
   }, [requestedDate, yesterdayNy]);
 
   const [monthId, setMonthId] = useState(initialMonthId);
-  const [previewFeaturesEnabled, setPreviewFeaturesEnabled] = useState(false);
   const cachedMe = useMemo(() => readCachedMe(), []);
   const [meState, setMeState] = useState<LoadState<Awaited<ReturnType<typeof api.me>>>>(
     cachedMe ? { status: 'loaded', data: cachedMe } : { status: 'loading' }
@@ -97,11 +95,6 @@ function ArchiveView({ presentation = 'overlay', initialTodayNy, onClose }: Arch
     : (cachedMe?.entitlements?.archiveAccess ?? false);
   const isSignedIn = meState.status === 'loaded' ? meState.data.mode === 'user' : false;
 
-  const showLockedFeatures = useMemo(() => {
-    if (process.env.NODE_ENV !== 'production') return true;
-    return previewFeaturesEnabled;
-  }, [previewFeaturesEnabled]);
-
   const paywallOpen = searchParams.get('paywall') === '1' && !!requestedDate;
   const checkoutParam = searchParams.get('checkout');
 
@@ -121,9 +114,8 @@ function ArchiveView({ presentation = 'overlay', initialTodayNy, onClose }: Arch
   }, []);
 
   useEffect(() => {
-    if (!showLockedFeatures) return;
     refreshMe(!!cachedMe);
-  }, [refreshMe, showLockedFeatures, cachedMe]);
+  }, [refreshMe, cachedMe]);
 
   useEffect(() => {
     let cancelled = false;
@@ -160,7 +152,6 @@ function ArchiveView({ presentation = 'overlay', initialTodayNy, onClose }: Arch
   }, [monthId, minMonthId, maxMonthId]);
 
   useEffect(() => {
-    if (!showLockedFeatures) return;
     const from = clampDateToBounds(monthStart(monthId), LAUNCH_DATE_NY, yesterdayNy);
     const to = clampDateToBounds(monthEnd(monthId), LAUNCH_DATE_NY, yesterdayNy);
 
@@ -182,10 +173,9 @@ function ArchiveView({ presentation = 'overlay', initialTodayNy, onClose }: Arch
         const message = err instanceof Error ? err.message : 'Failed to load archive';
         setDaysState({ status: 'error', message });
       });
-  }, [monthId, showLockedFeatures, yesterdayNy]);
+  }, [monthId, yesterdayNy]);
 
   useEffect(() => {
-    if (!showLockedFeatures) return;
     if (entitled) return;
     setOfferState({ status: 'loading' });
     api
@@ -197,10 +187,9 @@ function ArchiveView({ presentation = 'overlay', initialTodayNy, onClose }: Arch
         const message = err instanceof Error ? err.message : 'Failed to load price';
         setOfferState({ status: 'error', message });
       });
-  }, [entitled, showLockedFeatures]);
+  }, [entitled]);
 
   useEffect(() => {
-    if (!showLockedFeatures) return;
     if (!checkoutParam) return;
 
     if (checkoutParam === 'canceled') {
@@ -248,15 +237,7 @@ function ArchiveView({ presentation = 'overlay', initialTodayNy, onClose }: Arch
     return () => {
       cancelled = true;
     };
-  }, [checkoutParam, onClose, presentation, requestedDate, router, showLockedFeatures]);
-
-  useEffect(() => {
-    try {
-      setPreviewFeaturesEnabled(localStorage.getItem(DEVTOOLS_PREVIEW_FEATURES_KEY) === '1');
-    } catch {
-      setPreviewFeaturesEnabled(false);
-    }
-  }, []);
+  }, [checkoutParam, onClose, presentation, requestedDate, router]);
 
   useEffect(() => {
     try {
@@ -505,22 +486,6 @@ function ArchiveView({ presentation = 'overlay', initialTodayNy, onClose }: Arch
   const selectedPuzzleNumber = requestedDate
     ? getPuzzleNumber(new Date(`${requestedDate}T00:00:00`))
     : null;
-
-  if (!showLockedFeatures) {
-    return (
-      <div>
-        <div className={styles.hintBar}>
-          <div>
-            <div className={styles.hintTitle}>Archive coming soon</div>
-            <div className={styles.subtle}>We’re still polishing this feature.</div>
-          </div>
-          <button type="button" className={styles.hintButton} onClick={() => router.push('/')}>
-            Back
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   return (
       <div className={styles.container}>

@@ -64,9 +64,11 @@
   background-clip: padding-box;
 }
 
-.card::-webkit-scrollbar-thumb:hover {
-  background: rgba(var(--color-text-rgb), 0.25);
-  background-clip: padding-box;
+@media (hover: hover) {
+  .card::-webkit-scrollbar-thumb:hover {
+    background: rgba(var(--color-text-rgb), 0.25);
+    background-clip: padding-box;
+  }
 }
 
 .card::-webkit-scrollbar-thumb:active {
@@ -101,8 +103,14 @@
   transition: color 0.2s;
 }
 
-.closeButton:hover {
-  color: var(--color-text);
+@media (hover: hover) {
+  .closeButton:hover {
+    color: var(--color-text);
+  }
+}
+
+.closeButton:active {
+  transform: scale(0.92);
 }
 
 .closeIcon {
@@ -913,8 +921,14 @@
   transition: background 0.2s;
 }
 
-.gotItButton:hover {
-  background: #538d4e;
+@media (hover: hover) {
+  .gotItButton:hover {
+    background: #538d4e;
+  }
+}
+
+.gotItButton:active {
+  transform: scale(0.98);
 }
 
 /* Intermediate screens (701-740px) - gentle reduction to avoid scroll */

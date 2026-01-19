@@ -200,7 +200,7 @@
 
 .primaryButton:active,
 .secondaryButton:active {
-  transform: scale(0.99);
+  transform: scale(0.98);
 }
 
 .primaryButton:disabled,
@@ -565,8 +565,14 @@
   pointer-events: auto;
 }
 
-.navButton:hover {
-  color: var(--color-text);
+@media (hover: hover) {
+  .navButton:hover {
+    color: var(--color-text);
+  }
+}
+
+.navButton:active {
+  transform: scale(0.92);
 }
 
 .navButton:disabled {

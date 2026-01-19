@@ -194,6 +194,10 @@
   }
 }
 
+.lifeSelectable:active {
+  transform: scale(0.95);
+}
+
 .lifeReviewing {
   cursor: pointer;
   background: #ff4d4d;
@@ -457,8 +461,8 @@
   transition: right 0.15s ease-out, width 0.15s ease-out, height 0.15s ease-out, font-size 0.15s ease-out;
 }
 
-.infoIcon:hover {
-  opacity: 1;
+.infoIcon:active {
+  transform: scale(0.9);
 }
 
 .tooltip {

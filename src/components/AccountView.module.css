@@ -120,9 +120,15 @@
   transition: background 0.15s, color 0.15s;
 }
 
-.youEditButton:hover {
-  background: var(--color-surface);
-  color: var(--color-text);
+@media (hover: hover) {
+  .youEditButton:hover {
+    background: var(--color-surface);
+    color: var(--color-text);
+  }
+}
+
+.youEditButton:active {
+  transform: scale(0.92);
 }
 
 .youEditButton:disabled {
@@ -241,13 +247,15 @@
   transition: transform 0.08s, border-color 0.12s;
 }
 
-.skinButton:hover:not(:disabled) {
-  border-color: rgba(var(--color-text-rgb), 0.22);
-  transform: translateY(-1px);
+@media (hover: hover) {
+  .skinButton:hover:not(:disabled) {
+    border-color: rgba(var(--color-text-rgb), 0.22);
+    transform: translateY(-1px);
+  }
 }
 
 .skinButton:active:not(:disabled) {
-  transform: translateY(0);
+  transform: translateY(0) scale(0.95);
 }
 
 .skinButton:disabled {
@@ -317,8 +325,10 @@
   z-index: 2;
 }
 
-.skinWheelArrow:hover {
-  color: var(--color-primary);
+@media (hover: hover) {
+  .skinWheelArrow:hover {
+    color: var(--color-primary);
+  }
 }
 
 .skinWheelArrow:active {
@@ -666,9 +676,15 @@
   opacity: 0.38;
 }
 
-.appleButton:not(:disabled):hover {
-  -webkit-box-shadow: 0 1px 2px 0 rgba(60, 64, 67, .30), 0 1px 3px 1px rgba(60, 64, 67, .15);
-  box-shadow: 0 1px 2px 0 rgba(60, 64, 67, .30), 0 1px 3px 1px rgba(60, 64, 67, .15);
+@media (hover: hover) {
+  .appleButton:not(:disabled):hover {
+    -webkit-box-shadow: 0 1px 2px 0 rgba(60, 64, 67, .30), 0 1px 3px 1px rgba(60, 64, 67, .15);
+    box-shadow: 0 1px 2px 0 rgba(60, 64, 67, .30), 0 1px 3px 1px rgba(60, 64, 67, .15);
+  }
+}
+
+.appleButton:active {
+  transform: scale(0.98);
 }
 
 .appleButtonContentWrapper {
@@ -705,7 +721,7 @@
 
 .primaryButton:active,
 .secondaryButton:active {
-  transform: scale(0.99);
+  transform: scale(0.98);
 }
 
 .primaryButton:disabled,
@@ -770,9 +786,15 @@
   justify-content: space-between;
 }
 
-.themeTriggerButton:hover {
-  border-color: var(--color-text);
-  background: var(--color-surface);
+@media (hover: hover) {
+  .themeTriggerButton:hover {
+    border-color: var(--color-text);
+    background: var(--color-surface);
+  }
+}
+
+.themeTriggerButton:active {
+  transform: scale(0.96);
 }
 
 .themeValue {
@@ -857,8 +879,14 @@
 
 
 
-.themeMenuItem:hover {
-  background: rgba(var(--color-text-rgb), 0.05);
+@media (hover: hover) {
+  .themeMenuItem:hover {
+    background: rgba(var(--color-text-rgb), 0.05);
+  }
+}
+
+.themeMenuItem:active {
+  transform: scale(0.98);
 }
 
 .themeMenuItemActive {
@@ -1048,14 +1076,20 @@
   opacity: 0.12;
 }
 
-.googleButton:not(:disabled):hover {
-  -webkit-box-shadow: 0 1px 2px 0 rgba(60, 64, 67, .30), 0 1px 3px 1px rgba(60, 64, 67, .15);
-  box-shadow: 0 1px 2px 0 rgba(60, 64, 67, .30), 0 1px 3px 1px rgba(60, 64, 67, .15);
+.googleButton:active {
+  transform: scale(0.98);
 }
 
-.googleButton:not(:disabled):hover .googleButtonState {
-  background-color: #303030;
-  opacity: 0.08;
+@media (hover: hover) {
+  .googleButton:not(:disabled):hover {
+    -webkit-box-shadow: 0 1px 2px 0 rgba(60, 64, 67, .30), 0 1px 3px 1px rgba(60, 64, 67, .15);
+    box-shadow: 0 1px 2px 0 rgba(60, 64, 67, .30), 0 1px 3px 1px rgba(60, 64, 67, .15);
+  }
+
+  .googleButton:not(:disabled):hover .googleButtonState {
+    background-color: #303030;
+    opacity: 0.08;
+  }
 }
 
 .googleButtonContentWrapper {

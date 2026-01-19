@@ -93,8 +93,14 @@
   transition: color 0.2s;
 }
 
-.closeButton:hover {
-  color: var(--color-text);
+@media (hover: hover) {
+  .closeButton:hover {
+    color: var(--color-text);
+  }
+}
+
+.closeButton:active {
+  transform: scale(0.92);
 }
 
 .header {
@@ -252,8 +258,14 @@
   font-size: 0.95rem;
   font-weight: 800;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.15s, opacity 0.15s;
   font-family: var(--font-main);
+  outline: none;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .shareButton {
@@ -289,13 +301,44 @@
   display: none;
 }
 
-.shareButton:hover {
+/* Sharing state - maintain hollow fill from press state during native share sheet */
+.shareButton.sharing {
+  pointer-events: none;
+  transition: none;
   background: transparent;
   color: var(--color-primary);
+  border-color: var(--color-primary);
 }
 
-.cardFailed .shareButton:hover {
+.cardFailed .shareButton.sharing {
   color: var(--color-error);
+  border-color: var(--color-error);
+}
+
+@media (hover: hover) {
+  .shareButton:hover {
+    background: transparent;
+    color: var(--color-primary);
+  }
+
+  .cardFailed .shareButton:hover {
+    color: var(--color-error);
+  }
+}
+
+.shareButton:active,
+.cardFailed .shareButton:active {
+  background: transparent;
+}
+
+.shareButton:active {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.cardFailed .shareButton:active {
+  color: var(--color-error);
+  border-color: var(--color-error);
 }
 
 .shareButton.copied,
@@ -305,11 +348,13 @@
   color: var(--color-background);
 }
 
-.shareButton.copied:hover,
-.cardFailed .shareButton.copied:hover {
-  background: var(--color-text);
-  border-color: var(--color-text);
-  color: var(--color-background);
+@media (hover: hover) {
+  .shareButton.copied:hover,
+  .cardFailed .shareButton.copied:hover {
+    background: var(--color-text);
+    border-color: var(--color-text);
+    color: var(--color-background);
+  }
 }
 
 .shareButton.failed {
@@ -332,9 +377,15 @@
   color: var(--color-secondary);
 }
 
-.secondaryActionButton:hover {
-  border-color: var(--color-text);
-  color: var(--color-text);
+@media (hover: hover) {
+  .secondaryActionButton:hover {
+    border-color: var(--color-text);
+    color: var(--color-text);
+  }
+}
+
+.secondaryActionButton:active {
+  transform: scale(0.98);
 }
 
 /* Footer */
@@ -402,8 +453,14 @@
   white-space: nowrap;
 }
 
-.feedbackTriggerSimple:hover {
-  color: var(--color-text);
+@media (hover: hover) {
+  .feedbackTriggerSimple:hover {
+    color: var(--color-text);
+  }
+}
+
+.feedbackTriggerSimple:active {
+  transform: scale(0.95);
 }
 
 .feedbackForm {
@@ -447,8 +504,14 @@
   justify-content: center;
 }
 
-.star:hover:not(:disabled) {
-  transform: scale(1.1);
+@media (hover: hover) {
+  .star:hover:not(:disabled) {
+    transform: scale(1.1);
+  }
+}
+
+.star:active:not(:disabled) {
+  transform: scale(0.9);
 }
 
 .star:disabled {
@@ -510,15 +573,17 @@
   gap: 0.5rem;
 }
 
-.feedbackSubmit:hover:not(:disabled) {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-  filter: none;
-  transform: none;
+@media (hover: hover) {
+  .feedbackSubmit:hover:not(:disabled) {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+    filter: none;
+    transform: none;
+  }
 }
 
 .feedbackSubmit:active:not(:disabled) {
-  transform: none;
+  transform: scale(0.98);
 }
 
 .feedbackSubmit:disabled {
@@ -553,9 +618,15 @@
   font-family: var(--font-main);
 }
 
-.feedbackCancel:hover {
-  border-color: var(--color-secondary);
-  color: var(--color-text);
+@media (hover: hover) {
+  .feedbackCancel:hover {
+    border-color: var(--color-secondary);
+    color: var(--color-text);
+  }
+}
+
+.feedbackCancel:active {
+  transform: scale(0.95);
 }
 
 /* Spinner */
@@ -575,8 +646,14 @@
 }
 
 /* Failed card overrides */
-.cardFailed .feedbackTriggerSimple:hover {
-  color: var(--color-text);
+@media (hover: hover) {
+  .cardFailed .feedbackTriggerSimple:hover {
+    color: var(--color-text);
+  }
+}
+
+.cardFailed .feedbackTriggerSimple:active {
+  transform: scale(0.95);
 }
 
 /* Dead Player Icon */

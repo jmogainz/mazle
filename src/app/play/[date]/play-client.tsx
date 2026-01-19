@@ -27,8 +27,6 @@ const PhaserGame = dynamic(() => import('@/game/PhaserGame'), {
   ),
 });
 
-const DEVTOOLS_PREVIEW_FEATURES_KEY = 'mazle_devtools_preview_features_v1';
-
 function isValidNyDateString(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
@@ -48,7 +46,6 @@ export default function ArchivePlayClient({ date }: { date: string }) {
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showHallOfFame, setShowHallOfFame] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
-  const [previewFeaturesEnabled, setPreviewFeaturesEnabled] = useState(false);
   const [gameResult, setGameResult] = useState<{ moveCount: number; timeMs: number; failed?: boolean; attempts?: any[] } | null>(null);
   const [isGameReady, setIsGameReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -71,14 +68,6 @@ export default function ArchivePlayClient({ date }: { date: string }) {
   const isRouteOverlayOpen = expectedPath != null && pathname !== expectedPath;
   const isModalOpen = showHelp || showStats || showShareCard || showMenu || showLeaderboard || showHallOfFame || showAccount;
   const shouldPause = isRouteOverlayOpen || isModalOpen;
-
-  useEffect(() => {
-    try {
-      setPreviewFeaturesEnabled(localStorage.getItem(DEVTOOLS_PREVIEW_FEATURES_KEY) === '1');
-    } catch {
-      setPreviewFeaturesEnabled(false);
-    }
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -104,7 +93,6 @@ export default function ArchivePlayClient({ date }: { date: string }) {
   }, []);
 
   useEffect(() => {
-    if (process.env.NODE_ENV === 'production' && !previewFeaturesEnabled) return;
     const todayNy = getNewYorkDateString();
     const runPrefetch = () => {
       prefetchAccount();
@@ -120,7 +108,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
 
     const id = window.setTimeout(runPrefetch, 800);
     return () => window.clearTimeout(id);
-  }, [previewFeaturesEnabled]);
+  }, []);
 
   // Sync CSS custom property to the real visual viewport height (iOS-safe)
   useEffect(() => {
@@ -339,7 +327,6 @@ export default function ArchivePlayClient({ date }: { date: string }) {
     !showAccount &&
     !showHallOfFame;
   const showResultsButton = showInlineResult;
-  const showMenuButton = process.env.NODE_ENV !== 'production' || previewFeaturesEnabled;
 
   const handleOpenStats = useCallback(() => {
     setStats(getPlayerStats());
@@ -365,7 +352,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
         <Header
           streak={stats.currentStreak || 0}
           onHelpClick={() => setShowHelp(true)}
-          onMenuClick={showMenuButton ? () => setShowMenu(true) : undefined}
+          onMenuClick={() => setShowMenu(true)}
           menuButtonRef={menuButtonRef}
         />
         <MoreMenuModal
@@ -419,7 +406,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
         <Header
           streak={stats.currentStreak || 0}
           onHelpClick={() => setShowHelp(true)}
-          onMenuClick={showMenuButton ? () => setShowMenu(true) : undefined}
+          onMenuClick={() => setShowMenu(true)}
           menuButtonRef={menuButtonRef}
         />
 

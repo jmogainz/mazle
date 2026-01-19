@@ -10,12 +10,10 @@
 }
 
 .skeleton {
-  background: linear-gradient(
-    90deg,
-    var(--color-surface) 25%,
-    rgba(var(--color-text-rgb), 0.08) 50%,
-    var(--color-surface) 75%
-  );
+  background: linear-gradient(90deg,
+      var(--color-surface) 25%,
+      rgba(var(--color-text-rgb), 0.08) 50%,
+      var(--color-surface) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s ease-in-out infinite;
   border-radius: 4px;
@@ -23,12 +21,10 @@
 }
 
 .skeletonLife {
-  background: linear-gradient(
-    90deg,
-    var(--color-surface) 25%,
-    rgba(var(--color-text-rgb), 0.08) 50%,
-    var(--color-surface) 75%
-  );
+  background: linear-gradient(90deg,
+      var(--color-surface) 25%,
+      rgba(var(--color-text-rgb), 0.08) 50%,
+      var(--color-surface) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s ease-in-out infinite;
   transform: scale(1);
@@ -301,9 +297,9 @@
   text-align: center;
   pointer-events: none;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-  animation: fadeInTooltip 0.4s ease-out forwards, bobTooltip 2s ease-in-out infinite;
+  animation: fadeInTooltip 0.4s ease-out, bobTooltip 2s ease-in-out infinite;
   z-index: 100;
-  transition: padding 0.15s ease-out, font-size 0.15s ease-out;
+  transition: padding 0.15s ease-out, font-size 0.15s ease-out, opacity 0.4s ease-out;
 
   /* Hug the text tighter */
   width: max-content;
@@ -339,20 +335,10 @@
   }
 }
 
-@keyframes fadeOutTooltip {
-  from {
-    opacity: 1;
-    transform: translate(-50%, 0) scale(1);
-  }
-
-  to {
-    opacity: 0;
-    transform: translate(-50%, 0) scale(0.95);
-  }
-}
+/* fadeOutTooltip removed in favor of transition */
 
 .tooltipFadeOut {
-  animation: fadeOutTooltip 0.4s ease-out forwards !important;
+  opacity: 0 !important;
 }
 
 @keyframes bobTooltip {
@@ -499,5 +485,65 @@
     left: 50%;
     right: auto;
     transform: translateX(-50%);
+  }
+}
+
+.domPenaltyPopup {
+  position: fixed;
+  top: 0;
+  left: 0;
+  color: #ef476f;
+  font-weight: 900;
+  font-size: calc(2rem * var(--ui-scale));
+  pointer-events: none;
+  z-index: 2000;
+  white-space: nowrap;
+  /* Use CSS variables for dynamic start and end position */
+  --x-start: var(--start-x, 50vw);
+  --y-start: var(--start-y, 50vh);
+  --x-end: var(--end-x, 50vw);
+  --y-end: var(--end-y, 40px);
+
+  /* Start at maze position */
+  transform: translate(var(--x-start), var(--y-start)) translate(-50%, -50%);
+  /* Animation handled in JS for dynamic distance-based fading */
+
+  /* Thin black outline */
+  -webkit-text-stroke: 0.05px black;
+  text-shadow:
+    0 0 12px rgba(239, 71, 111, 0.4),
+    0.05px 0.05px 0 black,
+    -0.05px -0.05px 0 black,
+    0.05px -0.05px 0 black,
+    -0.05px 0.05px 0 black;
+}
+
+@keyframes domFlyToTimer {
+  0% {
+    opacity: 0;
+    transform: translate(var(--x-start), var(--y-start)) translate(-50%, -50%) scale(0.8);
+  }
+
+  3% {
+    opacity: 1;
+    transform: translate(var(--x-start), var(--y-start)) translate(-50%, -50%) scale(1.2);
+  }
+
+  10% {
+    opacity: 1;
+    transform: translate(var(--x-start), calc(var(--y-start) - 20px)) translate(-50%, -50%) scale(1);
+  }
+
+  73% {
+    opacity: 1;
+  }
+
+  87% {
+    opacity: 0.15;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(var(--x-end), var(--y-end)) translate(-50%, -50%) scale(1);
   }
 }

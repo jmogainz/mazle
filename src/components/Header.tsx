@@ -147,18 +147,18 @@ export default function Header({
       )}
 
       <div className={styles.rightSection}>
-        <div 
+        <div
           className={`${styles.streakIndicator} ${streak > 0 ? styles.streakActive : styles.streakInactive}`}
           title={streak > 0 ? `${streak} day streak!` : 'No active streak'}
         >
-          <svg 
-            className={styles.streakFlame} 
-            width="18" 
-            height="18" 
-            viewBox="0 0 24 24" 
+          <svg
+            className={styles.streakFlame}
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
             fill="currentColor"
           >
-            <path d="M12 23c-3.866 0-7-3.134-7-7 0-2.692 1.58-5.058 3.947-6.447.573-.336 1.303.1 1.197.763-.2 1.246.174 2.503.973 3.467.156.189.436.11.479-.13.247-1.377.953-2.63 2.004-3.553 1.333-1.17 2.272-2.693 2.65-4.4.114-.512.737-.716 1.12-.38C19.457 7.2 21 10.174 21 13.5c0 5.247-4.253 9.5-9.5 9.5h.5z"/>
+            <path d="M12 23c-3.866 0-7-3.134-7-7 0-2.692 1.58-5.058 3.947-6.447.573-.336 1.303.1 1.197.763-.2 1.246.174 2.503.973 3.467.156.189.436.11.479-.13.247-1.377.953-2.63 2.004-3.553 1.333-1.17 2.272-2.693 2.65-4.4.114-.512.737-.716 1.12-.38C19.457 7.2 21 10.174 21 13.5c0 5.247-4.253 9.5-9.5 9.5h.5z" />
           </svg>
           <span className={styles.streakNumber}>{streak}</span>
         </div>

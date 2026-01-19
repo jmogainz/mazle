@@ -53,7 +53,7 @@ export default function GameUI({
   const [lives, setLives] = useState(initialState?.lives ?? maxLives);
   const [elapsedTime, setElapsedTime] = useState(initialState?.elapsedTimeMs ?? 0);
   const [startTime, setStartTime] = useState<number | null>(null);
-  const [penaltyTimeMs, setPenaltyTimeMs] = useState(initialState?.penaltyTimeMs ?? 0);
+  const [visualPenaltyTimeMs, setVisualPenaltyTimeMs] = useState(initialState?.penaltyTimeMs ?? 0);
   const [isComplete, setIsComplete] = useState(frozen);
   const [isPaused, setIsPaused] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
@@ -61,7 +61,12 @@ export default function GameUI({
   const [reviewHintTarget, setReviewHintTarget] = useState<number | null>(null);
   const [showLivesTooltip, setShowLivesTooltip] = useState(false);
   const [isTooltipFadingOut, setIsTooltipFadingOut] = useState(false);
+  const [flyingPenalty, setFlyingPenalty] = useState<{ x: number, y: number, targetX: number, targetY: number } | null>(null);
   const displayLabel = puzzleLabel ?? `#${puzzleNumber}`;
+
+  const targetPenaltyTimeMsRef = useRef(initialState?.penaltyTimeMs ?? 0);
+  const timerRef = useRef<HTMLSpanElement>(null);
+  const penaltyRef = useRef<HTMLDivElement>(null);
 
   // Track if we've shown the review hint this game
   const hasShownReviewHintRef = useRef(false);
@@ -115,7 +120,8 @@ export default function GameUI({
         setElapsedTime(initialState.elapsedTimeMs);
       }
       if (initialState.penaltyTimeMs !== undefined) {
-        setPenaltyTimeMs(initialState.penaltyTimeMs);
+        setVisualPenaltyTimeMs(initialState.penaltyTimeMs);
+        targetPenaltyTimeMsRef.current = initialState.penaltyTimeMs;
       }
       if (initialState.maxLives !== undefined) {
         setMaxLives(initialState.maxLives);
@@ -152,7 +158,7 @@ export default function GameUI({
       const showTimer = setTimeout(() => {
         setShowLivesTooltip(true);
 
-        // Stay for 5 seconds then fade out
+        // Stay for 5.35 seconds then fade out
         fadeTimer = setTimeout(() => {
           setIsTooltipFadingOut(true);
 
@@ -162,7 +168,7 @@ export default function GameUI({
             setIsTooltipFadingOut(false);
             localStorage.setItem(STORAGE_KEYS.LIVES_TOOLTIP_SEEN, 'true');
           }, 400); // Slightly longer than 0.35s animation
-        }, 5000);
+        }, 5350);
       }, 1000);
 
       return () => {
@@ -186,7 +192,7 @@ export default function GameUI({
         setMaxLives(state.maxLives);
       }
       setStartTime(state.startTime);
-      setPenaltyTimeMs(state.penaltyTimeMs);
+      targetPenaltyTimeMsRef.current = state.penaltyTimeMs;
       setIsComplete(state.isComplete);
       setIsPaused(state.isPaused);
 
@@ -200,9 +206,34 @@ export default function GameUI({
     });
 
     const unsubscribeLifeLost = onGameEvent('lifeLost', (data) => {
-      const { lives: newLives } = data as { lives: number };
-      setPenaltyFlash(true);
-      setTimeout(() => setPenaltyFlash(false), 1500);
+      const { lives: newLives, finalPos } = data as { lives: number; finalPos?: { x: number, y: number } };
+
+      // Calculate screen position for DOM penalty fly-in
+      if (finalPos) {
+        const canvas = document.querySelector('canvas');
+        const timerEl = timerRef.current;
+        if (canvas && timerEl) {
+          const canvasRect = canvas.getBoundingClientRect();
+          const timerRect = timerEl.getBoundingClientRect();
+
+          // The puzzle is centered in the canvas, so we need to account for the offset
+          // Canvas displays at CSS size, but Phaser coordinates are at base resolution
+          // The canvas CSS size matches the puzzle (no internal offset visible to DOM)
+          // Since the canvas shrinks to fit the puzzle, grid coords map directly
+          const scaleX = canvasRect.width / (canvas.width || 1);
+          const scaleY = canvasRect.height / (canvas.height || 1);
+
+          const startX = canvasRect.left + (finalPos.x * 64 + 32) * scaleX;
+          const startY = canvasRect.top + (finalPos.y * 64 + 32) * scaleY;
+          const targetX = timerRect.left + timerRect.width / 2;
+          const targetY = timerRect.top + timerRect.height / 2;
+
+          // Spawn DOM fly-in after a short delay
+          setTimeout(() => {
+            setFlyingPenalty({ x: startX, y: startY, targetX, targetY });
+          }, 150);
+        }
+      }
 
       // Trigger "Select" animation on first loss if hints are disabled
       if (!hintsEnabled && !hasShownReviewHintRef.current) {
@@ -223,6 +254,79 @@ export default function GameUI({
     };
   }, [frozen, hintsEnabled]);
 
+  // Handle Flying Penalty Animation (Distance-Based)
+  useEffect(() => {
+    if (flyingPenalty && penaltyRef.current) {
+      const el = penaltyRef.current;
+      const { x: sx, y: sy, targetX: tx, targetY: ty } = flyingPenalty;
+
+      const dx = tx - sx;
+      const dy = ty - sy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      // Constants
+      const TOTAL_DURATION = 1500;
+      const POP_DURATION = 225; // 15% of 1500
+      const FADE_DISTANCE_PX = 150; // Pixel distance from end to start fading
+
+      // Calculate Fade Timing
+      // Flight distance is effectively the whole dist (though visibly starts after pop)
+      // We want opacity 1 until we are FADE_DISTANCE_PX away.
+      // 0 -> dist. Fade starts at (dist - FADE_DISTANCE_PX).
+      // Fraction of journey = (dist - FADE_DISTANCE_PX) / dist.
+
+      let fadeStartRatio = Math.max(0.2, (dist - FADE_DISTANCE_PX) / dist);
+      // Ensure fade doesn't start before POP ends implies mapped to time.
+      // Flight starts at 10% (after pop/settle).
+      // Let's model positions:
+      // 0 (0%): Start
+      // 0.1 (10%): Start (settled)
+      // 1.0 (100%): End
+      // Interpolation is linear from 0.1 to 1.0.
+      // So time T where pos is FadeStart:
+      // T_fade = 0.1 + (1.0 - 0.1) * fadeStartRatio
+
+      const timeFadeStart = 0.1 + (0.9 * fadeStartRatio);
+
+      // Final Opacity keyframes:
+      // 0 -> 0.1: Opacity flow (0->1)
+      // 0.1 -> timeFadeStart: Opacity 1
+      // 1.0: Opacity 0
+
+      // Timer update should happen slightly after fade start
+      const timerUpdateRatio = timeFadeStart + 0.05; // 5% later
+      const timerUpdateDelay = TOTAL_DURATION * timerUpdateRatio;
+
+      const animation = el.animate([
+        { opacity: 0, transform: `translate(${sx}px, ${sy}px) translate(-50%, -50%) scale(0.8)`, offset: 0 },
+        { opacity: 1, transform: `translate(${sx}px, ${sy}px) translate(-50%, -50%) scale(1.2)`, offset: 0.03 },
+        { opacity: 1, transform: `translate(${sx}px, ${sy - 20}px) translate(-50%, -50%) scale(1)`, offset: 0.1 },
+        { opacity: 1, offset: timeFadeStart }, // Start fading
+        { opacity: 0, transform: `translate(${tx}px, ${ty}px) translate(-50%, -50%) scale(1)`, offset: 1 }
+      ], {
+        duration: TOTAL_DURATION,
+        easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
+        fill: 'forwards'
+      });
+
+      // Schedule Timer Update
+      const timerTimeout = setTimeout(() => {
+        setVisualPenaltyTimeMs(targetPenaltyTimeMsRef.current);
+        setPenaltyFlash(true);
+        setTimeout(() => setPenaltyFlash(false), 1500);
+      }, timerUpdateDelay);
+
+      animation.onfinish = () => {
+        setFlyingPenalty(null);
+      };
+
+      return () => {
+        animation.cancel();
+        clearTimeout(timerTimeout);
+      };
+    }
+  }, [flyingPenalty]);
+
   // Timer
   useEffect(() => {
     if (!startTime || isComplete || isPaused) return;
@@ -235,7 +339,7 @@ export default function GameUI({
   }, [startTime, isComplete, isPaused]);
 
   const movesRemaining = optimalMoves - currentAttemptMoves;
-  const totalDisplayTime = elapsedTime + penaltyTimeMs;
+  const totalDisplayTime = elapsedTime + visualPenaltyTimeMs;
 
   if (variant === 'footer') {
     return (
@@ -254,6 +358,16 @@ export default function GameUI({
   // Single return with conditional content to prevent DOM tree swapping
   return (
     <div className={styles.headerContainer}>
+      {/* Global Flying Penalty (DOM-based to sit above UI) */}
+      {flyingPenalty && (
+        <div
+          ref={penaltyRef}
+          className={styles.domPenaltyPopup}
+        >
+          +30s
+        </div>
+      )}
+
       {!hidePuzzleNumber && !loading && (
         <div className={styles.puzzleInfo}>
           <span className={styles.puzzleNumber}>{displayLabel}</span>
@@ -405,7 +519,7 @@ export default function GameUI({
 
         {/* Time */}
         <div className={styles.statGroup}>
-          <span className={`${styles.statValue} ${loading ? styles.skeleton : ''} ${!loading && penaltyFlash ? styles.penaltyFlash : ''}`}>
+          <span ref={timerRef} className={`${styles.statValue} ${loading ? styles.skeleton : ''} ${!loading && penaltyFlash ? styles.penaltyFlash : ''}`}>
             {loading ? '0:00' : formatTime(totalDisplayTime)}
           </span>
           <span className={styles.statLabel}>TIME</span>

@@ -610,6 +610,8 @@ export class GameScene extends Phaser.Scene {
     this.gameState.lives--;
     this.gameState.penaltyTimeMs += PENALTY_MS; // 30s penalty
 
+    // Penalty animation is now handled by DOM (GameUI) for proper z-index control
+
     if (this.hintsEnabled) {
       this.mergeHintsForNextLife();
     }
@@ -632,7 +634,8 @@ export class GameScene extends Phaser.Scene {
       emitGameEvent('stateUpdate', { ...this.gameState });
       emitGameEvent('lifeLost', {
         lives: this.gameState.lives,
-        penaltyMs: PENALTY_MS
+        penaltyMs: PENALTY_MS,
+        finalPos: finalPos
       });
       this.handleGameOver();
       return;
@@ -650,11 +653,11 @@ export class GameScene extends Phaser.Scene {
       this.redrawHintOverlays();
     }
 
-    // Emit event for UI (penalty visual)
     emitGameEvent('stateUpdate', { ...this.gameState });
     emitGameEvent('lifeLost', {
       lives: this.gameState.lives,
-      penaltyMs: PENALTY_MS
+      penaltyMs: PENALTY_MS,
+      finalPos: finalPos
     });
 
     // Block input during respawn sequence
@@ -700,6 +703,47 @@ export class GameScene extends Phaser.Scene {
               this.isAnimating = false;
             }
           });
+        });
+      }
+    });
+  }
+
+  private showPenaltyAnimation(pos: Position) {
+    const px = this.offsetX + pos.x * TILE_SIZE + TILE_SIZE / 2;
+    const py = this.offsetY + pos.y * TILE_SIZE + TILE_SIZE / 2 - this.tileFaceLift;
+
+    const s = TILE_SIZE / 32;
+    // Use bold Nunito to match UI
+    const text = this.add.text(px, py, '+30s', {
+      fontFamily: 'Nunito, sans-serif',
+      fontSize: `${Math.round(24 * s)}px`,
+      fontStyle: '900',
+      color: '#ff4d4d',
+      stroke: '#000000',
+      strokeThickness: 3 * s,
+    });
+    text.setOrigin(0.5);
+    text.setDepth(100);
+    text.setScale(0);
+
+    // Sequence: Pop -> Float & Fade
+    this.tweens.add({
+      targets: text,
+      scale: 1.2,
+      y: py - 25 * s,
+      duration: 400,
+      ease: 'Back.out',
+      onComplete: () => {
+        this.tweens.add({
+          targets: text,
+          y: py - 40 * s,
+          alpha: 0,
+          scale: 0.8,
+          duration: 600,
+          ease: 'Sine.easeIn',
+          onComplete: () => {
+            text.destroy();
+          }
         });
       }
     });
@@ -1889,7 +1933,7 @@ export class GameScene extends Phaser.Scene {
     this.reviewTileContainers.forEach(c => c.destroy());
     this.reviewTileContainers = [];
 
-4    // If clearing (null index) or invalid index, restore solution and stop here
+    4    // If clearing (null index) or invalid index, restore solution and stop here
     if (attemptIndex === null || attemptIndex < 0 || !this.gameState.attempts[attemptIndex]) {
       // Restore solution analysis visibility
       this.analysisObjects.forEach(obj => {

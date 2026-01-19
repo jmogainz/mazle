@@ -393,8 +393,10 @@ export default function ShareCard({
           )}
         </div>
 
-        {/* Feedback Section */}
-        <div className={styles.feedbackSection}>
+        {/* Support Section */}
+        <div className={styles.supportSection}>
+          <p className={styles.supportText}>Help us keep building new features!</p>
+          
           {!feedbackOpen ? (
             <button className={styles.feedbackTriggerSimple} onClick={() => setFeedbackOpen(true)}>
               Share feedback

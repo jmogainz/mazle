@@ -1579,11 +1579,11 @@ export default function Home() {
           puzzleInfo={puzzleLabel ?? (puzzleNumber > 0 ? `#${puzzleNumber}` : undefined)}
           puzzleInfoLoading={isGenerating || (!puzzle && !gameResult)}
           onHelpClick={() => setShowHelp(true)}
-          onMenuClick={showMenuButton ? () => setShowMenu(UI_OVERHAUL_EXPERIMENTAL ? !showMenu : true) : undefined}
+          onMenuClick={showMenuButton ? () => setShowMenu(!showMenu) : undefined}
           logoRef={devToolsTapTargetRef}
           logoClassName={styles.devToolsTapTarget}
-          isMenuOpen={UI_OVERHAUL_EXPERIMENTAL ? showMenu : undefined}
-          menuButtonRef={UI_OVERHAUL_EXPERIMENTAL ? menuButtonRef : undefined}
+          isMenuOpen={showMenu}
+          menuButtonRef={menuButtonRef}
           showThemeToggle={false}
         />
 
@@ -1655,7 +1655,7 @@ export default function Home() {
 
                 {/* Loading Overlay */}
                 {showLoader && (
-                  <div className={styles.frameLoader}>
+                  <div className={`${styles.frameLoader} ${showMenu ? styles.blurred : ''}`}>
                     <Loader
                       text={loadingText}
                       progress={isGenerating ? progressPercent : undefined}
@@ -1670,7 +1670,7 @@ export default function Home() {
                     {lifeFlash && <div className={styles.lifeFlash} />}
                     {!isPlaying && !showInlineResult && !showShareCard && (
                       <div
-                        className={styles.startOverlay}
+                        className={`${styles.startOverlay} ${showMenu ? styles.blurred : ''}`}
                         onClick={previousResult ? handleViewResult : undefined}
                       >
                         {previousResult ? (
@@ -1876,7 +1876,7 @@ export default function Home() {
           onOpenHallOfFame={() => setShowHallOfFame(true)}
           onOpenAccount={() => setShowAccount(true)}
           onOpenArchive={handleOpenArchive}
-          triggerButtonRef={UI_OVERHAUL_EXPERIMENTAL ? menuButtonRef : undefined}
+          triggerButtonRef={menuButtonRef}
         />
 
         {showLeaderboard && (

@@ -7,8 +7,9 @@ import { api } from '@/lib/api';
 import { cachedApi, fetchMeFresh, readCachedMe } from '@/lib/api/cached';
 import { getPrefs, setPrefs } from '@/lib/prefs';
 import { addDays } from '@/lib/date';
-import { getAllSkins, getSkinById, getUnlockedSkins } from '@/lib/skins';
+import { getAllSkinsForTier, isSkinUnlockedForTier, SkinTier } from '@/lib/skins';
 import { getCharacterById } from '@/lib/characters';
+import { emitGameEvent } from '@/game/events';
 import { getNewYorkDateString } from '@/game/puzzleGenerator';
 import { formatTime, getGuestHistoryForAccountImport, setStorageScope } from '@/utils/storage';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
@@ -149,10 +150,17 @@ function AccountView() {
   const localHistory = useMemo(() => getGuestHistoryForAccountImport(), []);
   const localStats = useMemo(() => computeLocalAccountStats(localHistory), [localHistory]);
   const stats = me?.stats ?? localStats;
-  const profile = me?.profile ?? { characterId: 'default', skinId: 'default' };
+  const profile = me?.mode === 'user' ? (me.profile ?? { characterId: 'default', skinId: 'default' }) : { characterId: 'default', skinId: 'default' };
   const avgTime = stats.avgSolveTimeMs != null ? formatTime(stats.avgSolveTimeMs) : '—';
 
-  const skins = useMemo(() => getAllSkins(), []);
+  const tier: SkinTier = useMemo(() => {
+    if (me?.mode !== 'user') return 'guest';
+    const isPlus = !!me.entitlements?.archiveAccess || !!me.entitlements?.adsRemoved;
+    return isPlus ? 'plus' : 'account';
+  }, [me?.mode, me?.entitlements?.archiveAccess, me?.entitlements?.adsRemoved]);
+
+  const skins = useMemo(() => getAllSkinsForTier(tier), [tier]);
+  const didInitialSkinWheelSyncRef = useRef(false);
 
   const refreshMe = useCallback(async (silent = false, force = false) => {
     if (!silent) {
@@ -269,13 +277,16 @@ function AccountView() {
     const idx = skins.findIndex((s) => s.id === profile.skinId);
     if (idx >= 0) {
       setSkinWheelIndex(idx);
-      // Scroll to the item after a tick to ensure DOM is ready
+      // Only force-scroll once on initial load; subsequent profile updates should not override smooth UI scrolling.
+      if (didInitialSkinWheelSyncRef.current) return;
+      didInitialSkinWheelSyncRef.current = true;
+
       requestAnimationFrame(() => {
         const container = scrollContainerRef.current;
         if (!container) return;
         const item = container.children[idx] as HTMLElement | undefined;
         if (item) {
-          item.scrollIntoView({ behavior: 'instant', inline: 'center', block: 'nearest' });
+          item.scrollIntoView({ behavior: 'auto', inline: 'center', block: 'nearest' });
         }
       });
     }
@@ -369,29 +380,31 @@ function AccountView() {
 
   const applyProfile = useCallback(
     async (changes: { skinId?: string; characterId?: string }) => {
+      const me = readCachedMe();
+      if (!me) return;
+      if (me.mode !== 'user') return;
+
       // Validate inputs locally first
       if (changes.skinId) {
-        const s = getSkinById(changes.skinId);
-        if (!s || s.locked) return;
+        if (!isSkinUnlockedForTier(changes.skinId, tier)) return;
       }
       if (changes.characterId) {
         const c = getCharacterById(changes.characterId);
         if (!c || c.locked) return;
       }
 
-      const me = readCachedMe();
-      if (!me) return;
-
       try {
-        if (me.mode === 'user') {
-          await api.profileUpdate(changes);
+        await api.profileUpdate(changes);
+        const updated = await refreshMe(true, true);
+        const profile = updated?.profile;
+        if (profile) {
+          emitGameEvent('cosmeticsUpdate', profile);
         }
-        await refreshMe(true, true);
       } catch {
         // ignore
       }
     },
-    [refreshMe],
+    [refreshMe, tier],
   );
 
   // Scroll to a specific skin index with smooth animation

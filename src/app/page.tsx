@@ -75,7 +75,7 @@ function LeaderboardSkeleton() {
   );
 }
 import { api } from '@/lib/api';
-import { cachedApi, prefetchAccount, prefetchArchiveDays, prefetchHallOfFame, prefetchLeaderboard } from '@/lib/api/cached';
+import { cachedApi, prefetchAccount, prefetchArchiveDays, prefetchHallOfFame, prefetchLeaderboard, readCachedMe } from '@/lib/api/cached';
 import { addDays } from '@/lib/date';
 import { getPrefs } from '@/lib/prefs';
 import {
@@ -1431,6 +1431,9 @@ export default function Home() {
     gameControlsRef.current = controls;
     setIsGameReady(true);
     controls.setHintsEnabled(hintsEnabledRef.current);
+
+    const me = readCachedMe();
+    emitGameEvent('cosmeticsUpdate', me?.mode === 'user' && me.profile ? me.profile : { characterId: 'default', skinId: 'default' });
 
     // Sync dev tools maxLives setting if not default
     if (devMaxLivesRef.current !== 3) {

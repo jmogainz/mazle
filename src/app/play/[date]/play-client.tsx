@@ -12,7 +12,7 @@ import HallOfFameView from '@/components/HallOfFameView';
 import { onGameEvent, emitGameEvent, TILE_SIZE, getNewYorkDateString, type Direction, type PuzzleData } from '@/game';
 import type { GameControls } from '@/game/PhaserGame';
 import { api } from '@/lib/api';
-import { cachedApi, prefetchAccount, prefetchLeaderboard } from '@/lib/api/cached';
+import { cachedApi, prefetchAccount, prefetchLeaderboard, readCachedMe } from '@/lib/api/cached';
 import { getPlayerStats, getStorageScope, setStorageScope } from '@/utils/storage';
 import { useGlobalSwipeMoves } from '@/game/useGlobalSwipeMoves';
 import baseStyles from '@/app/page.module.css';
@@ -273,6 +273,9 @@ export default function ArchivePlayClient({ date }: { date: string }) {
     gameControlsRef.current = controls;
     setIsGameReady(true);
     controls.setPaused(shouldPause);
+
+    const me = readCachedMe();
+    emitGameEvent('cosmeticsUpdate', me?.mode === 'user' && me.profile ? me.profile : { characterId: 'default', skinId: 'default' });
   }, [shouldPause]);
 
   const handleBegin = useCallback(() => {

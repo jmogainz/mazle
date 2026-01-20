@@ -3,6 +3,8 @@ import { resolveMeIdentity } from '@/lib/server/identity';
 import { setGuestIdCookie } from '@/lib/server/cookies';
 import { jsonError, readJsonBody } from '@/lib/server/responses';
 import { updateUserProfile } from '@/lib/server/account';
+import { getCharacterById } from '@/lib/characters';
+import { isSkinUnlockedForTier, type SkinTier } from '@/lib/skins';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -29,6 +31,19 @@ export async function PATCH(request: Request) {
     const skinId = typeof body.skinId === 'string' ? body.skinId : undefined;
 
     try {
+        if (characterId != null) {
+            const c = getCharacterById(characterId);
+            if (!c || c.locked) {
+                return jsonError(400, 'CHARACTER_LOCKED', 'Character is locked.');
+            }
+        }
+        if (skinId != null) {
+            const tier: SkinTier = me.entitlements.archiveAccess || me.entitlements.adsRemoved ? 'plus' : 'account';
+            if (!isSkinUnlockedForTier(skinId, tier)) {
+                return jsonError(400, 'SKIN_LOCKED', 'Skin is locked.');
+            }
+        }
+
         const profile = await updateUserProfile(me.userId, {
             characterId,
             skinId,

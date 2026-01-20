@@ -13,7 +13,6 @@ type UiDevModalProps = {
   onOpenAccount: () => void;
   onOpenLeaderboard: () => void;
   onOpenHallOfFame: () => void;
-  onOpenArchive: () => void;
   onApplyTodayResult: (kind: 'clear' | 'win' | 'loss') => void;
 };
 
@@ -24,7 +23,6 @@ export default function UiDevModal({
   onOpenAccount,
   onOpenLeaderboard,
   onOpenHallOfFame,
-  onOpenArchive,
   onApplyTodayResult,
 }: UiDevModalProps) {
   const [meMode, setMeMode] = useState<'unknown' | 'guest' | 'user'>('unknown');
@@ -190,9 +188,6 @@ export default function UiDevModal({
               </button>
               <button type="button" className={styles.button} onClick={onOpenHallOfFame}>
                 Hall of Fame
-              </button>
-              <button type="button" className={styles.button} onClick={onOpenArchive}>
-                Archive
               </button>
             </div>
           </div>

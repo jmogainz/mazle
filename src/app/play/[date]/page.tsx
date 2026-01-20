@@ -1,6 +1,5 @@
-import ArchivePlayClient from './play-client';
+import { notFound } from 'next/navigation';
 
-export default async function PlayArchiveDatePage({ params }: { params: Promise<{ date: string }> }) {
-  const { date } = await params;
-  return <ArchivePlayClient date={date} />;
+export default function PlayArchiveDatePage() {
+  notFound();
 }

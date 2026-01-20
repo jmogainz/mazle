@@ -844,6 +844,11 @@
   box-sizing: border-box;
 }
 
+/* Hide canvas while loader is visible */
+.gameFrameLoading :global(canvas) {
+  visibility: hidden;
+}
+
 /* Canvas styling - ensure canvas defines the frame size */
 .gameFrame :global(canvas) {
   display: block;

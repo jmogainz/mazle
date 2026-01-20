@@ -365,7 +365,6 @@ export default function ArchivePlayClient({ date }: { date: string }) {
           onOpenLeaderboard={() => setShowLeaderboard(true)}
           onOpenHallOfFame={() => setShowHallOfFame(true)}
           onOpenAccount={() => setShowAccount(true)}
-          onOpenArchive={onBackToArchive}
           triggerButtonRef={menuButtonRef}
         />
         <div className={styles.errorCard}>
@@ -513,7 +512,6 @@ export default function ArchivePlayClient({ date }: { date: string }) {
           onOpenLeaderboard={() => setShowLeaderboard(true)}
           onOpenHallOfFame={() => setShowHallOfFame(true)}
           onOpenAccount={() => setShowAccount(true)}
-          onOpenArchive={onBackToArchive}
           triggerButtonRef={menuButtonRef}
         />
 

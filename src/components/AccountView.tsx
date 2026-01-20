@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { signIn, signOut } from 'next-auth/react';
 import { api } from '@/lib/api';
 import { cachedApi, fetchMeFresh, readCachedMe } from '@/lib/api/cached';
@@ -97,7 +96,6 @@ function computeLocalAccountStats(history: ReturnType<typeof getGuestHistoryForA
 }
 
 function AccountView() {
-  const router = useRouter();
   const cachedMe = useMemo(() => readCachedMe(), []);
   const [meState, setMeState] = useState<LoadState<Awaited<ReturnType<typeof api.me>>>>(
     cachedMe ? { status: 'loaded', data: cachedMe } : { status: 'loading' }
@@ -373,10 +371,6 @@ function AccountView() {
         : '/';
     await signOut({ callbackUrl });
   }, [isSignedIn, refreshMe]);
-
-  const goToArchive = useCallback(() => {
-    router.push('/archive');
-  }, [router]);
 
   const applyProfile = useCallback(
     async (changes: { skinId?: string; characterId?: string }) => {
@@ -841,17 +835,6 @@ function AccountView() {
         </div>
       </div>
 
-      {me && !me.entitlements.archiveAccess && (
-        <div className={styles.buttonRow}>
-          <button
-            type="button"
-            className={styles.primaryButton}
-            onClick={goToArchive}
-          >
-            Remove Ads &amp; Unlock Archive
-          </button>
-        </div>
-      )}
     </div>
   );
 }

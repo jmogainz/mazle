@@ -75,7 +75,7 @@ function LeaderboardSkeleton() {
   );
 }
 import { api } from '@/lib/api';
-import { cachedApi, prefetchAccount, prefetchArchiveDays, prefetchHallOfFame, prefetchLeaderboard, readCachedMe } from '@/lib/api/cached';
+import { cachedApi, prefetchAccount, prefetchHallOfFame, prefetchLeaderboard, readCachedMe } from '@/lib/api/cached';
 import { addDays } from '@/lib/date';
 import { getPrefs } from '@/lib/prefs';
 import {
@@ -366,8 +366,6 @@ export default function Home() {
     const runPrefetch = () => {
       prefetchAccount();
       prefetchLeaderboard(todayNy, LEADERBOARD_LIMIT);
-      const monthStart = `${todayNy.slice(0, 7)}-01`;
-      prefetchArchiveDays(monthStart, todayNy);
       // Prefetch hall of fame for yesterday (default view) ± 2 days
       const yesterday = addDays(todayNy, -1);
       const hofDates: string[] = [];
@@ -1442,25 +1440,6 @@ export default function Home() {
 
     controls.setPaused(shouldPause);
 
-    // Show help on first visit
-    try {
-      for (let i = localStorage.length - 1; i >= 0; i--) {
-        const key = localStorage.key(i);
-        if (!key) continue;
-        if (key.startsWith('mazle_seen_help') && key !== HELP_SEEN_KEY) {
-          localStorage.removeItem(key);
-        }
-      }
-    } catch {
-      // Ignore storage access errors (e.g., private mode)
-    }
-
-    const hasSeenHelp = localStorage.getItem(HELP_SEEN_KEY);
-    if (!hasSeenHelp) {
-      setShowHelp(true);
-      localStorage.setItem(HELP_SEEN_KEY, 'true');
-    }
-
     // Restore in-progress state if we have one (mid-game refresh resume)
     if (pendingRestoreRef.current) {
       console.log('[RESUME] Restoring in-progress state');
@@ -1485,6 +1464,32 @@ export default function Home() {
       setIsPlaying(false);
     }
   }, [showAnalysis, showInlineResult, shouldPause]);
+
+  // Show help on first visit - wait for full loading to complete
+  const hasShownFirstVisitHelpRef = useRef(false);
+  useEffect(() => {
+    if (!isGameReady || !isIdentityChecked || hasShownFirstVisitHelpRef.current) return;
+    hasShownFirstVisitHelpRef.current = true;
+
+    try {
+      // Clean up old help keys
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (!key) continue;
+        if (key.startsWith('mazle_seen_help') && key !== HELP_SEEN_KEY) {
+          localStorage.removeItem(key);
+        }
+      }
+    } catch {
+      // Ignore storage access errors (e.g., private mode)
+    }
+
+    const hasSeenHelp = localStorage.getItem(HELP_SEEN_KEY);
+    if (!hasSeenHelp) {
+      setShowHelp(true);
+      localStorage.setItem(HELP_SEEN_KEY, 'true');
+    }
+  }, [isGameReady, isIdentityChecked]);
 
   const handleViewResult = useCallback(() => {
     // Show analysis on the map; share card can be opened from the bottom button
@@ -1565,11 +1570,12 @@ export default function Home() {
 
   // Derived state
   const hasPuzzle = Boolean(puzzle);
+  // Loading text priority: generating > no puzzle > puzzle loading/waiting
   const loadingText = isGenerating
     ? 'Generating daily puzzle...'
-    : hasPuzzle && !isGameReady
-      ? 'Loading puzzle...'
-      : 'Loading Mazle...';
+    : !hasPuzzle
+      ? 'Loading Mazle...'
+      : 'Loading puzzle...';
   const displayOptimalMoves = puzzle?.optimalMoves ?? 10;
   const isPostGame = hasPuzzle && !isPlaying && (!!gameResult || !!previousResult);
   const shouldBlur =
@@ -1591,10 +1597,6 @@ export default function Home() {
       delete document.documentElement.dataset.puzzlePlayed;
     }
   }, [hasPuzzle, isIdentityChecked]);
-
-  const handleOpenArchive = useCallback(() => {
-    router.push('/archive');
-  }, [router]);
 
   return (
     <ErrorBoundary>
@@ -1686,7 +1688,7 @@ export default function Home() {
             <div ref={gameStageRef} className={styles.gameArea}>
               <div
                 ref={gameFrameRef}
-                className={`${styles.gameFrame} ${shouldBlur ? styles.gameFrameBlurred : ''}`}
+                className={`${styles.gameFrame} ${shouldBlur ? styles.gameFrameBlurred : ''} ${showLoader ? styles.gameFrameLoading : ''}`}
               >
                 {puzzle && (
                   <PhaserGame
@@ -1708,8 +1710,8 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* Game overlays - only shown when game is ready */}
-                {puzzle && isGameReady && (
+                {/* Game overlays - only shown when game is ready and loader is hidden */}
+                {puzzle && isGameReady && isIdentityChecked && (
                   <>
                     <div className={`${styles.darkOverlay} ${shouldBlur ? styles.darkOverlayVisible : ''}`} />
                     {lifeFlash && <div className={styles.lifeFlash} />}
@@ -1920,7 +1922,6 @@ export default function Home() {
           onOpenLeaderboard={() => setShowLeaderboard(true)}
           onOpenHallOfFame={() => setShowHallOfFame(true)}
           onOpenAccount={() => setShowAccount(true)}
-          onOpenArchive={handleOpenArchive}
           triggerButtonRef={menuButtonRef}
         />
 
@@ -1992,10 +1993,6 @@ export default function Home() {
             }}
             onOpenHallOfFame={() => {
               setShowHallOfFame(true);
-              setShowUiDevModal(false);
-            }}
-            onOpenArchive={() => {
-              handleOpenArchive();
               setShowUiDevModal(false);
             }}
             onApplyTodayResult={(kind) => applyTodayResultForUiDev(kind)}

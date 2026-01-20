@@ -9,8 +9,66 @@ import { HELP_MENU_HASH } from '@/components/helpMenuHash';
 import MoreMenuModal from '@/components/MoreMenuModal';
 import OverlayShell from '@/components/OverlayShell';
 import AccountView from '@/components/AccountView';
-import LeaderboardView from '@/components/LeaderboardView';
 import HallOfFameView from '@/components/HallOfFameView';
+
+// Lazy load LeaderboardView for faster modal open
+const LeaderboardView = dynamic(() => import('@/components/LeaderboardView'), {
+  ssr: false,
+  loading: () => <LeaderboardSkeleton />,
+});
+
+function LeaderboardSkeleton() {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      {/* Day title skeleton */}
+      <div style={{ textAlign: 'center', marginBottom: '0.5rem' }}>
+        <div style={{
+          width: '120px',
+          height: '1.5rem',
+          background: 'var(--color-surface)',
+          borderRadius: '6px',
+          margin: '0 auto 0.25rem'
+        }} />
+        <div style={{
+          width: '60px',
+          height: '0.9rem',
+          background: 'var(--color-surface)',
+          borderRadius: '4px',
+          margin: '0 auto',
+          opacity: 0.6
+        }} />
+      </div>
+      {/* Podium skeleton */}
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: '0.75rem', padding: '0.5rem 0 1rem' }}>
+        {[45, 60, 35].map((height, i) => (
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '30%' }}>
+            <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--color-surface)', marginBottom: '0.5rem' }} />
+            <div style={{ width: '70%', height: '0.9rem', background: 'var(--color-surface)', borderRadius: '4px', marginBottom: '0.25rem' }} />
+            <div style={{ width: '100%', height: `${height}px`, background: 'var(--color-surface)', borderRadius: '8px 8px 0 0' }} />
+          </div>
+        ))}
+      </div>
+      {/* List skeleton */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            padding: '0.75rem',
+            background: 'var(--color-surface)',
+            borderRadius: '8px'
+          }}>
+            <div style={{ width: '32px', height: '1rem', background: 'var(--color-border)', borderRadius: '4px' }} />
+            <div style={{ flex: 1, height: '1rem', background: 'var(--color-border)', borderRadius: '4px' }} />
+            <div style={{ width: '50px', height: '1rem', background: 'var(--color-border)', borderRadius: '4px' }} />
+            <div style={{ width: '28px', height: '1rem', background: 'var(--color-border)', borderRadius: '4px' }} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 import { api } from '@/lib/api';
 import { cachedApi, prefetchAccount, prefetchArchiveDays, prefetchHallOfFame, prefetchLeaderboard } from '@/lib/api/cached';
 import { addDays } from '@/lib/date';
@@ -291,6 +349,7 @@ export default function Home() {
   const [reviewAttemptIndex, setReviewAttemptIndex] = useState<number | null>(null);
   const [showReplayButton, setShowReplayButton] = useState(false);
   const [analysisAnimationComplete, setAnalysisAnimationComplete] = useState(false);
+  const [isIdentityChecked, setIsIdentityChecked] = useState(false);
   const identitySyncEpochRef = useRef(0);
 
   // Keep devMaxLivesRef in sync
@@ -349,7 +408,20 @@ export default function Home() {
     pendingRestoreRef.current = null;
     setHasPendingRestore(false);
     clearInProgressState();
-  }, [todayNy, clearInProgressState]);
+
+    // Set initialStats synchronously to avoid HUD flash when transitioning identities
+    if (puzzle) {
+      const failed = result.failed ?? !result.completed;
+      const failedAttempts = result.attempts?.length ?? 0;
+      const livesRemaining = failed ? 0 : 3 - failedAttempts;
+      setInitialStats({
+        lives: livesRemaining,
+        currentAttemptMoves: puzzle.optimalMoves,
+        elapsedTimeMs: result.timeMs,
+        penaltyTimeMs: 0,
+      });
+    }
+  }, [todayNy, clearInProgressState, puzzle]);
 
   useEffect(() => {
     if (!previousResult || !puzzle) return;
@@ -366,6 +438,7 @@ export default function Home() {
 
   useEffect(() => {
     let cancelled = false;
+    setIsIdentityChecked(false);
     const epoch = identitySyncEpochRef.current + 1;
     identitySyncEpochRef.current = epoch;
 
@@ -389,6 +462,24 @@ export default function Home() {
         setStats(getPlayerStats(scope));
         const localResult = getTodaysResult(scope);
         applyStoredResult(localResult);
+
+        // If no completed result, check for in-progress state to restore
+        if (!localResult) {
+          const todaySeed = getDailySeed(new Date());
+          const inProgressState = getInProgressState(todaySeed);
+          if (inProgressState) {
+            console.log('[RESUME] Found in-progress state (guest), will restore after game ready');
+            pendingRestoreRef.current = inProgressState;
+            setHasPendingRestore(true);
+            setInitialStats({
+              lives: inProgressState.lives,
+              currentAttemptMoves: inProgressState.currentAttemptMoves,
+              elapsedTimeMs: inProgressState.elapsedTimeMs,
+              penaltyTimeMs: inProgressState.penaltyTimeMs,
+            });
+          }
+        }
+        setIsIdentityChecked(true);
         return;
       }
 
@@ -430,6 +521,7 @@ export default function Home() {
         upsertTodaysResult(merged, userScope);
         setStats(getPlayerStats(userScope));
         applyStoredResult(merged);
+        setIsIdentityChecked(true);
         return;
       }
 
@@ -461,11 +553,28 @@ export default function Home() {
 
         setStats(getPlayerStats(userScope));
         applyStoredResult(candidate);
+        setIsIdentityChecked(true);
         return;
       }
 
       setStats(getPlayerStats(userScope));
       applyStoredResult(null);
+
+      // No completed result - check for in-progress state to restore
+      const todaySeed = getDailySeed(new Date());
+      const inProgressState = getInProgressState(todaySeed);
+      if (inProgressState) {
+        console.log('[RESUME] Found in-progress state, will restore after game ready');
+        pendingRestoreRef.current = inProgressState;
+        setHasPendingRestore(true);
+        setInitialStats({
+          lives: inProgressState.lives,
+          currentAttemptMoves: inProgressState.currentAttemptMoves,
+          elapsedTimeMs: inProgressState.elapsedTimeMs,
+          penaltyTimeMs: inProgressState.penaltyTimeMs,
+        });
+      }
+      setIsIdentityChecked(true);
     };
 
     run();
@@ -822,76 +931,24 @@ export default function Home() {
     const today = new Date();
     const todayNumber = getPuzzleNumber(today);
     const todaySeed = getDailySeed(today);
-    const playerStats = getPlayerStats();
-    const existingResult = getTodaysResult();
 
-    // Set initial state immediately so UI renders
+    // Set puzzle-specific state immediately so UI renders
+    // NOTE: We do NOT set previousResult, stats, gameResult, or initialStats here.
+    // These depend on user identity (storage scope) which may not be resolved yet.
+    // The identity sync effect handles loading these with the correct scope.
     debugModeRef.current = false;
     setPuzzleNumber(todayNumber);
     setPuzzleLabel(null);
     setActiveSeed(todaySeed);
     setSeedInput('');
-    setStats(playerStats);
-    setPreviousResult(existingResult);
-    console.log('[LOAD] Loaded previousResult:', existingResult);
     setShowShareCard(false);
     setShowInlineResult(false);
-    setIsPlaying(false);
     setIsFreshCompletion(false); // Reset - will be set true only by gameComplete event
-
-    // Helper to set scoreboard stats for a finished game once we have the puzzle.
-    const setResultStats = (optimalMoves: number) => {
-      if (!existingResult) return;
-      const failed = existingResult.failed ?? !existingResult.completed;
-      const failedAttempts = existingResult.attempts?.length ?? 0;
-      const livesRemaining = failed ? 0 : 3 - failedAttempts;
-      setInitialStats({
-        lives: livesRemaining,
-        currentAttemptMoves: optimalMoves, // Shows 0 moves remaining
-        elapsedTimeMs: existingResult.timeMs,
-        penaltyTimeMs: 0, // Already included in timeMs
-      });
-    };
-
-    if (existingResult) {
-      setGameResult({
-        moveCount: existingResult.moveCount,
-        timeMs: existingResult.timeMs,
-        attempts: existingResult.attempts,
-        failed: existingResult.failed ?? !existingResult.completed,
-      });
-      // initialStats will be set after puzzle loads (need optimalMoves)
-      // Keep overlay prompt; let user choose to view results
-      setShowShareCard(false);
-      setShowInlineResult(false);
-      setIsPlaying(false);
-    } else {
-      setGameResult(null);
-
-      // Check for in-progress state (mid-game refresh resume)
-      const inProgressState = getInProgressState(todaySeed);
-      if (inProgressState) {
-        console.log('[RESUME] Found in-progress state, will restore after game ready');
-        pendingRestoreRef.current = inProgressState;
-        setHasPendingRestore(true);
-        setInitialStats({
-          lives: inProgressState.lives,
-          currentAttemptMoves: inProgressState.currentAttemptMoves,
-          elapsedTimeMs: inProgressState.elapsedTimeMs,
-          penaltyTimeMs: inProgressState.penaltyTimeMs,
-        });
-      } else {
-        pendingRestoreRef.current = null;
-        setHasPendingRestore(false);
-        setInitialStats(null);
-      }
-    }
 
     // Check localStorage cache first for instant loading (same-day revisit)
     const cachedPuzzle = getCachedPuzzle(todaySeed);
     if (cachedPuzzle) {
       setPuzzle(cachedPuzzle);
-      setResultStats(cachedPuzzle.optimalMoves);
       setRenderKey((prev) => prev + 1);
       return;
     }
@@ -912,7 +969,7 @@ export default function Home() {
 
       console.log(`[Daily] Loaded puzzle from ${source}`);
       setPuzzle(todayPuzzle);
-      setResultStats(todayPuzzle.optimalMoves);
+      // Note: initialStats is set by the effect watching previousResult + puzzle
       setRenderKey((prev) => prev + 1);
 
       // Cache in localStorage for same-day revisits
@@ -1517,15 +1574,15 @@ export default function Home() {
     showAccount ||
     showDevTools ||
     (hasPuzzle && !isPlaying && isGameReady && !showInlineResult);
-  const showLoader = !hasPuzzle || !isGameReady;
+  const showLoader = !hasPuzzle || !isGameReady || !isIdentityChecked;
   const showControlsRow = showInlineResult && !showSwipeHint && !showShareCard;
 
   // Clear preload hint once puzzle loading completes (React now controls visibility)
   useEffect(() => {
-    if (hasPuzzle) {
+    if (hasPuzzle && isIdentityChecked) {
       delete document.documentElement.dataset.puzzlePlayed;
     }
-  }, [hasPuzzle]);
+  }, [hasPuzzle, isIdentityChecked]);
 
   const handleOpenArchive = useCallback(() => {
     router.push('/archive');
@@ -1612,7 +1669,7 @@ export default function Home() {
                 hintsEnabled={hintsEnabled}
                 onReviewAttempt={setReviewAttemptIndex}
                 reviewAttemptIndex={reviewAttemptIndex}
-                loading={!hasPuzzle}
+                loading={!hasPuzzle || !isIdentityChecked || (!!previousResult && !initialStats)}
                 analysisAnimationComplete={analysisAnimationComplete}
                 isResultModalActive={showShareCard}
               />
@@ -1859,17 +1916,15 @@ export default function Home() {
           triggerButtonRef={menuButtonRef}
         />
 
-        {showLeaderboard && (
-          <OverlayShell
-            title="Leaderboard"
-            // subtitle="Today"
-            variant="overlay"
-            onClose={() => setShowLeaderboard(false)}
-          >
-            <LeaderboardView />
-            <AdSlot placement="leaderboard" />
-          </OverlayShell>
-        )}
+        <OverlayShell
+          title="Leaderboard"
+          variant="overlay"
+          onClose={() => setShowLeaderboard(false)}
+          open={showLeaderboard}
+        >
+          <LeaderboardView />
+          <AdSlot placement="leaderboard" />
+        </OverlayShell>
 
         {showHallOfFame && (
           <OverlayShell

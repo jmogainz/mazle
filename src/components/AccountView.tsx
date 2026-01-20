@@ -354,6 +354,8 @@ function AccountView() {
     if (!isSignedIn) return;
 
     setBusy('signout');
+    // Reset storage scope to guest before redirect so preload script checks guest result
+    setStorageScope('guest');
     const callbackUrl =
       typeof window !== 'undefined'
         ? `${window.location.pathname}${window.location.search}${window.location.hash}`
@@ -513,7 +515,7 @@ function AccountView() {
                       setNameStatus('idle');
                       setNameError(null);
                     }}
-                    maxLength={24}
+                    maxLength={14}
                     inputMode="text"
                     autoCapitalize="off"
                     autoCorrect="off"

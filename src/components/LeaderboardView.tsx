@@ -40,8 +40,8 @@ function computeAttemptsUsed(result: ReturnType<typeof getTodaysResult>): number
 function LeaderboardView() {
   const todayDate = useMemo(() => getNewYorkDateString(), []);
   const puzzleNumber = useMemo(() => getPuzzleNumberFromNyDateString(todayDate), [todayDate]);
-  const todayResult = useMemo(() => getTodaysResult(), []);
-  
+  const [todayResult, setTodayResult] = useState(() => getTodaysResult());
+
   // User has played today if they have any result for today (win or fail)
   const hasPlayedToday = useMemo(() => {
     return !!todayResult && todayResult.date === todayDate;
@@ -73,6 +73,8 @@ function LeaderboardView() {
       loadMoreEpochRef.current += 1;
       loadingMoreRef.current = false;
       setIsLoadingMore(false);
+      // Re-read local result in case puzzle was just completed
+      setTodayResult(getTodaysResult());
       const [top, me] = await Promise.all([
         fetchLeaderboardTopFresh(todayDate, LEADERBOARD_PAGE_SIZE, 0),
         fetchLeaderboardMeFresh(todayDate),
@@ -126,39 +128,18 @@ function LeaderboardView() {
       });
   }, [meState, topState.status, todayDate]); // Only depend on status, not full topState to avoid loops
 
+  // Load viewer mode from cached account info (fast)
   useEffect(() => {
-    cachedApi
-      .me()
-      .then((me) => setViewerMode(me.mode))
-      .catch(() => setViewerMode('unknown'));
+    const cached = readCachedMe();
+    if (cached) {
+      setViewerMode(cached.mode);
+    } else {
+      cachedApi
+        .me()
+        .then((me) => setViewerMode(me.mode))
+        .catch(() => setViewerMode('unknown'));
+    }
   }, []);
-
-  useEffect(() => {
-    const cached = readCachedLeaderboardTop(todayDate, LEADERBOARD_PAGE_SIZE, 0);
-    if (cached) {
-      setTopState({ status: 'loaded', data: cached });
-    }
-
-    cachedApi
-      .leaderboardTop(todayDate, LEADERBOARD_PAGE_SIZE, 0)
-      .then((top) => setTopState({ status: 'loaded', data: top }))
-      .catch((err) => {
-        const message = err instanceof Error ? err.message : 'Failed to load';
-        setTopState({ status: 'error', message });
-      });
-  }, [todayDate]);
-
-  useEffect(() => {
-    const cached = readCachedLeaderboardMe(todayDate);
-    if (cached) {
-      setMeState({ status: 'loaded', data: cached });
-    }
-
-    cachedApi
-      .leaderboardMe(todayDate)
-      .then((me) => setMeState({ status: 'loaded', data: me }))
-      .catch(() => setMeState({ status: 'error', message: 'Failed to load' }));
-  }, [todayDate]);
 
   const loadMore = useCallback(async () => {
     if (topState.status !== 'loaded') return;
@@ -217,16 +198,16 @@ function LeaderboardView() {
   const myEntryData = useMemo(() => {
     const accountMe = readCachedMe();
     const displayName = accountMe?.displayName ?? 'You';
-    
+
     if (meState.status === 'loaded' && meState.data) {
       const me = meState.data;
       return { rank: me.rank, displayName: me.displayName, timeMs: me.timeMs, attemptsUsed: me.attemptsUsed, submitted: true };
     }
-    
+
     if (todayResult && todayResult.date === todayDate && !todayResult.failed && attemptsUsed != null) {
       return { rank: null, displayName, timeMs: todayResult.timeMs, attemptsUsed, submitted: false };
     }
-    
+
     return null;
   }, [meState, todayResult, todayDate, attemptsUsed]);
 
@@ -238,35 +219,31 @@ function LeaderboardView() {
     const stickyBottom = stickyBottomRef.current;
 
     const setVisibility = (position: StickyPosition) => {
+      // Use classList toggle instead of inline visibility to respect parent visibility:hidden
       if (stickyTop) {
         const showTop = position === 'top';
-        stickyTop.style.visibility = showTop ? 'visible' : 'hidden';
-        stickyTop.style.pointerEvents = showTop ? 'auto' : 'none';
+        stickyTop.classList.toggle(styles.stickyVisible, showTop);
       }
       if (stickyBottom) {
         const showBottom = position === 'bottom';
-        stickyBottom.style.visibility = showBottom ? 'visible' : 'hidden';
-        stickyBottom.style.pointerEvents = showBottom ? 'auto' : 'none';
+        stickyBottom.classList.toggle(styles.stickyVisible, showBottom);
       }
       if (myRow) {
-        const showInline = position === 'inline';
-        myRow.style.visibility = showInline ? 'visible' : 'hidden';
-        myRow.style.pointerEvents = showInline ? 'auto' : 'none';
+        // Inline row: hide when sticky version shows, show when inline
+        const hideInline = position !== 'inline';
+        myRow.classList.toggle(styles.inlineHidden, hideInline);
       }
     };
 
     if (!myEntryData) {
       if (stickyTop) {
-        stickyTop.style.visibility = 'hidden';
-        stickyTop.style.pointerEvents = 'none';
+        stickyTop.classList.remove(styles.stickyVisible);
       }
       if (stickyBottom) {
-        stickyBottom.style.visibility = 'hidden';
-        stickyBottom.style.pointerEvents = 'none';
+        stickyBottom.classList.remove(styles.stickyVisible);
       }
       if (myRow) {
-        myRow.style.visibility = 'visible';
-        myRow.style.pointerEvents = 'auto';
+        myRow.classList.remove(styles.inlineHidden);
       }
       return;
     }

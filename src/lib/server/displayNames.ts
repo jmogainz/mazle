@@ -1,4 +1,6 @@
-export const DISPLAY_NAME_MAX_LEN = 24;
+import { DISPLAY_NAME_MAX_LEN } from './displayNameRules';
+
+export { DISPLAY_NAME_MAX_LEN };
 
 export const DISPLAY_NAME_ADJECTIVES = [
   'Frosty',

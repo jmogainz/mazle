@@ -112,16 +112,16 @@ function shuffle<T>(items: T[], rand: () => number): T[] {
 }
 
 function buildUniqueDisplayNames(count: number, rand: () => number): string[] {
-  const combos: string[] = [];
+  const combosSet = new Set<string>();
   for (const adjective of DISPLAY_NAME_ADJECTIVES) {
     for (const noun of DISPLAY_NAME_NOUNS) {
       for (let num = 10; num <= 99; num += 1) {
-        combos.push(formatDisplayName(adjective, noun, num));
+        combosSet.add(formatDisplayName(adjective, noun, num));
       }
     }
   }
 
-  const shuffled = shuffle(combos, rand);
+  const shuffled = shuffle([...combosSet], rand);
   return shuffled.slice(0, Math.min(count, shuffled.length));
 }
 

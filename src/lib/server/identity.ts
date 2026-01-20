@@ -2,9 +2,15 @@ import crypto from 'node:crypto';
 import { getToken } from 'next-auth/jwt';
 import { ensureDbSchema, getDbPool } from './db';
 import { env } from './env';
-import { migrateGuestDailyResults } from './account';
+import { ensureUserSettings, migrateGuestDailyResults } from './account';
 import { getLeaderboardRedis } from './redis';
-import { LB_NAMES_KEY } from './leaderboard';
+import {
+  encodeLeaderboardScore,
+  leaderboardMemberIndexKey,
+  leaderboardZsetKey,
+  LB_NAMES_KEY,
+  makeLeaderboardMember,
+} from './leaderboard';
 import { getGuestProfile, guestDisplayNameExists, reserveGuestDisplayName, saveGuestProfile } from './guestStore';
 import { randomDisplayNameCandidate } from './displayNames';
 
@@ -149,6 +155,9 @@ async function linkGuestToUser(userId: string, guestId: string): Promise<void> {
 
   await migrateTodayLeaderboardIfPresent({ userId, guestId, userDisplayName }).catch(() => null);
   await migrateGuestDailyResults(guestId, userId).catch(() => null);
+  
+  // Auto-submit today's result if user has auto-submit enabled and result exists but wasn't submitted
+  await autoSubmitTodayIfEnabled({ userId, userDisplayName }).catch(() => null);
 }
 
 export async function getEntitlementsForUser(userId: string): Promise<{ archiveAccess: boolean; adsRemoved: boolean }> {
@@ -280,4 +289,58 @@ async function migrateTodayLeaderboardIfPresent(identity: { userId: string; gues
   } finally {
     client.release();
   }
+}
+
+async function autoSubmitTodayIfEnabled(identity: { userId: string; userDisplayName: string }): Promise<void> {
+  const redis = getLeaderboardRedis();
+  if (!redis) return;
+
+  // Check if user has auto-submit enabled (default true for new accounts)
+  const settings = await ensureUserSettings(identity.userId);
+  if (!settings.leaderboardAutoSubmit) return;
+
+  const { getNewYorkDateString } = await import('@/game/puzzleGenerator');
+  const date = getNewYorkDateString();
+  const zkey = leaderboardZsetKey(date);
+  const indexKey = leaderboardMemberIndexKey(date);
+  const userKey = `user:${identity.userId}`;
+
+  // Check if already submitted
+  const existingMember = await redis.hget<string>(indexKey, userKey);
+  if (existingMember) return;
+
+  // Check if user has a completed result for today
+  const pool = getDbPool();
+  const dailyRes = await pool.query<{ completed: boolean; time_ms: number | null; attempts_used: number | null }>(
+    `select completed, time_ms, attempts_used
+     from daily_results
+     where user_id=$1 and date=$2::date`,
+    [identity.userId, date]
+  );
+
+  if ((dailyRes.rowCount ?? 0) === 0) return;
+  const daily = dailyRes.rows[0]!;
+  if (!daily.completed || daily.time_ms == null || daily.attempts_used == null) return;
+
+  const timeMs = daily.time_ms;
+  const attemptsUsed = daily.attempts_used;
+
+  const submittedAtMs = Date.now();
+  const member = makeLeaderboardMember(submittedAtMs, userKey);
+  const score = encodeLeaderboardScore(timeMs, attemptsUsed);
+
+  // Submit to Redis
+  await redis.multi()
+    .zadd(zkey, { score, member })
+    .hset(indexKey, { [userKey]: member })
+    .hset(LB_NAMES_KEY, { [userKey]: identity.userDisplayName })
+    .exec();
+
+  // Durable audit row
+  await pool.query(
+    `insert into leaderboard_submissions (date, subject_type, subject_id, time_ms, attempts_used, submitted_at)
+     values ($1, 'user', $2, $3, $4, to_timestamp($5 / 1000.0))
+     on conflict do nothing`,
+    [date, identity.userId, timeMs, attemptsUsed, submittedAtMs]
+  );
 }

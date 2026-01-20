@@ -1,4 +1,5 @@
 import { api } from './index';
+import { setPrefs } from '@/lib/prefs';
 import type {
   ArchiveDaysResponse,
   HallOfFamePodiumResponse,
@@ -109,7 +110,7 @@ export function invalidateLeaderboardCache(date: string): void {
   const datePrefix = `${prefix}top:${date}:`;
   const meKey = `lb:me:${date}`;
   const aroundPrefix = `${prefix}around:${date}:`;
-  
+
   for (const key of CACHE.keys()) {
     if (key.startsWith(datePrefix) || key === meKey || key.startsWith(aroundPrefix)) {
       CACHE.delete(key);
@@ -126,8 +127,19 @@ function hallOfFamePodiumKey(date: string): string {
   return `hof:podium:${date}`;
 }
 
+// Sync server settings to local prefs when user data is available
+function syncMeSettingsToPrefs(me: MeResponse): void {
+  if (me.mode === 'user' && typeof me.settings?.leaderboardAutoSubmit === 'boolean') {
+    setPrefs({ leaderboardAutoSubmitWins: me.settings.leaderboardAutoSubmit });
+  }
+}
+
 export const cachedApi = {
-  me: async (): Promise<MeResponse> => fetchCached('me', () => api.me(), ME_TTL_MS),
+  me: async (): Promise<MeResponse> => {
+    const me = await fetchCached('me', () => api.me(), ME_TTL_MS);
+    syncMeSettingsToPrefs(me);
+    return me;
+  },
 
   leaderboardTop: async (date: string, limit = 50, offset = 0): Promise<LeaderboardTopResponse> =>
     fetchCached(
@@ -155,7 +167,9 @@ export const cachedApi = {
 };
 
 export async function fetchMeFresh(): Promise<MeResponse> {
-  return fetchFresh('me', () => api.me(), ME_TTL_MS);
+  const me = await fetchFresh('me', () => api.me(), ME_TTL_MS);
+  syncMeSettingsToPrefs(me);
+  return me;
 }
 
 export async function fetchLeaderboardTopFresh(date: string, limit = 50, offset = 0): Promise<LeaderboardTopResponse> {

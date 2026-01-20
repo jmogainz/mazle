@@ -10,6 +10,11 @@
   animation: fadeIn 0.12s ease-out;
 }
 
+.backdropHidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .backdropTop {
   align-items: flex-start;
 }

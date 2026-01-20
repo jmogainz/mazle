@@ -6,10 +6,12 @@ CREATE TABLE IF NOT EXISTS users (
   email text UNIQUE,
   name text,
   image_url text,
-  display_name text UNIQUE,
+  display_name text,
+  display_name_updated_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE UNIQUE INDEX IF NOT EXISTS users_display_name_lower_uidx ON users (lower(display_name));
 
 CREATE TABLE IF NOT EXISTS user_profiles (
   user_id uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,

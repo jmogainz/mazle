@@ -407,6 +407,18 @@
   bottom: 0.35px;
 }
 
+/* Class to show sticky row - uses inherit so parent visibility:hidden still hides it */
+.stickyVisible {
+  visibility: inherit;
+  pointer-events: auto;
+}
+
+/* Class to hide inline row when sticky version is showing */
+.inlineHidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 
 .rowClickable {
   cursor: pointer;

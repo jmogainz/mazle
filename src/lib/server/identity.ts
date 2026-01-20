@@ -20,6 +20,7 @@ export type MeIdentity = {
   entitlements: {
     archiveAccess: boolean;
     adsRemoved: boolean;
+    unlockedSkins: string[];
   };
   userId: string | null;
   guestId: string;
@@ -174,7 +175,7 @@ async function linkGuestToUser(userId: string, guestId: string): Promise<void> {
   });
 }
 
-export async function getEntitlementsForUser(userId: string): Promise<{ archiveAccess: boolean; adsRemoved: boolean }> {
+export async function getEntitlementsForUser(userId: string): Promise<{ archiveAccess: boolean; adsRemoved: boolean; unlockedSkins: string[] }> {
   await ensureDbSchema();
   const pool = getDbPool();
   const res = await pool.query<{ key: string }>(
@@ -185,6 +186,10 @@ export async function getEntitlementsForUser(userId: string): Promise<{ archiveA
   return {
     archiveAccess: keys.has('archive_access'),
     adsRemoved: keys.has('ads_removed'),
+    unlockedSkins: Array.from(keys)
+      .filter((k) => k.startsWith('skin_'))
+      .map((k) => k.slice('skin_'.length))
+      .filter((id) => id.length > 0),
   };
 }
 
@@ -201,7 +206,7 @@ export async function resolveMeIdentity(request: Request): Promise<MeIdentity> {
     return {
       mode: 'guest',
       displayName: guest.displayName,
-      entitlements: { archiveAccess: false, adsRemoved: false },
+      entitlements: { archiveAccess: false, adsRemoved: false, unlockedSkins: [] },
       userId: null,
       guestId: guest.guestId,
       setGuestCookie: guest.setCookie,

@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { PlayerStats } from '@/game/types';
 import { formatTime } from '@/utils/storage';
-import { readCachedMe, cachedApi } from '@/lib/api/cached';
+import { readCachedMe, fetchMeFresh } from '@/lib/api/cached';
 import CharacterIcon from './CharacterIcon';
 import styles from './StatsModal.module.css';
 
@@ -16,15 +16,17 @@ function StatsModal({ stats, onClose }: StatsModalProps) {
   const [me, setMe] = useState(() => readCachedMe());
 
   useEffect(() => {
-    cachedApi.me().then(setMe).catch(() => null);
+    fetchMeFresh().then(setMe).catch(() => null);
   }, []);
 
-  const winRate = stats.totalGamesPlayed > 0
-    ? Math.round((stats.totalGamesWon / stats.totalGamesPlayed) * 100)
-    : 0;
+  const isAccountStats = me?.mode === 'user' && !!me.stats;
+  const totalPlayed = isAccountStats ? me.stats.totalPlayed : stats.totalGamesPlayed;
+  const totalWins = isAccountStats ? me.stats.totalWins : stats.totalGamesWon;
+  const winRate = totalPlayed > 0 ? Math.round((totalWins / totalPlayed) * 100) : 0;
 
   const times = stats.history.filter(h => h.completed && h.timeMs > 0).map(h => h.timeMs);
-  const avgTimeMs = times.length > 0 ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : 0;
+  const localAvgTimeMs = times.length > 0 ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : 0;
+  const avgTimeMs = isAccountStats ? (me.stats.avgSolveTimeMs ?? 0) : localAvgTimeMs;
 
   const podium1 = stats.history.reduce((acc, game) => acc + (game.leaderboardRank === 1 ? 1 : 0), 0);
   const podium2 = stats.history.reduce((acc, game) => acc + (game.leaderboardRank === 2 ? 1 : 0), 0);
@@ -32,6 +34,7 @@ function StatsModal({ stats, onClose }: StatsModalProps) {
 
   const displayName = me?.displayName || 'Guest Trainer';
   const profile = me?.profile || { characterId: 'default', skinId: 'default' };
+  const displayStreak = isAccountStats ? me.stats.winStreak : stats.currentStreak;
 
   const recentHistory = useMemo(() => stats.history.slice(-20).reverse(), [stats.history]);
 
@@ -57,40 +60,42 @@ function StatsModal({ stats, onClose }: StatsModalProps) {
         </div>
 
         <div className={styles.scrollableContent}>
-          {/* Podium Section */}
           <div className={styles.section}>
-            <div className={styles.sectionTitle}>Trophy Room</div>
-            <div className={styles.miniPodium}>
-              <div className={styles.podiumColumn}>
-                <div className={styles.podiumCount}>{podium2}</div>
-                <div className={`${styles.podiumBar} ${styles.podiumSilver}`}>
-                  🥈
+            <div className={styles.sectionTitle}>
+              Trophy Room
+              {isAccountStats && <span className={styles.sectionNote}>(This device)</span>}
+            </div>
+              <div className={styles.miniPodium}>
+                <div className={styles.podiumColumn}>
+                  <div className={styles.podiumCount}>{podium2}</div>
+                  <div className={`${styles.podiumBar} ${styles.podiumSilver}`}>
+                    🥈
+                  </div>
+                  <div className={styles.podiumLabel}>2nd</div>
                 </div>
-                <div className={styles.podiumLabel}>2nd</div>
-              </div>
-              <div className={styles.podiumColumn}>
-                <div className={styles.podiumCount}>{podium1}</div>
-                <div className={`${styles.podiumBar} ${styles.podiumGold}`}>
-                  🥇
+                <div className={styles.podiumColumn}>
+                  <div className={styles.podiumCount}>{podium1}</div>
+                  <div className={`${styles.podiumBar} ${styles.podiumGold}`}>
+                    🥇
+                  </div>
+                  <div className={styles.podiumLabel}>1st</div>
                 </div>
-                <div className={styles.podiumLabel}>1st</div>
-              </div>
-              <div className={styles.podiumColumn}>
-                <div className={styles.podiumCount}>{podium3}</div>
-                <div className={`${styles.podiumBar} ${styles.podiumBronze}`}>
-                  🥉
+                <div className={styles.podiumColumn}>
+                  <div className={styles.podiumCount}>{podium3}</div>
+                  <div className={`${styles.podiumBar} ${styles.podiumBronze}`}>
+                    🥉
+                  </div>
+                  <div className={styles.podiumLabel}>3rd</div>
                 </div>
-                <div className={styles.podiumLabel}>3rd</div>
               </div>
             </div>
-          </div>
 
           {/* Stats Grid */}
           <div className={styles.section} style={{ marginTop: '1.5rem' }}>
             <div className={styles.sectionTitle}>Performance</div>
             <div className={styles.statsGrid}>
               <div className={styles.statChip}>
-                <span className={styles.statValue}>{stats.totalGamesPlayed}</span>
+                <span className={styles.statValue}>{totalPlayed}</span>
                 <span className={styles.statLabel}>Solved</span>
               </div>
               <div className={styles.statChip}>
@@ -98,12 +103,12 @@ function StatsModal({ stats, onClose }: StatsModalProps) {
                 <span className={styles.statLabel}>Win Rate</span>
               </div>
               <div className={styles.statChip}>
-                <span className={styles.statValue}>{stats.currentStreak}</span>
+                <span className={styles.statValue}>{displayStreak}</span>
                 <span className={styles.statLabel}>Streak</span>
               </div>
               <div className={styles.statChip}>
                 <span className={styles.statValue}>{stats.maxStreak}</span>
-                <span className={styles.statLabel}>Max</span>
+                <span className={styles.statLabel}>{isAccountStats ? 'Max (This device)' : 'Max'}</span>
               </div>
               <div className={styles.statChip}>
                 <span className={styles.statValue}>{avgTimeMs > 0 ? formatTime(avgTimeMs) : '—'}</span>
@@ -115,7 +120,10 @@ function StatsModal({ stats, onClose }: StatsModalProps) {
           {/* Recent Games */}
           {recentHistory.length > 0 && (
             <div className={styles.historySection}>
-              <div className={styles.sectionTitle}>Recent Games</div>
+              <div className={styles.sectionTitle}>
+                Recent Games
+                {isAccountStats && <span className={styles.sectionNote}>(This device)</span>}
+              </div>
               <div className={styles.historyList}>
                 {recentHistory.map((game, index) => (
                   <div key={index} className={`${styles.historyItem} ${game.completed ? '' : styles.historyItemFailed}`}>

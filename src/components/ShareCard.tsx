@@ -98,10 +98,10 @@ export default function ShareCard({
   const attemptIndicator = failed
     ? Array(maxLives).fill('❌').join('')
     : Array(attemptsUsed - 1)
-        .fill('❌')
-        .concat('✅')
-        .concat(Array(maxLives - attemptsUsed).fill('⬜'))
-        .join('');
+      .fill('❌')
+      .concat('✅')
+      .concat(Array(maxLives - attemptsUsed).fill('⬜'))
+      .join('');
 
   const shareText = failed
     ? `${shareTitle}\n${attemptIndicator}\n\nhttps://mazle.me`
@@ -402,11 +402,21 @@ export default function ShareCard({
         {/* Support Section */}
         <div className={styles.supportSection}>
           <p className={styles.supportText}>Help us keep building new features!</p>
-          
+
           {!feedbackOpen ? (
-            <button className={styles.feedbackTriggerSimple} onClick={() => setFeedbackOpen(true)}>
-              Share feedback
-            </button>
+            <div className={styles.supportRow}>
+              <a
+                href="https://ko-fi.com/mazle"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.buyCoffeeLink}
+              >
+                Buy us a coffee
+              </a>
+              <button className={styles.feedbackTriggerSimple} onClick={() => setFeedbackOpen(true)}>
+                Share feedback
+              </button>
+            </div>
           ) : (
             <div className={styles.feedbackForm}>
               {/* Star Rating - optional */}

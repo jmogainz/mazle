@@ -428,15 +428,17 @@
   margin: 0 0 0.6rem 0;
 }
 
+/* Support Row Layout */
 .supportRow {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
+  gap: 1rem;
 }
 
 /* Feedback Trigger Simple Text */
-.feedbackTriggerSimple {
+.feedbackTriggerSimple,
+.buyCoffeeLink {
   background: none;
   border: none;
   color: var(--color-secondary);
@@ -454,12 +456,15 @@
 }
 
 @media (hover: hover) {
-  .feedbackTriggerSimple:hover {
+
+  .feedbackTriggerSimple:hover,
+  .buyCoffeeLink:hover {
     color: var(--color-text);
   }
 }
 
-.feedbackTriggerSimple:active {
+.feedbackTriggerSimple:active,
+.buyCoffeeLink:active {
   transform: scale(0.95);
 }
 
@@ -688,9 +693,12 @@
 }
 
 @keyframes bob {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: translateY(0);
   }
+
   50% {
     transform: translateY(-0.5px);
   }
@@ -700,6 +708,7 @@
   from {
     opacity: 0.3;
   }
+
   to {
     opacity: 0.6;
   }

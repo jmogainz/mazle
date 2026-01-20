@@ -6,7 +6,7 @@ import { api } from '@/lib/api';
 import { cachedApi, fetchMeFresh, readCachedMe } from '@/lib/api/cached';
 import { getPrefs, setPrefs } from '@/lib/prefs';
 import { addDays } from '@/lib/date';
-import { getAllSkinsForTier, isSkinUnlockedForTier, SkinTier } from '@/lib/skins';
+import { getAllSkinsForViewer, isSkinUnlockedForViewer, SkinTier, type SkinViewer } from '@/lib/skins';
 import { getCharacterById } from '@/lib/characters';
 import { emitGameEvent } from '@/game/events';
 import { getNewYorkDateString } from '@/game/puzzleGenerator';
@@ -157,7 +157,15 @@ function AccountView() {
     return isPlus ? 'plus' : 'account';
   }, [me?.mode, me?.entitlements?.archiveAccess, me?.entitlements?.adsRemoved]);
 
-  const skins = useMemo(() => getAllSkinsForTier(tier), [tier]);
+  const skinViewer: SkinViewer = useMemo(
+    () => ({
+      tier,
+      unlockedSkins: me?.mode === 'user' ? (me.entitlements?.unlockedSkins ?? []) : [],
+    }),
+    [tier, me?.mode, me?.entitlements?.unlockedSkins],
+  );
+
+  const skins = useMemo(() => getAllSkinsForViewer(skinViewer), [skinViewer]);
   const didInitialSkinWheelSyncRef = useRef(false);
 
   const refreshMe = useCallback(async (silent = false, force = false) => {
@@ -380,7 +388,7 @@ function AccountView() {
 
       // Validate inputs locally first
       if (changes.skinId) {
-        if (!isSkinUnlockedForTier(changes.skinId, tier)) return;
+        if (!isSkinUnlockedForViewer(changes.skinId, skinViewer)) return;
       }
       if (changes.characterId) {
         const c = getCharacterById(changes.characterId);
@@ -398,7 +406,7 @@ function AccountView() {
         // ignore
       }
     },
-    [refreshMe, tier],
+    [refreshMe, skinViewer],
   );
 
   // Scroll to a specific skin index with smooth animation

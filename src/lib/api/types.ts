@@ -30,6 +30,7 @@ export type MeResponse = {
   entitlements: {
     archiveAccess: boolean;
     adsRemoved: boolean;
+    unlockedSkins: string[];
   };
   profile?: UserProfile;
   settings?: UserSettings;

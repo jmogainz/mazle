@@ -162,6 +162,17 @@
   text-transform: uppercase;
   letter-spacing: 0.12em;
   font-weight: 800;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+
+.sectionNote {
+  font-size: 0.55rem;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  color: var(--color-secondary);
+  opacity: 0.7;
 }
 
 /* Podium Styles */

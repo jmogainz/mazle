@@ -6,7 +6,7 @@ export type SkinCatalogEntry = {
   face: string;
   edge: string;
   minTier: SkinTier;
-  alwaysLocked?: boolean;
+  requiresUnlock?: boolean;
 };
 
 export type SkinDefinition = SkinCatalogEntry & { locked: boolean };
@@ -21,7 +21,7 @@ const SKINS: readonly SkinCatalogEntry[] = [
   // Based on `localdocs/skin_teal.svg`
   { id: 'teal', name: 'Teal', face: '#008080', edge: '#004d4d', minTier: 'account' },
   // Based on `localdocs/skin_royal.svg` (kept for future streak reward)
-  { id: 'royal', name: 'Royal', face: '#4f2db3', edge: '#a78bfa', minTier: 'account', alwaysLocked: true },
+  { id: 'royal', name: 'Royal', face: '#4f2db3', edge: '#a78bfa', minTier: 'account', requiresUnlock: true },
 
   // Mazle+ tier
   // Based on `localdocs/skin_arctic.svg`
@@ -41,23 +41,30 @@ function tierRank(tier: SkinTier): number {
   }
 }
 
-export function isSkinUnlockedForTier(skinId: string | null | undefined, tier: SkinTier): boolean {
+export type SkinViewer = { tier: SkinTier; unlockedSkins: string[] };
+
+export function isSkinUnlockedForViewer(skinId: string | null | undefined, viewer: SkinViewer): boolean {
   if (!skinId) return false;
   const skin = getSkinById(skinId);
   if (!skin) return false;
-  if (skin.alwaysLocked) return false;
-  return tierRank(tier) >= tierRank(skin.minTier);
+  if (tierRank(viewer.tier) < tierRank(skin.minTier)) return false;
+  if (skin.requiresUnlock) {
+    return viewer.unlockedSkins.includes(skin.id);
+  }
+  return true;
 }
 
 export function getAllSkins(): SkinCatalogEntry[] {
   return [...SKINS];
 }
 
-export function getAllSkinsForTier(tier: SkinTier): SkinDefinition[] {
-  const rank = tierRank(tier);
+export function getAllSkinsForViewer(viewer: SkinViewer): SkinDefinition[] {
+  const rank = tierRank(viewer.tier);
   return SKINS.map((s) => ({
     ...s,
-    locked: !!s.alwaysLocked || rank < tierRank(s.minTier),
+    locked:
+      rank < tierRank(s.minTier) ||
+      (s.requiresUnlock ? !viewer.unlockedSkins.includes(s.id) : false),
   }));
 }
 
@@ -66,7 +73,6 @@ export function getSkinById(id: string | null | undefined): SkinCatalogEntry | n
   return SKINS.find((skin) => skin.id === id) ?? null;
 }
 
-export function getUnlockedSkinsForTier(tier: SkinTier): SkinCatalogEntry[] {
-  const rank = tierRank(tier);
-  return SKINS.filter((s) => !s.alwaysLocked && rank >= tierRank(s.minTier));
+export function getUnlockedSkinsForViewer(viewer: SkinViewer): SkinCatalogEntry[] {
+  return getAllSkinsForViewer(viewer).filter((s) => !s.locked);
 }

@@ -28,6 +28,26 @@ export type UserStats = {
   avgSolveTimeMs: number | null;
 };
 
+const ENTITLEMENT_SKIN_ROYAL = 'skin_royal';
+
+async function maybeGrantRoyalSkin(userId: string, winStreak: number): Promise<void> {
+  if (winStreak < 20) return;
+
+  await ensureDbSchema();
+  const pool = getDbPool();
+
+  // Already unlocked? (fast path)
+  const existing = await pool.query('select 1 from entitlements where user_id=$1 and key=$2 limit 1', [userId, ENTITLEMENT_SKIN_ROYAL]);
+  if ((existing.rowCount ?? 0) > 0) return;
+
+  await pool.query(
+    `insert into entitlements (user_id, key, source)
+     values ($1, $2, $3)
+     on conflict do nothing`,
+    [userId, ENTITLEMENT_SKIN_ROYAL, 'streak_20_win']
+  );
+}
+
 function isValidNyDateString(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
@@ -138,6 +158,11 @@ export async function recordDailyResult(
   );
 
   const created = (insertRes.rowCount ?? 0) > 0;
+
+  if (created && input.completed) {
+    // Best-effort: unlock cosmetics without blocking gameplay if it fails.
+    computeUserStats(userId).then((s) => maybeGrantRoyalSkin(userId, s.winStreak)).catch(() => null);
+  }
 
   const res = await pool.query<{ date: string; completed: boolean; time_ms: number | null; attempts_used: number | null }>(
     `select to_char(date, 'YYYY-MM-DD') as date, completed, time_ms, attempts_used
@@ -316,6 +341,10 @@ export async function importDailyResults(
 
   const imported = insertRes.rowCount ?? 0;
   const skipped = sanitized.length - imported;
+
+  if (imported > 0) {
+    computeUserStats(userId).then((s) => maybeGrantRoyalSkin(userId, s.winStreak)).catch(() => null);
+  }
   return { imported, skipped };
 }
 
@@ -354,6 +383,8 @@ export async function computeUserStats(userId: string): Promise<UserStats> {
   const rows = recentRes.rows;
   const playedStreak = computePlayedStreak(rows.map((r) => r.date));
   const winStreak = computeWinStreak(rows.map((r) => ({ date: r.date, completed: r.completed })));
+
+  maybeGrantRoyalSkin(userId, winStreak).catch(() => null);
 
   return { playedStreak, winStreak, totalPlayed, totalWins, avgSolveTimeMs };
 }

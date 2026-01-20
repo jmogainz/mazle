@@ -75,7 +75,7 @@ function LeaderboardSkeleton() {
   );
 }
 import { api } from '@/lib/api';
-import { cachedApi, prefetchAccount, prefetchHallOfFame, prefetchLeaderboard, readCachedMe } from '@/lib/api/cached';
+import { cachedApi, fetchMeFresh, prefetchAccount, prefetchArchiveDays, prefetchHallOfFame, prefetchLeaderboard, readCachedMe } from '@/lib/api/cached';
 import { addDays } from '@/lib/date';
 import { getPrefs } from '@/lib/prefs';
 import {

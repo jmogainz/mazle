@@ -4,7 +4,7 @@ import { setGuestIdCookie } from '@/lib/server/cookies';
 import { jsonError, readJsonBody } from '@/lib/server/responses';
 import { updateUserProfile } from '@/lib/server/account';
 import { getCharacterById } from '@/lib/characters';
-import { isSkinUnlockedForTier, type SkinTier } from '@/lib/skins';
+import { isSkinUnlockedForViewer, type SkinTier } from '@/lib/skins';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -39,7 +39,7 @@ export async function PATCH(request: Request) {
         }
         if (skinId != null) {
             const tier: SkinTier = me.entitlements.archiveAccess || me.entitlements.adsRemoved ? 'plus' : 'account';
-            if (!isSkinUnlockedForTier(skinId, tier)) {
+            if (!isSkinUnlockedForViewer(skinId, { tier, unlockedSkins: me.entitlements.unlockedSkins ?? [] })) {
                 return jsonError(400, 'SKIN_LOCKED', 'Skin is locked.');
             }
         }

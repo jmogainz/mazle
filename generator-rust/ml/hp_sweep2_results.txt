@@ -1,0 +1,22 @@
+HYPERPARAMETER SWEEP PHASE 2 RESULTS
+============================================================
+Baseline (SwiGLU): 3.1% PASS
+
+2.0% - swiglu_100k (SwiGLU + 100k data) 
+1.6% - swiglu_200steps (SwiGLU + 200 diffusion timesteps) 
+2.0% - swiglu_linear_sched (SwiGLU + linear mask schedule) 
+2.3% - swiglu_wide384 (SwiGLU + wider model (384 dim)) 
+2.3% - swiglu_labelsmooth (SwiGLU + label smoothing 0.1) 
+2.0% - swiglu_gradclip (SwiGLU + gradient clipping 1.0) 
+2.0% - swiglu_beta2_95 (SwiGLU + AdamW β2=0.95) 
+
+============================================================
+SORTED SUMMARY
+============================================================
+2.3% - swiglu_wide384 
+2.3% - swiglu_labelsmooth 
+2.0% - swiglu_100k 
+2.0% - swiglu_linear_sched 
+2.0% - swiglu_gradclip 
+2.0% - swiglu_beta2_95 
+1.6% - swiglu_200steps 

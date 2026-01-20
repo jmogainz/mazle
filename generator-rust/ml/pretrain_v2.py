@@ -640,7 +640,8 @@ def train_pretrain(args, model, device, validate_fn, out_dir, config):
 
     # Optimizer with warmup + cosine decay
     optimizer = torch.optim.AdamW(
-        model.parameters(), lr=args.lr, weight_decay=args.weight_decay
+        model.parameters(), lr=args.lr, weight_decay=args.weight_decay,
+        betas=(0.9, args.beta2)
     )
 
     warmup_steps = min(1000, total_steps // 10)
@@ -704,13 +705,14 @@ def train_pretrain(args, model, device, validate_fn, out_dir, config):
             tile_loss = F.cross_entropy(
                 tile_logits.reshape(-1, config.tile_vocab_size),
                 tiles.reshape(-1),
+                label_smoothing=args.label_smoothing,
             )
 
             # Position losses
             start_logits = outputs["start_logits"]
             goal_logits = outputs["goal_logits"]
-            start_loss = F.cross_entropy(start_logits, start_pos)
-            goal_loss = F.cross_entropy(goal_logits, goal_pos)
+            start_loss = F.cross_entropy(start_logits, start_pos, label_smoothing=args.label_smoothing)
+            goal_loss = F.cross_entropy(goal_logits, goal_pos, label_smoothing=args.label_smoothing)
 
             # Combined loss
             loss = tile_loss + 0.5 * start_loss + 0.5 * goal_loss
@@ -724,7 +726,8 @@ def train_pretrain(args, model, device, validate_fn, out_dir, config):
 
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad)
+            clip_val = args.grad_clip if args.grad_clip is not None else args.clip_grad
+            torch.nn.utils.clip_grad_norm_(model.parameters(), clip_val)
             optimizer.step()
             scheduler.step()
             ema.update()
@@ -863,6 +866,15 @@ def main():
     parser.add_argument("--drop-path", type=float, default=0.0, help="DropPath/stochastic depth rate")
     parser.add_argument("--residual-scale", action="store_true", help="Scale residuals by 1/sqrt(2L)")
     parser.add_argument("--num-layers", type=int, default=None, help="Override number of layers")
+    
+    # Additional hyperparameters for sweep
+    parser.add_argument("--num-timesteps", type=int, default=None, help="Override diffusion timesteps")
+    parser.add_argument("--mask-schedule", type=str, default=None, choices=["cosine", "linear"])
+    parser.add_argument("--model-dim", type=int, default=None, help="Override model dimension")
+    parser.add_argument("--ff-dim", type=int, default=None, help="Override feedforward dimension")
+    parser.add_argument("--label-smoothing", type=float, default=0.0, help="Label smoothing for CE loss")
+    parser.add_argument("--beta2", type=float, default=0.999, help="AdamW beta2")
+    parser.add_argument("--grad-clip", type=float, default=None, help="Gradient clipping (overrides --clip-grad)")
 
     args = parser.parse_args()
 
@@ -895,6 +907,14 @@ def main():
     config.residual_scale = args.residual_scale
     if args.num_layers is not None:
         config.num_layers = args.num_layers
+    if args.num_timesteps is not None:
+        config.num_timesteps = args.num_timesteps
+    if args.mask_schedule is not None:
+        config.mask_schedule = args.mask_schedule
+    if args.model_dim is not None:
+        config.model_dim = args.model_dim
+    if args.ff_dim is not None:
+        config.ff_dim = args.ff_dim
     
     model = PuzzleGeneratorV2(config).to(device)
     param_count = sum(p.numel() for p in model.parameters())
@@ -913,6 +933,16 @@ def main():
         variant_str.append("resscale")
     if args.num_layers is not None:
         variant_str.append(f"layers={args.num_layers}")
+    if args.num_timesteps is not None:
+        variant_str.append(f"steps={args.num_timesteps}")
+    if args.mask_schedule is not None:
+        variant_str.append(f"sched={args.mask_schedule}")
+    if args.model_dim is not None:
+        variant_str.append(f"dim={args.model_dim}")
+    if args.label_smoothing > 0:
+        variant_str.append(f"ls={args.label_smoothing}")
+    if args.beta2 != 0.999:
+        variant_str.append(f"b2={args.beta2}")
     
     variant_info = f" [{', '.join(variant_str)}]" if variant_str else ""
     log_progress(f"model params: {param_count/1e6:.1f}M (preset={args.preset}){variant_info}", out_dir)

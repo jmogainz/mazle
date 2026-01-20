@@ -38,12 +38,6 @@ class RLConfig:
     
     # Reward shaping
     target_moves: int = 10
-    reward_not_solvable: float = -1.0
-    reward_stuck: float = -1.0           # Increased from -0.5
-    reward_not_unique: float = -0.5
-    reward_exact_target: float = 1.0
-    reward_near_target: float = 0.3   # For moves within ±1
-    reward_off_target: float = -0.2   # Per move away from target
     
     # Training
     lr: float = 1e-5
@@ -54,8 +48,9 @@ class RLConfig:
     save_every: int = 500
     grad_clip: float = 1.0
     
-    # Baseline
-    use_baseline: bool = True        # Subtract mean reward to reduce variance
+    # Baseline (running EMA)
+    baseline_ema: float = 0.99       # EMA decay for baseline
+    normalize_advantages: bool = True  # Normalize advantages to unit variance
 
 
 def compute_reward(
@@ -64,31 +59,36 @@ def compute_reward(
     unique_optimal: bool,
     optimal_moves: int,
     target: int = 10,
-    cfg: RLConfig = None,
 ) -> float:
-    """Compute scalar reward for a puzzle."""
-    if cfg is None:
-        cfg = RLConfig()
+    """
+    Shaped reward: rewards progress toward FULL PASS.
     
+    Components:
+    - solvable: +0.2
+    - no_stuck: +0.2
+    - unique_optimal: +0.2
+    - moves bonus: +0.4 * (1 - |moves - target| / 10)^2
+    
+    Max total: 1.0 for perfect FULL PASS
+    Penalty: -0.3 for unsolvable
+    """
     if not solvable:
-        return cfg.reward_not_solvable
+        return -0.3
     
-    reward = 0.0
+    reward = 0.2  # Solvable
     
-    if not no_stuck:
-        reward += cfg.reward_stuck
-    if not unique_optimal:
-        reward += cfg.reward_not_unique
+    if no_stuck:
+        reward += 0.2
     
-    # Move-based reward
-    if optimal_moves == target:
-        reward += cfg.reward_exact_target
-    elif abs(optimal_moves - target) == 1:
-        reward += cfg.reward_near_target
-    else:
-        reward += cfg.reward_off_target * abs(optimal_moves - target)
+    if unique_optimal:
+        reward += 0.2
+        # Only give moves bonus if unique optimal
+        move_diff = abs(optimal_moves - target)
+        move_score = max(0, 1 - move_diff / 10) ** 2
+        reward += 0.4 * move_score
     
     return reward
+
 
 
 class RLTrainer:
@@ -107,6 +107,11 @@ class RLTrainer:
         self.device = device
         
         self.optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr)
+        
+        # Running baseline for variance reduction
+        self.running_baseline = 0.0
+        self.running_std = 1.0
+        self.baseline_initialized = False
         
     def generate_with_logprobs(
         self,
@@ -134,6 +139,7 @@ class RLTrainer:
         all_goals = []
         all_log_probs = []
         all_entropies = []
+        all_num_actions = []  # Track number of actions for normalization
         
         for seed in seeds:
             # Create deterministic generator from seed
@@ -147,6 +153,7 @@ class RLTrainer:
             # Track log-probs separately (these will require grad)
             log_prob_accum = torch.tensor(0.0, device=self.device, requires_grad=True)
             entropy_accum = torch.tensor(0.0, device=self.device)
+            num_actions = 0  # Count actions for normalization
             
             # Sample START/GOAL positions first
             init_out = self.model.forward(
@@ -165,6 +172,7 @@ class RLTrainer:
             
             log_prob_accum = log_prob_accum + start_log_prob
             entropy_accum = entropy_accum + start_entropy.detach()
+            num_actions += 1
             
             # Sample goal position (exclude start)
             goal_logits = init_out["goal_logits"].clone()
@@ -177,6 +185,7 @@ class RLTrainer:
             
             log_prob_accum = log_prob_accum + goal_log_prob
             entropy_accum = entropy_accum + goal_entropy.detach()
+            num_actions += 1
             
             # Denoising loop - sample tiles
             for step in range(num_steps - 1, -1, -1):
@@ -223,10 +232,17 @@ class RLTrainer:
                 log_probs_for_tiles = F.log_softmax(masked_logits_scaled[top_k_indices], dim=-1)
                 for i, tile_id in enumerate(tiles_to_set):
                     log_prob_accum = log_prob_accum + log_probs_for_tiles[i, tile_id]
+                    num_actions += 1
                 
                 # Accumulate entropy
                 entropy_for_tiles = -(masked_probs[top_k_indices] * masked_probs[top_k_indices].clamp(min=1e-8).log()).sum()
                 entropy_accum = entropy_accum + entropy_for_tiles
+            
+            # Normalize log_prob by number of actions to get average log-prob per action
+            # This prevents gradient explosion from summing 170+ log-probs
+            if num_actions > 0:
+                log_prob_accum = log_prob_accum / num_actions
+                entropy_accum = entropy_accum / num_actions
             
             # Convert positions to (x, y)
             start_x = start_idx % W
@@ -239,6 +255,7 @@ class RLTrainer:
             all_goals.append(torch.stack([goal_x, goal_y], dim=-1).detach())
             all_log_probs.append(log_prob_accum)
             all_entropies.append(entropy_accum)
+            all_num_actions.append(num_actions)
         
         return {
             "tiles": torch.stack(all_tiles),
@@ -315,7 +332,6 @@ class RLTrainer:
                 unique_optimal=res.unique_optimal,
                 optimal_moves=res.optimal_moves if res.solvable else -1,
                 target=self.cfg.target_moves,
-                cfg=self.cfg,
             )
             rewards.append(reward)
             
@@ -329,18 +345,47 @@ class RLTrainer:
         
         rewards = torch.tensor(rewards, device=self.device, dtype=torch.float32)
         
-        # Baseline subtraction to reduce variance
-        if self.cfg.use_baseline:
-            baseline = rewards.mean()
-            advantages = rewards - baseline
+        # Update running baseline (EMA)
+        batch_mean = rewards.mean().item()
+        batch_std = max(rewards.std().item(), 0.1)  # Minimum std of 0.1
+        
+        if not self.baseline_initialized:
+            self.running_baseline = batch_mean
+            self.running_std = batch_std
+            self.baseline_initialized = True
         else:
-            advantages = rewards
+            self.running_baseline = (
+                self.cfg.baseline_ema * self.running_baseline + 
+                (1 - self.cfg.baseline_ema) * batch_mean
+            )
+            self.running_std = (
+                self.cfg.baseline_ema * self.running_std +
+                (1 - self.cfg.baseline_ema) * batch_std
+            )
+        
+        # Compute advantages with running baseline
+        advantages = rewards - self.running_baseline
+        
+        # Normalize advantages to reduce variance (with minimum std to prevent explosion)
+        if self.cfg.normalize_advantages:
+            adv_std = max(advantages.std().item(), 0.1)
+            advantages = advantages / adv_std
+            # Clamp to prevent extreme values
+            advantages = advantages.clamp(-3.0, 3.0)
+        
+        # Debug: check log_prob values
+        log_prob_vals = log_probs.detach()
+        if log_prob_vals.min() < -10 or log_prob_vals.max() > 0:
+            print(f"  WARNING: log_probs out of expected range: min={log_prob_vals.min():.2f}, max={log_prob_vals.max():.2f}")
         
         # Policy gradient loss: -E[advantage * log_prob]
-        pg_loss = -(advantages * log_probs).mean()
+        pg_loss = -(advantages.detach() * log_probs).mean()
         
-        # KL penalty
-        kl_loss = self.compute_kl_penalty(tiles, starts, goals)
+        # KL penalty (skip if weight is 0)
+        if self.cfg.kl_weight > 0:
+            kl_loss = self.compute_kl_penalty(tiles, starts, goals)
+        else:
+            kl_loss = torch.tensor(0.0, device=self.device)
         
         # Entropy bonus (encourage exploration)
         entropy_bonus = entropies.mean()
@@ -359,10 +404,11 @@ class RLTrainer:
         return {
             "loss": loss.item(),
             "pg_loss": pg_loss.item(),
-            "kl_loss": kl_loss.item(),
+            "kl_loss": kl_loss.item() if isinstance(kl_loss, torch.Tensor) else kl_loss,
             "entropy": entropy_bonus.item(),
             "reward_mean": rewards.mean().item(),
             "reward_max": rewards.max().item(),
+            "baseline": self.running_baseline,
             "solvable": stats["solvable"] / self.cfg.batch_size,
             "unique": stats["unique"] / self.cfg.batch_size,
             "exact10": stats["exact10"] / self.cfg.batch_size,
@@ -376,13 +422,16 @@ def evaluate(
     k: int,
     device: torch.device,
     target_moves: int = 10,
+    eval_step: int = 0,
 ) -> Dict[str, float]:
-    """Evaluate model with K-candidates."""
+    """Evaluate model with K-candidates using FRESH random seeds each eval."""
+    import random
     found = 0
     moves_list = []
     
     for seed_idx in range(num_seeds):
-        seed = f"eval-{seed_idx}"
+        # Use unique seeds per eval step to prevent overfitting
+        seed = f"eval-step{eval_step}-seed{seed_idx}-{random.randint(0, 999999)}"
         with torch.no_grad():
             output = model.generate_k_candidates(seed, k, device=device)
         
@@ -465,7 +514,7 @@ def main():
     
     # Initial evaluation
     print("\nInitial evaluation...")
-    init_metrics = evaluate(model, args.eval_seeds, args.eval_k, device)
+    init_metrics = evaluate(model, args.eval_seeds, args.eval_k, device, eval_step=-1)
     print(f"Initial: {init_metrics['found']}/{init_metrics['total']} "
           f"({init_metrics['success_rate']*100:.1f}%) exact-10")
     
@@ -496,10 +545,16 @@ def main():
         
         # Evaluate periodically
         if (step + 1) % cfg.eval_every == 0:
-            eval_metrics = evaluate(model, args.eval_seeds, args.eval_k, device)
+            eval_metrics = evaluate(model, args.eval_seeds, args.eval_k, device, eval_step=step)
             print(f"  EVAL: {eval_metrics['found']}/{eval_metrics['total']} "
                   f"({eval_metrics['success_rate']*100:.1f}%) exact-10, "
                   f"moves={eval_metrics['moves_mean']:.1f}")
+            
+            # Early stop if moves_mean drops too low (model collapsing)
+            if eval_metrics["moves_mean"] < 7.0:
+                print(f"  WARNING: moves_mean={eval_metrics['moves_mean']:.1f} < 7.0, model collapsing!")
+                print(f"  Early stopping to preserve best checkpoint.")
+                break
             
             if eval_metrics["success_rate"] > best_success:
                 best_success = eval_metrics["success_rate"]
@@ -508,6 +563,7 @@ def main():
                     "config": ckpt["config"],
                     "step": step + 1,
                     "success_rate": best_success,
+                    "moves_mean": eval_metrics["moves_mean"],
                 }, Path(args.output) / "best_model.pt")
                 print(f"  -> New best: {best_success*100:.1f}%")
         
@@ -518,11 +574,12 @@ def main():
                 "config": ckpt["config"],
                 "step": step + 1,
                 "optimizer_state": trainer.optimizer.state_dict(),
+                "moves_mean": metrics["moves_mean"],
             }, Path(args.output) / f"checkpoint_step{step+1:05d}.pt")
     
     # Final evaluation
     print("\nFinal evaluation...")
-    final_metrics = evaluate(model, args.eval_seeds * 2, args.eval_k, device)
+    final_metrics = evaluate(model, args.eval_seeds * 2, args.eval_k, device, eval_step=999999)
     print(f"Final: {final_metrics['found']}/{final_metrics['total']} "
           f"({final_metrics['success_rate']*100:.1f}%) exact-10")
     

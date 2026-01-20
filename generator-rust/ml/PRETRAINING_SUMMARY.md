@@ -1009,12 +1009,35 @@ The discrete diffusion transformer with cross-entropy loss cannot learn to contr
 
 ---
 
+## Phase 11: Architecture Variants (Jan 2026)
+
+Tested 6 architecture modifications against the 2.7% baseline:
+
+| Experiment | Config | Result | Notes |
+|------------|--------|--------|-------|
+| **swiglu** | SwiGLU activation | **3.1%** ✓ | +0.4%, new best! |
+| deep_12L | 12 layers + residual scaling | 2.3% | 10.1M params, slower |
+| adaln_zero | AdaLN-Zero conditioning | 2.0% | 7.7M params, slow convergence |
+| droppath | DropPath 0.1 | 1.6% | Regularization hurt |
+| combined | SwiGLU + RMSNorm + DropPath | 1.6% | Variants don't stack |
+| rmsnorm | RMSNorm instead of LayerNorm | 1.2% | Worst result |
+
+**Key findings:**
+- SwiGLU activation alone improves from 2.7% → 3.1%
+- Combining multiple changes makes things worse
+- Deeper models (12L) don't help despite 2x params
+- RMSNorm hurts this task (unlike in LLMs)
+
+**New best:** `output_arch_01_swiglu/best_model.pt` at 3.1% PASS
+
+---
+
 ## Current Status
 
-**Best checkpoint:** `output_v2_50k_ema9999/best_model.pt`
-- 2.7% full PASS rate (10 moves, unique optimal, no stuck)
-- ~37 attempts needed on average to get a valid puzzle
-- With K-candidates (K=100), effective success rate ~93%
+**Best checkpoint:** `output_arch_01_swiglu/best_model.pt`
+- 3.1% full PASS rate (10 moves, unique optimal, no stuck)
+- ~32 attempts needed on average to get a valid puzzle
+- With K-candidates (K=100), effective success rate ~96%
 
 **Datasets available:**
 - `train-10move-25k.jsonl` (25k samples)
@@ -1049,3 +1072,141 @@ The discrete diffusion transformer with cross-entropy loss cannot learn to contr
 | 14 | Larger datasets (200k-300k) don't improve results over 50k |
 | 15 | **2.7% appears to be the ceiling for this architecture** |
 | 16 | Cross-entropy loss cannot learn emergent global properties |
+| 17 | SwiGLU activation gives modest improvement (+0.4%) |
+| 18 | Architecture variants don't stack - combining hurts |
+| 19 | **3.1% is the new ceiling with SwiGLU** |
+
+---
+
+## Phase 12: RL Fine-tuning Experiments (Jan 2026)
+
+After hitting the 2.7-3.1% pretraining ceiling, we attempted RL fine-tuning to break through by directly optimizing puzzle validity.
+
+### Attempt 1: REINFORCE with Sparse Rewards (v3-v6)
+
+**Script:** `rl_finetune.py`
+
+**Setup:**
+- Reward: +1 for full pass, -0.3 for fail
+- Batch size: 32, LR: 1e-5
+- k-candidate evaluation (k=32) for faster signal
+
+**Results:**
+| Version | Initial | Best | Final | Notes |
+|---------|---------|------|-------|-------|
+| v3 | 30% (k=32) | 43% | 15% | Mode collapse - learned "safe" short puzzles |
+| v4 | 30% (k=32) | 43% | 20% | Overfit to fixed eval seeds (fake improvement) |
+| v5 | 26.7% (k=32) | 43.3% | 20% | Random eval seeds - collapsed again |
+| v6 | 1.3% (k=1) | ~1% | ~1% | Single-shot: pure noise, no signal |
+
+**Diagnosis:** 
+- k=32 inflated metrics but didn't improve underlying model
+- At 1% success rate, batch of 64 has ~0.6 successes = pure noise
+- Sparse reward provides no gradient signal at low success rates
+
+### Attempt 2: PPO with Shaped Rewards
+
+**Script:** `rl_ppo.py`
+
+**Motivation:** PPO clips updates to prevent collapse; shaped rewards give denser signal.
+
+**Shaped Reward Function:**
+```
+solvable:       +0.2
+no_stuck:       +0.2  
+unique_optimal: +0.2
+moves_bonus:    +0.4 * (1 - |moves - 10| / 10)^2
+unsolvable:     -0.3
+```
+
+**Config:** Batch=64, LR=3e-6, clip_eps=0.1, PPO epochs=4
+
+**Initial Bug:** Volatile KL (0.02 to 1.3+ swings)
+- Root cause: Log-prob approximation sampled random single timestep
+- Fix: Average log-prob over fixed timesteps [10, 25, 40]
+
+**Results (v2 after fix):**
+```
+Step 0:   unique=17%, exact10=0%
+Step 140: unique=25%, exact10=3% ← Best EVAL: 2.0%
+Step 290: unique=20%, exact10=1%
+Step 340: unique=22%, exact10=0.5%
+```
+
+**Observation:** Oscillating around baseline, no upward trend. Best 2.0% couldn't hold.
+
+### Attempt 3: PPO with Curriculum Learning
+
+**Hypothesis:** Focus on unique_optimal first (50% reward weight) since that's the bottleneck.
+
+**Stage 1 Reward:** 0.2 (solvable) + 0.3 (no_stuck) + 0.5 (unique_optimal)
+
+**Results:**
+```
+Step 0-300: unique oscillated 17-33%, no trend
+All EVALs: 1.0% pass - no improvement
+```
+
+**Conclusion:** Curriculum didn't help. Model's capacity for unique paths seems maxed.
+
+### Attempt 4: Differentiable Verifier
+
+**Script:** `train_diff.py`, `diff_verifier.py`
+
+**Concept:** Compute differentiable approximation of verification on tile LOGITS, so gradients flow through.
+
+**Implementation:**
+- Soft BFS via conv2d message passing (15 iterations)
+- Uniqueness proxy: 1 - (entropy / max_entropy)
+
+**Loss:** diffusion_loss + 0.1 * (solvable_loss + 2 * uniqueness_loss)
+
+**Results:**
+```
+Step 0:   soft_solv=0.42, soft_uniq=0.04
+Step 100: soft_solv=0.76, soft_uniq=0.02
+Step 290: soft_solv=0.70, soft_uniq=0.03
+EVAL: 0-1% pass, 14-20% real unique
+```
+
+**Problem:** Soft solvable improved but entropy-based uniqueness doesn't correlate with real path uniqueness. Would need differentiable path counting (research-level problem).
+
+### Key Lessons from RL
+
+| # | Lesson |
+|---|--------|
+| 20 | Credit assignment is fundamentally broken - 169 tiles, reward only at end |
+| 21 | "Unique optimal path" difference is often a single wall - geometrically hard |
+| 22 | At 1-2% success, RL signal is pure noise (~1 positive per batch) |
+| 23 | Shaped rewards prevent collapse but don't raise ceiling |
+| 24 | k-candidate is a bandaid - filters output but doesn't improve model |
+| 25 | Entropy-based soft uniqueness doesn't capture true path counting |
+
+### Files Created
+
+- `rl_finetune.py` - REINFORCE implementation
+- `rl_ppo.py` - Full PPO with shaped rewards and curriculum
+- `diff_verifier.py` - Differentiable ice puzzle verifier
+- `train_diff.py` - Training loop with diff verifier loss
+
+---
+
+## Remaining Options
+
+1. **Skeleton/Two-Stage** (highest potential, high effort)
+   - Train model to predict path waypoints first
+   - Second model fills tiles conditioned on path
+   - Explicitly teaches geometry
+
+2. **k-Candidate Filtering** (practical, doesn't improve model)
+   - Generate k=32+ candidates per seed
+   - Filter with real verifier
+   - ~50%+ success rate usable for production
+
+3. **Accept Ceiling**
+   - Use 3.1% SwiGLU model with k-candidate
+   - Focus engineering on other features
+
+---
+
+*Last updated: 2026-01-20*

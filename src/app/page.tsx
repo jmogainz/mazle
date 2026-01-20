@@ -390,6 +390,8 @@ export default function Home() {
     if (isPlayingRef.current) return;
     if (result && result.date !== todayNy) return;
 
+    if (debugModeRef.current) return;
+
     if (!result) {
       setPreviousResult(null);
       setGameResult(null);
@@ -467,12 +469,12 @@ export default function Home() {
         applyStoredResult(localResult);
 
         // If no completed result, check for in-progress state to restore
-        if (!localResult) {
-          const todaySeed = getDailySeed(new Date());
-          const inProgressState = getInProgressState(todaySeed);
-          if (inProgressState) {
-            console.log('[RESUME] Found in-progress state (guest), will restore after game ready');
-            pendingRestoreRef.current = inProgressState;
+      if (!localResult && !debugModeRef.current) {
+        const todaySeed = getDailySeed(new Date());
+        const inProgressState = getInProgressState(todaySeed);
+        if (inProgressState) {
+          console.log('[RESUME] Found in-progress state (guest), will restore after game ready');
+          pendingRestoreRef.current = inProgressState;
             setHasPendingRestore(true);
             setInitialStats({
               lives: inProgressState.lives,
@@ -564,18 +566,20 @@ export default function Home() {
       applyStoredResult(null);
 
       // No completed result - check for in-progress state to restore
-      const todaySeed = getDailySeed(new Date());
-      const inProgressState = getInProgressState(todaySeed);
-      if (inProgressState) {
-        console.log('[RESUME] Found in-progress state, will restore after game ready');
-        pendingRestoreRef.current = inProgressState;
-        setHasPendingRestore(true);
-        setInitialStats({
-          lives: inProgressState.lives,
-          currentAttemptMoves: inProgressState.currentAttemptMoves,
-          elapsedTimeMs: inProgressState.elapsedTimeMs,
-          penaltyTimeMs: inProgressState.penaltyTimeMs,
-        });
+      if (!debugModeRef.current) {
+        const todaySeed = getDailySeed(new Date());
+        const inProgressState = getInProgressState(todaySeed);
+        if (inProgressState) {
+          console.log('[RESUME] Found in-progress state, will restore after game ready');
+          pendingRestoreRef.current = inProgressState;
+          setHasPendingRestore(true);
+          setInitialStats({
+            lives: inProgressState.lives,
+            currentAttemptMoves: inProgressState.currentAttemptMoves,
+            elapsedTimeMs: inProgressState.elapsedTimeMs,
+            penaltyTimeMs: inProgressState.penaltyTimeMs,
+          });
+        }
       }
       setIsIdentityChecked(true);
     };
@@ -1406,7 +1410,8 @@ export default function Home() {
 
   const handleLoadDaily = useCallback(() => {
     loadDailyPuzzle();
-  }, [loadDailyPuzzle]);
+    applyStoredResult(getTodaysResult());
+  }, [loadDailyPuzzle, applyStoredResult]);
 
   const showAnalysis = useCallback(() => {
     const attempts = gameResult?.attempts ?? previousResult?.attempts;

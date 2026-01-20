@@ -115,6 +115,7 @@ function AccountView() {
   const [skinWheelIndex, setSkinWheelIndex] = useState(0);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isScrollingRef = useRef(false);
+  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!isSigningInGoogle && !isSigningInApple) return;
@@ -280,6 +281,9 @@ function AccountView() {
 
   // Sync wheel index with profile skin on load and scroll to it
   useEffect(() => {
+    // Don't sync from API response if user is actively scrolling - prevents flicker from stale responses
+    if (isScrollingRef.current) return;
+
     const idx = skins.findIndex((s) => s.id === profile.skinId);
     if (idx >= 0) {
       setSkinWheelIndex(idx);
@@ -415,7 +419,18 @@ function AccountView() {
     if (!container) return;
     const item = container.children[index] as HTMLElement | undefined;
     if (item) {
+      // Clear any existing timeout from a previous scroll
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+      // Mark programmatic scroll in progress to prevent handleScroll from interfering
+      isScrollingRef.current = true;
       item.scrollIntoView({ behavior, inline: 'center', block: 'nearest' });
+      // Clear the flag after scroll animation completes (~400ms for smooth scroll)
+      scrollTimeoutRef.current = setTimeout(() => {
+        isScrollingRef.current = false;
+        scrollTimeoutRef.current = null;
+      }, 400);
     }
   }, []);
 

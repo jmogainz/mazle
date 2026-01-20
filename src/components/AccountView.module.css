@@ -466,6 +466,7 @@
   color: var(--color-text);
   letter-spacing: 0.02em;
   white-space: nowrap;
+  transition: opacity 0.15s ease-out;
 }
 
 .skinWheelNameContainer {

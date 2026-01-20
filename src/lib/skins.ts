@@ -19,7 +19,13 @@ const SKINS: readonly SkinCatalogEntry[] = [
   // Based on `localdocs/skin_mustard.svg`
   { id: 'mustard', name: 'Mustard', face: '#ffdb58', edge: '#daa520', minTier: 'account' },
   // Based on `localdocs/skin_teal.svg`
-  { id: 'teal', name: 'Teal', face: '#008080', edge: '#004d4d', minTier: 'account' },
+  { id: 'teal', name: 'Lagoon', face: '#008080', edge: '#004d4d', minTier: 'account' },
+  // Trial skins
+  { id: 'coral', name: 'Coral', face: '#ff6b6b', edge: '#c44d4d', minTier: 'account' },
+  { id: 'mint', name: 'Mint', face: '#4ecdc4', edge: '#2a9d8f', minTier: 'account' },
+  { id: 'lavender', name: 'Lavender', face: '#b39ddb', edge: '#7e57c2', minTier: 'account' },
+  { id: 'sunset', name: 'Sunset', face: '#ff9f43', edge: '#e17055', minTier: 'account' },
+  { id: 'slate', name: 'Slate', face: '#74b9ff', edge: '#0984e3', minTier: 'account' },
   // Based on `localdocs/skin_royal.svg` (kept for future streak reward)
   { id: 'royal', name: 'Royal', face: '#4f2db3', edge: '#a78bfa', minTier: 'account', requiresUnlock: true },
 

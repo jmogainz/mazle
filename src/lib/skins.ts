@@ -6,6 +6,7 @@ export type SkinCatalogEntry = {
   face: string;
   edge: string;
   minTier: SkinTier;
+  alwaysLocked?: boolean;
 };
 
 export type SkinDefinition = SkinCatalogEntry & { locked: boolean };
@@ -15,10 +16,12 @@ const SKINS: readonly SkinCatalogEntry[] = [
   { id: 'default', name: 'Classic', face: '#ff4d4d', edge: '#cc0000', minTier: 'guest' },
 
   // Signed-in free (account tier)
-  // Based on `localdocs/skin_mint.svg`
-  { id: 'mint', name: 'Mint', face: '#a8d8a8', edge: '#538d4e', minTier: 'account' },
-  // Based on `localdocs/skin_royal.svg`
-  { id: 'royal', name: 'Royal', face: '#4f2db3', edge: '#a78bfa', minTier: 'account' },
+  // Based on `localdocs/skin_mustard.svg`
+  { id: 'mustard', name: 'Mustard', face: '#ffdb58', edge: '#daa520', minTier: 'account' },
+  // Based on `localdocs/skin_teal.svg`
+  { id: 'teal', name: 'Teal', face: '#008080', edge: '#004d4d', minTier: 'account' },
+  // Based on `localdocs/skin_royal.svg` (kept for future streak reward)
+  { id: 'royal', name: 'Royal', face: '#4f2db3', edge: '#a78bfa', minTier: 'account', alwaysLocked: true },
 
   // Mazle+ tier
   // Based on `localdocs/skin_arctic.svg`
@@ -42,6 +45,7 @@ export function isSkinUnlockedForTier(skinId: string | null | undefined, tier: S
   if (!skinId) return false;
   const skin = getSkinById(skinId);
   if (!skin) return false;
+  if (skin.alwaysLocked) return false;
   return tierRank(tier) >= tierRank(skin.minTier);
 }
 
@@ -53,7 +57,7 @@ export function getAllSkinsForTier(tier: SkinTier): SkinDefinition[] {
   const rank = tierRank(tier);
   return SKINS.map((s) => ({
     ...s,
-    locked: rank < tierRank(s.minTier),
+    locked: !!s.alwaysLocked || rank < tierRank(s.minTier),
   }));
 }
 
@@ -64,5 +68,5 @@ export function getSkinById(id: string | null | undefined): SkinCatalogEntry | n
 
 export function getUnlockedSkinsForTier(tier: SkinTier): SkinCatalogEntry[] {
   const rank = tierRank(tier);
-  return SKINS.filter((s) => rank >= tierRank(s.minTier));
+  return SKINS.filter((s) => !s.alwaysLocked && rank >= tierRank(s.minTier));
 }

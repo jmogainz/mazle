@@ -144,20 +144,34 @@ async function ensureUserDisplayName(userId: string, preferredName: string | nul
 }
 
 async function linkGuestToUser(userId: string, guestId: string): Promise<void> {
+  console.log(`[LINK] Linking guest ${guestId} to user ${userId}`);
   await ensureDbSchema();
   const pool = getDbPool();
-  if (!isUuid(userId)) return;
+  if (!isUuid(userId)) {
+    console.log(`[LINK] Invalid userId: ${userId}`);
+    return;
+  }
   await pool.query('insert into users (id) values ($1) on conflict do nothing', [userId]);
 
   const guest = await getGuestProfile(guestId);
+  console.log(`[LINK] Guest profile: ${guest ? guest.displayName : 'null'}`);
   const guestName = guest?.displayName ?? null;
   const userDisplayName = guestName ? await ensureUserDisplayName(userId, guestName) : await ensureUserDisplayName(userId, null);
 
-  await migrateTodayLeaderboardIfPresent({ userId, guestId, userDisplayName }).catch(() => null);
-  await migrateGuestDailyResults(guestId, userId).catch(() => null);
+  await migrateTodayLeaderboardIfPresent({ userId, guestId, userDisplayName }).catch((e) => {
+    console.log(`[LINK] migrateTodayLeaderboardIfPresent error:`, e);
+    return null;
+  });
+  await migrateGuestDailyResults(guestId, userId).catch((e) => {
+    console.log(`[LINK] migrateGuestDailyResults error:`, e);
+    return null;
+  });
   
   // Auto-submit today's result if user has auto-submit enabled and result exists but wasn't submitted
-  await autoSubmitTodayIfEnabled({ userId, userDisplayName }).catch(() => null);
+  await autoSubmitTodayIfEnabled({ userId, userDisplayName }).catch((e) => {
+    console.log(`[LINK] autoSubmitTodayIfEnabled error:`, e);
+    return null;
+  });
 }
 
 export async function getEntitlementsForUser(userId: string): Promise<{ archiveAccess: boolean; adsRemoved: boolean }> {
@@ -178,7 +192,9 @@ export async function resolveMeIdentity(request: Request): Promise<MeIdentity> {
   await ensureDbSchema();
 
   const guestCookie = (request as any).cookies?.get?.(GUEST_COOKIE)?.value as string | undefined;
+  console.log(`[RESOLVE] Guest cookie: ${guestCookie ?? 'none'}`);
   const guest = await getOrCreateGuest(guestCookie ?? null);
+  console.log(`[RESOLVE] Guest ID: ${guest.guestId}, setCookie: ${guest.setCookie}`);
 
   const userId = await getSessionUserId(request);
   if (!userId) {
@@ -192,6 +208,7 @@ export async function resolveMeIdentity(request: Request): Promise<MeIdentity> {
     };
   }
 
+  console.log(`[RESOLVE] User ID: ${userId}, linking with guest ${guest.guestId}`);
   await linkGuestToUser(userId, guest.guestId);
   const displayName = await ensureUserDisplayName(userId, null);
   const entitlements = await getEntitlementsForUser(userId);

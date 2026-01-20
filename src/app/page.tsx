@@ -18,33 +18,38 @@ const LeaderboardView = dynamic(() => import('@/components/LeaderboardView'), {
 });
 
 function LeaderboardSkeleton() {
+  const shimmerStyle: React.CSSProperties = {
+    background: 'linear-gradient(90deg, var(--color-surface) 25%, rgba(255,255,255,0.08) 50%, var(--color-surface) 75%)',
+    backgroundSize: '200% 100%',
+    animation: 'shimmer 1.5s ease-in-out infinite',
+    borderRadius: '4px',
+  };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <style>{`@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }`}</style>
       {/* Day title skeleton */}
       <div style={{ textAlign: 'center', marginBottom: '0.5rem' }}>
         <div style={{
+          ...shimmerStyle,
           width: '120px',
           height: '1.5rem',
-          background: 'var(--color-surface)',
           borderRadius: '6px',
           margin: '0 auto 0.25rem'
         }} />
         <div style={{
+          ...shimmerStyle,
           width: '60px',
           height: '0.9rem',
-          background: 'var(--color-surface)',
-          borderRadius: '4px',
           margin: '0 auto',
-          opacity: 0.6
         }} />
       </div>
       {/* Podium skeleton */}
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: '0.75rem', padding: '0.5rem 0 1rem' }}>
         {[45, 60, 35].map((height, i) => (
           <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '30%' }}>
-            <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--color-surface)', marginBottom: '0.5rem' }} />
-            <div style={{ width: '70%', height: '0.9rem', background: 'var(--color-surface)', borderRadius: '4px', marginBottom: '0.25rem' }} />
-            <div style={{ width: '100%', height: `${height}px`, background: 'var(--color-surface)', borderRadius: '8px 8px 0 0' }} />
+            <div style={{ ...shimmerStyle, width: '40px', height: '40px', borderRadius: '50%', marginBottom: '0.5rem' }} />
+            <div style={{ ...shimmerStyle, width: '70%', height: '0.9rem', marginBottom: '0.25rem' }} />
+            <div style={{ ...shimmerStyle, width: '100%', height: `${height}px`, borderRadius: '8px 8px 0 0' }} />
           </div>
         ))}
       </div>
@@ -56,7 +61,7 @@ function LeaderboardSkeleton() {
             alignItems: 'center',
             gap: '0.75rem',
             padding: '0.75rem',
-            background: 'var(--color-surface)',
+            ...shimmerStyle,
             borderRadius: '8px'
           }}>
             <div style={{ width: '32px', height: '1rem', background: 'var(--color-border)', borderRadius: '4px' }} />
@@ -1916,15 +1921,16 @@ export default function Home() {
           triggerButtonRef={menuButtonRef}
         />
 
-        <OverlayShell
-          title="Leaderboard"
-          variant="overlay"
-          onClose={() => setShowLeaderboard(false)}
-          open={showLeaderboard}
-        >
-          <LeaderboardView />
-          <AdSlot placement="leaderboard" />
-        </OverlayShell>
+        {showLeaderboard && (
+          <OverlayShell
+            title="Leaderboard"
+            variant="overlay"
+            onClose={() => setShowLeaderboard(false)}
+          >
+            <LeaderboardView />
+            <AdSlot placement="leaderboard" />
+          </OverlayShell>
+        )}
 
         {showHallOfFame && (
           <OverlayShell

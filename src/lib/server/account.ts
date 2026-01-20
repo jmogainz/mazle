@@ -237,10 +237,14 @@ export async function migrateGuestDailyResults(guestId: string, userId: string):
   const row = res.rows[0];
   if (!row) return;
   if (row.user_id !== userId) return; // Guest already linked to a different user
-  if (row.migrated_at) return; // Already migrated
+  if (row.migrated_at) {
+    console.log(`[MIGRATE] Guest ${guestId} already migrated at ${row.migrated_at}`);
+    return; // Already migrated
+  }
 
   // Get guest daily results from Redis
   const guestResults = await getGuestDailyResults(guestId);
+  console.log(`[MIGRATE] Guest ${guestId} has ${guestResults.length} results to migrate`);
   if (guestResults.length === 0) {
     // No results to migrate, but still mark as migrated and clean up
     await pool.query('update guest_user_links set migrated_at=now() where guest_id=$1', [guestId]);
@@ -251,6 +255,7 @@ export async function migrateGuestDailyResults(guestId: string, userId: string):
   // Insert each result into the user's daily_results table
   let migratedCount = 0;
   for (const result of guestResults) {
+    console.log(`[MIGRATE] Migrating result for date ${result.date}: completed=${result.completed}, timeMs=${result.timeMs}`);
     const insertRes = await pool.query(
       `insert into daily_results (user_id, date, completed, time_ms, attempts_used, played_at)
        values ($1, $2::date, $3, $4, $5, to_timestamp($6 / 1000.0))
@@ -261,6 +266,7 @@ export async function migrateGuestDailyResults(guestId: string, userId: string):
       migratedCount++;
     }
   }
+  console.log(`[MIGRATE] Migrated ${migratedCount} results for user ${userId}`);
 
   // Mark as migrated
   await pool.query('update guest_user_links set migrated_at=now() where guest_id=$1', [guestId]);

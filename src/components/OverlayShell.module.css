@@ -7,7 +7,7 @@
   justify-content: center;
   z-index: 1200;
   padding: 1rem;
-  animation: fadeIn 0.12s ease-out;
+  animation: fadeIn 0.2s ease-out;
 }
 
 .backdropHidden {
@@ -49,7 +49,7 @@
   overflow: hidden;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
   font-family: var(--font-main);
-  animation: slideUp 0.12s ease-out;
+  animation: slideUp 0.3s ease-out;
 }
 
 .cardPage {
@@ -61,7 +61,7 @@
 
 @keyframes slideUp {
   from {
-    transform: translateY(12px);
+    transform: translateY(20px);
     opacity: 0;
   }
 

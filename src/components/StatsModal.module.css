@@ -45,22 +45,13 @@
   flex: 1;
   overflow-y: auto;
   padding-right: 0.25rem;
-  /* Custom Scrollbar for inner content */
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-border) transparent;
+  /* Hide scrollbar */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .scrollableContent::-webkit-scrollbar {
-  width: 4px;
-}
-
-.scrollableContent::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.scrollableContent::-webkit-scrollbar-thumb {
-  background-color: var(--color-border);
-  border-radius: 10px;
+  display: none;
 }
 
 @keyframes slideUp {

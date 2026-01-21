@@ -39,6 +39,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
   const [loadError, setLoadError] = useState<{ kind: 'invalid' | 'locked' | 'missing' | 'unknown'; message: string } | null>(null);
 
   const [stats, setStats] = useState(() => getPlayerStats());
+  const [accountMe, setAccountMe] = useState(() => readCachedMe());
   const [showShareCard, setShowShareCard] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -74,6 +75,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
     cachedApi
       .me()
       .then((me) => {
+        setAccountMe(me ?? null);
         const scope = me?.mode === 'user' && me.userId ? `user:${me.userId}` : 'guest';
         setStorageScope(scope);
         if (!cancelled) {
@@ -81,6 +83,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
         }
       })
       .catch(() => {
+        setAccountMe(readCachedMe());
         const fallbackScope = getStorageScope();
         setStorageScope(fallbackScope);
         if (!cancelled) {
@@ -353,7 +356,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
     return (
       <main className={`${baseStyles.main} bg-pattern`} style={{ justifyContent: 'flex-start' }}>
         <Header
-          streak={stats.currentStreak || 0}
+          streak={accountMe?.mode === 'user' && accountMe.stats ? accountMe.stats.playedStreak : (stats.currentStreak || 0)}
           onHelpClick={() => setShowHelp(true)}
           onMenuClick={() => setShowMenu(true)}
           menuButtonRef={menuButtonRef}
@@ -406,7 +409,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
     <ErrorBoundary>
       <main className={`${baseStyles.main} bg-pattern`}>
         <Header
-          streak={stats.currentStreak || 0}
+          streak={accountMe?.mode === 'user' && accountMe.stats ? accountMe.stats.playedStreak : (stats.currentStreak || 0)}
           onHelpClick={() => setShowHelp(true)}
           onMenuClick={() => setShowMenu(true)}
           menuButtonRef={menuButtonRef}

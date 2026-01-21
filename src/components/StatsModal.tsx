@@ -34,7 +34,7 @@ function StatsModal({ stats, onClose }: StatsModalProps) {
 
   const displayName = me?.displayName || 'Guest Trainer';
   const profile = me?.profile || { characterId: 'default', skinId: 'default' };
-  const displayStreak = isAccountStats ? me.stats.winStreak : stats.currentStreak;
+  const displayStreak = isAccountStats ? me.stats.playedStreak : stats.currentStreak;
 
   const recentHistory = useMemo(() => stats.history.slice(-20).reverse(), [stats.history]);
 

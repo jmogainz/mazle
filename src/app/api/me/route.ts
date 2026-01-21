@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { resolveMeIdentity } from '@/lib/server/identity';
+import { getEntitlementsForUser, resolveMeIdentity } from '@/lib/server/identity';
 import { jsonError } from '@/lib/server/responses';
 import { setGuestIdCookie } from '@/lib/server/cookies';
-import { computeUserStats, ensureUserProfile, ensureUserSettings } from '@/lib/server/account';
+import { computeUserStats, ensureUserProfile, ensureUserSettings, maybeGrantRoyalSkin } from '@/lib/server/account';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -14,13 +14,18 @@ export async function GET(request: Request) {
     const profile = me.userId ? await ensureUserProfile(me.userId) : undefined;
     const settings = me.userId ? await ensureUserSettings(me.userId) : undefined;
     const stats = me.userId ? await computeUserStats(me.userId) : undefined;
+    let entitlements = me.entitlements;
+    if (me.userId && stats) {
+      await maybeGrantRoyalSkin(me.userId, stats.playedStreak);
+      entitlements = await getEntitlementsForUser(me.userId);
+    }
 
     const res = NextResponse.json(
       {
         mode: me.mode,
         userId: me.userId,
         displayName: me.displayName,
-        entitlements: me.entitlements,
+        entitlements,
         profile,
         settings,
         stats,

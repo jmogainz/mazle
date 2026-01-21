@@ -8,6 +8,7 @@ export type SkinCatalogEntry = {
   minTier: SkinTier;
   requiresUnlock?: boolean;
   hidden?: boolean;
+  comingSoon?: boolean;
 };
 
 export type SkinDefinition = SkinCatalogEntry & { locked: boolean };
@@ -22,9 +23,13 @@ const SKINS: readonly SkinCatalogEntry[] = [
   // Streak unlock
   { id: 'royal', name: 'Royal', face: '#4f2db3', edge: '#a78bfa', minTier: 'account', requiresUnlock: true },
 
+  // Mazle+ placeholders (visible to all, locked until launch)
+  { id: 'mystery_plus_1', name: '???', face: '#c8d4dd', edge: '#8b98a5', minTier: 'guest', comingSoon: true },
+  { id: 'mystery_plus_2', name: '???', face: '#d1d7de', edge: '#9aa4af', minTier: 'guest', comingSoon: true },
+
   // Mazle+ tier
-  { id: 'arctic', name: 'Arctic', face: '#ffffff', edge: '#b8e0f0', minTier: 'plus' },
-  { id: 'void', name: 'Void', face: '#1a1a1b', edge: '#3a3d41', minTier: 'plus' },
+  { id: 'arctic', name: 'Arctic', face: '#ffffff', edge: '#b8e0f0', minTier: 'plus', hidden: true },
+  { id: 'void', name: 'Void', face: '#1a1a1b', edge: '#3a3d41', minTier: 'plus', hidden: true },
 
   // ========== Hidden trial skins (kept in code, not shown in UI) ==========
   // Warm tones
@@ -105,6 +110,7 @@ export function isSkinUnlockedForViewer(skinId: string | null | undefined, viewe
   if (!skinId) return false;
   const skin = getSkinById(skinId);
   if (!skin) return false;
+  if (skin.comingSoon) return false;
   if (tierRank(viewer.tier) < tierRank(skin.minTier)) return false;
   if (skin.requiresUnlock) {
     return viewer.unlockedSkins.includes(skin.id);
@@ -121,6 +127,7 @@ export function getAllSkinsForViewer(viewer: SkinViewer): SkinDefinition[] {
   return SKINS.filter((s) => !s.hidden).map((s) => ({
     ...s,
     locked:
+      !!s.comingSoon ||
       rank < tierRank(s.minTier) ||
       (s.requiresUnlock ? !viewer.unlockedSkins.includes(s.id) : false),
   }));

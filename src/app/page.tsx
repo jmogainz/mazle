@@ -75,7 +75,7 @@ function LeaderboardSkeleton() {
   );
 }
 import { api } from '@/lib/api';
-import { cachedApi, fetchMeFresh, prefetchAccount, prefetchArchiveDays, prefetchHallOfFame, prefetchLeaderboard, readCachedMe } from '@/lib/api/cached';
+import { cachedApi, fetchMeFresh, invalidateMeCache, prefetchAccount, prefetchArchiveDays, prefetchHallOfFame, prefetchLeaderboard, readCachedMe } from '@/lib/api/cached';
 import { addDays } from '@/lib/date';
 import { getPrefs } from '@/lib/prefs';
 import {
@@ -284,6 +284,7 @@ export default function Home() {
   const [seedInput, setSeedInput] = useState('');
   const [renderKey, setRenderKey] = useState(0);
   const [stats, setStats] = useState<PlayerStats | null>(null);
+  const [accountMe, setAccountMe] = useState<Awaited<ReturnType<typeof cachedApi.me>> | null>(() => readCachedMe());
   const [showShareCard, setShowShareCard] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -452,9 +453,11 @@ export default function Home() {
       let me = null as Awaited<ReturnType<typeof cachedApi.me>> | null;
       try {
         me = await cachedApi.me();
+        setAccountMe(me);
       } catch {
         meError = true;
         me = null;
+        setAccountMe(null);
       }
       if (cancelled || identitySyncEpochRef.current !== epoch) return;
 
@@ -552,6 +555,8 @@ export default function Home() {
             upsertTodaysResult(merged, userScope);
             candidate = merged;
           }
+          invalidateMeCache();
+          fetchMeFresh().then(setAccountMe).catch(() => null);
         } catch {
           // ignore record failures; local state is still valid
         }
@@ -1086,6 +1091,11 @@ export default function Home() {
                 ? { date: todayDateStr, completed: false }
                 : { date: todayDateStr, completed: true, timeMs, attemptsUsed }
             )
+            .then((res) => {
+              invalidateMeCache();
+              fetchMeFresh().then(setAccountMe).catch(() => null);
+              return res;
+            })
             .catch(() => null);
 
           if (!failed && getPrefs().leaderboardAutoSubmitWins) {
@@ -1627,7 +1637,7 @@ export default function Home() {
         )}
 
         <Header
-          streak={stats?.currentStreak ?? 0}
+          streak={accountMe?.mode === 'user' && accountMe.stats ? accountMe.stats.playedStreak : (stats?.currentStreak ?? 0)}
           puzzleInfo={puzzleLabel ?? (puzzleNumber > 0 ? `#${puzzleNumber}` : undefined)}
           puzzleInfoLoading={isGenerating || (!puzzle && !gameResult)}
           onHelpClick={() => setShowHelp(true)}

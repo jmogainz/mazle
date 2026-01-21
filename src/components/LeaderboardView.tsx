@@ -7,6 +7,7 @@ import {
   fetchLeaderboardMeFresh,
   fetchLeaderboardTopFresh,
   invalidateLeaderboardCache,
+  invalidateMeCache,
   readCachedLeaderboardMe,
   readCachedLeaderboardTop,
   readCachedMe,
@@ -290,6 +291,7 @@ function LeaderboardView() {
     try {
       stage = 'resultsRecord';
       await api.resultsRecord({ date: todayDate, completed: true, timeMs: todayResult.timeMs, attemptsUsed });
+      invalidateMeCache();
       stage = 'leaderboardSubmit';
       const result = await api.leaderboardSubmit({ date: todayDate });
       if (result.rank != null) {

@@ -13,15 +13,17 @@ type SkinWheelItemProps = {
 
 const SkinWheelItem = memo(({ skin, isCentered = false, style, characterId, onClick }: SkinWheelItemProps) => {
     const isLocked = skin.locked;
+    const isComingSoon = !!skin.comingSoon;
 
     return (
         <button
             type="button"
-            className={`${styles.skinWheelItem} ${isCentered ? styles.skinWheelItemCenter : ''} ${isLocked ? styles.skinWheelItemLocked : ''}`}
+            className={`${styles.skinWheelItem} ${isCentered ? styles.skinWheelItemCenter : ''} ${isLocked ? styles.skinWheelItemLocked : ''} ${isComingSoon ? styles.skinWheelItemComingSoon : ''}`}
             onClick={onClick}
             aria-label={isLocked ? `${skin.name} (locked)` : `Select ${skin.name}`}
             style={style}
         >
+
             <div className={styles.skinWheelItemIcon}>
                 <CharacterIcon
                     characterId={characterId}
@@ -29,7 +31,7 @@ const SkinWheelItem = memo(({ skin, isCentered = false, style, characterId, onCl
                     size="100%"
                 />
             </div>
-            {isLocked && (
+            {isLocked && !isComingSoon && (
                 <span className={styles.skinWheelLock}>
                     <svg width={isCentered ? "22" : "18"} height={isCentered ? "22" : "18"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M7 11V8a5 5 0 0 1 10 0v3" />

@@ -324,35 +324,29 @@ function recomputeStatsFromHistory(history: DailyStats[]): PlayerStats {
   const totalGamesWon = sorted.filter((h) => h.completed).length;
   const lastPlayedDate = sorted.length > 0 ? sorted[sorted.length - 1]!.date : null;
 
-  // Max streak over all time.
+  // Max streak over all time (played days).
   let maxStreak = 0;
   let currentRun = 0;
-  let prevWinDate: string | null = null;
+  let prevPlayedDate: string | null = null;
   for (const entry of sorted) {
-    if (entry.completed) {
-      if (prevWinDate && entry.date === addDays(prevWinDate, 1)) {
-        currentRun += 1;
-      } else {
-        currentRun = 1;
-      }
-      prevWinDate = entry.date;
-      maxStreak = Math.max(maxStreak, currentRun);
+    if (prevPlayedDate && entry.date === addDays(prevPlayedDate, 1)) {
+      currentRun += 1;
     } else {
-      currentRun = 0;
-      prevWinDate = null;
+      currentRun = 1;
     }
+    prevPlayedDate = entry.date;
+    maxStreak = Math.max(maxStreak, currentRun);
   }
 
-  // Current streak (wins only), only if last played is today or yesterday.
+  // Current streak (played days), only if last played is today or yesterday.
   const today = getTodayString();
   const yesterday = addDays(today, -1);
   let currentStreak = 0;
   if (lastPlayedDate === today || lastPlayedDate === yesterday) {
-    // Walk backwards in date order and count consecutive wins.
+    // Walk backwards in date order and count consecutive plays.
     const desc = [...sorted].reverse();
     for (let i = 0; i < desc.length; i += 1) {
       const row = desc[i]!;
-      if (!row.completed) break;
       if (i === 0) {
         currentStreak = 1;
         continue;
@@ -474,20 +468,18 @@ export function saveTodaysResult(result: DailyStats, scope?: StorageScope): void
 
     if (result.completed) {
       stats.totalGamesWon++;
-
-      // Update streak
-      if (stats.lastPlayedDate === yesterday || stats.lastPlayedDate === today) {
-        if (stats.lastPlayedDate !== today) {
-          stats.currentStreak++;
-        }
-      } else {
-        stats.currentStreak = 1;
-      }
-
-      stats.maxStreak = Math.max(stats.maxStreak, stats.currentStreak);
-    } else {
-      stats.currentStreak = 0;
     }
+
+    // Update streak (played days)
+    if (stats.lastPlayedDate === yesterday || stats.lastPlayedDate === today) {
+      if (stats.lastPlayedDate !== today) {
+        stats.currentStreak++;
+      }
+    } else {
+      stats.currentStreak = 1;
+    }
+
+    stats.maxStreak = Math.max(stats.maxStreak, stats.currentStreak);
 
     stats.lastPlayedDate = today;
     const { attempts, ...rest } = result as any;

@@ -283,12 +283,12 @@ function AccountView() {
   useEffect(() => {
     // Don't sync from API response if user is actively scrolling - prevents flicker from stale responses
     if (isScrollingRef.current) return;
+    if (didInitialSkinWheelSyncRef.current) return;
 
     const idx = skins.findIndex((s) => s.id === profile.skinId);
     if (idx >= 0) {
       setSkinWheelIndex(idx);
       // Only force-scroll once on initial load; subsequent profile updates should not override smooth UI scrolling.
-      if (didInitialSkinWheelSyncRef.current) return;
       didInitialSkinWheelSyncRef.current = true;
 
       requestAnimationFrame(() => {
@@ -303,6 +303,19 @@ function AccountView() {
   }, [profile.skinId, skins]);
 
   const isSignedIn = useMemo(() => meState.status === 'loaded' && meState.data.mode === 'user', [meState]);
+  const centeredSkin = skins[skinWheelIndex];
+  const playedStreak = stats?.playedStreak ?? 0;
+  const streakProgress = Math.min(playedStreak, 20);
+  const royalHintLines = ['Unlock Reward', `${streakProgress}/20 Streak`];
+
+  const centeredUnlockHintLines =
+    centeredSkin?.comingSoon
+      ? ['Coming soon with Mazle+']
+      : centeredSkin?.id === 'royal' && centeredSkin?.locked
+        ? (isSignedIn ? royalHintLines : ['20 Day Streak Unlock', 'Sign in to Earn'])
+        : !isSignedIn && centeredSkin?.locked
+          ? ['Sign in to unlock']
+          : undefined;
 
   const handleToggleAutoSubmit = useCallback(() => {
     setAutoSubmitWins((prev) => {
@@ -614,6 +627,15 @@ function AccountView() {
 
             {/* Skin Picker Wheel - Simplified Scroll-Snap Carousel */}
             <div className={styles.skinWheel}>
+              {centeredUnlockHintLines && (
+                <div className={styles.skinUnlockHint}>
+                  {centeredUnlockHintLines.map((line, idx) => (
+                    <div key={`hint-${idx}`} className={styles.skinUnlockHintLine}>
+                      {line}
+                    </div>
+                  ))}
+                </div>
+              )}
               <button
                 type="button"
                 className={styles.skinWheelArrow}
@@ -672,6 +694,7 @@ function AccountView() {
             <div className={styles.skinWheelMeta}>
               <div className={styles.skinWheelNameContainer}>
                 <div className={styles.skinWheelName}>{skins[skinWheelIndex]?.name ?? ''}</div>
+                {/* 
                 {skins[skinWheelIndex]?.locked && (
                   <span className={styles.skinWheelNameLock}>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
@@ -680,6 +703,7 @@ function AccountView() {
                     </svg>
                   </span>
                 )}
+                */}
               </div>
             </div>
 
@@ -687,7 +711,7 @@ function AccountView() {
             {me.mode === 'guest' ? (
               <div className={styles.signInSection}>
                 <div className={styles.signInHint}>
-                  Save your name and sync across devices.
+                  Save your name, earn skins, and sync across devices.
                 </div>
                 <button
                   type="button"

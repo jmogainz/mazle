@@ -30,8 +30,8 @@ export type UserStats = {
 
 const ENTITLEMENT_SKIN_ROYAL = 'skin_royal';
 
-async function maybeGrantRoyalSkin(userId: string, winStreak: number): Promise<void> {
-  if (winStreak < 20) return;
+export async function maybeGrantRoyalSkin(userId: string, playedStreak: number): Promise<void> {
+  if (playedStreak < 20) return;
 
   await ensureDbSchema();
   const pool = getDbPool();
@@ -44,7 +44,7 @@ async function maybeGrantRoyalSkin(userId: string, winStreak: number): Promise<v
     `insert into entitlements (user_id, key, source)
      values ($1, $2, $3)
      on conflict do nothing`,
-    [userId, ENTITLEMENT_SKIN_ROYAL, 'streak_20_win']
+    [userId, ENTITLEMENT_SKIN_ROYAL, 'streak_20_play']
   );
 }
 
@@ -159,9 +159,9 @@ export async function recordDailyResult(
 
   const created = (insertRes.rowCount ?? 0) > 0;
 
-  if (created && input.completed) {
+  if (created) {
     // Best-effort: unlock cosmetics without blocking gameplay if it fails.
-    computeUserStats(userId).then((s) => maybeGrantRoyalSkin(userId, s.winStreak)).catch(() => null);
+    computeUserStats(userId).then((s) => maybeGrantRoyalSkin(userId, s.playedStreak)).catch(() => null);
   }
 
   const res = await pool.query<{ date: string; completed: boolean; time_ms: number | null; attempts_used: number | null }>(
@@ -343,7 +343,7 @@ export async function importDailyResults(
   const skipped = sanitized.length - imported;
 
   if (imported > 0) {
-    computeUserStats(userId).then((s) => maybeGrantRoyalSkin(userId, s.winStreak)).catch(() => null);
+    computeUserStats(userId).then((s) => maybeGrantRoyalSkin(userId, s.playedStreak)).catch(() => null);
   }
   return { imported, skipped };
 }
@@ -384,7 +384,7 @@ export async function computeUserStats(userId: string): Promise<UserStats> {
   const playedStreak = computePlayedStreak(rows.map((r) => r.date));
   const winStreak = computeWinStreak(rows.map((r) => ({ date: r.date, completed: r.completed })));
 
-  maybeGrantRoyalSkin(userId, winStreak).catch(() => null);
+  maybeGrantRoyalSkin(userId, playedStreak).catch(() => null);
 
   return { playedStreak, winStreak, totalPlayed, totalWins, avgSolveTimeMs };
 }

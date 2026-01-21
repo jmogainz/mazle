@@ -119,6 +119,12 @@ export function invalidateLeaderboardCache(date: string): void {
   }
 }
 
+export function invalidateMeCache(): void {
+  CACHE.delete('me');
+  INFLIGHT.delete('me');
+  bumpEpoch('me');
+}
+
 function archiveDaysKey(from: string, to: string): string {
   return `archive:days:${from}:${to}`;
 }

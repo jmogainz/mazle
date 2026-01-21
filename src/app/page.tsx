@@ -415,12 +415,12 @@ export default function Home() {
         applyStoredResult(localResult);
 
         // If no completed result, check for in-progress state to restore
-      if (!localResult && !debugModeRef.current) {
-        const todaySeed = getDailySeed(new Date());
-        const inProgressState = getInProgressState(todaySeed);
-        if (inProgressState) {
-          console.log('[RESUME] Found in-progress state (guest), will restore after game ready');
-          pendingRestoreRef.current = inProgressState;
+        if (!localResult && !debugModeRef.current) {
+          const todaySeed = getDailySeed(new Date());
+          const inProgressState = getInProgressState(todaySeed);
+          if (inProgressState) {
+            console.log('[RESUME] Found in-progress state (guest), will restore after game ready');
+            pendingRestoreRef.current = inProgressState;
             setHasPendingRestore(true);
             setInitialStats({
               lives: inProgressState.lives,
@@ -1776,7 +1776,7 @@ export default function Home() {
                       </div>
                     )}
                     {/* Replay Solution overlay button - fades in after analysis completes */}
-                    {showInlineResult && showReplayButton && !showShareCard && !showMenu && (
+                    {showInlineResult && showReplayButton && !showShareCard && !showMenu && reviewAttemptIndex === null && (
                       <button
                         className={styles.replaySolutionOverlay}
                         onClick={handleReplayAnalysis}

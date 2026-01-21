@@ -430,7 +430,7 @@
 }
 
 .skinWheelItemComingSoon .skinWheelItemIcon {
-  filter: blur(6px) grayscale(0.2) brightness(0.8);
+  filter: blur(6px) grayscale(0.8) brightness(0.3);
 }
 
 .skinUnlockHint {

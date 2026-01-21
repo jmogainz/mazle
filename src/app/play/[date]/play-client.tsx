@@ -518,17 +518,16 @@ export default function ArchivePlayClient({ date }: { date: string }) {
           triggerButtonRef={menuButtonRef}
         />
 
-        {showLeaderboard && (
-          <OverlayShell
-            title="Leaderboard"
-            // subtitle="Today"
-            variant="overlay"
-            onClose={() => setShowLeaderboard(false)}
-          >
-            <LeaderboardView />
-            <AdSlot placement="leaderboard" />
-          </OverlayShell>
-        )}
+        <OverlayShell
+          title="Leaderboard"
+          // subtitle="Today"
+          variant="overlay"
+          onClose={() => setShowLeaderboard(false)}
+          open={showLeaderboard}
+        >
+          <LeaderboardView />
+          <AdSlot placement="leaderboard" />
+        </OverlayShell>
 
         {showHallOfFame && (
           <OverlayShell

@@ -1940,16 +1940,15 @@ export default function Home() {
           triggerButtonRef={menuButtonRef}
         />
 
-        {showLeaderboard && (
-          <OverlayShell
-            title="Leaderboard"
-            variant="overlay"
-            onClose={() => setShowLeaderboard(false)}
-          >
-            <LeaderboardView />
-            <AdSlot placement="leaderboard" />
-          </OverlayShell>
-        )}
+        <OverlayShell
+          title="Leaderboard"
+          variant="overlay"
+          onClose={() => setShowLeaderboard(false)}
+          open={showLeaderboard}
+        >
+          <LeaderboardView />
+          <AdSlot placement="leaderboard" />
+        </OverlayShell>
 
         {showHallOfFame && (
           <OverlayShell

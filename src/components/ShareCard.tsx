@@ -108,12 +108,12 @@ export default function ShareCard({
     : `${shareTitle}\n${attemptIndicator} ${formatTime(timeMs)}\n\nhttps://mazle.me`;
 
   const resolveAttemptProgress = (attempt: any): number => {
+    if (typeof attempt?.correctMoves === 'number' && Number.isFinite(attempt.correctMoves)) {
+      return Math.min(optimalMoves, Math.max(0, Math.round(attempt.correctMoves)));
+    }
     if (typeof attempt?.deviationIndex === 'number' && attempt.deviationIndex >= 0) {
       const movesBeforeDeviation = Math.max(0, attempt.deviationIndex - 1);
       return Math.min(optimalMoves, movesBeforeDeviation);
-    }
-    if (typeof attempt?.correctMoves === 'number' && Number.isFinite(attempt.correctMoves)) {
-      return Math.min(optimalMoves, Math.max(0, Math.round(attempt.correctMoves)));
     }
     return typeof attempt?.moveCount === 'number' ? Math.max(0, Math.round(attempt.moveCount)) : 0;
   };

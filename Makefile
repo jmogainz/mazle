@@ -107,6 +107,8 @@ override APP_PORT := 8080
 PROD_DEPLOY_TARGET := vercel
 STAGING_DEPLOY_TARGET := vercel
 VERCEL_PROJECT_NAME := mazle
+# Hold Vercel promotion after post-checks (1 = skip promote)
+VERCEL_HOLD_PROMOTION ?= 0
 
 # Public env wiring
 export NEXT_PUBLIC_ENV := $(ENV)

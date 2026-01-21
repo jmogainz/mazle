@@ -19,7 +19,7 @@ const LeaderboardView = dynamic(() => import('@/components/LeaderboardView'), {
 
 function LeaderboardSkeleton() {
   const shimmerStyle: React.CSSProperties = {
-    background: 'linear-gradient(90deg, var(--color-surface) 25%, rgba(255,255,255,0.08) 50%, var(--color-surface) 75%)',
+    background: 'linear-gradient(90deg, var(--color-surface) 25%, rgba(255, 255, 255, 0.15) 50%, var(--color-surface) 75%)',
     backgroundSize: '200% 100%',
     animation: 'shimmer 1.5s ease-in-out infinite',
     borderRadius: '4px',

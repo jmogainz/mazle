@@ -536,12 +536,12 @@ export default function GameUI({
             }}
           >
             ?
-            {showTooltip && (
-              <span className={styles.tooltip}>
-                +30s/life penalty
-              </span>
-            )}
           </span>
+          {showTooltip && (
+            <span className={styles.tooltip}>
+              +30s/life penalty
+            </span>
+          )}
         </div>
       </div>
     </div>

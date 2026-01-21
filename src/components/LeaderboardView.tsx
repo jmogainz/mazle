@@ -6,8 +6,6 @@ import {
   cachedApi,
   fetchLeaderboardMeFresh,
   fetchLeaderboardTopFresh,
-  invalidateLeaderboardCache,
-  invalidateMeCache,
   readCachedLeaderboardMe,
   readCachedLeaderboardTop,
   readCachedMe,
@@ -21,7 +19,24 @@ import styles from './LeaderboardView.module.css';
 
 const LEADERBOARD_PAGE_SIZE = 200;
 const LOAD_MORE_THRESHOLD_PX = 180;
-const MAX_LOADED_ENTRIES = 1000; // Performance limit - excludes podium
+const LEADERBOARD_MAX_ROWS = 1000;
+const AUTO_GAP_PREFETCH_MAX = 800;
+const SESSION_CACHE_TTL_MS = 5 * 60 * 1000;
+
+type LeaderboardTopData = Awaited<ReturnType<typeof api.leaderboardTop>>;
+
+let sessionTopCache: { date: string; data: LeaderboardTopData; updatedAt: number } | null = null;
+
+function readSessionTopCache(date: string): LeaderboardTopData | null {
+  if (!sessionTopCache) return null;
+  if (sessionTopCache.date !== date) return null;
+  if (Date.now() - sessionTopCache.updatedAt > SESSION_CACHE_TTL_MS) return null;
+  return sessionTopCache.data;
+}
+
+function writeSessionTopCache(date: string, data: LeaderboardTopData): void {
+  sessionTopCache = { date, data, updatedAt: Date.now() };
+}
 
 type StickyPosition = 'top' | 'inline' | 'bottom';
 
@@ -48,10 +63,23 @@ function LeaderboardView() {
     return !!todayResult && todayResult.date === todayDate;
   }, [todayResult, todayDate]);
 
+  const cachedSessionTop = useMemo(() => readSessionTopCache(todayDate), [todayDate]);
   const cachedTop = useMemo(() => readCachedLeaderboardTop(todayDate, LEADERBOARD_PAGE_SIZE, 0), [todayDate]);
   const cachedMe = useMemo(() => readCachedLeaderboardMe(todayDate), [todayDate]);
+  const shouldDeferCachedTop = useMemo(() => {
+    if (cachedSessionTop) return false;
+    if (!cachedTop) return false;
+    if (!cachedMe?.rank) return false;
+    if (cachedMe.rank <= 3) return false;
+    if (cachedMe.rank > LEADERBOARD_MAX_ROWS) return false;
+    return !cachedTop.entries.some((entry) => entry.rank === cachedMe.rank);
+  }, [cachedMe, cachedSessionTop, cachedTop]);
   const [topState, setTopState] = useState<LoadState<Awaited<ReturnType<typeof api.leaderboardTop>>>>(
-    cachedTop ? { status: 'loaded', data: cachedTop } : { status: 'loading' }
+    cachedSessionTop
+      ? { status: 'loaded', data: cachedSessionTop }
+      : cachedTop && !shouldDeferCachedTop
+        ? { status: 'loaded', data: cachedTop }
+        : { status: 'loading' }
   );
   const [meState, setMeState] = useState<LoadState<Awaited<ReturnType<typeof api.leaderboardMe>>>>(
     cachedMe ? { status: 'loaded', data: cachedMe } : { status: 'loading' }
@@ -69,6 +97,43 @@ function LeaderboardView() {
   const loadingMoreRef = useRef(false);
   const stickyPositionRef = useRef<StickyPosition>('bottom');
 
+  const prefillGapToRank = useCallback(
+    async (top: Awaited<ReturnType<typeof api.leaderboardTop>>, rank?: number | null) => {
+      if (!rank || rank <= 3 || rank > LEADERBOARD_MAX_ROWS) return top;
+
+      const maxLoadedRank = top.entries.length > 0 ? Math.max(...top.entries.map((e) => e.rank)) : null;
+      if (maxLoadedRank != null && rank <= maxLoadedRank) return top;
+      if (maxLoadedRank != null && rank - maxLoadedRank > AUTO_GAP_PREFETCH_MAX) return top;
+
+      let merged = top;
+      let nextOffset = top.nextOffset;
+      let maxRank = maxLoadedRank ?? 0;
+
+      while (nextOffset != null && maxRank < rank) {
+        try {
+          const page = await api.leaderboardTop(todayDate, LEADERBOARD_PAGE_SIZE, nextOffset);
+          const seen = new Set(merged.entries.map((e) => e.rank));
+          const appended = page.entries.filter((e) => !seen.has(e.rank));
+          merged = {
+            ...merged,
+            entries: [...merged.entries, ...appended].sort((a, b) => a.rank - b.rank),
+            total: page.total ?? merged.total,
+            nextOffset: page.nextOffset,
+            podium: merged.podium ?? page.podium,
+          };
+          if (page.entries.length === 0) break;
+          maxRank = merged.entries.length > 0 ? Math.max(...merged.entries.map((e) => e.rank)) : maxRank;
+          nextOffset = page.nextOffset;
+        } catch {
+          break;
+        }
+      }
+
+      return merged;
+    },
+    [todayDate]
+  );
+
   const refreshLeaderboard = useCallback(async () => {
     try {
       loadMoreEpochRef.current += 1;
@@ -80,17 +145,23 @@ function LeaderboardView() {
         fetchLeaderboardTopFresh(todayDate, LEADERBOARD_PAGE_SIZE, 0),
         fetchLeaderboardMeFresh(todayDate),
       ]);
-      setTopState({ status: 'loaded', data: top });
+      const filledTop = await prefillGapToRank(top, me?.rank ?? null);
+      setTopState({ status: 'loaded', data: filledTop });
       setMeState({ status: 'loaded', data: me });
     } catch {
       // Keep existing data on refresh failure
     }
-  }, [todayDate]);
+  }, [todayDate, prefillGapToRank]);
 
   // Auto-refresh on mount (every time modal opens)
   useEffect(() => {
     refreshLeaderboard();
   }, [refreshLeaderboard]);
+
+  useEffect(() => {
+    if (topState.status !== 'loaded') return;
+    writeSessionTopCache(todayDate, topState.data);
+  }, [topState, todayDate]);
 
   // Listen for leaderboardRefresh event (fired after puzzle completion)
   useEffect(() => {
@@ -99,35 +170,6 @@ function LeaderboardView() {
     });
     return unsubscribe;
   }, [refreshLeaderboard]);
-
-  // Prefetch entries around user's rank if beyond loaded range (eliminates delay on tap)
-  useEffect(() => {
-    if (meState.status !== 'loaded' || !meState.data?.rank) return;
-    if (topState.status !== 'loaded') return;
-
-    const myRank = meState.data.rank;
-    // Only prefetch if rank is beyond podium and not already loaded
-    if (myRank <= 3) return;
-
-    const alreadyLoaded = topState.data.entries.some(e => e.rank === myRank);
-    if (alreadyLoaded) return;
-
-    // Prefetch entries around user's rank
-    api.leaderboardAround(todayDate, myRank, 10)
-      .then((around) => {
-        setTopState((prev) => {
-          if (prev.status !== 'loaded') return prev;
-          const seen = new Set(prev.data.entries.map((e) => e.rank));
-          const newEntries = around.entries.filter((e) => !seen.has(e.rank));
-          if (newEntries.length === 0) return prev; // No new entries, don't update
-          const merged = [...prev.data.entries, ...newEntries].sort((a, b) => a.rank - b.rank);
-          return { ...prev, data: { ...prev.data, entries: merged } };
-        });
-      })
-      .catch(() => {
-        // Ignore prefetch failures - user can still tap and trigger fetch
-      });
-  }, [meState, topState.status, todayDate]); // Only depend on status, not full topState to avoid loops
 
   // Load viewer mode from cached account info (fast)
   useEffect(() => {
@@ -160,11 +202,7 @@ function LeaderboardView() {
         if (prev.status !== 'loaded') return prev;
         const seen = new Set(prev.data.entries.map((entry) => entry.rank));
         const appended = page.entries.filter((entry) => !seen.has(entry.rank));
-        let merged = prev.data.entries.concat(appended);
-        // Trim from top (lower ranks) if exceeding limit
-        if (merged.length > MAX_LOADED_ENTRIES) {
-          merged = merged.slice(-MAX_LOADED_ENTRIES);
-        }
+        const merged = prev.data.entries.concat(appended);
         const total = page.total ?? prev.data.total;
         const nextOffset =
           page.nextOffset ??
@@ -316,6 +354,7 @@ function LeaderboardView() {
         .then((me) => setMeState({ status: 'loaded', data: me }))
         .catch(() => null);
       fetchLeaderboardTopFresh(todayDate, LEADERBOARD_PAGE_SIZE, 0)
+        .then((top) => prefillGapToRank(top, result.rank ?? null))
         .then((top) => {
           loadMoreEpochRef.current += 1;
           loadingMoreRef.current = false;
@@ -331,7 +370,7 @@ function LeaderboardView() {
       console.error('[leaderboard submit failed]', { stage, code, status, message, err });
       setSubmitState('failed');
     }
-  }, [attemptsUsed, canSubmit, todayDate, todayResult]);
+  }, [attemptsUsed, canSubmit, prefillGapToRank, todayDate, todayResult]);
 
   const entries = topState.status === 'loaded' ? topState.data.entries : [];
   const hasMore = topState.status === 'loaded' && topState.data.nextOffset != null;
@@ -392,128 +431,13 @@ function LeaderboardView() {
   }, [rawRestEntries, myEntryData]);
 
   // Track loading state for bidirectional pagination
-  const [isLoadingUp, setIsLoadingUp] = useState(false);
   const [isLoadingDown, setIsLoadingDown] = useState(false);
-  const loadingUpRef = useRef(false);
   const loadingDownRef = useRef(false);
-
-  // Get the min and max ranks currently loaded (for detecting if we need upward pagination)
-  const minLoadedRank = useMemo(() => {
-    if (restEntries.length === 0) return null;
-    return Math.min(...restEntries.map(e => e.rank));
-  }, [restEntries]);
 
   const maxLoadedRank = useMemo(() => {
     if (restEntries.length === 0) return null;
     return Math.max(...restEntries.map(e => e.rank));
   }, [restEntries]);
-
-  // Detect gaps in loaded entries (where rank jumps by more than 1)
-  const gaps = useMemo(() => {
-    if (restEntries.length < 2) return [];
-    const result: { above: number; below: number }[] = [];
-    for (let i = 1; i < restEntries.length; i++) {
-      const prevRank = restEntries[i - 1].rank;
-      const currRank = restEntries[i].rank;
-      if (currRank - prevRank > 1) {
-        result.push({ above: prevRank, below: currRank });
-      }
-    }
-    return result;
-  }, [restEntries]);
-
-  // Track which gaps are being filled to prevent duplicate requests
-  const fillingGapsRef = useRef<Set<string>>(new Set());
-
-  // Fill a specific gap by loading entries from just above the "below" rank (scroll up into gap)
-  const fillGapFromBelow = useCallback(async (above: number, below: number) => {
-    const gapKey = `up-${above}-${below}`;
-    if (fillingGapsRef.current.has(gapKey)) return;
-    fillingGapsRef.current.add(gapKey);
-
-    try {
-      // Load 200 entries ending just before "below" rank
-      const targetOffset = Math.max(0, below - 4 - LEADERBOARD_PAGE_SIZE);
-      const page = await api.leaderboardTop(todayDate, LEADERBOARD_PAGE_SIZE, targetOffset);
-
-      setTopState((prev) => {
-        if (prev.status !== 'loaded') return prev;
-        const seen = new Set(prev.data.entries.map((e) => e.rank));
-        const newEntries = page.entries.filter((e) => !seen.has(e.rank));
-        if (newEntries.length === 0) return prev;
-        let merged = [...prev.data.entries, ...newEntries].sort((a, b) => a.rank - b.rank);
-        // Trim from bottom (higher ranks) if exceeding limit
-        if (merged.length > MAX_LOADED_ENTRIES) {
-          merged = merged.slice(0, MAX_LOADED_ENTRIES);
-        }
-        return { ...prev, data: { ...prev.data, entries: merged, total: page.total ?? prev.data.total } };
-      });
-    } catch {
-      // Ignore fill failures
-    } finally {
-      fillingGapsRef.current.delete(gapKey);
-    }
-  }, [todayDate]);
-
-  // Fill a specific gap by loading entries from just below the "above" rank (scroll down into gap)
-  const fillGapFromAbove = useCallback(async (above: number, below: number) => {
-    const gapKey = `down-${above}-${below}`;
-    if (fillingGapsRef.current.has(gapKey)) return;
-    fillingGapsRef.current.add(gapKey);
-
-    try {
-      // Load 200 entries starting just after "above" rank
-      const targetOffset = above - 3;
-      const page = await api.leaderboardTop(todayDate, LEADERBOARD_PAGE_SIZE, targetOffset);
-
-      setTopState((prev) => {
-        if (prev.status !== 'loaded') return prev;
-        const seen = new Set(prev.data.entries.map((e) => e.rank));
-        const newEntries = page.entries.filter((e) => !seen.has(e.rank));
-        if (newEntries.length === 0) return prev;
-        let merged = [...prev.data.entries, ...newEntries].sort((a, b) => a.rank - b.rank);
-        // Trim from top (lower ranks) if exceeding limit
-        if (merged.length > MAX_LOADED_ENTRIES) {
-          merged = merged.slice(-MAX_LOADED_ENTRIES);
-        }
-        return { ...prev, data: { ...prev.data, entries: merged, total: page.total ?? prev.data.total } };
-      });
-    } catch {
-      // Ignore fill failures
-    } finally {
-      fillingGapsRef.current.delete(gapKey);
-    }
-  }, [todayDate]);
-
-  // Load entries above current range using offset-based pagination (200 at a time)
-  const loadUp = useCallback(async () => {
-    if (loadingUpRef.current || !minLoadedRank || minLoadedRank <= 4) return;
-    loadingUpRef.current = true;
-    setIsLoadingUp(true);
-
-    try {
-      // Calculate offset to load entries before current min
-      const targetOffset = Math.max(0, minLoadedRank - 4 - LEADERBOARD_PAGE_SIZE);
-      const page = await api.leaderboardTop(todayDate, LEADERBOARD_PAGE_SIZE, targetOffset);
-
-      setTopState((prev) => {
-        if (prev.status !== 'loaded') return prev;
-        const seen = new Set(prev.data.entries.map((e) => e.rank));
-        const newEntries = page.entries.filter((e) => !seen.has(e.rank));
-        let merged = [...newEntries, ...prev.data.entries].sort((a, b) => a.rank - b.rank);
-        // Trim from bottom (higher ranks) if exceeding limit
-        if (merged.length > MAX_LOADED_ENTRIES) {
-          merged = merged.slice(0, MAX_LOADED_ENTRIES);
-        }
-        return { ...prev, data: { ...prev.data, entries: merged, total: page.total ?? prev.data.total } };
-      });
-    } catch {
-      // Ignore load failures
-    } finally {
-      loadingUpRef.current = false;
-      setIsLoadingUp(false);
-    }
-  }, [todayDate, minLoadedRank]);
 
   // Load entries below current range using offset-based pagination (200 at a time)
   const loadDown = useCallback(async () => {
@@ -531,11 +455,7 @@ function LeaderboardView() {
         if (prev.status !== 'loaded') return prev;
         const seen = new Set(prev.data.entries.map((e) => e.rank));
         const newEntries = page.entries.filter((e) => !seen.has(e.rank));
-        let merged = [...prev.data.entries, ...newEntries].sort((a, b) => a.rank - b.rank);
-        // Trim from top (lower ranks) if exceeding limit
-        if (merged.length > MAX_LOADED_ENTRIES) {
-          merged = merged.slice(-MAX_LOADED_ENTRIES);
-        }
+        const merged = [...prev.data.entries, ...newEntries].sort((a, b) => a.rank - b.rank);
         return { ...prev, data: { ...prev.data, entries: merged, total: page.total ?? prev.data.total } };
       });
     } catch {
@@ -545,26 +465,6 @@ function LeaderboardView() {
       setIsLoadingDown(false);
     }
   }, [todayDate, maxLoadedRank, totalCount]);
-
-  // Auto-fill small gaps (prefetch for smooth scrolling)
-  // Only fills if gap is small enough to not need scroll-based loading
-  useEffect(() => {
-    if (gaps.length === 0) return;
-    if (topState.status !== 'loaded') return;
-
-    const currentCount = topState.data.entries.length;
-    const firstGap = gaps[0];
-    const gapSize = firstGap.below - firstGap.above - 1;
-
-    // Only auto-fill small gaps (1 page or less)
-    // Larger gaps are filled incrementally via scroll
-    if (gapSize > LEADERBOARD_PAGE_SIZE) return;
-
-    // Skip if would exceed limit
-    if (currentCount + gapSize > MAX_LOADED_ENTRIES) return;
-
-    fillGapFromAbove(firstGap.above, firstGap.below);
-  }, [gaps, fillGapFromAbove, topState]);
 
   // Scroll handler for bidirectional pagination
   useEffect(() => {
@@ -585,44 +485,6 @@ function LeaderboardView() {
         loadDown();
       }
 
-      // Check for loading more at top (when scrolled near top AND there's a gap above)
-      // Only load up if minLoadedRank > 4 (meaning we jumped to a position)
-      if (scrollContainer.scrollTop <= LOAD_MORE_THRESHOLD_PX && minLoadedRank && minLoadedRank > 4) {
-        loadUp();
-      }
-
-      // Detect if we're near a gap and fill it incrementally
-      // Find visible entries by checking which elements are in view
-      if (gaps.length > 0) {
-        const listItems = listContainer.querySelectorAll('[data-rank]');
-        const containerRect = scrollContainer.getBoundingClientRect();
-        const viewTop = containerRect.top;
-        const viewBottom = containerRect.bottom;
-
-        for (const item of listItems) {
-          const rect = item.getBoundingClientRect();
-          // Check if item is visible (within viewport with some threshold)
-          if (rect.bottom >= viewTop - 100 && rect.top <= viewBottom + 100) {
-            const rank = parseInt(item.getAttribute('data-rank') || '0', 10);
-            if (!rank) continue;
-
-            // Check if this rank is at a gap boundary
-            for (const gap of gaps) {
-              // If visible entry is at top of gap (rank === above), load down into gap
-              if (rank === gap.above) {
-                fillGapFromAbove(gap.above, gap.below);
-                break;
-              }
-              // If visible entry is at bottom of gap (rank === below), load up into gap
-              if (rank === gap.below) {
-                fillGapFromBelow(gap.above, gap.below);
-                break;
-              }
-            }
-          }
-        }
-      }
-
       updateStickyPosition();
     };
 
@@ -632,7 +494,7 @@ function LeaderboardView() {
     return () => {
       scrollContainer.removeEventListener('scroll', handleScroll);
     };
-  }, [loadMore, loadUp, loadDown, topState.status, updateStickyPosition, minLoadedRank, gaps, fillGapFromAbove, fillGapFromBelow]);
+  }, [loadMore, loadDown, topState.status, updateStickyPosition]);
 
   const podiumByRank = useMemo(() => new Map(podium.map((p) => [p.rank, p])), [podium]);
   const first = podiumByRank.get(1);
@@ -648,6 +510,7 @@ function LeaderboardView() {
   // Scroll to user's position in the list, fetching nearby entries if needed
   const scrollToMyPosition = useCallback(async () => {
     if (!myEntryData?.rank || myEntryData.rank <= 3) return; // Podium users don't need this
+    if (myEntryData.rank > LEADERBOARD_MAX_ROWS) return;
     
     const rank = myEntryData.rank;
     
@@ -692,6 +555,8 @@ function LeaderboardView() {
   }, [myEntryData, topState, todayDate]);
 
   // Render user's row as a card (used both inline and sticky)
+  const canJumpToMyRow = !!(myEntryData?.rank && myEntryData.rank > 3 && myEntryData.rank <= LEADERBOARD_MAX_ROWS);
+
   const renderMyRow = (isSticky: boolean, position?: 'top' | 'bottom', rowRef?: React.Ref<HTMLDivElement>) => {
     if (!myEntryData) return null;
     if (isUserInPodium && !isSticky) return null; // Don't show inline duplicate for podium users, but allow sticky
@@ -714,17 +579,17 @@ function LeaderboardView() {
     const highlightClass = myEntryData.submitted ? styles.rowMeHighlight : styles.rowMePending;
 
     // Sticky rows are tappable to scroll to position
-    const handleClick = isSticky ? scrollToMyPosition : undefined;
-    const clickableClass = isSticky ? styles.rowClickable : '';
+    const handleClick = isSticky && canJumpToMyRow ? scrollToMyPosition : undefined;
+    const clickableClass = isSticky && canJumpToMyRow ? styles.rowClickable : '';
 
     return (
       <div
         ref={isSticky ? rowRef : myRowRef}
         className={`${styles.row} ${highlightClass} ${stickyClass} ${clickableClass}`.trim()}
         onClick={handleClick}
-        role={isSticky ? 'button' : undefined}
-        tabIndex={isSticky ? 0 : undefined}
-        onKeyDown={isSticky ? (e) => { if (e.key === 'Enter' || e.key === ' ') scrollToMyPosition(); } : undefined}
+        role={isSticky && canJumpToMyRow ? 'button' : undefined}
+        tabIndex={isSticky && canJumpToMyRow ? 0 : undefined}
+        onKeyDown={isSticky && canJumpToMyRow ? (e) => { if (e.key === 'Enter' || e.key === ' ') scrollToMyPosition(); } : undefined}
       >
         <div className={`${styles.rowRank} ${rankColorClass}`.trim()}>{rankDisplay}</div>
         <div className={styles.rowName}>{myEntryData.displayName}</div>
@@ -870,13 +735,6 @@ function LeaderboardView() {
         
         {topState.status === 'loaded' && restEntries.length > 0 && (
           <div className={styles.list} ref={listRef}>
-            {/* Loading indicator at top */}
-            {isLoadingUp && (
-              <div className={styles.loadMoreRow}>
-                <div className={styles.loadMoreSpinner} />
-              </div>
-            )}
-            
             {restEntries.map((e) => {
               // For entries that are isMe, we render the highlighted version with the ref
               if (e.isMe) {
@@ -927,9 +785,6 @@ function LeaderboardView() {
               </div>
             )}
 
-            {!hasMore && !isLoadingMore && !isLoadingDown && totalCount != null && maxLoadedRank && maxLoadedRank >= totalCount && (
-              <div className={styles.loadMoreEnd}>End of leaderboard · {totalCount} players</div>
-            )}
           </div>
         )}
 

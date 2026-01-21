@@ -19,14 +19,14 @@ function StatsModal({ stats, onClose }: StatsModalProps) {
     fetchMeFresh().then(setMe).catch(() => null);
   }, []);
 
-  const isAccountStats = me?.mode === 'user' && !!me.stats;
-  const totalPlayed = isAccountStats ? me.stats.totalPlayed : stats.totalGamesPlayed;
-  const totalWins = isAccountStats ? me.stats.totalWins : stats.totalGamesWon;
+  const accountStats = me?.mode === 'user' ? me.stats : null;
+  const totalPlayed = accountStats ? accountStats.totalPlayed : stats.totalGamesPlayed;
+  const totalWins = accountStats ? accountStats.totalWins : stats.totalGamesWon;
   const winRate = totalPlayed > 0 ? Math.round((totalWins / totalPlayed) * 100) : 0;
 
   const times = stats.history.filter(h => h.completed && h.timeMs > 0).map(h => h.timeMs);
   const localAvgTimeMs = times.length > 0 ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : 0;
-  const avgTimeMs = isAccountStats ? (me.stats.avgSolveTimeMs ?? 0) : localAvgTimeMs;
+  const avgTimeMs = accountStats ? (accountStats.avgSolveTimeMs ?? 0) : localAvgTimeMs;
 
   const podium1 = stats.history.reduce((acc, game) => acc + (game.leaderboardRank === 1 ? 1 : 0), 0);
   const podium2 = stats.history.reduce((acc, game) => acc + (game.leaderboardRank === 2 ? 1 : 0), 0);
@@ -34,7 +34,7 @@ function StatsModal({ stats, onClose }: StatsModalProps) {
 
   const displayName = me?.displayName || 'Guest Trainer';
   const profile = me?.profile || { characterId: 'default', skinId: 'default' };
-  const displayStreak = isAccountStats ? me.stats.playedStreak : stats.currentStreak;
+  const displayStreak = accountStats ? accountStats.playedStreak : stats.currentStreak;
 
   const recentHistory = useMemo(() => stats.history.slice(-20).reverse(), [stats.history]);
 
@@ -63,7 +63,7 @@ function StatsModal({ stats, onClose }: StatsModalProps) {
           <div className={styles.section}>
             <div className={styles.sectionTitle}>
               Trophy Room
-              {isAccountStats && <span className={styles.sectionNote}>(This device)</span>}
+              {accountStats && <span className={styles.sectionNote}>(This device)</span>}
             </div>
               <div className={styles.miniPodium}>
                 <div className={styles.podiumColumn}>
@@ -108,7 +108,7 @@ function StatsModal({ stats, onClose }: StatsModalProps) {
               </div>
               <div className={styles.statChip}>
                 <span className={styles.statValue}>{stats.maxStreak}</span>
-                <span className={styles.statLabel}>{isAccountStats ? 'Max (This device)' : 'Max'}</span>
+                <span className={styles.statLabel}>{accountStats ? 'Max (This device)' : 'Max'}</span>
               </div>
               <div className={styles.statChip}>
                 <span className={styles.statValue}>{avgTimeMs > 0 ? formatTime(avgTimeMs) : '—'}</span>
@@ -122,7 +122,7 @@ function StatsModal({ stats, onClose }: StatsModalProps) {
             <div className={styles.historySection}>
               <div className={styles.sectionTitle}>
                 Recent Games
-                {isAccountStats && <span className={styles.sectionNote}>(This device)</span>}
+                {accountStats && <span className={styles.sectionNote}>(This device)</span>}
               </div>
               <div className={styles.historyList}>
                 {recentHistory.map((game, index) => (

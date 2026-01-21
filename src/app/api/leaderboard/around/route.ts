@@ -15,6 +15,8 @@ import { getNewYorkDateString } from '@/game/puzzleGenerator';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
+const LEADERBOARD_MAX_ROWS = 1000;
+
 function isValidNyDateString(value: string | null): value is string {
   if (!value) return false;
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
@@ -48,8 +50,16 @@ export async function GET(request: Request) {
     const me = await resolveSubjectIdentity(request);
     const mySubjectKey = subjectKeyFor({ userId: me.subjectType === 'user' ? me.subjectId : null, guestId: me.guestId });
 
+    if (rank > LEADERBOARD_MAX_ROWS) {
+      const res = NextResponse.json({ date: dateParam, entries: [] }, { headers: { 'Cache-Control': 'no-store' } });
+      if (me.setGuestCookie) {
+        setGuestIdCookie(res, me.guestId);
+      }
+      return res;
+    }
+
     const start = Math.max(0, rank - 1 - windowSize);
-    const stop = rank - 1 + windowSize;
+    const stop = Math.min(rank - 1 + windowSize, LEADERBOARD_MAX_ROWS - 1);
 
     const zkey = leaderboardZsetKey(dateParam);
     const raw = await redis.zrange<(string | number)[]>(zkey, start, stop, { withScores: true });

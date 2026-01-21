@@ -46,17 +46,19 @@ function buildAllDates(min: string, max: string): string[] {
 
 export default function HallOfFameView({ initialDate }: HallOfFameViewProps) {
   const todayDate = useMemo(() => getNewYorkDateString(), []);
-  
+  const yesterdayDate = useMemo(() => addDays(todayDate, -1), [todayDate]);
+  // Hall of Fame only shows yesterday and earlier - never today
+  const maxDate = yesterdayDate >= LAUNCH_DATE_NY ? yesterdayDate : LAUNCH_DATE_NY;
+
   const getInitialDate = useCallback(() => {
     if (isValidNyDateString(initialDate)) {
-      return clampDateToBounds(initialDate, LAUNCH_DATE_NY, todayDate);
+      return clampDateToBounds(initialDate, LAUNCH_DATE_NY, maxDate);
     }
-    const yesterday = addDays(todayDate, -1);
-    return yesterday >= LAUNCH_DATE_NY ? yesterday : todayDate;
-  }, [initialDate, todayDate]);
+    return maxDate;
+  }, [initialDate, maxDate]);
 
-  // All dates from launch to today - stable array
-  const allDates = useMemo(() => buildAllDates(LAUNCH_DATE_NY, todayDate), [todayDate]);
+  // All dates from launch to yesterday - stable array (never includes today)
+  const allDates = useMemo(() => buildAllDates(LAUNCH_DATE_NY, maxDate), [maxDate]);
   
   const [visibleDate, setVisibleDate] = useState(getInitialDate);
   const visibleIndex = allDates.indexOf(visibleDate);
@@ -68,7 +70,7 @@ export default function HallOfFameView({ initialDate }: HallOfFameViewProps) {
   >({});
 
   const canPrev = visibleDate > LAUNCH_DATE_NY;
-  const canNext = visibleDate < todayDate;
+  const canNext = visibleDate < maxDate;
 
   const trackRef = useRef<HTMLDivElement>(null);
   const didMount = useRef(false);
@@ -109,9 +111,9 @@ export default function HallOfFameView({ initialDate }: HallOfFameViewProps) {
       const prev = addDays(visibleDate, -i);
       const next = addDays(visibleDate, i);
       if (prev >= LAUNCH_DATE_NY) loadPodium(prev);
-      if (next <= todayDate) loadPodium(next);
+      if (next <= maxDate) loadPodium(next);
     }
-  }, [visibleDate, loadPodium, todayDate]);
+  }, [visibleDate, loadPodium, maxDate]);
 
   // Initial prefetch
   useEffect(() => {
@@ -119,12 +121,12 @@ export default function HallOfFameView({ initialDate }: HallOfFameViewProps) {
     const datesToPrefetch: string[] = [];
     for (let i = -5; i <= 5; i++) {
       const d = addDays(initial, i);
-      if (d >= LAUNCH_DATE_NY && d <= todayDate) {
+      if (d >= LAUNCH_DATE_NY && d <= maxDate) {
         datesToPrefetch.push(d);
       }
     }
     prefetchHallOfFame(datesToPrefetch);
-  }, [getInitialDate, todayDate]);
+  }, [getInitialDate, maxDate]);
 
   // Initial scroll position (no animation)
   useLayoutEffect(() => {
@@ -240,7 +242,7 @@ export default function HallOfFameView({ initialDate }: HallOfFameViewProps) {
         </button>
         <div className={styles.dayTitle}>
           <div className={styles.dayTitleMain}>Mazle #{puzzleNumber}</div>
-          <div className={styles.dayTitleSub}>{visibleDate === todayDate ? 'Today' : formatDateDisplay(visibleDate)}</div>
+          <div className={styles.dayTitleSub}>{visibleDate === yesterdayDate ? 'Yesterday' : formatDateDisplay(visibleDate)}</div>
         </div>
         <button type="button" className={styles.navButton} onClick={navNext} disabled={!canNext} aria-label="Next day">
           <svg width="20" height="16" viewBox="0 0 20 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

@@ -16,6 +16,8 @@ import { getNewYorkDateString } from '@/game/puzzleGenerator';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
+const LEADERBOARD_MAX_ROWS = 1000;
+
 function isValidNyDateString(value: string | null): value is string {
   if (!value) return false;
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
@@ -52,11 +54,13 @@ export async function GET(request: Request) {
 
     const zkey = leaderboardZsetKey(dateParam);
     const start = offset;
-    const end = offset + limit - 1;
+    const end = Math.min(offset + limit - 1, LEADERBOARD_MAX_ROWS - 1);
+    const shouldFetch = start < LEADERBOARD_MAX_ROWS && end >= start;
     const [raw, total] = await Promise.all([
-      redis.zrange<(string | number)[]>(zkey, start, end, { withScores: true }),
+      shouldFetch ? redis.zrange<(string | number)[]>(zkey, start, end, { withScores: true }) : Promise.resolve([]),
       redis.zcard(zkey),
     ]);
+    const cappedTotal = Math.min(total, LEADERBOARD_MAX_ROWS);
 
     const members: string[] = [];
     const scores: number[] = [];
@@ -141,10 +145,10 @@ export async function GET(request: Request) {
           })
         : undefined;
 
-    const nextOffset = offset + entries.length < total ? offset + entries.length : null;
+    const nextOffset = offset + entries.length < cappedTotal ? offset + entries.length : null;
 
     const res = NextResponse.json(
-      { date: dateParam, entries, podium, total, nextOffset },
+      { date: dateParam, entries, podium, total: cappedTotal, nextOffset },
       { headers: { 'Cache-Control': 'no-store' } }
     );
     if (me.setGuestCookie) {

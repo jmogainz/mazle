@@ -3,6 +3,7 @@ import { ensureDbSchema, getDbPool } from '@/lib/server/db';
 import { ensureDevSystemSeeded } from '@/lib/server/devSeed';
 import { getSessionUserId } from '@/lib/server/identity';
 import { jsonError } from '@/lib/server/responses';
+import { getNewYorkDateString } from '@/game/puzzleGenerator';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -17,6 +18,12 @@ export async function GET(request: Request) {
   const dateParam = url.searchParams.get('date');
   if (!isValidNyDateString(dateParam)) {
     return jsonError(400, 'INVALID_DATE', 'Missing or invalid date.');
+  }
+
+  // Hall of Fame only shows yesterday and earlier - never today
+  const todayNy = getNewYorkDateString();
+  if (dateParam >= todayNy) {
+    return jsonError(400, 'DATE_NOT_AVAILABLE', 'Hall of Fame is only available for past days.');
   }
 
   try {

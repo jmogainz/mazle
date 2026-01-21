@@ -765,6 +765,8 @@
   opacity: 1;
   transition: opacity 0.3s ease-out;
   margin-bottom: var(--game-gap-top);
+  position: relative;
+  z-index: 101;
 }
 
 /* Hide scoreboard during initial load if puzzle already played today */

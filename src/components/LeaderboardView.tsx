@@ -630,6 +630,7 @@ function LeaderboardView() {
 
   // Compute user's rank position for inline rendering
   const myRank = myEntryData?.rank;
+  const showPostLoadUi = topState.status === 'loaded' && meState.status === 'loaded';
 
   return (
     <div className={styles.grid}>
@@ -703,7 +704,7 @@ function LeaderboardView() {
 
       <PullToRefresh onRefresh={refreshLeaderboard} className={styles.scrollArea} edgeFade edgeFadeSelector={`.${styles.row}:not(.${styles.rowMeHighlight}):not(.${styles.rowMePending})`}>
         {/* Sticky row at top when scrolled past user's position */}
-        {myEntryData && renderStickyRow('top')}
+        {showPostLoadUi && myEntryData && renderStickyRow('top')}
         
         {topState.status === 'loaded' && restEntries.length > 0 && (
           <div className={styles.list} ref={listRef}>
@@ -793,11 +794,11 @@ function LeaderboardView() {
         )}
 
         {/* Sticky row at bottom when user's position is below viewport */}
-        {myEntryData && renderStickyRow('bottom')}
+        {showPostLoadUi && myEntryData && renderStickyRow('bottom')}
       </PullToRefresh>
       
       {/* Submit prompt for users who haven't submitted yet */}
-      {renderSubmitPrompt()}
+      {showPostLoadUi && renderSubmitPrompt()}
       
       {submitState === 'failed' && (
         <div className={styles.error} style={{ marginTop: '0.5rem' }}>

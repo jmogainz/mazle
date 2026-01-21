@@ -23,9 +23,9 @@ const SKINS: readonly SkinCatalogEntry[] = [
   // Streak unlock
   { id: 'royal', name: 'Royal', face: '#4f2db3', edge: '#a78bfa', minTier: 'account', requiresUnlock: true },
 
-  // Mazle+ placeholders (visible to all, locked until launch)
-  { id: 'mystery_plus_1', name: '???', face: '#c8d4dd', edge: '#8b98a5', minTier: 'guest', comingSoon: true },
-  { id: 'mystery_plus_2', name: '???', face: '#d1d7de', edge: '#9aa4af', minTier: 'guest', comingSoon: true },
+  // Mazle+ placeholders (hidden from carousel)
+  { id: 'mystery_plus_1', name: '???', face: '#c8d4dd', edge: '#8b98a5', minTier: 'guest', comingSoon: true, hidden: true },
+  { id: 'mystery_plus_2', name: '???', face: '#d1d7de', edge: '#9aa4af', minTier: 'guest', comingSoon: true, hidden: true },
 
   // Mazle+ tier
   { id: 'arctic', name: 'Arctic', face: '#ffffff', edge: '#b8e0f0', minTier: 'plus', hidden: true },

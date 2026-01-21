@@ -26,6 +26,9 @@ export type UserStats = {
   totalPlayed: number;
   totalWins: number;
   avgSolveTimeMs: number | null;
+  goldCount: number;
+  silverCount: number;
+  bronzeCount: number;
 };
 
 const ENTITLEMENT_SKIN_ROYAL = 'skin_royal';
@@ -384,9 +387,28 @@ export async function computeUserStats(userId: string): Promise<UserStats> {
   const playedStreak = computePlayedStreak(rows.map((r) => r.date));
   const winStreak = computeWinStreak(rows.map((r) => ({ date: r.date, completed: r.completed })));
 
+  // Query podium counts from hall of fame snapshot (final positions, not submission-time ranks)
+  const podiumRes = await pool.query<{
+    gold_count: string;
+    silver_count: string;
+    bronze_count: string;
+  }>(
+    `select
+       sum(case when rank = 1 then 1 else 0 end)::text as gold_count,
+       sum(case when rank = 2 then 1 else 0 end)::text as silver_count,
+       sum(case when rank = 3 then 1 else 0 end)::text as bronze_count
+     from leaderboard_podium
+     where user_id=$1`,
+    [userId]
+  );
+
+  const goldCount = Number(podiumRes.rows[0]?.gold_count ?? '0');
+  const silverCount = Number(podiumRes.rows[0]?.silver_count ?? '0');
+  const bronzeCount = Number(podiumRes.rows[0]?.bronze_count ?? '0');
+
   maybeGrantRoyalSkin(userId, playedStreak).catch(() => null);
 
-  return { playedStreak, winStreak, totalPlayed, totalWins, avgSolveTimeMs };
+  return { playedStreak, winStreak, totalPlayed, totalWins, avgSolveTimeMs, goldCount, silverCount, bronzeCount };
 }
 
 function computePlayedStreak(datesDesc: string[]): number {

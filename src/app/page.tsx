@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { usePathname, useRouter } from 'next/navigation';
 import { Header, GameUI, ShareCard, StatsModal, HelpModal, ErrorBoundary, Loader, DevTools, AdSlot } from '@/components';
+import LeaderboardFallback from '@/components/LeaderboardFallback';
 import UiDevModal from '@/components/UiDevModal';
 import { HELP_MENU_HASH } from '@/components/helpMenuHash';
 import MoreMenuModal from '@/components/MoreMenuModal';
@@ -14,66 +15,8 @@ import HallOfFameView from '@/components/HallOfFameView';
 // Lazy load LeaderboardView for faster modal open
 const LeaderboardView = dynamic(() => import('@/components/LeaderboardView'), {
   ssr: false,
-  loading: () => <LeaderboardSkeleton />,
+  loading: () => <LeaderboardFallback />,
 });
-
-function LeaderboardSkeleton() {
-  const shimmerStyle: React.CSSProperties = {
-    background: 'linear-gradient(90deg, var(--color-surface) 25%, rgba(255, 255, 255, 0.15) 50%, var(--color-surface) 75%)',
-    backgroundSize: '200% 100%',
-    animation: 'shimmer 1.5s ease-in-out infinite',
-    borderRadius: '4px',
-  };
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      <style>{`@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }`}</style>
-      {/* Day title skeleton */}
-      <div style={{ textAlign: 'center', marginBottom: '0.5rem' }}>
-        <div style={{
-          ...shimmerStyle,
-          width: '120px',
-          height: '1.5rem',
-          borderRadius: '6px',
-          margin: '0 auto 0.25rem'
-        }} />
-        <div style={{
-          ...shimmerStyle,
-          width: '60px',
-          height: '0.9rem',
-          margin: '0 auto',
-        }} />
-      </div>
-      {/* Podium skeleton */}
-      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: '0.75rem', padding: '0.5rem 0 1rem' }}>
-        {[45, 60, 35].map((height, i) => (
-          <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '30%' }}>
-            <div style={{ ...shimmerStyle, width: '40px', height: '40px', borderRadius: '50%', marginBottom: '0.5rem' }} />
-            <div style={{ ...shimmerStyle, width: '70%', height: '0.9rem', marginBottom: '0.25rem' }} />
-            <div style={{ ...shimmerStyle, width: '100%', height: `${height}px`, borderRadius: '8px 8px 0 0' }} />
-          </div>
-        ))}
-      </div>
-      {/* List skeleton */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.75rem',
-            padding: '0.75rem',
-            ...shimmerStyle,
-            borderRadius: '8px'
-          }}>
-            <div style={{ width: '32px', height: '1rem', background: 'var(--color-border)', borderRadius: '4px' }} />
-            <div style={{ flex: 1, height: '1rem', background: 'var(--color-border)', borderRadius: '4px' }} />
-            <div style={{ width: '50px', height: '1rem', background: 'var(--color-border)', borderRadius: '4px' }} />
-            <div style={{ width: '28px', height: '1rem', background: 'var(--color-border)', borderRadius: '4px' }} />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 import { api } from '@/lib/api';
 import { cachedApi, fetchMeFresh, invalidateMeCache, prefetchAccount, prefetchArchiveDays, prefetchHallOfFame, prefetchLeaderboard, readCachedMe } from '@/lib/api/cached';
 import { addDays } from '@/lib/date';

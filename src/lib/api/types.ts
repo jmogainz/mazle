@@ -21,6 +21,9 @@ export type UserStats = {
   totalPlayed: number;
   totalWins: number;
   avgSolveTimeMs: number | null;
+  goldCount: number;
+  silverCount: number;
+  bronzeCount: number;
 };
 
 export type MeResponse = {

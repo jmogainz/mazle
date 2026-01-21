@@ -28,9 +28,10 @@ function StatsModal({ stats, onClose }: StatsModalProps) {
   const localAvgTimeMs = times.length > 0 ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : 0;
   const avgTimeMs = accountStats ? (accountStats.avgSolveTimeMs ?? 0) : localAvgTimeMs;
 
-  const podium1 = stats.history.reduce((acc, game) => acc + (game.leaderboardRank === 1 ? 1 : 0), 0);
-  const podium2 = stats.history.reduce((acc, game) => acc + (game.leaderboardRank === 2 ? 1 : 0), 0);
-  const podium3 = stats.history.reduce((acc, game) => acc + (game.leaderboardRank === 3 ? 1 : 0), 0);
+  // Podium counts from hall of fame snapshot (only shown for logged-in users)
+  const podium1 = accountStats?.goldCount ?? 0;
+  const podium2 = accountStats?.silverCount ?? 0;
+  const podium3 = accountStats?.bronzeCount ?? 0;
 
   const displayName = me?.displayName || 'Guest Trainer';
   const profile = me?.profile || { characterId: 'default', skinId: 'default' };
@@ -60,10 +61,10 @@ function StatsModal({ stats, onClose }: StatsModalProps) {
         </div>
 
         <div className={styles.scrollableContent}>
+          {accountStats && (
           <div className={styles.section}>
             <div className={styles.sectionTitle}>
               Trophy Room
-              {accountStats && <span className={styles.sectionNote}>(This device)</span>}
             </div>
               <div className={styles.miniPodium}>
                 <div className={styles.podiumColumn}>
@@ -89,6 +90,7 @@ function StatsModal({ stats, onClose }: StatsModalProps) {
                 </div>
               </div>
             </div>
+          )}
 
           {/* Stats Grid */}
           <div className={styles.section} style={{ marginTop: '1.5rem' }}>

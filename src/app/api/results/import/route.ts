@@ -15,8 +15,16 @@ type Body = {
     timeMs?: number;
     attemptsUsed?: number;
     attemptScores?: number[];
-    attempts?: unknown;
+    attempts?: AttemptPayload[] | null;
   }>;
+};
+
+type AttemptPayload = {
+  moveCount: number;
+  correctMoves?: number;
+  deviationIndex?: number;
+  failedAt?: { x: number; y: number } | null;
+  path?: Array<{ x: number; y: number }>;
 };
 
 export async function POST(request: Request) {

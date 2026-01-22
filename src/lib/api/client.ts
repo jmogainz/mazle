@@ -1,4 +1,5 @@
 import { fetchJson } from './http';
+import { getGuestDisplayName } from '@/utils/storage';
 import type {
   ArchiveDaysResponse,
   ArchiveOfferResponse,
@@ -28,9 +29,21 @@ import type {
 } from './types';
 
 export const api = {
-  me: async (): Promise<MeResponse> => fetchJson('/api/me', { method: 'GET' }),
+  me: async (): Promise<MeResponse> => {
+    const guestName = getGuestDisplayName();
+    return fetchJson('/api/me', {
+      method: 'GET',
+      headers: guestName ? { 'x-guest-name': guestName } : undefined,
+    });
+  },
 
-  guest: async (): Promise<GuestResponse> => fetchJson('/api/guest', { method: 'POST' }),
+  guest: async (): Promise<GuestResponse> => {
+    const guestName = getGuestDisplayName();
+    return fetchJson('/api/guest', {
+      method: 'POST',
+      headers: guestName ? { 'x-guest-name': guestName } : undefined,
+    });
+  },
 
   claim: async (body: ClaimRequest): Promise<ClaimResponse> =>
     fetchJson('/api/claim', {

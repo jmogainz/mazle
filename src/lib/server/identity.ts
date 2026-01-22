@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { getToken } from 'next-auth/jwt';
 import { ensureDbSchema, getDbPool } from './db';
 import { env } from './env';
-import { ensureUserSettings, migrateGuestDailyResults } from './account';
+import { ensureUserSettings } from './account';
 import { getLeaderboardRedis } from './redis';
 import {
   encodeLeaderboardScore,
@@ -11,8 +11,16 @@ import {
   LB_NAMES_KEY,
   makeLeaderboardMember,
 } from './leaderboard';
-import { getGuestProfile, guestDisplayNameExists, reserveGuestDisplayName, saveGuestProfile } from './guestStore';
+import {
+  getGuestDisplayNameOwner,
+  getGuestProfile,
+  guestDisplayNameExists,
+  refreshGuestDisplayNameReservation,
+  reserveGuestDisplayName,
+  saveGuestProfile,
+} from './guestStore';
 import { randomDisplayNameCandidate } from './displayNames';
+import { isInappropriateDisplayName, isValidDisplayName, normalizeDisplayName } from './displayNameValidation';
 
 export type MeIdentity = {
   mode: 'guest' | 'user';
@@ -86,6 +94,28 @@ async function generateUniqueDisplayNameForGuest(guestId: string): Promise<strin
   throw new Error('Failed to allocate guest display name');
 }
 
+function sanitizePreferredGuestName(raw: string | null): string | null {
+  if (!raw || typeof raw !== 'string') return null;
+  const normalized = normalizeDisplayName(raw);
+  if (!isValidDisplayName(normalized)) return null;
+  if (isInappropriateDisplayName(normalized)) return null;
+  return normalized;
+}
+
+async function tryReservePreferredGuestName(preferredName: string | null, guestId: string): Promise<string | null> {
+  if (!preferredName) return null;
+  if (await isUserDisplayNameTaken(preferredName)) return null;
+  const owner = await getGuestDisplayNameOwner(preferredName);
+  if (owner && owner !== guestId) return null;
+  if (!owner) {
+    const reserved = await reserveGuestDisplayName(preferredName, guestId);
+    if (!reserved) return null;
+  } else {
+    await refreshGuestDisplayNameReservation(preferredName);
+  }
+  return preferredName;
+}
+
 export async function getSessionUserId(request: Request): Promise<string | null> {
   const secret = env('AUTH_SECRET') || env('NEXTAUTH_SECRET');
   if (!secret) return null;
@@ -98,7 +128,11 @@ export function subjectKeyFor(identity: { userId: string | null; guestId: string
   return identity.userId ? `user:${identity.userId}` : `guest:${identity.guestId}`;
 }
 
-async function getOrCreateGuest(guestIdCandidate: string | null): Promise<{ guestId: string; displayName: string; setCookie: boolean }> {
+async function getOrCreateGuest(
+  guestIdCandidate: string | null,
+  preferredName: string | null
+): Promise<{ guestId: string; displayName: string; setCookie: boolean }> {
+  const preferred = sanitizePreferredGuestName(preferredName);
   if (guestIdCandidate && isUuid(guestIdCandidate)) {
     const existing = await getGuestProfile(guestIdCandidate);
     if (existing) {
@@ -106,14 +140,15 @@ async function getOrCreateGuest(guestIdCandidate: string | null): Promise<{ gues
     }
     
     // Guest profile expired in Redis but the guest ID is still valid from cookie.
-    // Recreate the profile so we can migrate their data (guest_daily_results uses guest_id).
-    const displayName = await generateUniqueDisplayNameForGuest(guestIdCandidate);
+    const reclaimed = await tryReservePreferredGuestName(preferred, guestIdCandidate);
+    const displayName = reclaimed ?? (await generateUniqueDisplayNameForGuest(guestIdCandidate));
     await saveGuestProfile(guestIdCandidate, displayName);
     return { guestId: guestIdCandidate, displayName, setCookie: false };
   }
 
   const guestId = crypto.randomUUID();
-  const displayName = await generateUniqueDisplayNameForGuest(guestId);
+  const reclaimed = await tryReservePreferredGuestName(preferred, guestId);
+  const displayName = reclaimed ?? (await generateUniqueDisplayNameForGuest(guestId));
   await saveGuestProfile(guestId, displayName);
   return { guestId, displayName, setCookie: true };
 }
@@ -163,10 +198,7 @@ async function linkGuestToUser(userId: string, guestId: string): Promise<void> {
     console.log(`[LINK] migrateTodayLeaderboardIfPresent error:`, e);
     return null;
   });
-  await migrateGuestDailyResults(guestId, userId).catch((e) => {
-    console.log(`[LINK] migrateGuestDailyResults error:`, e);
-    return null;
-  });
+  // Guest history is stored locally and imported client-side.
   
   // Auto-submit today's result if user has auto-submit enabled and result exists but wasn't submitted
   await autoSubmitTodayIfEnabled({ userId, userDisplayName }).catch((e) => {
@@ -197,8 +229,9 @@ export async function resolveMeIdentity(request: Request): Promise<MeIdentity> {
   await ensureDbSchema();
 
   const guestCookie = (request as any).cookies?.get?.(GUEST_COOKIE)?.value as string | undefined;
+  const preferredGuestName = request.headers.get('x-guest-name');
   console.log(`[RESOLVE] Guest cookie: ${guestCookie ?? 'none'}`);
-  const guest = await getOrCreateGuest(guestCookie ?? null);
+  const guest = await getOrCreateGuest(guestCookie ?? null, preferredGuestName);
   console.log(`[RESOLVE] Guest ID: ${guest.guestId}, setCookie: ${guest.setCookie}`);
 
   const userId = await getSessionUserId(request);

@@ -1,5 +1,6 @@
 import { api } from './index';
 import { setPrefs } from '@/lib/prefs';
+import { setGuestDisplayName } from '@/utils/storage';
 import type {
   ArchiveDaysResponse,
   HallOfFamePodiumResponse,
@@ -140,10 +141,17 @@ function syncMeSettingsToPrefs(me: MeResponse): void {
   }
 }
 
+function syncGuestNameToStorage(me: MeResponse): void {
+  if (me.mode !== 'guest') return;
+  if (typeof me.displayName !== 'string' || me.displayName.length === 0) return;
+  setGuestDisplayName(me.displayName);
+}
+
 export const cachedApi = {
   me: async (): Promise<MeResponse> => {
     const me = await fetchCached('me', () => api.me(), ME_TTL_MS);
     syncMeSettingsToPrefs(me);
+    syncGuestNameToStorage(me);
     return me;
   },
 
@@ -175,6 +183,7 @@ export const cachedApi = {
 export async function fetchMeFresh(): Promise<MeResponse> {
   const me = await fetchFresh('me', () => api.me(), ME_TTL_MS);
   syncMeSettingsToPrefs(me);
+  syncGuestNameToStorage(me);
   return me;
 }
 

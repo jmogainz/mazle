@@ -7,6 +7,7 @@ const DAILY_KEY = 'mazle_daily';
 const PUZZLE_CACHE_KEY = 'mazle_puzzle_cache_v1';
 const IN_PROGRESS_KEY = 'mazle_in_progress_v1';
 const DEV_STATS_SEEDED_KEY = 'mazle_dev_seeded_stats_v1';
+const GUEST_NAME_KEY = 'mazle_guest_display_name_v1';
 const STORAGE_SCOPE_KEY = 'mazle_storage_scope_v1';
 const STORAGE_SCOPE_CHANGED_EVENT = 'mazle_storage_scope_changed_v1';
 const DEFAULT_SCOPE = 'guest';
@@ -54,6 +55,22 @@ function removeRaw(key: string): void {
   } catch {
     // ignore
   }
+}
+
+export function getGuestDisplayName(): string | null {
+  const raw = readRaw(GUEST_NAME_KEY);
+  if (!raw || typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+export function setGuestDisplayName(name: string | null): void {
+  if (typeof window === 'undefined') return;
+  if (!name || typeof name !== 'string' || name.trim().length === 0) {
+    removeRaw(GUEST_NAME_KEY);
+    return;
+  }
+  writeRaw(GUEST_NAME_KEY, name.trim());
 }
 
 function readScopedJson<T>(base: string, scope?: StorageScope): T | null {

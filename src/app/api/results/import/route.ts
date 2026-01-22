@@ -3,6 +3,7 @@ import { resolveMeIdentity } from '@/lib/server/identity';
 import { setGuestIdCookie } from '@/lib/server/cookies';
 import { jsonError, readJsonBody } from '@/lib/server/responses';
 import { importDailyResults } from '@/lib/server/account';
+import { getGuestMigrationOwner, markGuestMigrated } from '@/lib/server/guestStore';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -50,7 +51,28 @@ export async function POST(request: Request) {
   }));
 
   try {
+    let migrationOwner: string | null = null;
+    try {
+      migrationOwner = await getGuestMigrationOwner(me.guestId);
+    } catch {
+      migrationOwner = null;
+    }
+
+    if (migrationOwner && migrationOwner !== me.userId) {
+      const res = NextResponse.json(
+        { ok: true, imported: 0, skipped: normalized.length },
+        { headers: { 'Cache-Control': 'no-store' } }
+      );
+      if (me.setGuestCookie) {
+        setGuestIdCookie(res, me.guestId);
+      }
+      return res;
+    }
+
     const result = await importDailyResults(me.userId, normalized);
+    if (result.imported + result.skipped > 0) {
+      markGuestMigrated(me.guestId, me.userId).catch(() => null);
+    }
     const res = NextResponse.json(
       { ok: true, imported: result.imported, skipped: result.skipped },
       { headers: { 'Cache-Control': 'no-store' } }

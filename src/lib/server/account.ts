@@ -1,12 +1,7 @@
 import { addDays } from '@/lib/date';
 import { getNewYorkDateString, LAUNCH_DATE_NY } from '@/game/puzzleGenerator';
 import { ensureDbSchema, getDbPool } from './db';
-import { 
-  getGuestDailyResults, 
-  getGuestDailyResult, 
-  recordGuestDailyResult as recordGuestDailyResultRedis,
-  deleteGuestData,
-} from './guestStore';
+import { getGuestProfile } from './guestStore';
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 
@@ -241,25 +236,22 @@ export async function recordGuestDailyResult(
     throw new Error('DATE_NOT_ALLOWED');
   }
 
+  // Best-effort refresh for the guest profile TTL; no guest stats are stored server-side.
+  void getGuestProfile(guestId).catch(() => null);
+
   const normalizedAttempts = coerceAttempts(input.attempts);
   const attemptScores = coerceAttemptScores(input.attemptScores);
   const derivedScores = attemptScores ?? (normalizedAttempts ? deriveAttemptScores(normalizedAttempts) : null);
 
-  const { created, result } = await recordGuestDailyResultRedis(guestId, {
-    ...input,
-    attempts: normalizedAttempts ?? undefined,
-    attemptScores: derivedScores ?? undefined,
-  });
-
   return {
-    created,
+    created: false,
     result: {
-      date: result.date,
-      completed: result.completed,
-      timeMs: result.timeMs,
-      attemptsUsed: result.attemptsUsed,
-      attemptScores: result.attemptScores ?? null,
-      attempts: result.attempts ?? null,
+      date: input.date,
+      completed: input.completed,
+      timeMs: input.timeMs,
+      attemptsUsed: input.attemptsUsed,
+      attemptScores: derivedScores ?? null,
+      attempts: normalizedAttempts ?? null,
     },
   };
 }
@@ -327,82 +319,14 @@ export async function getDailyResultForGuest(
   attemptScores: number[] | null;
   attempts: AttemptPayload[] | null;
 } | null> {
-  const result = await getGuestDailyResult(guestId, date);
-  if (!result) return null;
-  return {
-    date: result.date,
-    completed: result.completed,
-    timeMs: result.timeMs,
-    attemptsUsed: result.attemptsUsed,
-    attemptScores: result.attemptScores ?? null,
-    attempts: result.attempts ?? null,
-  };
+  void guestId;
+  void date;
+  return null;
 }
 
 export async function migrateGuestDailyResults(guestId: string, userId: string): Promise<void> {
-  await ensureDbSchema();
-  const pool = getDbPool();
-  
-  // Check if this guest was already migrated (to a different user)
-  await pool.query(
-    `insert into guest_user_links (guest_id, user_id)
-     values ($1, $2)
-     on conflict (guest_id) do nothing`,
-    [guestId, userId]
-  );
-
-  const res = await pool.query<{ user_id: string; migrated_at: string | null }>(
-    'select user_id::text, migrated_at from guest_user_links where guest_id=$1',
-    [guestId]
-  );
-  const row = res.rows[0];
-  if (!row) return;
-  if (row.user_id !== userId) return; // Guest already linked to a different user
-  if (row.migrated_at) {
-    console.log(`[MIGRATE] Guest ${guestId} already migrated at ${row.migrated_at}`);
-    return; // Already migrated
-  }
-
-  // Get guest daily results from Redis
-  const guestResults = await getGuestDailyResults(guestId);
-  console.log(`[MIGRATE] Guest ${guestId} has ${guestResults.length} results to migrate`);
-  if (guestResults.length === 0) {
-    // No results to migrate, but still mark as migrated and clean up
-    await pool.query('update guest_user_links set migrated_at=now() where guest_id=$1', [guestId]);
-    await deleteGuestData(guestId);
-    return;
-  }
-
-  // Insert each result into the user's daily_results table
-  let migratedCount = 0;
-  for (const result of guestResults) {
-    console.log(`[MIGRATE] Migrating result for date ${result.date}: completed=${result.completed}, timeMs=${result.timeMs}`);
-    const insertRes = await pool.query(
-      `insert into daily_results (user_id, date, completed, time_ms, attempts_used, attempt_scores, attempts_json, played_at)
-       values ($1, $2::date, $3, $4, $5, $6::jsonb, $7::jsonb, to_timestamp($8 / 1000.0))
-       on conflict do nothing`,
-      [
-        userId,
-        result.date,
-        result.completed,
-        result.timeMs,
-        result.attemptsUsed,
-        result.attemptScores ? JSON.stringify(result.attemptScores) : null,
-        result.attempts ? JSON.stringify(result.attempts) : null,
-        result.playedAt,
-      ]
-    );
-    if ((insertRes.rowCount ?? 0) > 0) {
-      migratedCount++;
-    }
-  }
-  console.log(`[MIGRATE] Migrated ${migratedCount} results for user ${userId}`);
-
-  // Mark as migrated
-  await pool.query('update guest_user_links set migrated_at=now() where guest_id=$1', [guestId]);
-
-  // Delete guest data from Redis now that it's migrated
-  await deleteGuestData(guestId);
+  void guestId;
+  void userId;
 }
 
 export async function importDailyResults(

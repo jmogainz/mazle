@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useState } from 'react';
 import Image from 'next/image';
 import { MapType } from '@/game/types';
 import { formatTime } from '@/utils/storage';
@@ -22,6 +22,14 @@ interface ShareCardProps {
   onSecondaryAction?: () => void;
   footerText?: string;
   countdownText?: string; // "Next puzzle in Xh Ym"
+}
+
+function isSamePos(a: { x: number; y: number }, b: { x: number; y: number }) {
+  return a.x === b.x && a.y === b.y;
+}
+
+function positionKey(pos: { x: number; y: number }) {
+  return `${pos.x},${pos.y}`;
 }
 
 // Get emoji for map type
@@ -85,46 +93,143 @@ export default function ShareCard({
   const [hoverRating, setHoverRating] = useState<number | null>(null);
   const [feedbackState, setFeedbackState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
 
-  const displayLabel = puzzleLabel ?? String(puzzleNumber);
-  const mapEmoji = mapType != null ? getMapEmoji(mapType) : null;
-
-  // Build share text (same format as before)
-  const failedAttempts = attempts.length;
-  const attemptsUsed = Math.min(maxLives, Math.max(1, failedAttempts + (failed ? 0 : 1)));
-
-  const shareTitle = `Mazle ${displayLabel}`;
-
-  // Build attempt indicator
-  const attemptIndicator = failed
-    ? Array(maxLives).fill('❌').join('')
-    : Array(attemptsUsed - 1)
-      .fill('❌')
-      .concat('✅')
-      .concat(Array(maxLives - attemptsUsed).fill('⬜'))
-      .join('');
-
-  const shareText = failed
-    ? `${shareTitle}\n${attemptIndicator}\n\nhttps://mazle.me`
-    : `${shareTitle}\n${attemptIndicator} ${formatTime(timeMs)}\n\nhttps://mazle.me`;
+  const displayLabel = puzzleLabel ?? `#${puzzleNumber}`;
+  const mapEmoji = mapType != null ? getMapEmoji(mapType) : '';
 
   const resolveAttemptProgress = (attempt: any): number => {
-    if (typeof attempt?.correctMoves === 'number' && Number.isFinite(attempt.correctMoves)) {
-      return Math.min(optimalMoves, Math.max(0, Math.round(attempt.correctMoves)));
+    if (!attempt) return 0;
+    // Prefer correctMoves (new system), fall back to deviationIndex (legacy)
+    if (attempt.correctMoves !== undefined) {
+      return attempt.correctMoves;
     }
-    if (typeof attempt?.deviationIndex === 'number' && attempt.deviationIndex >= 0) {
-      const movesBeforeDeviation = Math.max(0, attempt.deviationIndex - 1);
-      return Math.min(optimalMoves, movesBeforeDeviation);
+    if (attempt.deviationIndex !== undefined && attempt.deviationIndex !== -1) {
+      return Math.max(0, attempt.deviationIndex - 1);
     }
-    return typeof attempt?.moveCount === 'number' ? Math.max(0, Math.round(attempt.moveCount)) : 0;
+    return attempt.moveCount ?? 0;
   };
 
-  const progressValues = attempts.map((a: any) => resolveAttemptProgress(a));
+  // Build share text (progress bar format before mazle.me)
+  const generateProgressBlocks = (): string => {
+    if (solutionPath) {
+      const getContiguousCorrectMoves = (attempt: any): number => {
+        if (!attempt) return 0;
+
+        if (typeof attempt.deviationIndex === 'number') {
+          if (attempt.deviationIndex === -1) {
+            return Math.min(optimalMoves, solutionPath.length - 1);
+          }
+          return Math.max(0, attempt.deviationIndex - 1);
+        }
+
+        if (!Array.isArray(attempt.path)) {
+          return resolveAttemptProgress(attempt);
+        }
+
+        const maxSteps = Math.min(optimalMoves, solutionPath.length - 1, attempt.path.length - 1);
+        let correct = 0;
+        for (let i = 1; i <= maxSteps; i++) {
+          if (isSamePos(attempt.path[i], solutionPath[i])) correct++;
+          else break;
+        }
+        return correct;
+      };
+
+      const getAttemptStatuses = (attempt: any): ('correct' | 'present' | 'empty')[] => {
+        const hasPathData = attempt && Array.isArray(attempt.path) && attempt.path.length > 0;
+
+        if (!hasPathData) {
+          const correct = getContiguousCorrectMoves(attempt);
+          const statuses: ('correct' | 'present' | 'empty')[] = [];
+          for (let i = 0; i < optimalMoves; i++) statuses.push(i < correct ? 'correct' : 'empty');
+          return statuses;
+        }
+
+        const attemptPath = attempt.path;
+        const attemptKeys = new Set(attemptPath.map((pos: any) => positionKey(pos)));
+        const contiguousCorrect = getContiguousCorrectMoves(attempt);
+
+        const statuses: ('correct' | 'present' | 'empty')[] = [];
+        for (let i = 1; i <= optimalMoves; i++) {
+          const solutionTile = solutionPath[i];
+          if (!solutionTile) {
+            statuses.push('empty');
+            continue;
+          }
+
+          if (i <= contiguousCorrect) statuses.push('correct');
+          else if (attemptKeys.has(positionKey(solutionTile))) statuses.push('present');
+          else statuses.push('empty');
+        }
+        return statuses;
+      };
+
+      const rows: string[] = [];
+      const hasWinRow = !failed;
+
+      for (let i = 0; i < maxLives; i++) {
+        if (i < attempts.length) {
+          const statuses = getAttemptStatuses(attempts[i]);
+          const rowStr = statuses.map((s) => {
+            if (s === 'correct') return '🟩';
+            if (s === 'present') return '🟨';
+            return '⬜';
+          }).join('');
+          rows.push(rowStr);
+        } else if (hasWinRow && i === attempts.length) {
+          rows.push('🟩'.repeat(optimalMoves) + '🏆');
+        } else {
+          rows.push('⬜'.repeat(optimalMoves));
+        }
+      }
+
+      return rows.join('\n');
+    }
+
+    if (failed) {
+      const rows: string[] = [];
+
+      for (let i = 0; i < attempts.length; i++) {
+        const progress = resolveAttemptProgress(attempts[i]);
+        const filledBlocks = Math.min(progress, optimalMoves - 1);
+        const remainingBlocks = optimalMoves - filledBlocks - 1;
+        rows.push('🟥'.repeat(filledBlocks) + '❌' + '⬜'.repeat(remainingBlocks));
+      }
+
+      while (rows.length < maxLives) {
+        rows.push('⬜'.repeat(optimalMoves));
+      }
+
+      return rows.join('\n');
+    }
+
+    const rows: string[] = [];
+
+    for (let i = 0; i < attempts.length; i++) {
+      const progress = resolveAttemptProgress(attempts[i]);
+      const filledBlocks = Math.min(progress, optimalMoves - 1);
+      const remainingBlocks = optimalMoves - filledBlocks - 1;
+      rows.push('🟥'.repeat(filledBlocks) + '❌' + '⬜'.repeat(remainingBlocks));
+    }
+
+    rows.push('🟩'.repeat(optimalMoves) + '🏆');
+
+    return rows.join('\n');
+  };
+
+  const attemptsUsedForScore = failed
+    ? maxLives
+    : Math.min(maxLives, Math.max(1, attempts.length + 1));
+  const scoreText = failed ? `X/${maxLives}` : `${attemptsUsedForScore}/${maxLives}`;
+  const shareTitle = mapEmoji ? `Mazle ${displayLabel} ${mapEmoji}` : `Mazle ${displayLabel}`;
+  const shareText = `${shareTitle}\n\n${generateProgressBlocks()}\n\n${formatTime(timeMs)} • ${scoreText}\nmazle.io`;
 
   // Calculate max blocks for progress bar visualization
-  const maxBlocks = Math.max(optimalMoves, ...progressValues);
+  const maxBlocks = Math.max(optimalMoves, 1);
 
   // Calculate the best attempt progress
-  const bestAttempt = Math.max(...progressValues, 0);
+  const bestAttempt = attempts && attempts.length > 0
+    ? Math.max(...attempts.map((a: any) => resolveAttemptProgress(a)))
+    : 0;
 
   // Build the attempt bars data
   const attemptBars = (): { progress: number; status: 'success' | 'fail' | 'empty' }[] => {
@@ -132,7 +237,7 @@ export default function ShareCard({
 
     // Failed attempts
     for (const attempt of attempts) {
-      rows.push({ progress: resolveAttemptProgress(attempt), status: 'fail' });
+      rows.push({ progress: Math.min(resolveAttemptProgress(attempt), maxBlocks), status: 'fail' });
     }
 
     // Success row (if not failed)

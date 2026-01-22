@@ -2,6 +2,8 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { PlayerStats } from '@/game/types';
+import { getPuzzleNumberFromNyDateString } from '@/game/puzzleGenerator';
+import { api } from '@/lib/api';
 import { formatTime } from '@/utils/storage';
 import { readCachedMe, fetchMeFresh } from '@/lib/api/cached';
 import CharacterIcon from './CharacterIcon';
@@ -12,21 +14,65 @@ interface StatsModalProps {
   onClose: () => void;
 }
 
+type HistoryEntry = {
+  date: string;
+  completed: boolean;
+  timeMs: number | null;
+  attemptsUsed: number | null;
+  puzzleNumber: number;
+};
+
 function StatsModal({ stats, onClose }: StatsModalProps) {
   const [me, setMe] = useState(() => readCachedMe());
+  const [accountHistory, setAccountHistory] = useState<HistoryEntry[] | null>(null);
 
   useEffect(() => {
     fetchMeFresh().then(setMe).catch(() => null);
   }, []);
 
-  const accountStats = me?.mode === 'user' ? me.stats : null;
-  const totalPlayed = accountStats ? accountStats.totalPlayed : stats.totalGamesPlayed;
-  const totalWins = accountStats ? accountStats.totalWins : stats.totalGamesWon;
+  useEffect(() => {
+    let cancelled = false;
+    if (!me || me.mode !== 'user' || !me.userId) {
+      setAccountHistory(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    api
+      .resultsHistory()
+      .then((res) => {
+        if (cancelled) return;
+        const mapped = res.history
+          .map((row) => ({
+            date: row.date,
+            completed: row.completed,
+            timeMs: row.timeMs ?? null,
+            attemptsUsed: row.attemptsUsed ?? null,
+            puzzleNumber: getPuzzleNumberFromNyDateString(row.date),
+          }))
+          .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+        setAccountHistory(mapped);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAccountHistory([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [me?.mode, me?.userId]);
+
+  const isAccount = me?.mode === 'user';
+  const accountStats = isAccount ? me.stats ?? null : null;
+  const totalPlayed = isAccount ? (accountStats?.totalPlayed ?? 0) : stats.totalGamesPlayed;
+  const totalWins = isAccount ? (accountStats?.totalWins ?? 0) : stats.totalGamesWon;
   const winRate = totalPlayed > 0 ? Math.round((totalWins / totalPlayed) * 100) : 0;
 
   const times = stats.history.filter(h => h.completed && h.timeMs > 0).map(h => h.timeMs);
   const localAvgTimeMs = times.length > 0 ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : 0;
-  const avgTimeMs = accountStats ? (accountStats.avgSolveTimeMs ?? 0) : localAvgTimeMs;
+  const avgTimeMs = isAccount ? (accountStats?.avgSolveTimeMs ?? 0) : localAvgTimeMs;
 
   // Podium counts from hall of fame snapshot (only shown for logged-in users)
   const podium1 = accountStats?.goldCount ?? 0;
@@ -35,9 +81,24 @@ function StatsModal({ stats, onClose }: StatsModalProps) {
 
   const displayName = me?.displayName || 'Guest Trainer';
   const profile = me?.profile || { characterId: 'default', skinId: 'default' };
-  const displayStreak = accountStats ? accountStats.playedStreak : stats.currentStreak;
+  const displayStreak = isAccount ? (accountStats?.playedStreak ?? 0) : stats.currentStreak;
+  const displayMaxStreak = isAccount
+    ? (accountStats?.maxPlayedStreak ?? accountStats?.playedStreak ?? 0)
+    : stats.maxStreak;
 
-  const recentHistory = useMemo(() => stats.history.slice(-20).reverse(), [stats.history]);
+  const localHistory = useMemo<HistoryEntry[]>(
+    () =>
+      stats.history.map((entry) => ({
+        date: entry.date,
+        completed: entry.completed,
+        timeMs: entry.timeMs ?? null,
+        attemptsUsed: entry.attemptsUsed ?? null,
+        puzzleNumber: entry.puzzleNumber,
+      })),
+    [stats.history]
+  );
+  const historyEntries = isAccount ? (accountHistory ?? []) : localHistory;
+  const recentHistory = useMemo(() => historyEntries.slice(-20).reverse(), [historyEntries]);
 
   return (
     <div className={styles.overlay} onClick={onClose}>
@@ -109,8 +170,8 @@ function StatsModal({ stats, onClose }: StatsModalProps) {
                 <span className={styles.statLabel}>Streak</span>
               </div>
               <div className={styles.statChip}>
-                <span className={styles.statValue}>{stats.maxStreak}</span>
-                <span className={styles.statLabel}>{accountStats ? 'Max (This device)' : 'Max'}</span>
+                <span className={styles.statValue}>{displayMaxStreak}</span>
+                <span className={styles.statLabel}>Max</span>
               </div>
               <div className={styles.statChip}>
                 <span className={styles.statValue}>{avgTimeMs > 0 ? formatTime(avgTimeMs) : '—'}</span>
@@ -124,7 +185,6 @@ function StatsModal({ stats, onClose }: StatsModalProps) {
             <div className={styles.historySection}>
               <div className={styles.sectionTitle}>
                 Recent Games
-                {accountStats && <span className={styles.sectionNote}>(This device)</span>}
               </div>
               <div className={styles.historyList}>
                 {recentHistory.map((game, index) => (

@@ -23,6 +23,7 @@ export type UserSettings = {
 export type UserStats = {
   playedStreak: number;
   winStreak: number;
+  maxPlayedStreak: number;
   totalPlayed: number;
   totalWins: number;
   avgSolveTimeMs: number | null;
@@ -232,6 +233,26 @@ export async function getDailyResultForUser(
   };
 }
 
+export async function getAllDailyResultsForUser(
+  userId: string
+): Promise<Array<{ date: string; completed: boolean; timeMs: number | null; attemptsUsed: number | null }>> {
+  await ensureDbSchema();
+  const pool = getDbPool();
+  const res = await pool.query<{ date: string; completed: boolean; time_ms: number | null; attempts_used: number | null }>(
+    `select to_char(date, 'YYYY-MM-DD') as date, completed, time_ms, attempts_used
+     from daily_results
+     where user_id=$1
+     order by date asc`,
+    [userId]
+  );
+  return res.rows.map((row) => ({
+    date: row.date,
+    completed: row.completed,
+    timeMs: row.time_ms,
+    attemptsUsed: row.attempts_used,
+  }));
+}
+
 export async function getDailyResultForGuest(
   guestId: string,
   date: string
@@ -378,14 +399,15 @@ export async function computeUserStats(userId: string): Promise<UserStats> {
     `select to_char(date, 'YYYY-MM-DD') as date, completed
      from daily_results
      where user_id=$1
-     order by date desc
-     limit 2000`,
+     order by date desc`,
     [userId]
   );
 
   const rows = recentRes.rows;
-  const playedStreak = computePlayedStreak(rows.map((r) => r.date));
+  const datesDesc = rows.map((r) => r.date);
+  const playedStreak = computePlayedStreak(datesDesc);
   const winStreak = computeWinStreak(rows.map((r) => ({ date: r.date, completed: r.completed })));
+  const maxPlayedStreak = computeMaxPlayedStreak(datesDesc);
 
   // Query podium counts from hall of fame snapshot (final positions, not submission-time ranks)
   const podiumRes = await pool.query<{
@@ -408,7 +430,7 @@ export async function computeUserStats(userId: string): Promise<UserStats> {
 
   maybeGrantRoyalSkin(userId, playedStreak).catch(() => null);
 
-  return { playedStreak, winStreak, totalPlayed, totalWins, avgSolveTimeMs, goldCount, silverCount, bronzeCount };
+  return { playedStreak, winStreak, maxPlayedStreak, totalPlayed, totalWins, avgSolveTimeMs, goldCount, silverCount, bronzeCount };
 }
 
 function computePlayedStreak(datesDesc: string[]): number {
@@ -447,4 +469,22 @@ function computeWinStreak(rowsDesc: Array<{ date: string; completed: boolean }>)
     prev = row.date;
   }
   return streak;
+}
+
+function computeMaxPlayedStreak(datesDesc: string[]): number {
+  if (datesDesc.length === 0) return 0;
+  let maxStreak = 1;
+  let current = 1;
+  let prev = datesDesc[0]!;
+  for (let i = 1; i < datesDesc.length; i += 1) {
+    const date = datesDesc[i]!;
+    if (date === addDays(prev, -1)) {
+      current += 1;
+    } else {
+      current = 1;
+    }
+    if (current > maxStreak) maxStreak = current;
+    prev = date;
+  }
+  return maxStreak;
 }

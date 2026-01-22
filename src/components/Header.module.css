@@ -97,7 +97,9 @@
   border: none;
   color: var(--color-text);
   cursor: pointer;
-  padding: calc(0.5rem * var(--ui-scale));
+  padding: 0;
+  width: 44px;
+  height: 44px;
   border-radius: 6px;
   transition: all 0.15s ease-out;
   display: flex;
@@ -118,8 +120,8 @@
 }
 
 .iconButton svg {
-  width: calc(24px * var(--ui-scale));
-  height: calc(24px * var(--ui-scale));
+  width: 24px;
+  height: 24px;
   transition: width 0.15s ease-out, height 0.15s ease-out;
 }
 

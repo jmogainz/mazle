@@ -96,10 +96,10 @@ export default function Header({
           }}
           aria-label="Help"
         >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10"></circle>
-            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
-            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          <svg width="22" height="22" viewBox="0 0 256 256" fill="none" stroke="currentColor" strokeWidth="20" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="128" cy="128" r="96"></circle>
+            <circle cx="128" cy="180" r="14" stroke="none" fill="currentColor"></circle>
+            <path d="M128,144v-8c0-20,28-20,28-48a28,28,0,1,0-56,0"></path>
           </svg>
         </Link>
         {showThemeToggle && (

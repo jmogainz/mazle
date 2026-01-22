@@ -18,6 +18,7 @@ export type UserSettings = {
 export type UserStats = {
   playedStreak: number;
   winStreak: number;
+  maxPlayedStreak: number;
   totalPlayed: number;
   totalWins: number;
   avgSolveTimeMs: number | null;
@@ -153,6 +154,18 @@ export type ResultsDayResponse = {
     timeMs: number | null;
     attemptsUsed: number | null;
   } | null;
+};
+
+export type ResultsHistoryRow = {
+  date: string;
+  completed: boolean;
+  timeMs: number | null;
+  attemptsUsed: number | null;
+};
+
+export type ResultsHistoryResponse = {
+  ok: true;
+  history: ResultsHistoryRow[];
 };
 
 export type ResultsImportRow = {

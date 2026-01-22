@@ -18,6 +18,7 @@ import type {
   ProfileUpdateRequest,
   ProfileUpdateResponse,
   ResultsDayResponse,
+  ResultsHistoryResponse,
   ResultsImportRequest,
   ResultsImportResponse,
   ResultsRecordRequest,
@@ -72,6 +73,9 @@ export const api = {
 
   resultsDay: async (date?: string): Promise<ResultsDayResponse> =>
     fetchJson(`/api/results/day${date ? `?date=${encodeURIComponent(date)}` : ''}`, { method: 'GET' }),
+
+  resultsHistory: async (): Promise<ResultsHistoryResponse> =>
+    fetchJson('/api/results/history', { method: 'GET' }),
 
   resultsImport: async (body: ResultsImportRequest): Promise<ResultsImportResponse> =>
     fetchJson('/api/results/import', {

@@ -17,7 +17,7 @@
     "@vercel/analytics": "^1.6.1",
     "date-fns": "^3.6.0",
     "glin-profanity": "^3.1.5",
-    "next": "^15.0.3",
+    "next": "^15.5.9",
     "next-auth": "^4.24.13",
     "pg": "^8.13.1",
     "phaser": "^3.80.1",
@@ -35,7 +35,7 @@
     "@types/seedrandom": "^3.0.8",
     "@typescript-eslint/parser": "^8.0.0",
     "eslint": "^9.0.0",
-    "eslint-config-next": "^15.0.3",
+    "eslint-config-next": "^15.5.9",
     "typescript": "^5.5.3"
   }
 }

@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState, useRef, useLayoutEffect } from 'react';
 import { api } from '@/lib/api';
-import { cachedApi, readCachedMe } from '@/lib/api/cached';
+import { cachedApi, invalidateMeCache, readCachedMe } from '@/lib/api/cached';
 import { getNewYorkDateString, getPuzzleNumberFromNyDateString } from '@/game/puzzleGenerator';
 import { formatTimeMs, getTodaysResult, recordLeaderboardRank } from '@/utils/storage';
 import { emitGameEvent, onGameEvent } from '@/game/events';

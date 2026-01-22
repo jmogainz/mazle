@@ -905,6 +905,9 @@ export class GameScene extends Phaser.Scene {
     this.gameState.isComplete = true;
     this.gameState.endTime = Date.now(); // Timer continues until end
 
+    // Emit state update immediately so UI stops timer right away
+    emitGameEvent('stateUpdate', { ...this.gameState });
+
     // Hide player
     this.player.setVisible(false);
 
@@ -920,9 +923,6 @@ export class GameScene extends Phaser.Scene {
       delay: 200, // Linger for 200ms before fading
       ease: 'Quad.easeOut',
       onComplete: () => {
-        // Emit state update so UI knows game is complete
-        emitGameEvent('stateUpdate', { ...this.gameState });
-
         // Show analysis first, then emit gameComplete when animation finishes
         this.drawEndGameAnalysis(() => {
           emitGameEvent('gameComplete', {

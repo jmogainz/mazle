@@ -304,6 +304,17 @@
   transform-origin: center bottom;
 }
 
+.rowPlaceholder {
+  opacity: 0.55;
+  background: var(--color-surface);
+}
+
+.rowPlaceholder .rowName,
+.rowPlaceholder .rowTime,
+.rowPlaceholder .rowAttempts {
+  color: var(--color-secondary);
+}
+
 .rowMe {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 1px rgba(106, 170, 100, 0.2);

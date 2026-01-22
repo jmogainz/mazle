@@ -639,36 +639,36 @@ function LeaderboardView() {
         <div className={styles.dayTitleSub}>Today</div>
       </div>
 
-      {topState.status === 'loaded' && podium.length >= 3 && (
+      {topState.status === 'loaded' && (
         <div className={styles.podium}>
           <div className={`${styles.podiumColumn} ${second?.isMe ? styles.podiumColumnMe : ''}`.trim()}>
             <div className={styles.podiumAvatar}>
               <CharacterIcon characterId={second?.characterId} skinId={second?.skinId} size={40} />
             </div>
-            <div className={styles.podiumName}>{second?.displayName}</div>
+            <div className={styles.podiumName}>{second?.displayName ?? '—'}</div>
             <div className={`${styles.podiumBar} ${styles.podiumSilver}`}>
               <div className={styles.podiumRankBadge}>🥈</div>
-              <div className={`${styles.podiumTime} ${!hasPlayedToday ? styles.podiumTimeHidden : ''}`.trim()}>{second ? formatTimeMs(second.timeMs) : ''}</div>
+              <div className={`${styles.podiumTime} ${!hasPlayedToday ? styles.podiumTimeHidden : ''}`.trim()}>{second ? formatTimeMs(second.timeMs) : '—'}</div>
             </div>
           </div>
           <div className={`${styles.podiumColumn} ${first?.isMe ? styles.podiumColumnMe : ''}`.trim()}>
             <div className={styles.podiumAvatar}>
               <CharacterIcon characterId={first?.characterId} skinId={first?.skinId} size={48} />
             </div>
-            <div className={styles.podiumName}>{first?.displayName}</div>
+            <div className={styles.podiumName}>{first?.displayName ?? '—'}</div>
             <div className={`${styles.podiumBar} ${styles.podiumGold}`}>
               <div className={styles.podiumRankBadge}>🥇</div>
-              <div className={`${styles.podiumTime} ${!hasPlayedToday ? styles.podiumTimeHidden : ''}`.trim()}>{first ? formatTimeMs(first.timeMs) : ''}</div>
+              <div className={`${styles.podiumTime} ${!hasPlayedToday ? styles.podiumTimeHidden : ''}`.trim()}>{first ? formatTimeMs(first.timeMs) : '—'}</div>
             </div>
           </div>
           <div className={`${styles.podiumColumn} ${third?.isMe ? styles.podiumColumnMe : ''}`.trim()}>
             <div className={styles.podiumAvatar}>
               <CharacterIcon characterId={third?.characterId} skinId={third?.skinId} size={40} />
             </div>
-            <div className={styles.podiumName}>{third?.displayName}</div>
+            <div className={styles.podiumName}>{third?.displayName ?? '—'}</div>
             <div className={`${styles.podiumBar} ${styles.podiumBronze}`}>
               <div className={styles.podiumRankBadge}>🥉</div>
-              <div className={`${styles.podiumTime} ${!hasPlayedToday ? styles.podiumTimeHidden : ''}`.trim()}>{third ? formatTimeMs(third.timeMs) : ''}</div>
+              <div className={`${styles.podiumTime} ${!hasPlayedToday ? styles.podiumTimeHidden : ''}`.trim()}>{third ? formatTimeMs(third.timeMs) : '—'}</div>
             </div>
           </div>
         </div>
@@ -706,63 +706,76 @@ function LeaderboardView() {
         {/* Sticky row at top when scrolled past user's position */}
         {showPostLoadUi && myEntryData && renderStickyRow('top')}
         
-        {topState.status === 'loaded' && restEntries.length > 0 && (
+        {topState.status === 'loaded' && (
           <div className={styles.list} ref={listRef}>
-            {restEntries.map((e) => {
-              // For entries that are isMe, we render the highlighted version with the ref
-              if (e.isMe) {
-                return (
+            {restEntries.length > 0 ? (
+              <>
+                {restEntries.map((e) => {
+                  // For entries that are isMe, we render the highlighted version with the ref
+                  if (e.isMe) {
+                    return (
+                      <div 
+                        key={`${e.rank}-${e.displayName}`} 
+                        ref={myRowRef}
+                        data-rank={e.rank}
+                        className={`${styles.row} ${styles.rowMeHighlight}`.trim()}
+                      >
+                        <div className={styles.rowRank}>#{e.rank}</div>
+                        <div className={styles.rowName}>{e.displayName}</div>
+                        <div className={styles.rowTime}>{formatTimeMs(e.timeMs)}</div>
+                        <div className={styles.rowAttempts}>{e.attemptsUsed}/3</div>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div key={`${e.rank}-${e.displayName}`} data-rank={e.rank} className={styles.row}>
+                      <div className={styles.rowRank}>#{e.rank}</div>
+                      <div className={styles.rowName}>{e.displayName}</div>
+                      <div className={`${styles.rowTime} ${!hasPlayedToday ? styles.timeHidden : ''}`.trim()}>{formatTimeMs(e.timeMs)}</div>
+                      <div className={styles.rowAttempts}>{e.attemptsUsed}/3</div>
+                    </div>
+                  );
+                })}
+
+                {/* If user has submitted but their rank is beyond loaded entries, show placeholder at end */}
+                {myRank && myRank > 3 && !restEntries.some(e => e.isMe) && myEntryData && (
                   <div 
-                    key={`${e.rank}-${e.displayName}`} 
                     ref={myRowRef}
-                    data-rank={e.rank}
                     className={`${styles.row} ${styles.rowMeHighlight}`.trim()}
                   >
-                    <div className={styles.rowRank}>#{e.rank}</div>
-                    <div className={styles.rowName}>{e.displayName}</div>
-                    <div className={styles.rowTime}>{formatTimeMs(e.timeMs)}</div>
-                    <div className={styles.rowAttempts}>{e.attemptsUsed}/3</div>
+                    <div className={styles.rowRank}>#{myRank}</div>
+                    <div className={styles.rowName}>{myEntryData.displayName}</div>
+                    <div className={styles.rowTime}>{formatTimeMs(myEntryData.timeMs)}</div>
+                    <div className={styles.rowAttempts}>{myEntryData.attemptsUsed}/3</div>
                   </div>
-                );
-              }
-              return (
-                <div key={`${e.rank}-${e.displayName}`} data-rank={e.rank} className={styles.row}>
-                  <div className={styles.rowRank}>#{e.rank}</div>
-                  <div className={styles.rowName}>{e.displayName}</div>
-                  <div className={`${styles.rowTime} ${!hasPlayedToday ? styles.timeHidden : ''}`.trim()}>{formatTimeMs(e.timeMs)}</div>
-                  <div className={styles.rowAttempts}>{e.attemptsUsed}/3</div>
-                </div>
-              );
-            })}
-
-            {/* If user has submitted but their rank is beyond loaded entries, show placeholder at end */}
-            {myRank && myRank > 3 && !restEntries.some(e => e.isMe) && myEntryData && (
-              <div 
-                ref={myRowRef}
-                className={`${styles.row} ${styles.rowMeHighlight}`.trim()}
-              >
-                <div className={styles.rowRank}>#{myRank}</div>
-                <div className={styles.rowName}>{myEntryData.displayName}</div>
-                <div className={styles.rowTime}>{formatTimeMs(myEntryData.timeMs)}</div>
-                <div className={styles.rowAttempts}>{myEntryData.attemptsUsed}/3</div>
-              </div>
-            )}
-
-            {(hasMore || isLoadingMore || isLoadingDown) && (
-              <div className={styles.loadMoreRow}>
-                {isLoadingMore ? (
-                  <div className={styles.loadMoreSpinner} />
-                ) : (
-                  <div className={styles.loadMoreHint}>Scroll for more</div>
                 )}
-              </div>
+
+                {(hasMore || isLoadingMore || isLoadingDown) && (
+                  <div className={styles.loadMoreRow}>
+                    {isLoadingMore ? (
+                      <div className={styles.loadMoreSpinner} />
+                    ) : (
+                      <div className={styles.loadMoreHint}>Scroll for more</div>
+                    )}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className={styles.hintText} style={{ textAlign: 'center', padding: '0.25rem 0 0.75rem' }}>
+                  {entries.length === 0 ? 'No entries yet — be the first!' : 'Only podium entries so far.'}
+                </div>
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={`empty-${i}`} className={`${styles.row} ${styles.rowPlaceholder}`.trim()}>
+                    <div className={styles.rowRank}>#{i + 4}</div>
+                    <div className={styles.rowName}>—</div>
+                    <div className={styles.rowTime}>—</div>
+                    <div className={styles.rowAttempts}>—</div>
+                  </div>
+                ))}
+              </>
             )}
-
           </div>
-        )}
-
-        {topState.status === 'loaded' && entries.length === 0 && (
-          <div className={styles.hintText}>No entries yet — be the first!</div>
         )}
 
         {topState.status === 'loading' && (

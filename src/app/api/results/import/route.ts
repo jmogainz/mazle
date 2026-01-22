@@ -13,6 +13,8 @@ type Body = {
     completed: boolean;
     timeMs?: number;
     attemptsUsed?: number;
+    attemptScores?: number[];
+    attempts?: unknown;
   }>;
 };
 
@@ -43,6 +45,8 @@ export async function POST(request: Request) {
     timeMs: typeof row?.timeMs === 'number' && Number.isFinite(row.timeMs) ? Math.round(row.timeMs) : null,
     attemptsUsed:
       typeof row?.attemptsUsed === 'number' && Number.isFinite(row.attemptsUsed) ? Math.round(row.attemptsUsed) : null,
+    attemptScores: row?.attemptScores,
+    attempts: row?.attempts,
   }));
 
   try {

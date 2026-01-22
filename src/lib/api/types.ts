@@ -128,11 +128,21 @@ export type LeaderboardSubmitResponse = {
   updated: boolean;
 };
 
+export type ResultsAttempt = {
+  moveCount: number;
+  correctMoves?: number;
+  deviationIndex?: number;
+  failedAt?: { x: number; y: number } | null;
+  path?: Array<{ x: number; y: number }>;
+};
+
 export type ResultsRecordRequest = {
   date: string;
   completed: boolean;
   timeMs?: number;
   attemptsUsed?: number;
+  attemptScores?: number[];
+  attempts?: ResultsAttempt[];
 };
 
 export type ResultsRecordResponse = {
@@ -143,6 +153,8 @@ export type ResultsRecordResponse = {
     completed: boolean;
     timeMs: number | null;
     attemptsUsed: number | null;
+    attemptScores: number[] | null;
+    attempts: ResultsAttempt[] | null;
   };
 };
 
@@ -153,6 +165,8 @@ export type ResultsDayResponse = {
     completed: boolean;
     timeMs: number | null;
     attemptsUsed: number | null;
+    attemptScores: number[] | null;
+    attempts: ResultsAttempt[] | null;
   } | null;
 };
 
@@ -161,6 +175,7 @@ export type ResultsHistoryRow = {
   completed: boolean;
   timeMs: number | null;
   attemptsUsed: number | null;
+  attemptScores: number[] | null;
 };
 
 export type ResultsHistoryResponse = {
@@ -173,6 +188,8 @@ export type ResultsImportRow = {
   completed: boolean;
   timeMs?: number | null;
   attemptsUsed?: number | null;
+  attemptScores?: number[] | null;
+  attempts?: ResultsAttempt[] | null;
 };
 
 export type ResultsImportRequest = {

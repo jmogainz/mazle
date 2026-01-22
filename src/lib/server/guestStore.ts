@@ -7,6 +7,14 @@ type GuestDailyResult = {
   completed: boolean;
   timeMs: number | null;
   attemptsUsed: number | null;
+  attemptScores?: number[] | null;
+  attempts?: Array<{
+    moveCount: number;
+    correctMoves?: number;
+    deviationIndex?: number;
+    failedAt?: { x: number; y: number } | null;
+    path?: Array<{ x: number; y: number }>;
+  }> | null;
   playedAt: number; // timestamp ms
 };
 
@@ -91,7 +99,14 @@ export async function saveGuestProfile(guestId: string, displayName: string): Pr
 
 export async function recordGuestDailyResult(
   guestId: string,
-  result: { date: string; completed: boolean; timeMs: number | null; attemptsUsed: number | null }
+  result: {
+    date: string;
+    completed: boolean;
+    timeMs: number | null;
+    attemptsUsed: number | null;
+    attemptScores?: number[] | null;
+    attempts?: GuestDailyResult['attempts'];
+  }
 ): Promise<{ created: boolean; result: GuestDailyResult }> {
   const redis = requireRedis();
   const existing = await redis.get<GuestData>(guestKey(guestId));
@@ -113,6 +128,8 @@ export async function recordGuestDailyResult(
     completed: result.completed,
     timeMs: result.timeMs,
     attemptsUsed: result.attemptsUsed,
+    attemptScores: result.attemptScores ?? null,
+    attempts: result.attempts ?? null,
     playedAt: Date.now(),
   };
 

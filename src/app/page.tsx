@@ -18,6 +18,7 @@ const LeaderboardView = dynamic(() => import('@/components/LeaderboardView'), {
   loading: () => <LeaderboardFallback />,
 });
 import { api } from '@/lib/api';
+import type { ResultsAttempt } from '@/lib/api/types';
 import { cachedApi, fetchMeFresh, invalidateMeCache, prefetchAccount, prefetchArchiveDays, prefetchHallOfFame, prefetchLeaderboard, readCachedMe } from '@/lib/api/cached';
 import { addDays } from '@/lib/date';
 import { getPrefs } from '@/lib/prefs';
@@ -107,6 +108,8 @@ type ServerDailyResult = {
   completed: boolean;
   timeMs: number | null;
   attemptsUsed: number | null;
+  attemptScores?: number[] | null;
+  attempts?: ResultsAttempt[] | null;
 };
 
 function readGuestOwner(): string | null {
@@ -135,7 +138,7 @@ function ensureGuestOwner(userId: string): void {
 }
 
 function resolveAttemptsUsed(result: DailyStats): number | null {
-  if (!result || result.failed) return null;
+  if (!result) return null;
   if (typeof result.attemptsUsed === 'number' && Number.isFinite(result.attemptsUsed)) {
     return Math.min(3, Math.max(1, Math.floor(result.attemptsUsed)));
   }
@@ -148,10 +151,48 @@ function buildPlaceholderAttempts(attemptsUsed: number | null | undefined): Arra
   return Array.from({ length: Math.max(0, attemptsUsed - 1) }, () => ({ moveCount: 0, path: [] }));
 }
 
+function resolveAttemptScore(attempt: any): number {
+  if (typeof attempt?.correctMoves === 'number' && Number.isFinite(attempt.correctMoves)) {
+    return Math.max(0, Math.round(attempt.correctMoves));
+  }
+  if (typeof attempt?.deviationIndex === 'number' && attempt.deviationIndex >= 0) {
+    return Math.max(0, Math.round(attempt.deviationIndex - 1));
+  }
+  if (typeof attempt?.moveCount === 'number' && Number.isFinite(attempt.moveCount)) {
+    return Math.max(0, Math.round(attempt.moveCount));
+  }
+  return 0;
+}
+
+function getAttemptScores(attempts: any[] | undefined): number[] | null {
+  if (!Array.isArray(attempts) || attempts.length === 0) return null;
+  return attempts.map(resolveAttemptScore);
+}
+
 function buildDailyStatsFromServer(result: ServerDailyResult): DailyStats {
   const completed = !!result.completed;
-  const attemptsUsed = completed && typeof result.attemptsUsed === 'number' ? result.attemptsUsed : undefined;
+  const attemptsUsed = typeof result.attemptsUsed === 'number' ? result.attemptsUsed : undefined;
   const timeMs = typeof result.timeMs === 'number' && Number.isFinite(result.timeMs) ? result.timeMs : 0;
+  const serverAttempts =
+    Array.isArray(result.attempts) && result.attempts.length > 0
+      ? result.attempts.map((attempt) => ({
+          moveCount: typeof attempt.moveCount === 'number' && Number.isFinite(attempt.moveCount) ? Math.round(attempt.moveCount) : 0,
+          correctMoves:
+            typeof attempt.correctMoves === 'number' && Number.isFinite(attempt.correctMoves)
+              ? Math.round(attempt.correctMoves)
+              : undefined,
+          deviationIndex:
+            typeof attempt.deviationIndex === 'number' && Number.isFinite(attempt.deviationIndex)
+              ? Math.round(attempt.deviationIndex)
+              : undefined,
+          failedAt: attempt.failedAt ?? undefined,
+          path: Array.isArray(attempt.path) ? attempt.path : [],
+        }))
+      : null;
+  const attemptsFromScores =
+    Array.isArray(result.attemptScores) && result.attemptScores.length > 0
+      ? result.attemptScores.map((score) => ({ moveCount: score, path: [] as Position[] }))
+      : null;
   return {
     date: result.date,
     completed,
@@ -160,7 +201,7 @@ function buildDailyStatsFromServer(result: ServerDailyResult): DailyStats {
     moveCount: 0,
     puzzleNumber: getPuzzleNumberFromNyDateString(result.date),
     attemptsUsed,
-    attempts: buildPlaceholderAttempts(attemptsUsed),
+    attempts: serverAttempts ?? attemptsFromScores ?? buildPlaceholderAttempts(attemptsUsed),
   };
 }
 
@@ -176,21 +217,17 @@ function mergeServerResultIntoLocal(server: ServerDailyResult, local: DailyStats
     next.moveCount = local.moveCount;
   }
 
-  if (!server.completed) {
-    if (typeof local.timeMs === 'number' && Number.isFinite(local.timeMs) && local.timeMs > 0) {
-      next.timeMs = local.timeMs;
-    }
-    if (Array.isArray(local.attempts)) {
-      next.attempts = local.attempts;
-    }
-    if (typeof local.attemptsUsed === 'number') {
-      next.attemptsUsed = local.attemptsUsed;
-    }
-    return next;
-  }
+  const serverHasAttempts = Array.isArray(base.attempts) && base.attempts.length > 0;
+  const localHasAttempts = Array.isArray(local.attempts) && local.attempts.length > 0;
 
-  if (local.completed && typeof local.timeMs === 'number' && local.timeMs === base.timeMs && Array.isArray(local.attempts)) {
+  if (!serverHasAttempts && localHasAttempts) {
     next.attempts = local.attempts;
+  }
+  if ((next.timeMs ?? 0) <= 0 && typeof local.timeMs === 'number' && Number.isFinite(local.timeMs) && local.timeMs > 0) {
+    next.timeMs = local.timeMs;
+  }
+  if (next.attemptsUsed == null && typeof local.attemptsUsed === 'number') {
+    next.attemptsUsed = local.attemptsUsed;
   }
 
   return next;
@@ -487,11 +524,27 @@ export default function Home() {
         }
 
         const attemptsUsed = resolveAttemptsUsed(candidate);
+        const attemptScores = getAttemptScores(candidate.attempts);
+        const attemptsPayload = candidate.attempts;
         try {
           const recordRes = await api.resultsRecord(
             candidate.completed
-              ? { date: todayNy, completed: true, timeMs: candidate.timeMs, attemptsUsed: attemptsUsed ?? undefined }
-              : { date: todayNy, completed: false }
+              ? {
+                date: todayNy,
+                completed: true,
+                timeMs: candidate.timeMs,
+                attemptsUsed: attemptsUsed ?? undefined,
+                attemptScores: attemptScores ?? undefined,
+                attempts: attemptsPayload ?? undefined,
+              }
+              : {
+                date: todayNy,
+                completed: false,
+                timeMs: candidate.timeMs,
+                attemptsUsed: attemptsUsed ?? undefined,
+                attemptScores: attemptScores ?? undefined,
+                attempts: attemptsPayload ?? undefined,
+              }
           );
           if (recordRes?.result) {
             const merged = mergeServerResultIntoLocal(recordRes.result, candidate);
@@ -1011,6 +1064,8 @@ export default function Home() {
 
           const failedAttempts = serializableState.attempts?.length ?? 0;
           const attemptsUsed = Math.min(3, Math.max(1, failedAttempts + 1));
+          const attemptScores = getAttemptScores(serializableState.attempts);
+          const attemptsPayload = serializableState.attempts;
 
           const dailyResult: DailyStats = {
             date: todayDateStr,
@@ -1031,8 +1086,22 @@ export default function Home() {
           const recordPromise = api
             .resultsRecord(
               failed
-                ? { date: todayDateStr, completed: false }
-                : { date: todayDateStr, completed: true, timeMs, attemptsUsed }
+                ? {
+                  date: todayDateStr,
+                  completed: false,
+                  timeMs,
+                  attemptsUsed,
+                  attemptScores: attemptScores ?? undefined,
+                  attempts: attemptsPayload ?? undefined,
+                }
+                : {
+                  date: todayDateStr,
+                  completed: true,
+                  timeMs,
+                  attemptsUsed,
+                  attemptScores: attemptScores ?? undefined,
+                  attempts: attemptsPayload ?? undefined,
+                }
             )
             .then((res) => {
               invalidateMeCache();

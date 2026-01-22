@@ -78,6 +78,7 @@ export default function ShareCard({
   failed = false,
   attempts = [],
   maxLives = 3,
+  solutionPath,
   mapType,
   onClose,
   inline = false,

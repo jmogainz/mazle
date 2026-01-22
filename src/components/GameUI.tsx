@@ -80,6 +80,13 @@ export default function GameUI({
     }
   }, [propMaxLives, maxLives]);
 
+  // Sync frozen prop to isComplete state (stops timer when parent marks game complete)
+  useEffect(() => {
+    if (frozen) {
+      setIsComplete(true);
+    }
+  }, [frozen]);
+
   // Reset hint flag when game restarts (lives returns to max)
   useEffect(() => {
     if (lives === maxLives) {

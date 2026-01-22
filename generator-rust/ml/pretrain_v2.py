@@ -70,17 +70,27 @@ class PlanLossScaler:
     """Tracks EMA of losses and computes scaling multiplier to keep plan loss influential."""
     
     def __init__(self, target_ratio: float = 0.30, ema_beta: float = 0.99,
-                 mult_min: float = 0.5, mult_max: float = 4.0):
+                 mult_min: float = 0.5, mult_max: float = 4.0,
+                 mult_max_late: float = 8.0, activation_step: int = 10000,
+                 late_step: int = 18000):
         self.target_ratio = target_ratio
         self.ema_beta = ema_beta
         self.mult_min = mult_min
         self.mult_max = mult_max
+        self.mult_max_late = mult_max_late
+        self.activation_step = activation_step
+        self.late_step = late_step
         self.ema_tile = None
         self.ema_plan = None
         self.eps = 1e-8
     
-    def update_and_get_multiplier(self, tile_loss_val: float, plan_loss_val: float) -> float:
+    def update_and_get_multiplier(self, tile_loss_val: float, plan_loss_val: float,
+                                   global_step: int = 0) -> float:
         """Update EMAs and return multiplier to apply to plan loss."""
+        # Before activation_step, force mult=1.0 (no scaling)
+        if global_step < self.activation_step:
+            return 1.0
+        
         if self.ema_tile is None:
             self.ema_tile = tile_loss_val
             self.ema_plan = plan_loss_val
@@ -90,7 +100,10 @@ class PlanLossScaler:
         
         # Compute multiplier to keep plan ~ target_ratio * tile
         raw_mult = self.target_ratio * (self.ema_tile / (self.ema_plan + self.eps))
-        return max(self.mult_min, min(self.mult_max, raw_mult))
+        
+        # Two-stage ceiling: use higher max after late_step
+        current_max = self.mult_max_late if global_step >= self.late_step else self.mult_max
+        return max(self.mult_min, min(current_max, raw_mult))
 
 
 def log_progress(msg: str, out_dir: Path = None):
@@ -1367,7 +1380,7 @@ def train_pretrain_with_path(args, model, device, validate_fn, out_dir, config):
 
     log_progress(f"[PATH-COND] data={data_count} train={train_count} steps/epoch={steps_per_epoch}", out_dir)
 
-    # Optimizer with warmup + cosine decay
+    # Optimizer with warmup + step-down LR schedule (lock basin after ramp)
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=args.lr, weight_decay=args.weight_decay,
         betas=(0.9, args.beta2)
@@ -1375,15 +1388,32 @@ def train_pretrain_with_path(args, model, device, validate_fn, out_dir, config):
 
     warmup_steps = min(1000, total_steps // 10)
     lr_min_ratio = args.lr_min / args.lr
-
+    
+    # Step-down LR schedule: keeps high LR early, drops hard at ramp end
     def lr_lambda(step):
         if step < warmup_steps:
             return step / warmup_steps
+        # Step-down schedule if configured
+        if args.lr_step1 > 0 and step >= args.lr_step1:
+            if args.lr_step2 > 0 and step >= args.lr_step2:
+                return args.lr_drop1 * args.lr_drop2
+            return args.lr_drop1
+        # Before first step-down, maintain full LR
+        if args.lr_step1 > 0:
+            return 1.0
+        # Fallback to cosine if no step-down configured
         progress = (step - warmup_steps) / max(1, total_steps - warmup_steps)
         cosine = 0.5 * (1.0 + math.cos(math.pi * progress))
         return lr_min_ratio + (1.0 - lr_min_ratio) * cosine
 
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+    
+    if args.lr_step1 > 0:
+        log_progress(
+            f"LR step-down: {args.lr:.0e} until {args.lr_step1}, "
+            f"{args.lr * args.lr_drop1:.0e} until {args.lr_step2}, "
+            f"{args.lr * args.lr_drop1 * args.lr_drop2:.0e} after", out_dir
+        )
 
     # EMA
     ema = EMA(model, decay=args.ema_decay)
@@ -1395,10 +1425,14 @@ def train_pretrain_with_path(args, model, device, validate_fn, out_dir, config):
         ema_beta=args.plan_ratio_ema,
         mult_min=args.plan_mult_min,
         mult_max=args.plan_mult_max,
+        mult_max_late=args.plan_mult_max_late,
+        activation_step=args.plan_scaling_activation_step,
+        late_step=args.plan_scaling_late_step,
     )
     log_progress(
         f"Plan scaler: target_ratio={args.plan_ratio_target}, ema_beta={args.plan_ratio_ema}, "
-        f"mult_range=[{args.plan_mult_min}, {args.plan_mult_max}]", out_dir
+        f"mult_range=[{args.plan_mult_min}, {args.plan_mult_max}], late_max={args.plan_mult_max_late}, "
+        f"activation={args.plan_scaling_activation_step}, late={args.plan_scaling_late_step}", out_dir
     )
     log_progress(
         f"Lambda schedule: stop {args.lambda_stop_init}->{args.lambda_stop_final}, "
@@ -1409,6 +1443,11 @@ def train_pretrain_with_path(args, model, device, validate_fn, out_dir, config):
     global_step = 0
     best_full_pass = 0.0
     skipped_invalid = 0
+    
+    # Early stop tracking (only active after ramp)
+    evals_without_improvement = 0
+    consecutive_low_moves = 0
+    early_stopped = False
 
     for epoch in range(args.epochs):
         dataset = JsonlMazeDataset(
@@ -1493,7 +1532,8 @@ def train_pretrain_with_path(args, model, device, validate_fn, out_dir, config):
             # Apply EMA-based loss-ratio scaling to keep plan loss influential
             plan_mult = plan_scaler.update_and_get_multiplier(
                 tile_loss.detach().item(), 
-                plan_loss_base.detach().item()
+                plan_loss_base.detach().item(),
+                global_step,
             )
             plan_loss = plan_mult * plan_loss_base
 
@@ -1553,6 +1593,7 @@ def train_pretrain_with_path(args, model, device, validate_fn, out_dir, config):
 
                 if metrics["full_pass"] > best_full_pass:
                     best_full_pass = metrics["full_pass"]
+                    evals_without_improvement = 0
                     ema.apply_shadow()
                     torch.save({
                         "model_state": model.state_dict(),
@@ -1562,6 +1603,31 @@ def train_pretrain_with_path(args, model, device, validate_fn, out_dir, config):
                     }, out_dir / "best_model.pt")
                     ema.restore()
                     log_progress(f"New best! full_pass={best_full_pass:.1%}", out_dir)
+                else:
+                    evals_without_improvement += 1
+                
+                # Early stop logic (only active after ramp)
+                if args.early_stop and global_step >= args.lambda_ramp_end:
+                    moves_mean = metrics.get("moves_mean", 10.0)
+                    
+                    # Check moves drift
+                    if moves_mean < args.early_stop_moves_threshold:
+                        consecutive_low_moves += 1
+                        if consecutive_low_moves >= args.early_stop_moves_count:
+                            log_progress(
+                                f"Early stop: moves_mean={moves_mean:.1f} < {args.early_stop_moves_threshold} "
+                                f"for {consecutive_low_moves} consecutive evals", out_dir
+                            )
+                            early_stopped = True
+                    else:
+                        consecutive_low_moves = 0
+                    
+                    # Check PASS% stall
+                    if evals_without_improvement >= args.early_stop_patience:
+                        log_progress(
+                            f"Early stop: no PASS% improvement for {evals_without_improvement} evals", out_dir
+                        )
+                        early_stopped = True
 
             if global_step > 0 and global_step % args.save_every == 0:
                 ema.apply_shadow()
@@ -1582,11 +1648,16 @@ def train_pretrain_with_path(args, model, device, validate_fn, out_dir, config):
             global_step += 1
             pbar.set_postfix(loss=f"{loss.item():.4f}")
 
+            if early_stopped:
+                break
             if global_step >= steps_per_epoch * (epoch + 1):
                 break
 
         avg_loss = epoch_loss / max(1, epoch_samples)
         log_progress(f"epoch {epoch + 1} complete, avg_loss={avg_loss:.4f}", out_dir)
+        
+        if early_stopped:
+            break
 
     # Final evaluation
     log_progress("Final evaluation with plan conditioning...", out_dir)
@@ -1641,7 +1712,22 @@ def main():
     parser.add_argument("--plan-ratio-target", type=float, default=0.30, help="Target ratio: plan_loss / tile_loss")
     parser.add_argument("--plan-ratio-ema", type=float, default=0.99, help="EMA beta for loss tracking")
     parser.add_argument("--plan-mult-min", type=float, default=0.5, help="Min multiplier for plan loss")
-    parser.add_argument("--plan-mult-max", type=float, default=4.0, help="Max multiplier for plan loss")
+    parser.add_argument("--plan-mult-max", type=float, default=4.0, help="Max multiplier for plan loss (before late)")
+    parser.add_argument("--plan-mult-max-late", type=float, default=8.0, help="Max multiplier for plan loss (after late step)")
+    parser.add_argument("--plan-scaling-activation-step", type=int, default=10000, help="Step to activate EMA scaling (force mult=1.0 before)")
+    parser.add_argument("--plan-scaling-late-step", type=int, default=18000, help="Step to switch to late max ceiling")
+    
+    # LR step-down schedule (lock basin after ramp)
+    parser.add_argument("--lr-step1", type=int, default=0, help="Step for first LR drop (0=disabled, use cosine)")
+    parser.add_argument("--lr-step2", type=int, default=0, help="Step for second LR drop")
+    parser.add_argument("--lr-drop1", type=float, default=0.3, help="LR multiplier at step1 (e.g., 0.3 = 3e-5 from 1e-4)")
+    parser.add_argument("--lr-drop2", type=float, default=0.333, help="Additional LR multiplier at step2 (stacks with drop1)")
+    
+    # Early stop (after ramp)
+    parser.add_argument("--early-stop", action="store_true", help="Enable early stopping after ramp")
+    parser.add_argument("--early-stop-patience", type=int, default=6, help="Stop after N evals without PASS% improvement")
+    parser.add_argument("--early-stop-moves-threshold", type=float, default=7.0, help="Stop if moves_mean drops below this")
+    parser.add_argument("--early-stop-moves-count", type=int, default=2, help="Stop after N consecutive low-moves evals")
 
     # Training
     parser.add_argument("--epochs", type=int, default=20)

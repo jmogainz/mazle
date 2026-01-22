@@ -1,18 +1,9 @@
 import { getKvRedis } from './redis';
 
-const GUEST_TTL_SECONDS = 10 * 24 * 60 * 60; // 10 days
-
-type GuestDailyResult = {
-  date: string;
-  completed: boolean;
-  timeMs: number | null;
-  attemptsUsed: number | null;
-  playedAt: number; // timestamp ms
-};
+const GUEST_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
 
 type GuestData = {
   displayName: string;
-  dailyResults: GuestDailyResult[];
 };
 
 function guestKey(guestId: string): string {
@@ -21,6 +12,10 @@ function guestKey(guestId: string): string {
 
 function guestNameKey(nameLower: string): string {
   return `guest:name:${nameLower}`;
+}
+
+function guestMigrationKey(guestId: string): string {
+  return `guest:migrated:${guestId}`;
 }
 
 function requireRedis() {
@@ -52,21 +47,16 @@ export async function getGuestProfile(guestId: string): Promise<{ guestId: strin
   return { guestId, displayName: data.displayName };
 }
 
-export async function getGuestDailyResults(guestId: string): Promise<GuestDailyResult[]> {
-  const data = await getGuestData(guestId);
-  return data?.dailyResults ?? [];
-}
-
-export async function getGuestDailyResult(guestId: string, date: string): Promise<GuestDailyResult | null> {
-  const results = await getGuestDailyResults(guestId);
-  return results.find(r => r.date === date) ?? null;
-}
-
 export async function guestDisplayNameExists(name: string): Promise<boolean> {
+  const existing = await getGuestDisplayNameOwner(name);
+  return !!existing;
+}
+
+export async function getGuestDisplayNameOwner(name: string): Promise<string | null> {
   const redis = requireRedis();
   const key = guestNameKey(name.toLowerCase());
   const existing = await redis.get<string>(key);
-  return !!existing;
+  return existing ?? null;
 }
 
 export async function reserveGuestDisplayName(name: string, guestId: string): Promise<boolean> {
@@ -76,60 +66,19 @@ export async function reserveGuestDisplayName(name: string, guestId: string): Pr
   return result === 'OK';
 }
 
+export async function refreshGuestDisplayNameReservation(name: string): Promise<void> {
+  const redis = requireRedis();
+  await redis.expire(guestNameKey(name.toLowerCase()), GUEST_TTL_SECONDS);
+}
+
 export async function saveGuestProfile(guestId: string, displayName: string): Promise<void> {
   const redis = requireRedis();
-  const existing = await redis.get<GuestData>(guestKey(guestId));
-  const data: GuestData = {
-    displayName,
-    dailyResults: existing?.dailyResults ?? [],
-  };
+  const data: GuestData = { displayName };
   const ok = await redis.set(guestKey(guestId), data, { ex: GUEST_TTL_SECONDS });
   if (!ok) {
     throw new Error('Failed to persist guest profile.');
   }
-}
-
-export async function recordGuestDailyResult(
-  guestId: string,
-  result: { date: string; completed: boolean; timeMs: number | null; attemptsUsed: number | null }
-): Promise<{ created: boolean; result: GuestDailyResult }> {
-  const redis = requireRedis();
-  const existing = await redis.get<GuestData>(guestKey(guestId));
-  
-  if (!existing?.displayName) {
-    throw new Error('Guest profile not found. Cannot record result.');
-  }
-
-  const dailyResults = existing.dailyResults ?? [];
-  const existingResult = dailyResults.find(r => r.date === result.date);
-  
-  if (existingResult) {
-    // Already recorded for this date, return existing
-    return { created: false, result: existingResult };
-  }
-
-  const newResult: GuestDailyResult = {
-    date: result.date,
-    completed: result.completed,
-    timeMs: result.timeMs,
-    attemptsUsed: result.attemptsUsed,
-    playedAt: Date.now(),
-  };
-
-  dailyResults.push(newResult);
-
-  const data: GuestData = {
-    displayName: existing.displayName,
-    dailyResults,
-  };
-
-  await redis.set(guestKey(guestId), data, { ex: GUEST_TTL_SECONDS });
-
-  // Also refresh the name reservation
-  const nameKey = guestNameKey(existing.displayName.toLowerCase());
-  await redis.expire(nameKey, GUEST_TTL_SECONDS);
-
-  return { created: true, result: newResult };
+  await refreshGuestDisplayNameReservation(displayName);
 }
 
 export async function deleteGuestData(guestId: string): Promise<void> {
@@ -143,4 +92,15 @@ export async function deleteGuestData(guestId: string): Promise<void> {
     const nameKey = guestNameKey(data.displayName.toLowerCase());
     await redis.del(nameKey);
   }
+}
+
+export async function getGuestMigrationOwner(guestId: string): Promise<string | null> {
+  const redis = requireRedis();
+  const existing = await redis.get<string>(guestMigrationKey(guestId));
+  return existing ?? null;
+}
+
+export async function markGuestMigrated(guestId: string, userId: string): Promise<void> {
+  const redis = requireRedis();
+  await redis.set(guestMigrationKey(guestId), userId, { ex: GUEST_TTL_SECONDS });
 }

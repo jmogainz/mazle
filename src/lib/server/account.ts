@@ -1,12 +1,7 @@
 import { addDays } from '@/lib/date';
 import { getNewYorkDateString, LAUNCH_DATE_NY } from '@/game/puzzleGenerator';
 import { ensureDbSchema, getDbPool } from './db';
-import { 
-  getGuestDailyResults, 
-  getGuestDailyResult, 
-  recordGuestDailyResult as recordGuestDailyResultRedis,
-  deleteGuestData,
-} from './guestStore';
+import { getGuestProfile } from './guestStore';
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 
@@ -31,6 +26,18 @@ export type UserStats = {
   silverCount: number;
   bronzeCount: number;
 };
+
+type AttemptPosition = { x: number; y: number };
+type AttemptPayload = {
+  moveCount: number;
+  correctMoves?: number | null;
+  deviationIndex?: number | null;
+  failedAt?: AttemptPosition | null;
+  path?: AttemptPosition[];
+};
+
+const MAX_ATTEMPTS = 3;
+const MAX_PATH = 512;
 
 const ENTITLEMENT_SKIN_ROYAL = 'skin_royal';
 
@@ -145,8 +152,18 @@ export async function updateUserProfile(
 
 export async function recordDailyResult(
   userId: string,
-  input: { date: string; completed: boolean; timeMs: number | null; attemptsUsed: number | null }
-): Promise<{ created: boolean; result: { date: string; completed: boolean; timeMs: number | null; attemptsUsed: number | null } }> {
+  input: {
+    date: string;
+    completed: boolean;
+    timeMs: number | null;
+    attemptsUsed: number | null;
+    attemptScores?: number[] | null;
+    attempts?: AttemptPayload[] | null;
+  }
+): Promise<{
+  created: boolean;
+  result: { date: string; completed: boolean; timeMs: number | null; attemptsUsed: number | null; attemptScores: number[] | null; attempts: AttemptPayload[] | null };
+}> {
   if (!isTodayOrYesterdayNyDate(input.date)) {
     throw new Error('DATE_NOT_ALLOWED');
   }
@@ -154,11 +171,20 @@ export async function recordDailyResult(
   await ensureDbSchema();
   const pool = getDbPool();
 
+  const attemptScores = coerceAttemptScores(input.attemptScores);
+  const normalizedAttempts = coerceAttempts(input.attempts);
+  const derivedScores = attemptScores ?? (normalizedAttempts ? deriveAttemptScores(normalizedAttempts) : null);
+  const attemptScoresPayload = derivedScores ? JSON.stringify(derivedScores) : null;
+  const attemptsPayload = normalizedAttempts ? JSON.stringify(normalizedAttempts) : null;
   const insertRes = await pool.query(
-    `insert into daily_results (user_id, date, completed, time_ms, attempts_used)
-     values ($1, $2::date, $3, $4, $5)
-     on conflict do nothing`,
-    [userId, input.date, input.completed, input.timeMs, input.attemptsUsed]
+    `insert into daily_results (user_id, date, completed, time_ms, attempts_used, attempt_scores, attempts_json)
+     values ($1, $2::date, $3, $4, $5, $6::jsonb, $7::jsonb)
+     on conflict (user_id, date) do update
+       set attempt_scores = coalesce(daily_results.attempt_scores, excluded.attempt_scores),
+           attempts_json = coalesce(daily_results.attempts_json, excluded.attempts_json),
+           time_ms = coalesce(daily_results.time_ms, excluded.time_ms),
+           attempts_used = coalesce(daily_results.attempts_used, excluded.attempts_used)`,
+    [userId, input.date, input.completed, input.timeMs, input.attemptsUsed, attemptScoresPayload, attemptsPayload]
   );
 
   const created = (insertRes.rowCount ?? 0) > 0;
@@ -168,8 +194,8 @@ export async function recordDailyResult(
     computeUserStats(userId).then((s) => maybeGrantRoyalSkin(userId, s.playedStreak)).catch(() => null);
   }
 
-  const res = await pool.query<{ date: string; completed: boolean; time_ms: number | null; attempts_used: number | null }>(
-    `select to_char(date, 'YYYY-MM-DD') as date, completed, time_ms, attempts_used
+  const res = await pool.query<{ date: string; completed: boolean; time_ms: number | null; attempts_used: number | null; attempt_scores: unknown; attempts_json: unknown }>(
+    `select to_char(date, 'YYYY-MM-DD') as date, completed, time_ms, attempts_used, attempt_scores, attempts_json
      from daily_results
      where user_id=$1 and date=$2::date`,
     [userId, input.date]
@@ -186,27 +212,46 @@ export async function recordDailyResult(
       completed: row.completed,
       timeMs: row.time_ms,
       attemptsUsed: row.attempts_used,
+      attemptScores: coerceAttemptScores(row.attempt_scores),
+      attempts: coerceAttempts(row.attempts_json),
     },
   };
 }
 
 export async function recordGuestDailyResult(
   guestId: string,
-  input: { date: string; completed: boolean; timeMs: number | null; attemptsUsed: number | null }
-): Promise<{ created: boolean; result: { date: string; completed: boolean; timeMs: number | null; attemptsUsed: number | null } }> {
+  input: {
+    date: string;
+    completed: boolean;
+    timeMs: number | null;
+    attemptsUsed: number | null;
+    attemptScores?: number[] | null;
+    attempts?: AttemptPayload[] | null;
+  }
+): Promise<{
+  created: boolean;
+  result: { date: string; completed: boolean; timeMs: number | null; attemptsUsed: number | null; attemptScores: number[] | null; attempts: AttemptPayload[] | null };
+}> {
   if (!isTodayOrYesterdayNyDate(input.date)) {
     throw new Error('DATE_NOT_ALLOWED');
   }
 
-  const { created, result } = await recordGuestDailyResultRedis(guestId, input);
+  // Best-effort refresh for the guest profile TTL; no guest stats are stored server-side.
+  void getGuestProfile(guestId).catch(() => null);
+
+  const normalizedAttempts = coerceAttempts(input.attempts);
+  const attemptScores = coerceAttemptScores(input.attemptScores);
+  const derivedScores = attemptScores ?? (normalizedAttempts ? deriveAttemptScores(normalizedAttempts) : null);
 
   return {
-    created,
+    created: false,
     result: {
-      date: result.date,
-      completed: result.completed,
-      timeMs: result.timeMs,
-      attemptsUsed: result.attemptsUsed,
+      date: input.date,
+      completed: input.completed,
+      timeMs: input.timeMs,
+      attemptsUsed: input.attemptsUsed,
+      attemptScores: derivedScores ?? null,
+      attempts: normalizedAttempts ?? null,
     },
   };
 }
@@ -214,11 +259,18 @@ export async function recordGuestDailyResult(
 export async function getDailyResultForUser(
   userId: string,
   date: string
-): Promise<{ date: string; completed: boolean; timeMs: number | null; attemptsUsed: number | null } | null> {
+): Promise<{
+  date: string;
+  completed: boolean;
+  timeMs: number | null;
+  attemptsUsed: number | null;
+  attemptScores: number[] | null;
+  attempts: AttemptPayload[] | null;
+} | null> {
   await ensureDbSchema();
   const pool = getDbPool();
-  const res = await pool.query<{ date: string; completed: boolean; time_ms: number | null; attempts_used: number | null }>(
-    `select to_char(date, 'YYYY-MM-DD') as date, completed, time_ms, attempts_used
+  const res = await pool.query<{ date: string; completed: boolean; time_ms: number | null; attempts_used: number | null; attempt_scores: unknown; attempts_json: unknown }>(
+    `select to_char(date, 'YYYY-MM-DD') as date, completed, time_ms, attempts_used, attempt_scores, attempts_json
      from daily_results
      where user_id=$1 and date=$2::date`,
     [userId, date]
@@ -230,16 +282,18 @@ export async function getDailyResultForUser(
     completed: row.completed,
     timeMs: row.time_ms,
     attemptsUsed: row.attempts_used,
+    attemptScores: coerceAttemptScores(row.attempt_scores),
+    attempts: coerceAttempts(row.attempts_json),
   };
 }
 
 export async function getAllDailyResultsForUser(
   userId: string
-): Promise<Array<{ date: string; completed: boolean; timeMs: number | null; attemptsUsed: number | null }>> {
+): Promise<Array<{ date: string; completed: boolean; timeMs: number | null; attemptsUsed: number | null; attemptScores: number[] | null }>> {
   await ensureDbSchema();
   const pool = getDbPool();
-  const res = await pool.query<{ date: string; completed: boolean; time_ms: number | null; attempts_used: number | null }>(
-    `select to_char(date, 'YYYY-MM-DD') as date, completed, time_ms, attempts_used
+  const res = await pool.query<{ date: string; completed: boolean; time_ms: number | null; attempts_used: number | null; attempt_scores: unknown }>(
+    `select to_char(date, 'YYYY-MM-DD') as date, completed, time_ms, attempts_used, attempt_scores
      from daily_results
      where user_id=$1
      order by date asc`,
@@ -250,83 +304,41 @@ export async function getAllDailyResultsForUser(
     completed: row.completed,
     timeMs: row.time_ms,
     attemptsUsed: row.attempts_used,
+    attemptScores: coerceAttemptScores(row.attempt_scores),
   }));
 }
 
 export async function getDailyResultForGuest(
   guestId: string,
   date: string
-): Promise<{ date: string; completed: boolean; timeMs: number | null; attemptsUsed: number | null } | null> {
-  const result = await getGuestDailyResult(guestId, date);
-  if (!result) return null;
-  return {
-    date: result.date,
-    completed: result.completed,
-    timeMs: result.timeMs,
-    attemptsUsed: result.attemptsUsed,
-  };
+): Promise<{
+  date: string;
+  completed: boolean;
+  timeMs: number | null;
+  attemptsUsed: number | null;
+  attemptScores: number[] | null;
+  attempts: AttemptPayload[] | null;
+} | null> {
+  void guestId;
+  void date;
+  return null;
 }
 
 export async function migrateGuestDailyResults(guestId: string, userId: string): Promise<void> {
-  await ensureDbSchema();
-  const pool = getDbPool();
-  
-  // Check if this guest was already migrated (to a different user)
-  await pool.query(
-    `insert into guest_user_links (guest_id, user_id)
-     values ($1, $2)
-     on conflict (guest_id) do nothing`,
-    [guestId, userId]
-  );
-
-  const res = await pool.query<{ user_id: string; migrated_at: string | null }>(
-    'select user_id::text, migrated_at from guest_user_links where guest_id=$1',
-    [guestId]
-  );
-  const row = res.rows[0];
-  if (!row) return;
-  if (row.user_id !== userId) return; // Guest already linked to a different user
-  if (row.migrated_at) {
-    console.log(`[MIGRATE] Guest ${guestId} already migrated at ${row.migrated_at}`);
-    return; // Already migrated
-  }
-
-  // Get guest daily results from Redis
-  const guestResults = await getGuestDailyResults(guestId);
-  console.log(`[MIGRATE] Guest ${guestId} has ${guestResults.length} results to migrate`);
-  if (guestResults.length === 0) {
-    // No results to migrate, but still mark as migrated and clean up
-    await pool.query('update guest_user_links set migrated_at=now() where guest_id=$1', [guestId]);
-    await deleteGuestData(guestId);
-    return;
-  }
-
-  // Insert each result into the user's daily_results table
-  let migratedCount = 0;
-  for (const result of guestResults) {
-    console.log(`[MIGRATE] Migrating result for date ${result.date}: completed=${result.completed}, timeMs=${result.timeMs}`);
-    const insertRes = await pool.query(
-      `insert into daily_results (user_id, date, completed, time_ms, attempts_used, played_at)
-       values ($1, $2::date, $3, $4, $5, to_timestamp($6 / 1000.0))
-       on conflict do nothing`,
-      [userId, result.date, result.completed, result.timeMs, result.attemptsUsed, result.playedAt]
-    );
-    if ((insertRes.rowCount ?? 0) > 0) {
-      migratedCount++;
-    }
-  }
-  console.log(`[MIGRATE] Migrated ${migratedCount} results for user ${userId}`);
-
-  // Mark as migrated
-  await pool.query('update guest_user_links set migrated_at=now() where guest_id=$1', [guestId]);
-
-  // Delete guest data from Redis now that it's migrated
-  await deleteGuestData(guestId);
+  void guestId;
+  void userId;
 }
 
 export async function importDailyResults(
   userId: string,
-  history: Array<{ date: string; completed: boolean; timeMs: number | null; attemptsUsed: number | null }>
+  history: Array<{
+    date: string;
+    completed: boolean;
+    timeMs: number | null;
+    attemptsUsed: number | null;
+    attemptScores?: number[] | null;
+    attempts?: AttemptPayload[] | null;
+  }>
 ): Promise<{ imported: number; skipped: number }> {
   await ensureDbSchema();
   const pool = getDbPool();
@@ -339,11 +351,13 @@ export async function importDailyResults(
     .map((h) => ({
       date: h.date,
       completed: !!h.completed,
-      timeMs: h.completed && typeof h.timeMs === 'number' && Number.isFinite(h.timeMs) && h.timeMs > 0 ? h.timeMs : null,
+      timeMs: typeof h.timeMs === 'number' && Number.isFinite(h.timeMs) && h.timeMs > 0 ? h.timeMs : null,
       attemptsUsed:
-        h.completed && typeof h.attemptsUsed === 'number' && Number.isFinite(h.attemptsUsed) && h.attemptsUsed >= 1 && h.attemptsUsed <= 3
+        typeof h.attemptsUsed === 'number' && Number.isFinite(h.attemptsUsed) && h.attemptsUsed >= 1 && h.attemptsUsed <= 3
           ? h.attemptsUsed
           : null,
+      attemptScores: coerceAttemptScores(h.attemptScores),
+      attempts: coerceAttempts(h.attempts),
     }));
 
   const payload = JSON.stringify(
@@ -352,13 +366,22 @@ export async function importDailyResults(
       completed: h.completed,
       time_ms: h.timeMs,
       attempts_used: h.attemptsUsed,
+      attempt_scores: h.attemptScores,
+      attempts_json: h.attempts,
     }))
   );
 
   const insertRes = await pool.query(
-    `insert into daily_results (user_id, date, completed, time_ms, attempts_used)
-     select $1::uuid, r.date, r.completed, r.time_ms, r.attempts_used
-     from jsonb_to_recordset($2::jsonb) as r(date date, completed boolean, time_ms integer, attempts_used integer)
+    `insert into daily_results (user_id, date, completed, time_ms, attempts_used, attempt_scores, attempts_json)
+     select $1::uuid, r.date, r.completed, r.time_ms, r.attempts_used, r.attempt_scores, r.attempts_json
+     from jsonb_to_recordset($2::jsonb) as r(
+       date date,
+       completed boolean,
+       time_ms integer,
+       attempts_used integer,
+       attempt_scores jsonb,
+       attempts_json jsonb
+     )
      on conflict do nothing`,
     [userId, payload]
   );
@@ -487,4 +510,80 @@ function computeMaxPlayedStreak(datesDesc: string[]): number {
     prev = date;
   }
   return maxStreak;
+}
+
+function coerceNumber(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return Math.round(value);
+}
+
+function coercePosition(value: unknown): AttemptPosition | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as { x?: unknown; y?: unknown };
+  const x = coerceNumber(raw.x);
+  const y = coerceNumber(raw.y);
+  if (x == null || y == null) return null;
+  return { x, y };
+}
+
+function coerceAttempts(value: unknown): AttemptPayload[] | null {
+  if (!Array.isArray(value)) return null;
+  const attempts: AttemptPayload[] = [];
+  for (const raw of value.slice(0, MAX_ATTEMPTS)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const attempt = raw as {
+      moveCount?: unknown;
+      correctMoves?: unknown;
+      deviationIndex?: unknown;
+      failedAt?: unknown;
+      path?: unknown;
+    };
+
+    const moveCount = coerceNumber(attempt.moveCount) ?? 0;
+    const correctMoves = coerceNumber(attempt.correctMoves);
+    const deviationIndex = coerceNumber(attempt.deviationIndex);
+    const failedAt = coercePosition(attempt.failedAt);
+
+    let path: AttemptPosition[] | undefined;
+    if (Array.isArray(attempt.path)) {
+      const cleaned: AttemptPosition[] = [];
+      for (const pos of attempt.path.slice(0, MAX_PATH)) {
+        const coerced = coercePosition(pos);
+        if (coerced) cleaned.push(coerced);
+      }
+      if (cleaned.length > 0) path = cleaned;
+    }
+
+    attempts.push({
+      moveCount,
+      correctMoves: correctMoves ?? undefined,
+      deviationIndex: deviationIndex ?? undefined,
+      failedAt: failedAt ?? undefined,
+      path,
+    });
+  }
+  return attempts.length > 0 ? attempts : null;
+}
+
+function deriveAttemptScores(attempts: AttemptPayload[]): number[] {
+  return attempts.map((attempt) => {
+    if (typeof attempt.correctMoves === 'number' && Number.isFinite(attempt.correctMoves)) {
+      return Math.max(0, Math.round(attempt.correctMoves));
+    }
+    if (typeof attempt.deviationIndex === 'number' && Number.isFinite(attempt.deviationIndex) && attempt.deviationIndex >= 0) {
+      return Math.max(0, Math.round(attempt.deviationIndex - 1));
+    }
+    if (typeof attempt.moveCount === 'number' && Number.isFinite(attempt.moveCount)) {
+      return Math.max(0, Math.round(attempt.moveCount));
+    }
+    return 0;
+  });
+}
+
+function coerceAttemptScores(value: unknown): number[] | null {
+  if (!Array.isArray(value)) return null;
+  const scores = value
+    .map((v) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.round(v)) : null))
+    .filter((v): v is number => v != null);
+  return scores.length > 0 ? scores : null;
 }

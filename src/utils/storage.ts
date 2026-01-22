@@ -7,6 +7,7 @@ const DAILY_KEY = 'mazle_daily';
 const PUZZLE_CACHE_KEY = 'mazle_puzzle_cache_v1';
 const IN_PROGRESS_KEY = 'mazle_in_progress_v1';
 const DEV_STATS_SEEDED_KEY = 'mazle_dev_seeded_stats_v1';
+const GUEST_NAME_KEY = 'mazle_guest_display_name_v1';
 const STORAGE_SCOPE_KEY = 'mazle_storage_scope_v1';
 const STORAGE_SCOPE_CHANGED_EVENT = 'mazle_storage_scope_changed_v1';
 const DEFAULT_SCOPE = 'guest';
@@ -54,6 +55,22 @@ function removeRaw(key: string): void {
   } catch {
     // ignore
   }
+}
+
+export function getGuestDisplayName(): string | null {
+  const raw = readRaw(GUEST_NAME_KEY);
+  if (!raw || typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+export function setGuestDisplayName(name: string | null): void {
+  if (typeof window === 'undefined') return;
+  if (!name || typeof name !== 'string' || name.trim().length === 0) {
+    removeRaw(GUEST_NAME_KEY);
+    return;
+  }
+  writeRaw(GUEST_NAME_KEY, name.trim());
 }
 
 function readScopedJson<T>(base: string, scope?: StorageScope): T | null {
@@ -553,6 +570,8 @@ export function getGuestHistoryForAccountImport(): Array<{
   completed: boolean;
   timeMs: number | null;
   attemptsUsed: number | null;
+  attemptScores?: number[] | null;
+  attempts?: DailyStats['attempts'];
 }> {
   const stats = getPlayerStats(DEFAULT_SCOPE);
   const byDate = new Map<string, DailyStats>();
@@ -574,19 +593,35 @@ export function getGuestHistoryForAccountImport(): Array<{
 
   return rows.map((r) => {
     const completed = !!r.completed;
-    const timeMs = completed && typeof r.timeMs === 'number' && Number.isFinite(r.timeMs) && r.timeMs > 0 ? Math.round(r.timeMs) : null;
+    const timeMs = typeof r.timeMs === 'number' && Number.isFinite(r.timeMs) && r.timeMs > 0 ? Math.round(r.timeMs) : null;
+    const rawAttempts = (r as any).attempts as DailyStats['attempts'] | undefined;
     const attemptsUsed = (() => {
-      const rawAttempts = (r as any).attempts;
-      if (!completed || !Array.isArray(rawAttempts)) return null;
+      if (!Array.isArray(rawAttempts)) return null;
       const failedAttempts = rawAttempts.length ?? 0;
       return Math.min(3, Math.max(1, failedAttempts + 1));
     })();
+    const attemptScores = Array.isArray(rawAttempts)
+      ? rawAttempts.map((attempt) => {
+          if (typeof attempt?.correctMoves === 'number' && Number.isFinite(attempt.correctMoves)) {
+            return Math.max(0, Math.round(attempt.correctMoves));
+          }
+          if (typeof attempt?.deviationIndex === 'number' && attempt.deviationIndex >= 0) {
+            return Math.max(0, Math.round(attempt.deviationIndex - 1));
+          }
+          if (typeof attempt?.moveCount === 'number' && Number.isFinite(attempt.moveCount)) {
+            return Math.max(0, Math.round(attempt.moveCount));
+          }
+          return 0;
+        })
+      : null;
 
     return {
       date: r.date,
       completed,
       timeMs,
       attemptsUsed,
+      attemptScores: attemptScores ?? undefined,
+      attempts: rawAttempts ?? undefined,
     };
   });
 }

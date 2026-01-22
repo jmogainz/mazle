@@ -107,6 +107,12 @@ override APP_PORT := 8080
 PROD_DEPLOY_TARGET := vercel
 STAGING_DEPLOY_TARGET := vercel
 VERCEL_PROJECT_NAME := mazle
+# Optional: stable domain to alias staged deploys to (set empty to disable)
+VERCEL_STAGING_DOMAIN ?= staging.mazle.io
+export VERCEL_STAGING_DOMAIN
+# Optional: production domain for post-promotion checks (set empty to disable)
+VERCEL_DOMAIN ?= mazle.io
+export VERCEL_DOMAIN
 # Hold Vercel promotion after post-checks (1 = skip promote)
 VERCEL_HOLD_PROMOTION ?= 0
 

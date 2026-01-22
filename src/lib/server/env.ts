@@ -10,6 +10,7 @@ export type EnvName =
   | 'NEXT_PUBLIC_GENERATOR_URL'
   | 'STRIPE_SECRET_KEY'
   | 'STRIPE_WEBHOOK_SECRET'
+  | 'STRIPE_WEBHOOK_SECRET_STAGING'
   | 'STRIPE_ARCHIVE_PRICE_ID'
   | 'STRIPE_ARCHIVE_PRICE_ID_MONTHLY'
   | 'STRIPE_ARCHIVE_PRICE_ID_LIFETIME'
@@ -26,6 +27,7 @@ export type EnvName =
   | 'APPLE_KEY_ID'
   | 'APPLE_PRIVATE_KEY'
   | 'ADMIN_SECRET'
+  | 'VERCEL_STAGING_DOMAIN'
   | 'NEXT_PUBLIC_ENV';
 
 export function env(name: EnvName): string | undefined {

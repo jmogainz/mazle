@@ -127,7 +127,7 @@ jobs:
         run: |
           export PATH="$HOME/.fly/bin:$PATH"
           # Backend already deployed above (or skipped), skip deps
-          make up ENV=prod WITH_DEPS=0 WASM_ONLY=1
+          make up ENV=prod WITH_DEPS=0 WASM_ONLY=1 ALLOW_PROD_MIGRATIONS=1
 
   merge:
     runs-on: ubuntu-latest

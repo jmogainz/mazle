@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS users (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+-- Ensure columns exist if the users table pre-dates this migration.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name_updated_at timestamptz;
 CREATE UNIQUE INDEX IF NOT EXISTS users_display_name_lower_uidx ON users (lower(display_name));
 
 CREATE TABLE IF NOT EXISTS user_profiles (
@@ -122,6 +124,7 @@ CREATE INDEX IF NOT EXISTS leaderboard_podium_date_idx ON leaderboard_podium(dat
 DROP TABLE IF EXISTS leaderboard_podium;
 DROP TABLE IF EXISTS leaderboard_submissions;
 DROP TABLE IF EXISTS daily_results;
+DROP TABLE IF EXISTS user_links;
 DROP TABLE IF EXISTS guest_user_links;
 DROP TABLE IF EXISTS daily_puzzles;
 DROP TABLE IF EXISTS stripe_events;

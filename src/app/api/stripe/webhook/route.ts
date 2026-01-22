@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { ensureDbSchema, getDbPool } from '@/lib/server/db';
 import { jsonError } from '@/lib/server/responses';
-import { getStripe, stripeWebhookSecret } from '@/lib/server/stripe';
+import { getStripe, stripeWebhookSecretForHost } from '@/lib/server/stripe';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -72,7 +72,8 @@ export async function POST(request: Request) {
   const rawBody = await request.text();
   try {
     const stripe = getStripe();
-    event = stripe.webhooks.constructEvent(rawBody, signature, stripeWebhookSecret());
+    const hostHeader = request.headers.get('x-forwarded-host') ?? request.headers.get('host');
+    event = stripe.webhooks.constructEvent(rawBody, signature, stripeWebhookSecretForHost(hostHeader));
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Webhook signature verification failed';
     return jsonError(400, 'INVALID_SIGNATURE', message);

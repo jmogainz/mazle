@@ -8,7 +8,7 @@ A daily Pokémon-inspired puzzle game where players navigate compact, gym-style 
 # Required: Set your runner ID (add to shell profile)
 export UNIQUE_RUNNER_ID=$(whoami)
 
-# Start dev server (WASM fallback, no backend)
+# Start dev server (Full stack: frontend + Rust backend)
 make up
 
 # Open http://localhost:8080 (port may vary - check console output)
@@ -18,9 +18,10 @@ make up
 
 | Command | Description |
 |---------|-------------|
-| `make up` | Start frontend (ENV=dev-test default, WASM fallback) |
-| `make up ENV=dev` | Start with Rust backend auto-launching |
-| `make up ENV=dev WITH_DEPS=0` | Dev mode, frontend only |
+| `make up` | Start full stack (ENV=dev default, includes Rust backend) |
+| `make up ENV=dev-test` | Start with WASM fallback (no backend) |
+| `make up ENV=dev WASM_ONLY=1` | Disable generator URL export (app defaults to WASM) |
+| `make up ENV=dev WITH_DEPS=0` | Frontend only (connect to existing backend) |
 | `make up FRONTEND_RELEASE_MODE=1` | Run prod-style Next.js build (no hot reload) |
 | `make up ENV=prod` | Deploy backend (Fly.io) + frontend (Vercel) |
 | `make down` | Stop containers |
@@ -42,8 +43,8 @@ This keeps the rest of your Make/ENV flags intact while letting you benchmark th
 
 | ENV | WITH_DEPS | Backend | Use Case |
 |-----|-----------|---------|----------|
-| `dev-test` | 0 | WASM fallback | Default, quick iteration |
-| `dev` | 1 | Auto-starts (port 8080) | Full stack local dev |
+| `dev` | 1 | Auto-starts (port 8080) | Default, full stack local dev |
+| `dev-test` | 0 | WASM fallback | Quick iteration, no backend needed |
 | `staging` | 1 | Fly.io | Pre-prod testing |
 | `prod` | 1 | Fly.io | Production |
 
@@ -55,7 +56,7 @@ Override backend: `WITH_DEPS=0` to skip, `WITH_DEPS=1` to include
 # Full stack (backend + frontend)
 VERCEL_TOKEN=... FLY_API_TOKEN=... make up ENV=prod
 
-# Frontend only (backend must already be deployed)
+# Frontend only (connect to existing backend)
 VERCEL_TOKEN=... make up ENV=prod WITH_DEPS=0
 
 # Backend only
@@ -107,6 +108,20 @@ Daily puzzles are pre-generated at 11 PM ET via Vercel Cron and cached in Vercel
 - Puzzles never change mid-day (KV writes use NX = only if not exists)
 - Thread-safe backfill from concurrent WASM generations
 - Self-healing on fresh deploy or cron failure
+
+## Backfilling Vercel KV / Upstash (Local)
+
+To pre-generate a bunch of daily puzzles locally and upload them into KV (keys like `puzzle:YYYY-MM-DD`), run the Rust generator natively (outside Docker) and push directly to KV (NX-only; never overwrites):
+
+```bash
+export UNIQUE_RUNNER_ID=$(whoami)
+export BWS_ACCESS_TOKEN=...
+
+cd generator-rust
+make dailies-kv-backfill ENV=prod DAILIES_KV_START=2026-01-01 DAILIES_KV_END=2026-01-30
+```
+
+This fetches `KV_REST_API_URL`/`KV_REST_API_TOKEN` (or Upstash REST equivalents) from Bitwarden Secrets (BWS project `<app>-<env>`, e.g. `mazle-prod`), then spawns a detached native generator process (logs at `generator-rust/data/dailies-kv-backfill.log`).
 
 ## How to Play
 

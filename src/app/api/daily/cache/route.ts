@@ -76,7 +76,6 @@ export async function POST(request: NextRequest) {
     }
     
     const wasSet = await redis.set(kvKey, puzzle, {
-      ex: 7 * 24 * 60 * 60,  // 7 day TTL
       nx: true,              // Only set if key doesn't exist
     });
     

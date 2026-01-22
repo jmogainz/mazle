@@ -1,17 +1,27 @@
 // Fast, deterministic hashing for tight puzzle loops
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
-// Rayon for parallel processing (works on both native and WASM with wasm-bindgen-rayon)
-use crate::types::{Direction, GenerationConfig, MapType, Position, PuzzleData, TileType};
-use log::{info, debug};
+// Rayon is only used for native parallel generation. WASM runs single-threaded.
+use crate::types::{Direction, GenerationConfig, Position, PuzzleData, TileType};
+use log::{debug, info};
+#[cfg(not(target_arch = "wasm32"))]
 use rayon::prelude::*;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::AtomicBool;
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::Mutex;
+#[cfg(target_arch = "wasm32")]
+use std::cell::{Cell, RefCell};
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
 // =============================================================================
 // GENERATION CONTEXT - Per-run state for isolated tracking
 // =============================================================================
+
+const TRAP_COUNT: usize = 14;
 
 /// Tracks the closest puzzle to passing all thresholds
 /// Stores a single metric's value and threshold for closest puzzle tracking
@@ -31,6 +41,7 @@ struct ClosestPuzzleInfo {
 }
 
 /// Per-generation context for isolated tracking (not shared between runs)
+#[cfg(not(target_arch = "wasm32"))]
 struct GenerationContext {
     /// Short identifier for this run (first 8 chars of seed or truncated)
     run_id: String,
@@ -56,10 +67,35 @@ struct GenerationContext {
     time_find_path_us: AtomicU64,
     time_count_paths_us: AtomicU64,
     time_overlap_us: AtomicU64,
+    trap_time_us: [AtomicU64; TRAP_COUNT],
+    trap_calls: [AtomicU64; TRAP_COUNT],
     /// Closest puzzle to passing all thresholds
     closest: Mutex<Option<ClosestPuzzleInfo>>,
 }
 
+/// Per-generation context for isolated tracking (WASM is single-threaded)
+#[cfg(target_arch = "wasm32")]
+struct GenerationContext {
+    run_id: String,
+    // Keep the useful every-10-batch logs on WASM without atomics/timing.
+    fail_ci: Cell<u64>,
+    fail_dec: Cell<u64>,
+    fail_gate: Cell<u64>,
+    fail_fp: Cell<u64>,
+    fail_loc: Cell<u64>,
+    fail_dir: Cell<u64>,
+    fail_bt: Cell<u64>,
+    fail_amb: Cell<u64>,
+    fail_paths: Cell<u64>,
+    fail_olap_best: Cell<u64>,
+    fail_olap_avg: Cell<u64>,
+    fail_ediv: Cell<u64>,
+    fail_unique_opt: Cell<u64>,
+    total_checked: Cell<u64>,
+    closest: RefCell<Option<ClosestPuzzleInfo>>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 impl GenerationContext {
     fn new(seed: &str) -> Self {
         // Use full seed for log prefixing unless it's very long.
@@ -97,6 +133,8 @@ impl GenerationContext {
             time_find_path_us: AtomicU64::new(0),
             time_count_paths_us: AtomicU64::new(0),
             time_overlap_us: AtomicU64::new(0),
+            trap_time_us: std::array::from_fn(|_| AtomicU64::new(0)),
+            trap_calls: std::array::from_fn(|_| AtomicU64::new(0)),
             closest: Mutex::new(None),
         }
     }
@@ -123,12 +161,12 @@ impl GenerationContext {
         let pct = |counter: &AtomicU64| -> f64 {
             counter.load(Ordering::Relaxed) as f64 / total as f64 * 100.0
         };
-        
+
         let mut parts = Vec::new();
-        
+
         // Always show unique optimal (required for all puzzles)
         parts.push(format!("uopt={:.0}%", pct(&self.fail_unique_opt)));
-        
+
         // Only show enabled filters
         if thresholds.ci_enabled { parts.push(format!("ci={:.0}%", pct(&self.fail_ci))); }
         if thresholds.dec_enabled { parts.push(format!("dec={:.0}%", pct(&self.fail_dec))); }
@@ -142,7 +180,7 @@ impl GenerationContext {
         if thresholds.olap_best_enabled { parts.push(format!("olap_best={:.0}%", pct(&self.fail_olap_best))); }
         if thresholds.olap_avg_enabled { parts.push(format!("olap_avg={:.0}%", pct(&self.fail_olap_avg))); }
         if thresholds.ediv_enabled { parts.push(format!("ediv={:.0}%", pct(&self.fail_ediv))); }
-        
+
         parts.push(format!("(n={})", total));
         parts.join(" ")
     }
@@ -152,9 +190,9 @@ impl GenerationContext {
         if let Ok(closest) = self.closest.lock() {
             if let Some(info) = &*closest {
                 let mut parts = Vec::new();
-                
+
                 parts.push(format!("score={:.4}", info.closeness));
-                
+
                 for m in &info.metrics {
                     if let Some(max_thresh) = m.threshold_max {
                         // Range threshold (like locality)
@@ -170,14 +208,14 @@ impl GenerationContext {
                         parts.push(format!("{}={:.2}/{:.2}", m.name, m.value, m.threshold));
                     }
                 }
-                
+
                 let traps_str = if info.traps.is_empty() {
                     String::from("-")
                 } else {
                     info.traps.join(",")
                 };
                 parts.push(format!("traps=[{}]", traps_str));
-                
+
                 return Some(parts.join(" "));
             }
         }
@@ -193,9 +231,9 @@ impl GenerationContext {
         let avg_us = |counter: &AtomicU64| -> f64 {
             counter.load(Ordering::Relaxed) as f64 / total as f64
         };
-        
+
         format!(
-            "base={:.1}ms traps={:.1}ms psych={:.1}ms (path={:.1}ms cnt={:.1}ms olap={:.1}ms)",
+            "base={:.2}ms traps={:.2}ms psych={:.2}ms (path={:.2}ms cnt={:.2}ms olap={:.2}ms)",
             avg_us(&self.time_base_maze_us) / 1000.0,
             avg_us(&self.time_traps_us) / 1000.0,
             avg_us(&self.time_psych_score_us) / 1000.0,
@@ -204,35 +242,188 @@ impl GenerationContext {
             avg_us(&self.time_overlap_us) / 1000.0,
         )
     }
+
+    fn record_trap_time(&self, trap: TrapFunction, elapsed_us: u64) {
+        let idx = trap.index();
+        self.trap_time_us[idx].fetch_add(elapsed_us, Ordering::Relaxed);
+        self.trap_calls[idx].fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn format_trap_timing(&self) -> String {
+        let total = self.total_checked.load(Ordering::Relaxed);
+        if total == 0 {
+            return String::from("no trap timing data");
+        }
+
+        let mut parts: Vec<String> = Vec::new();
+        for trap in ALL_TRAPS {
+            let idx = trap.index();
+            let time_us = self.trap_time_us[idx].load(Ordering::Relaxed);
+            let calls = self.trap_calls[idx].load(Ordering::Relaxed);
+            if calls == 0 || time_us == 0 {
+                continue;
+            }
+
+            let per_attempt_ms = time_us as f64 / total as f64 / 1000.0;
+            let per_call_ms = time_us as f64 / calls as f64 / 1000.0;
+            parts.push(format!(
+                "{}={:.2}ms ({:.2}ms/call)",
+                trap.short_name(),
+                per_attempt_ms,
+                per_call_ms
+            ));
+        }
+
+        if parts.is_empty() {
+            return String::from("traps=none");
+        }
+
+        parts.join(" ")
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl GenerationContext {
+    fn new(seed: &str) -> Self {
+        let run_id = {
+            const MAX_LEN: usize = 80;
+            let seed_len = seed.chars().count();
+            if seed_len > MAX_LEN {
+                let mut shortened: String = seed.chars().take(MAX_LEN - 3).collect();
+                shortened.push_str("...");
+                shortened
+            } else {
+                seed.to_string()
+            }
+        };
+
+        Self {
+            run_id,
+            fail_ci: Cell::new(0),
+            fail_dec: Cell::new(0),
+            fail_gate: Cell::new(0),
+            fail_fp: Cell::new(0),
+            fail_loc: Cell::new(0),
+            fail_dir: Cell::new(0),
+            fail_bt: Cell::new(0),
+            fail_amb: Cell::new(0),
+            fail_paths: Cell::new(0),
+            fail_olap_best: Cell::new(0),
+            fail_olap_avg: Cell::new(0),
+            fail_ediv: Cell::new(0),
+            fail_unique_opt: Cell::new(0),
+            total_checked: Cell::new(0),
+            closest: RefCell::new(None),
+        }
+    }
+
+    fn update_closest(&self, info: ClosestPuzzleInfo) {
+        let mut closest = self.closest.borrow_mut();
+        let should_update = match &*closest {
+            None => true,
+            Some(current) => info.closeness > current.closeness,
+        };
+        if should_update {
+            *closest = Some(info);
+        }
+    }
+
+    fn format_fail_rates(&self, thresholds: &PrefilterThresholds) -> String {
+        let total = self.total_checked.get();
+        if total == 0 {
+            return String::from("n=0");
+        }
+        let pct = |counter: u64| -> f64 { counter as f64 / total as f64 * 100.0 };
+
+        let mut parts = Vec::new();
+        parts.push(format!("uopt={:.0}%", pct(self.fail_unique_opt.get())));
+        if thresholds.ci_enabled { parts.push(format!("ci={:.0}%", pct(self.fail_ci.get()))); }
+        if thresholds.dec_enabled { parts.push(format!("dec={:.0}%", pct(self.fail_dec.get()))); }
+        if thresholds.gate_enabled { parts.push(format!("gate={:.0}%", pct(self.fail_gate.get()))); }
+        if thresholds.fp_enabled { parts.push(format!("fp={:.0}%", pct(self.fail_fp.get()))); }
+        if thresholds.loc_enabled { parts.push(format!("loc={:.0}%", pct(self.fail_loc.get()))); }
+        if thresholds.dir_enabled { parts.push(format!("dir={:.0}%", pct(self.fail_dir.get()))); }
+        if thresholds.bt_enabled { parts.push(format!("bt={:.0}%", pct(self.fail_bt.get()))); }
+        if thresholds.amb_enabled { parts.push(format!("amb={:.0}%", pct(self.fail_amb.get()))); }
+        if thresholds.paths_enabled { parts.push(format!("paths={:.0}%", pct(self.fail_paths.get()))); }
+        if thresholds.olap_best_enabled { parts.push(format!("olap_best={:.0}%", pct(self.fail_olap_best.get()))); }
+        if thresholds.olap_avg_enabled { parts.push(format!("olap_avg={:.0}%", pct(self.fail_olap_avg.get()))); }
+        if thresholds.ediv_enabled { parts.push(format!("ediv={:.0}%", pct(self.fail_ediv.get()))); }
+        parts.push(format!("(n={})", total));
+        parts.join(" ")
+    }
+
+    fn format_closest(&self, _thresholds: &PrefilterThresholds) -> Option<String> {
+        let closest = self.closest.borrow();
+        closest.as_ref().map(|info| {
+            let mut parts = Vec::new();
+            parts.push(format!("score={:.4}", info.closeness));
+            for m in &info.metrics {
+                if let Some(max_thresh) = m.threshold_max {
+                    parts.push(format!("{}={:.2}/({:.2}-{:.2})", m.name, m.value, m.threshold, max_thresh));
+                } else if m.is_max_threshold {
+                    parts.push(format!("{}={:.2}/{:.2}", m.name, m.value, m.threshold));
+                } else if m.value.fract() == 0.0 && m.threshold.fract() == 0.0 {
+                    parts.push(format!("{}={}/{}", m.name, m.value as i32, m.threshold as i32));
+                } else {
+                    parts.push(format!("{}={:.2}/{:.2}", m.name, m.value, m.threshold));
+                }
+            }
+            let traps_str = if info.traps.is_empty() { String::from("-") } else { info.traps.join(",") };
+            parts.push(format!("traps=[{}]", traps_str));
+            parts.join(" ")
+        })
+    }
+
+    fn format_timing(&self) -> String {
+        String::from("timing=disabled")
+    }
+
+    fn format_trap_timing(&self) -> String {
+        String::from("trap_timing=disabled")
+    }
+
+    fn record_trap_time(&self, _trap: TrapFunction, _elapsed_us: u64) {}
 }
 
 // =============================================================================
 // PARALLEL ITERATION HELPERS
 // =============================================================================
-// Rayon works on both native and WASM (via wasm-bindgen-rayon thread pool).
-// Both produce identical results for the same seed.
+// Native uses Rayon for parallelism; WASM runs single-threaded.
+// Both targets produce identical results for the same seed.
 
-/// Process a range in parallel and find the best result.
+/// Process a range and find the best result.
 /// Uses attempt index as a deterministic tiebreaker when scores are equal,
 /// ensuring identical results regardless of CPU count or thread scheduling.
+#[cfg(not(target_arch = "wasm32"))]
 fn find_best_in_range<F, T>(_label: &str, range: std::ops::Range<usize>, f: F) -> Option<(T, f64)>
 where
     F: Fn(usize) -> Option<(T, f64)> + Sync + Send,
     T: Send,
 {
-    // Include attempt index in tuple for deterministic tie-breaking
-    let result = range
+    range
         .into_par_iter()
         .filter_map(|i| f(i).map(|(puzzle, score)| (puzzle, score, i)))
-        .max_by(|a, b| {
-            match a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal) {
-                std::cmp::Ordering::Equal => a.2.cmp(&b.2), // Tiebreaker: lower attempt index wins
-                other => other,
-            }
+        .max_by(|a, b| match a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal) {
+            std::cmp::Ordering::Equal => a.2.cmp(&b.2),
+            other => other,
         })
-        .map(|(puzzle, score, _)| (puzzle, score)); // Strip the index
+        .map(|(puzzle, score, _)| (puzzle, score))
+}
 
-    result
+#[cfg(target_arch = "wasm32")]
+fn find_best_in_range<F, T>(_label: &str, range: std::ops::Range<usize>, mut f: F) -> Option<(T, f64)>
+where
+    F: FnMut(usize) -> Option<(T, f64)>,
+{
+    range
+        .into_iter()
+        .filter_map(|i| f(i).map(|(puzzle, score)| (puzzle, score, i)))
+        .max_by(|a, b| match a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal) {
+            std::cmp::Ordering::Equal => a.2.cmp(&b.2),
+            other => other,
+        })
+        .map(|(puzzle, score, _)| (puzzle, score))
 }
 
 // =============================================================================
@@ -249,7 +440,7 @@ const SIZE_OPTIONS: [(usize, usize); 1] = [(15, 15)];
 
 // TIER 1: Core difficulty (what actually makes puzzles hard)
 const WEIGHT_NEAR_OPTIMAL_PATHS: f64 = 40.0;  // RAISED - more paths = more confusion
-const WEIGHT_PATH_OVERLAP: f64 = 150.0;       // ADJUSTED - balanced with new complexity weights
+const WEIGHT_PATH_OVERLAP: f64 = 150.0;       // ADJUSTED - uses avg overlap now
 const WEIGHT_EARLY_DIVERGENCE: f64 = 180.0;   // RAISED - early confusion is critical
 
 // TIER 2: Per-move confusion (secondary difficulty)
@@ -288,9 +479,9 @@ const BASE_PREFILTER_MIN_BACKTRACK_DEPTH: i32 = 2;
 const BASE_PREFILTER_MIN_DECISION_AMBIGUITY: f64 = 3.0;   // RELAXED from 3.2 to increase success rate
 
 // Phase 2 thresholds (key difficulty metrics for 15x15)
-const BASE_PREFILTER_MIN_NEAR_OPTIMAL_PATHS: i32 = 40;    // Alternative paths within optimal+2 (ADJUSTED per user request)
-const BASE_PREFILTER_MAX_PATH_OVERLAP: f64 = 0.50;        // Best alternative must differ by 50%+ (RAISED from 0.60)
-const BASE_PREFILTER_MAX_PATH_OVERLAP_AVG: f64 = 0.70;    // Average alternative overlap cap
+const BASE_PREFILTER_MIN_NEAR_OPTIMAL_PATHS: i32 = 60;    // Alternative paths within optimal+2 (ADJUSTED per user request)
+const BASE_PREFILTER_MAX_PATH_OVERLAP: f64 = 0.30;        // Best alternative must differ by 70%+
+const BASE_PREFILTER_MAX_PATH_OVERLAP_AVG: f64 = 0.60;    // Average alternative overlap cap
 const BASE_PREFILTER_MIN_EARLY_DIVERGENCE: f64 = 0.55;    // Want early confusion (RAISED from 0.48)
 
 // Absolute minimum floors after scaling (safety nets)
@@ -507,6 +698,17 @@ fn new_pos_map<V>(capacity: usize) -> HashMap<Position, V> {
     let mut map = HashMap::with_hasher(Default::default());
     map.reserve(capacity);
     map
+}
+
+fn pos_index(pos: &Position, width: usize) -> usize {
+    (pos.y as usize) * width + (pos.x as usize)
+}
+
+fn index_to_pos(idx: usize, width: usize) -> Position {
+    Position {
+        x: (idx % width) as i32,
+        y: (idx / width) as i32,
+    }
 }
 
 
@@ -817,9 +1019,11 @@ fn find_path(
     width: usize,
     height: usize,
 ) -> Option<i32> {
-    let mut queue: Vec<(Position, i32)> = vec![(*start, 0)];
-    let mut visited = new_pos_set(width * height);
-    visited.insert(*start);
+    let mut queue: Vec<(Position, i32)> = Vec::with_capacity(width * height);
+    let mut visited = vec![false; width * height];
+    let start_idx = pos_index(start, width);
+    visited[start_idx] = true;
+    queue.push((*start, 0));
     let mut head = 0;
 
     while head < queue.len() {
@@ -832,8 +1036,12 @@ fn find_path(
 
         for dir in get_all_dirs() {
             let result = simulate_move(tiles, &pos, dir, width, height);
-            if result.valid && visited.insert(result.pos) {
-                queue.push((result.pos, moves + 1));
+            if result.valid {
+                let idx = pos_index(&result.pos, width);
+                if !visited[idx] {
+                    visited[idx] = true;
+                    queue.push((result.pos, moves + 1));
+                }
             }
         }
     }
@@ -841,15 +1049,16 @@ fn find_path(
     None
 }
 
-fn get_reachable(
+fn get_reachable_mask(
     tiles: &Vec<Vec<TileType>>,
     start: &Position,
     width: usize,
     height: usize,
-) -> HashSet<Position> {
-    let mut reachable = new_pos_set(width * height);
-    let mut queue: Vec<Position> = vec![*start];
-    reachable.insert(*start);
+) -> Vec<bool> {
+    let mut reachable = vec![false; width * height];
+    let mut queue: Vec<Position> = Vec::with_capacity(width * height);
+    reachable[pos_index(start, width)] = true;
+    queue.push(*start);
     let mut head = 0;
 
     while head < queue.len() {
@@ -858,8 +1067,12 @@ fn get_reachable(
 
         for dir in get_all_dirs() {
             let result = simulate_move(tiles, &current, dir, width, height);
-            if result.valid && reachable.insert(result.pos) {
-                queue.push(result.pos);
+            if result.valid {
+                let idx = pos_index(&result.pos, width);
+                if !reachable[idx] {
+                    reachable[idx] = true;
+                    queue.push(result.pos);
+                }
             }
         }
     }
@@ -875,6 +1088,66 @@ fn is_solvable(
     height: usize,
 ) -> bool {
     find_path(tiles, start, goal, width, height).is_some()
+}
+
+fn build_reverse_graph_indices(
+    tiles: &Vec<Vec<TileType>>,
+    width: usize,
+    height: usize,
+) -> Vec<Vec<usize>> {
+    let mut reverse_graph: Vec<Vec<usize>> = vec![Vec::new(); width * height];
+
+    for y in 0..height {
+        for x in 0..width {
+            if tiles[y][x] == TileType::Wall {
+                continue;
+            }
+            let pos = Position {
+                x: x as i32,
+                y: y as i32,
+            };
+            let pos_idx = pos_index(&pos, width);
+            for dir in get_all_dirs() {
+                let result = simulate_move(tiles, &pos, dir, width, height);
+                if result.valid && !pos_eq(&result.pos, &pos) {
+                    let dest_idx = pos_index(&result.pos, width);
+                    reverse_graph[dest_idx].push(pos_idx);
+                }
+            }
+        }
+    }
+
+    reverse_graph
+}
+
+fn get_can_reach_goal_mask(
+    tiles: &Vec<Vec<TileType>>,
+    goal: &Position,
+    width: usize,
+    height: usize,
+) -> Vec<bool> {
+    let reverse_graph = build_reverse_graph_indices(tiles, width, height);
+
+    let mut can_reach_goal = vec![false; width * height];
+    let mut queue: Vec<usize> = Vec::with_capacity(width * height);
+    let goal_idx = pos_index(goal, width);
+    can_reach_goal[goal_idx] = true;
+    queue.push(goal_idx);
+    let mut head = 0;
+
+    while head < queue.len() {
+        let current_idx = queue[head];
+        head += 1;
+
+        for &source_idx in &reverse_graph[current_idx] {
+            if !can_reach_goal[source_idx] {
+                can_reach_goal[source_idx] = true;
+                queue.push(source_idx);
+            }
+        }
+    }
+
+    can_reach_goal
 }
 
 fn build_reverse_graph(
@@ -908,35 +1181,6 @@ fn build_reverse_graph(
     reverse_graph
 }
 
-fn get_can_reach_goal(
-    tiles: &Vec<Vec<TileType>>,
-    goal: &Position,
-    width: usize,
-    height: usize,
-) -> HashSet<Position> {
-    let reverse_graph = build_reverse_graph(tiles, width, height);
-
-    let mut can_reach_goal = new_pos_set(width * height);
-    let mut queue: Vec<Position> = vec![*goal];
-    can_reach_goal.insert(*goal);
-    let mut head = 0;
-
-    while head < queue.len() {
-        let current = queue[head];
-        head += 1;
-
-        if let Some(sources) = reverse_graph.get(&current) {
-            for source in sources {
-                if can_reach_goal.insert(*source) {
-                    queue.push(*source);
-                }
-            }
-        }
-    }
-
-    can_reach_goal
-}
-
 fn has_no_stuck_states(
     tiles: &Vec<Vec<TileType>>,
     start: &Position,
@@ -944,15 +1188,183 @@ fn has_no_stuck_states(
     width: usize,
     height: usize,
 ) -> bool {
-    let reachable = get_reachable(tiles, start, width, height);
-    let can_reach_goal = get_can_reach_goal(tiles, goal, width, height);
+    let reachable = get_reachable_mask(tiles, start, width, height);
+    let can_reach_goal = get_can_reach_goal_mask(tiles, goal, width, height);
 
-    for key in reachable {
-        if !can_reach_goal.contains(&key) {
+    for idx in 0..reachable.len() {
+        if reachable[idx] && !can_reach_goal[idx] {
             return false;
         }
     }
     true
+}
+
+// =============================================================================
+// PUBLIC VALIDATION (for Python bridge)
+// =============================================================================
+
+#[derive(Debug, Clone, Copy)]
+pub struct ValidationResult {
+    pub valid_tiles: bool,
+    pub solvable: bool,
+    pub optimal_moves: i32,
+    pub unique_optimal: bool,
+    pub no_stuck: bool,
+    pub meets_target_moves: bool,
+}
+
+/// Validate an ice puzzle from interior tiles (no border), using interior start/goal coords.
+pub fn validate_ice_puzzle_interior(
+    tiles_interior: &Vec<Vec<u8>>,
+    start: Position,
+    goal: Position,
+    target_moves: Option<i32>,
+) -> ValidationResult {
+    if tiles_interior.is_empty() || tiles_interior[0].is_empty() {
+        return ValidationResult {
+            valid_tiles: false,
+            solvable: false,
+            optimal_moves: -1,
+            unique_optimal: false,
+            no_stuck: false,
+            meets_target_moves: false,
+        };
+    }
+
+    let interior_h = tiles_interior.len();
+    let interior_w = tiles_interior[0].len();
+    if tiles_interior.iter().any(|row| row.len() != interior_w) {
+        return ValidationResult {
+            valid_tiles: false,
+            solvable: false,
+            optimal_moves: -1,
+            unique_optimal: false,
+            no_stuck: false,
+            meets_target_moves: false,
+        };
+    }
+
+    let mut valid_tiles = true;
+    let width = interior_w + 2;
+    let height = interior_h + 2;
+    let mut tiles = vec![vec![TileType::Wall; width]; height];
+
+    for y in 0..interior_h {
+        for x in 0..interior_w {
+            match TileType::from_u8(tiles_interior[y][x]) {
+                Some(tile) => tiles[y + 1][x + 1] = tile,
+                None => {
+                    valid_tiles = false;
+                    tiles[y + 1][x + 1] = TileType::Wall;
+                }
+            }
+        }
+    }
+
+    if start.x < 0
+        || start.y < 0
+        || goal.x < 0
+        || goal.y < 0
+        || start.x >= interior_w as i32
+        || start.y >= interior_h as i32
+        || goal.x >= interior_w as i32
+        || goal.y >= interior_h as i32
+    {
+        return ValidationResult {
+            valid_tiles: false,
+            solvable: false,
+            optimal_moves: -1,
+            unique_optimal: false,
+            no_stuck: false,
+            meets_target_moves: false,
+        };
+    }
+
+    let start_full = Position {
+        x: start.x + 1,
+        y: start.y + 1,
+    };
+    let goal_full = Position {
+        x: goal.x + 1,
+        y: goal.y + 1,
+    };
+
+    tiles[start_full.y as usize][start_full.x as usize] = TileType::Start;
+    tiles[goal_full.y as usize][goal_full.x as usize] = TileType::Goal;
+
+    let optimal_path = find_optimal_path(&tiles, &start_full, &goal_full, width, height);
+    let solvable = optimal_path.is_some();
+    let optimal_moves = if let Some(ref path) = optimal_path {
+        (path.len() as i32) - 1
+    } else {
+        -1
+    };
+    let no_stuck = solvable && has_no_stuck_states(&tiles, &start_full, &goal_full, width, height);
+    let unique_optimal = solvable
+        && has_unique_optimal_path(&tiles, &start_full, &goal_full, width, height, optimal_moves);
+    let meets_target_moves = target_moves.map_or(solvable, |t| optimal_moves == t);
+
+    ValidationResult {
+        valid_tiles,
+        solvable,
+        optimal_moves,
+        unique_optimal,
+        no_stuck,
+        meets_target_moves,
+    }
+}
+
+/// Public wrapper to get the optimal path for a puzzle.
+/// Returns None if not solvable, otherwise returns the list of stop positions.
+pub fn find_optimal_path_public(
+    tiles_interior: &Vec<Vec<u8>>,
+    start: Position,
+    goal: Position,
+) -> Option<Vec<Position>> {
+    if tiles_interior.is_empty() || tiles_interior[0].is_empty() {
+        return None;
+    }
+
+    let height = tiles_interior.len();
+    let width = tiles_interior[0].len();
+
+    // Convert to TileType with border
+    let full_width = width + 2;
+    let full_height = height + 2;
+    let mut tiles: Vec<Vec<TileType>> = Vec::with_capacity(full_height);
+
+    // Top border
+    tiles.push(vec![TileType::Wall; full_width]);
+
+    // Interior rows with side borders
+    for row in tiles_interior {
+        let mut tile_row = Vec::with_capacity(full_width);
+        tile_row.push(TileType::Wall);
+        for &tile_id in row {
+            tile_row.push(TileType::from_u8(tile_id).unwrap_or(TileType::Ground));
+        }
+        tile_row.push(TileType::Wall);
+        tiles.push(tile_row);
+    }
+
+    // Bottom border
+    tiles.push(vec![TileType::Wall; full_width]);
+
+    // Convert interior coords to full coords
+    let start_full = Position { x: start.x + 1, y: start.y + 1 };
+    let goal_full = Position { x: goal.x + 1, y: goal.y + 1 };
+
+    // Set start/goal tile types (matches validate_ice_puzzle_interior behavior)
+    tiles[start_full.y as usize][start_full.x as usize] = TileType::Start;
+    tiles[goal_full.y as usize][goal_full.x as usize] = TileType::Goal;
+
+    // Find path and convert back to interior coords
+    find_optimal_path(&tiles, &start_full, &goal_full, full_width, full_height)
+        .map(|path| {
+            path.into_iter()
+                .map(|p| Position { x: p.x - 1, y: p.y - 1 })
+                .collect()
+        })
 }
 
 // =============================================================================
@@ -1031,11 +1443,11 @@ fn find_optimal_path(
     width: usize,
     height: usize,
 ) -> Option<Vec<Position>> {
-    let mut queue: Vec<Position> = vec![*start];
-    let mut visited = new_pos_set(width * height);
-    let mut parent: HashMap<Position, Option<Position>> = new_pos_map(width * height);
-    visited.insert(*start);
-    parent.insert(*start, None);
+    let mut queue: Vec<Position> = Vec::with_capacity(width * height);
+    let mut parent: Vec<usize> = vec![usize::MAX; width * height];
+    let start_idx = pos_index(start, width);
+    parent[start_idx] = start_idx;
+    queue.push(*start);
     let mut head = 0;
 
     while head < queue.len() {
@@ -1044,10 +1456,13 @@ fn find_optimal_path(
 
         if pos_eq(&current, goal) {
             let mut path = Vec::new();
-            let mut pos = Some(current);
-            while let Some(p) = pos {
-                path.push(p);
-                pos = parent.get(&p).and_then(|o| *o);
+            let mut idx = pos_index(&current, width);
+            loop {
+                path.push(index_to_pos(idx, width));
+                if idx == start_idx {
+                    break;
+                }
+                idx = parent[idx];
             }
             path.reverse();
             return Some(path);
@@ -1055,9 +1470,12 @@ fn find_optimal_path(
 
         for dir in get_all_dirs() {
             let result = simulate_move(tiles, &current, dir, width, height);
-            if result.valid && visited.insert(result.pos) {
-                parent.insert(result.pos, Some(current));
-                queue.push(result.pos);
+            if result.valid {
+                let idx = pos_index(&result.pos, width);
+                if parent[idx] == usize::MAX {
+                    parent[idx] = pos_index(&current, width);
+                    queue.push(result.pos);
+                }
             }
         }
     }
@@ -1763,7 +2181,7 @@ struct PsychMetrics {
     near_optimal_paths: i32,      // Count of paths within tolerance of optimal
     #[allow(dead_code)]
     optimal_path_count: i32,      // Count of paths at exactly optimal length
-    path_overlap: f64,            // MINIMUM overlap - best alternative's overlap with optimal
+    path_overlap: f64,            // MINIMUM overlap - disabled in filtering/scoring
     path_overlap_avg: f64,        // AVERAGE overlap - how similar alternatives are on average
     early_divergence: f64,        // 0.0-1.0, how early alternatives diverge
 
@@ -2182,7 +2600,10 @@ fn calculate_decision_ambiguity(
 // =============================================================================
 
 /// Count distinct paths that reach the goal within `tolerance` moves of optimal.
-/// Returns (total_near_optimal_count, exactly_optimal_count)
+/// Returns (total_near_optimal_count, exactly_optimal_count, min_overlap, avg_overlap).
+/// min_overlap is computed across alternative paths only (excludes the exact optimal path).
+/// avg_overlap is computed across alternative paths only (excludes the exact optimal path).
+/// Paths are restricted to no revisits (simple paths).
 ///
 /// More near-optimal paths = more "this could be right" confusion = harder puzzle.
 fn count_near_optimal_paths(
@@ -2191,60 +2612,231 @@ fn count_near_optimal_paths(
     goal: &Position,
     width: usize,
     height: usize,
+    optimal_path: &[Position],
     optimal_moves: i32,
     tolerance: i32,
-) -> (i32, i32) {
+) -> (i32, i32, f64, f64) {
+    const MAX_PATHS: i64 = 1000;
+    const MAX_OPT_PATHS: i64 = 100;
     let max_moves = optimal_moves + tolerance;
 
-    // Track number of ways to reach each (position, move_count) state
-    let mut ways_to_reach: HashMap<(Position, i32), i64> = HashMap::default();
-    ways_to_reach.insert((*start, 0), 1);
+    let node_count = width * height;
+    let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); node_count];
+    let mut reverse_neighbors: Vec<Vec<usize>> = vec![Vec::new(); node_count];
 
-    // BFS by move count
-    let mut current_positions: Vec<Position> = vec![*start];
-
-    for moves in 0..max_moves {
-        let mut next_positions: HashSet<Position> = HashSet::default();
-
-        for pos in &current_positions {
-            let ways_here = *ways_to_reach.get(&(*pos, moves)).unwrap_or(&0);
-            if ways_here == 0 {
+    for y in 0..height {
+        for x in 0..width {
+            if tiles[y][x] == TileType::Wall {
                 continue;
             }
-
-            // Don't explore past goal
-            if pos_eq(pos, goal) {
-                continue;
-            }
-
+            let pos = Position { x: x as i32, y: y as i32 };
+            let idx = pos_index(&pos, width);
             for dir in get_all_dirs() {
-                let result = simulate_move(tiles, pos, dir, width, height);
-                if result.valid && !pos_eq(&result.pos, pos) {
-                    let next_state = (result.pos, moves + 1);
-                    *ways_to_reach.entry(next_state).or_insert(0) += ways_here;
-                    next_positions.insert(result.pos);
+                let result = simulate_move(tiles, &pos, dir, width, height);
+                if result.valid && !pos_eq(&result.pos, &pos) {
+                    let next_idx = pos_index(&result.pos, width);
+                    neighbors[idx].push(next_idx);
+                    reverse_neighbors[next_idx].push(idx);
                 }
             }
         }
-
-        current_positions = next_positions.into_iter().collect();
     }
 
-    // Count paths reaching goal within tolerance
-    let mut total_near_optimal: i64 = 0;
-    let mut exactly_optimal: i64 = 0;
+    let start_idx = pos_index(start, width);
+    let goal_idx = pos_index(goal, width);
 
-    for moves in optimal_moves..=max_moves {
-        if let Some(&count) = ways_to_reach.get(&(*goal, moves)) {
-            total_near_optimal += count;
-            if moves == optimal_moves {
-                exactly_optimal = count;
+    // Shortest distance to goal for pruning
+    let mut dist_to_goal = vec![-1; node_count];
+    let mut queue: Vec<usize> = Vec::with_capacity(node_count);
+    dist_to_goal[goal_idx] = 0;
+    queue.push(goal_idx);
+    let mut head = 0;
+    while head < queue.len() {
+        let current = queue[head];
+        head += 1;
+        let next_dist = dist_to_goal[current] + 1;
+        for &src in &reverse_neighbors[current] {
+            if dist_to_goal[src] == -1 {
+                dist_to_goal[src] = next_dist;
+                queue.push(src);
             }
         }
     }
 
-    // Cap at reasonable values to avoid overflow issues in scoring
-    (total_near_optimal.min(1000) as i32, exactly_optimal.min(100) as i32)
+    let mut optimal_mask = vec![false; node_count];
+    let mut optimal_indices: Vec<usize> = Vec::with_capacity(optimal_path.len());
+    for pos in optimal_path {
+        let idx = pos_index(pos, width);
+        optimal_mask[idx] = true;
+        optimal_indices.push(idx);
+    }
+
+    let mut total_paths: i64 = 0;
+    let mut optimal_paths: i64 = 0;
+    let mut sum_overlap_ratios = 0.0;
+    let mut optimal_path_seen: i64 = 0;
+    let mut min_overlap = 1.0;
+
+    let mut visited = vec![false; node_count];
+    visited[start_idx] = true;
+    let start_overlap = if optimal_mask[start_idx] { 1 } else { 0 };
+
+    fn dfs(
+        idx: usize,
+        moves: i32,
+        overlap_count: i32,
+        matches_optimal: bool,
+        visited: &mut [bool],
+        neighbors: &[Vec<usize>],
+        dist_to_goal: &[i32],
+        goal_idx: usize,
+        optimal_moves: i32,
+        max_moves: i32,
+        optimal_mask: &[bool],
+        optimal_indices: &[usize],
+        total_paths: &mut i64,
+        optimal_paths: &mut i64,
+        sum_overlap_ratios: &mut f64,
+        optimal_path_seen: &mut i64,
+        min_overlap: &mut f64,
+    ) {
+        if *total_paths >= MAX_PATHS {
+            return;
+        }
+
+        let dist = dist_to_goal[idx];
+        if dist < 0 || moves + dist > max_moves {
+            return;
+        }
+
+        if idx == goal_idx {
+            *total_paths += 1;
+            if moves == optimal_moves {
+                *optimal_paths += 1;
+            }
+            let overlap_ratio = overlap_count as f64 / (moves as f64 + 1.0);
+            *sum_overlap_ratios += overlap_ratio;
+            if matches_optimal && moves == optimal_moves {
+                *optimal_path_seen += 1;
+            } else if overlap_ratio < *min_overlap {
+                *min_overlap = overlap_ratio;
+            }
+            return;
+        }
+
+        if moves >= max_moves {
+            return;
+        }
+
+        let mut visited_opt_first = false;
+        if matches_optimal && (moves as usize + 1) < optimal_indices.len() {
+            let opt_next = optimal_indices[moves as usize + 1];
+            if !visited[opt_next] && neighbors[idx].contains(&opt_next) {
+                visited[opt_next] = true;
+                let next_overlap = overlap_count + if optimal_mask[opt_next] { 1 } else { 0 };
+                dfs(
+                    opt_next,
+                    moves + 1,
+                    next_overlap,
+                    true,
+                    visited,
+                    neighbors,
+                    dist_to_goal,
+                    goal_idx,
+                    optimal_moves,
+                    max_moves,
+                    optimal_mask,
+                    optimal_indices,
+                    total_paths,
+                    optimal_paths,
+                    sum_overlap_ratios,
+                    optimal_path_seen,
+                    min_overlap,
+                );
+                visited[opt_next] = false;
+                visited_opt_first = true;
+            }
+        }
+
+        for &next in &neighbors[idx] {
+            if visited[next] {
+                continue;
+            }
+            if visited_opt_first && matches_optimal && (moves as usize + 1) < optimal_indices.len() {
+                if next == optimal_indices[moves as usize + 1] {
+                    continue;
+                }
+            }
+            visited[next] = true;
+            let next_overlap = overlap_count + if optimal_mask[next] { 1 } else { 0 };
+            let next_matches = matches_optimal
+                && (moves as usize + 1) < optimal_indices.len()
+                && next == optimal_indices[moves as usize + 1];
+            dfs(
+                next,
+                moves + 1,
+                next_overlap,
+                next_matches,
+                visited,
+                neighbors,
+                dist_to_goal,
+                goal_idx,
+                optimal_moves,
+                max_moves,
+                optimal_mask,
+                optimal_indices,
+                total_paths,
+                optimal_paths,
+                sum_overlap_ratios,
+                optimal_path_seen,
+                min_overlap,
+            );
+            visited[next] = false;
+            if *total_paths >= MAX_PATHS {
+                return;
+            }
+        }
+    }
+
+    dfs(
+        start_idx,
+        0,
+        start_overlap,
+        optimal_indices.first().copied() == Some(start_idx),
+        &mut visited,
+        &neighbors,
+        &dist_to_goal,
+        goal_idx,
+        optimal_moves,
+        max_moves,
+        &optimal_mask,
+        &optimal_indices,
+        &mut total_paths,
+        &mut optimal_paths,
+        &mut sum_overlap_ratios,
+        &mut optimal_path_seen,
+        &mut min_overlap,
+    );
+
+    let mut avg_overlap = 1.0;
+    if total_paths > 0 {
+        let mut alt_paths = total_paths;
+        let mut alt_ratio_sum = sum_overlap_ratios;
+        if optimal_path_seen > 0 {
+            alt_paths -= optimal_path_seen;
+            alt_ratio_sum -= optimal_path_seen as f64;
+        }
+        if alt_paths > 0 {
+            avg_overlap = alt_ratio_sum / alt_paths as f64;
+        }
+    }
+
+    (
+        total_paths.min(MAX_PATHS) as i32,
+        optimal_paths.min(MAX_OPT_PATHS) as i32,
+        min_overlap,
+        avg_overlap,
+    )
 }
 
 /// Fast check for whether there's exactly one optimal path.
@@ -2300,6 +2892,7 @@ fn has_unique_optimal_path(
 /// For filtering:
 /// - min_overlap <= 0.70 ensures at least one truly different path exists
 /// - avg_overlap <= 0.90 ensures alternatives aren't all nearly identical
+#[allow(dead_code)]
 fn calculate_path_overlap(
     tiles: &Vec<Vec<TileType>>,
     start: &Position,
@@ -2446,7 +3039,7 @@ fn calculate_early_divergence(
     (weighted_divergence / max_possible).min(1.0)
 }
 
-/// Convert path overlap ratio to a score.
+/// Convert path overlap ratio to a score (avg overlap).
 /// Peaks at ~0.4 overlap (sweet spot of structure + variety).
 /// Returns 0 at extremes (0.0 or 1.0 overlap).
 fn overlap_score(overlap: f64) -> f64 {
@@ -2510,10 +3103,15 @@ fn calculate_psychology_score(
 
     // Path diversity metrics (Phase 2 - NEW)
     let tolerance = 2; // Count paths within optimal+2 moves
-    let (near_optimal_paths, optimal_path_count) =
-        count_near_optimal_paths(tiles, start, goal, width, height, optimal_moves, tolerance);
-    let (path_overlap, path_overlap_avg) = calculate_path_overlap(
-        tiles, start, goal, &optimal_path, width, height, optimal_moves
+    let (near_optimal_paths, optimal_path_count, path_overlap, path_overlap_avg) = count_near_optimal_paths(
+        tiles,
+        start,
+        goal,
+        width,
+        height,
+        &optimal_path,
+        optimal_moves,
+        tolerance,
     );
     let early_divergence = calculate_early_divergence(tiles, &optimal_path, width, height);
 
@@ -2531,7 +3129,7 @@ fn calculate_psychology_score(
         + (decision_ambiguity * WEIGHT_DECISION_AMBIGUITY)
         // Path diversity metrics (NEW)
         + (near_optimal_paths as f64 * WEIGHT_NEAR_OPTIMAL_PATHS)
-        + (overlap_score(path_overlap) * WEIGHT_PATH_OVERLAP)
+        + (overlap_score(path_overlap_avg) * WEIGHT_PATH_OVERLAP)
         + (early_divergence * WEIGHT_EARLY_DIVERGENCE);
 
     PsychMetrics {
@@ -2567,11 +3165,15 @@ fn calculate_psychology_score_timed(
     width: usize,
     height: usize,
 ) -> (PsychMetrics, PsychTiming) {
-    use std::time::Instant;
-    
+    #[cfg(not(target_arch = "wasm32"))]
     let t0 = Instant::now();
+
     let optimal_path = find_optimal_path(tiles, start, goal, width, height);
+
+    #[cfg(not(target_arch = "wasm32"))]
     let find_path_us = t0.elapsed().as_micros() as u64;
+    #[cfg(target_arch = "wasm32")]
+    let find_path_us = 0;
     
     if optimal_path.is_none() || optimal_path.as_ref().unwrap().len() < 2 {
         return (PsychMetrics {
@@ -2618,16 +3220,26 @@ fn calculate_psychology_score_timed(
 
     // Path diversity metrics (Phase 2 - NEW) - TIMED
     let tolerance = 2;
+    #[cfg(not(target_arch = "wasm32"))]
     let t1 = Instant::now();
-    let (near_optimal_paths, optimal_path_count) =
-        count_near_optimal_paths(tiles, start, goal, width, height, optimal_moves, tolerance);
-    let count_paths_us = t1.elapsed().as_micros() as u64;
-    
-    let t2 = Instant::now();
-    let (path_overlap, path_overlap_avg) = calculate_path_overlap(
-        tiles, start, goal, &optimal_path, width, height, optimal_moves
+
+    let (near_optimal_paths, optimal_path_count, path_overlap, path_overlap_avg) = count_near_optimal_paths(
+        tiles,
+        start,
+        goal,
+        width,
+        height,
+        &optimal_path,
+        optimal_moves,
+        tolerance,
     );
-    let overlap_us = t2.elapsed().as_micros() as u64;
+
+    #[cfg(not(target_arch = "wasm32"))]
+    let count_paths_us = t1.elapsed().as_micros() as u64;
+    #[cfg(target_arch = "wasm32")]
+    let count_paths_us = 0;
+
+    let overlap_us = 0;
     
     let early_divergence = calculate_early_divergence(tiles, &optimal_path, width, height);
 
@@ -2642,7 +3254,7 @@ fn calculate_psychology_score_timed(
         + (backtrack_depth as f64 * WEIGHT_BACKTRACK_DEPTH)
         + (decision_ambiguity * WEIGHT_DECISION_AMBIGUITY)
         + (near_optimal_paths as f64 * WEIGHT_NEAR_OPTIMAL_PATHS)
-        + (overlap_score(path_overlap) * WEIGHT_PATH_OVERLAP)
+        + (overlap_score(path_overlap_avg) * WEIGHT_PATH_OVERLAP)
         + (early_divergence * WEIGHT_EARLY_DIVERGENCE);
 
     (PsychMetrics {
@@ -2748,31 +3360,46 @@ impl PrefilterThresholds {
     }
 }
 
-fn compute_prefilter_thresholds(width: usize, height: usize) -> PrefilterThresholds {
+/// Reference target moves for 15x15 map (base thresholds are tuned for this)
+const REFERENCE_MOVES: f64 = 10.0;
+
+fn compute_prefilter_thresholds(width: usize, height: usize, target_moves: i32) -> PrefilterThresholds {
     let min_dim = width.min(height) as f64;
-    let scale = min_dim / REFERENCE_SIZE; // Reference: 15x15 base map size
+    let size_scale = min_dim / REFERENCE_SIZE; // Reference: 15x15 base map size
+    
+    // For move scaling: scale DOWN for fewer moves, but CAP at 1.0 for more moves
+    // This makes shorter puzzles easier to generate (relaxed thresholds)
+    // while keeping longer puzzles at the base difficulty (not harder to generate)
+    let move_scale = ((target_moves as f64) / REFERENCE_MOVES).min(1.0);
 
-    // Original thresholds (scaled for larger maps)
-    let ci = ((BASE_PREFILTER_MIN_COUNTER_INTUITIVE as f64 * scale).round() as i32)
-        .max(PREFILTER_FLOOR_COUNTER_INTUITIVE);
-    let _decoys = ((BASE_PREFILTER_MIN_ATTRACTIVE_DECOYS as f64 * scale).round() as i32)
+    // Original thresholds - scale down for shorter puzzles only
+    let ci = ((BASE_PREFILTER_MIN_COUNTER_INTUITIVE as f64 * move_scale).round() as i32)
+        .max(1); // Floor of 1 for short puzzles
+    let _decoys = ((BASE_PREFILTER_MIN_ATTRACTIVE_DECOYS as f64 * size_scale).round() as i32)
         .max(PREFILTER_FLOOR_ATTRACTIVE_DECOYS);
-    let _gates = ((BASE_PREFILTER_MIN_COMMITMENT_GATES as f64 * scale).round() as i32)
+    let _gates = ((BASE_PREFILTER_MIN_COMMITMENT_GATES as f64 * size_scale).round() as i32)
         .max(PREFILTER_FLOOR_COMMITMENT_GATES);
-    let fp = ((BASE_PREFILTER_MIN_FALSE_PROGRESS as f64 * scale).round() as i32)
-        .max(PREFILTER_FLOOR_FALSE_PROGRESS);
+    let fp = ((BASE_PREFILTER_MIN_FALSE_PROGRESS as f64 * move_scale).round() as i32)
+        .max(1); // Floor of 1 for short puzzles
 
-    // Phase 1 thresholds
-    let min_dir_changes = ((BASE_PREFILTER_MIN_DIRECTION_CHANGES as f64 * scale).round() as i32)
-        .max(PREFILTER_FLOOR_DIRECTION_CHANGES);
-    let _min_backtrack = ((BASE_PREFILTER_MIN_BACKTRACK_DEPTH as f64 * scale).round() as i32)
+    // Phase 1 thresholds - direction changes scale with moves (can't have more changes than moves-1)
+    let max_possible_dir_changes = (target_moves - 1).max(1);
+    let min_dir_changes = ((BASE_PREFILTER_MIN_DIRECTION_CHANGES as f64 * move_scale).round() as i32)
+        .max(2) // Floor of 2
+        .min(max_possible_dir_changes); // Can't exceed what's physically possible
+    let _min_backtrack = ((BASE_PREFILTER_MIN_BACKTRACK_DEPTH as f64 * size_scale).round() as i32)
         .max(PREFILTER_FLOOR_BACKTRACK_DEPTH);
-    let min_ambiguity = BASE_PREFILTER_MIN_DECISION_AMBIGUITY;
+    // Ambiguity scales with moves - shorter puzzles have fewer decision points
+    let min_ambiguity = (BASE_PREFILTER_MIN_DECISION_AMBIGUITY * move_scale).max(1.5);
 
-    // Phase 2 thresholds
-    let min_near_optimal = ((BASE_PREFILTER_MIN_NEAR_OPTIMAL_PATHS as f64 * scale).round() as i32)
-        .max(PREFILTER_FLOOR_NEAR_OPTIMAL_PATHS);
-    let max_overlap_best = BASE_PREFILTER_MAX_PATH_OVERLAP;
+    // Phase 2 thresholds - scale down for shorter puzzles only
+    let min_near_optimal = ((BASE_PREFILTER_MIN_NEAR_OPTIMAL_PATHS as f64 * move_scale).round() as i32)
+        .max(4); // Floor of 4 paths
+    // Overlap thresholds: relax for shorter puzzles (less room for divergence)
+    let overlap_relax = if target_moves < 10 { 1.0 + (10 - target_moves) as f64 * 0.03 } else { 1.0 };
+    let max_overlap_best = (BASE_PREFILTER_MAX_PATH_OVERLAP * overlap_relax).min(0.50);
+    let max_overlap_avg = (BASE_PREFILTER_MAX_PATH_OVERLAP_AVG * overlap_relax).min(0.80);
+    // Early divergence - keep constant
     let min_early_div = BASE_PREFILTER_MIN_EARLY_DIVERGENCE;
 
     PrefilterThresholds {
@@ -2792,7 +3419,7 @@ fn compute_prefilter_thresholds(width: usize, height: usize) -> PrefilterThresho
         // TIER 1 - Core difficulty
         min_near_optimal_paths: min_near_optimal,
         max_path_overlap_best: max_overlap_best,
-        max_path_overlap_avg: BASE_PREFILTER_MAX_PATH_OVERLAP_AVG,
+        max_path_overlap_avg: max_overlap_avg,
         min_early_divergence: min_early_div,
 
         // Enabled flags
@@ -3796,6 +4423,25 @@ enum TrapFunction {
 }
 
 impl TrapFunction {
+    fn index(&self) -> usize {
+        match self {
+            TrapFunction::AlmostThere => 0,
+            TrapFunction::DecoyOpenAreas => 1,
+            TrapFunction::HiddenChokePoints => 2,
+            TrapFunction::MomentumTraps => 3,
+            TrapFunction::AntiGradientZones => 4,
+            TrapFunction::ParallelPathIllusion => 5,
+            TrapFunction::LedgeMisdirection => 6,
+            TrapFunction::GoalProximityDeadEnds => 7,
+            TrapFunction::CommitmentTraps => 8,
+            TrapFunction::PrecisionGates => 9,
+            TrapFunction::FunnelPatterns => 10,
+            TrapFunction::TrapAlcoves => 11,
+            TrapFunction::DeceptivePaths => 12,
+            TrapFunction::DeadEndMagnets => 13,
+        }
+    }
+
     fn short_name(&self) -> &'static str {
         match self {
             TrapFunction::AlmostThere => "almost",
@@ -3839,12 +4485,25 @@ const ALL_TRAPS: [TrapFunction; 14] = [
 /// - Randomizes order of trap execution
 /// - Varies count ranges by ±50%
 /// Returns list of applied trap short names
+#[cfg(not(target_arch = "wasm32"))]
+fn run_trap_timed<F: FnOnce()>(ctx: &GenerationContext, trap: TrapFunction, f: F) {
+    let t = Instant::now();
+    f();
+    ctx.record_trap_time(trap, t.elapsed().as_micros() as u64);
+}
+
+#[cfg(target_arch = "wasm32")]
+fn run_trap_timed<F: FnOnce()>(_ctx: &GenerationContext, _trap: TrapFunction, f: F) {
+    f();
+}
+
 fn apply_chaos_traps(
     tiles: &mut Vec<Vec<TileType>>,
     start: &Position,
     goal: &Position,
     width: usize,
     height: usize,
+    ctx: &GenerationContext,
     rng: &mut SeededRandom,
     scale_range: impl Fn(i32, i32) -> (i32, i32),
     _protected: &mut HashSet<Position>,
@@ -3876,72 +4535,100 @@ fn apply_chaos_traps(
             TrapFunction::AlmostThere => {
                 let (min, max) = scale_range(2, 5);
                 let count = vary_count(rng, min, max);
-                create_almost_there_traps(tiles, start, goal, width, height, rng, count);
+                run_trap_timed(ctx, trap, || {
+                    create_almost_there_traps(tiles, start, goal, width, height, rng, count);
+                });
             }
             TrapFunction::DecoyOpenAreas => {
                 let (min, max) = scale_range(3, 6);
                 let count = vary_count(rng, min, max);
-                create_decoy_open_areas(tiles, start, goal, width, height, rng, count);
+                run_trap_timed(ctx, trap, || {
+                    create_decoy_open_areas(tiles, start, goal, width, height, rng, count);
+                });
             }
             TrapFunction::HiddenChokePoints => {
                 let (min, max) = scale_range(2, 5);
                 let count = vary_count(rng, min, max);
-                create_hidden_choke_points(tiles, start, goal, width, height, rng, count);
+                run_trap_timed(ctx, trap, || {
+                    create_hidden_choke_points(tiles, start, goal, width, height, rng, count);
+                });
             }
             TrapFunction::MomentumTraps => {
                 let (min, max) = scale_range(4, 8);
                 let count = vary_count(rng, min, max);
-                create_momentum_traps(tiles, start, goal, width, height, rng, count);
+                run_trap_timed(ctx, trap, || {
+                    create_momentum_traps(tiles, start, goal, width, height, rng, count);
+                });
             }
             TrapFunction::AntiGradientZones => {
                 let (min, max) = scale_range(2, 5);
                 let count = vary_count(rng, min, max);
-                create_anti_gradient_zones(tiles, start, goal, width, height, rng, count);
+                run_trap_timed(ctx, trap, || {
+                    create_anti_gradient_zones(tiles, start, goal, width, height, rng, count);
+                });
             }
             TrapFunction::ParallelPathIllusion => {
                 let (min, max) = scale_range(3, 6);
                 let count = vary_count(rng, min, max);
-                create_parallel_path_illusion(tiles, start, goal, width, height, rng, count);
+                run_trap_timed(ctx, trap, || {
+                    create_parallel_path_illusion(tiles, start, goal, width, height, rng, count);
+                });
             }
             TrapFunction::LedgeMisdirection => {
                 let (min, max) = scale_range(5, 9);
                 let count = vary_count(rng, min, max);
-                create_ledge_misdirection(tiles, start, goal, width, height, rng, count);
+                run_trap_timed(ctx, trap, || {
+                    create_ledge_misdirection(tiles, start, goal, width, height, rng, count);
+                });
             }
             TrapFunction::GoalProximityDeadEnds => {
                 let (min, max) = scale_range(3, 6);
                 let count = vary_count(rng, min, max);
-                create_goal_proximity_dead_ends(tiles, start, goal, width, height, rng, count);
+                run_trap_timed(ctx, trap, || {
+                    create_goal_proximity_dead_ends(tiles, start, goal, width, height, rng, count);
+                });
             }
             TrapFunction::CommitmentTraps => {
                 let (min, max) = scale_range(3, 6);
                 let count = vary_count(rng, min, max);
-                create_commitment_traps(tiles, start, goal, width, height, rng, count);
+                run_trap_timed(ctx, trap, || {
+                    create_commitment_traps(tiles, start, goal, width, height, rng, count);
+                });
             }
             TrapFunction::PrecisionGates => {
                 let (min, max) = scale_range(4, 8);
                 let count = vary_count(rng, min, max);
-                add_precision_gates(tiles, start, goal, width, height, rng, count);
+                run_trap_timed(ctx, trap, || {
+                    add_precision_gates(tiles, start, goal, width, height, rng, count);
+                });
             }
             TrapFunction::FunnelPatterns => {
                 let (min, max) = scale_range(3, 6);
                 let count = vary_count(rng, min, max);
-                add_funnel_patterns(tiles, start, goal, width, height, rng, count);
+                run_trap_timed(ctx, trap, || {
+                    add_funnel_patterns(tiles, start, goal, width, height, rng, count);
+                });
             }
             TrapFunction::TrapAlcoves => {
                 let (min, max) = scale_range(5, 9);
                 let count = vary_count(rng, min, max);
-                add_trap_alcoves(tiles, start, goal, width, height, rng, count);
+                run_trap_timed(ctx, trap, || {
+                    add_trap_alcoves(tiles, start, goal, width, height, rng, count);
+                });
             }
             TrapFunction::DeceptivePaths => {
                 let (min, max) = scale_range(8, 15);
                 let count = vary_count(rng, min, max);
-                add_deceptive_paths(tiles, start, goal, width, height, rng, count);
+                run_trap_timed(ctx, trap, || {
+                    add_deceptive_paths(tiles, start, goal, width, height, rng, count);
+                });
             }
             TrapFunction::DeadEndMagnets => {
                 let (min, max) = scale_range(3, 6);
                 let count = vary_count(rng, min, max);
-                add_dead_end_magnets(tiles, start, goal, width, height, rng, count);
+                run_trap_timed(ctx, trap, || {
+                    add_dead_end_magnets(tiles, start, goal, width, height, rng, count);
+                });
             }
         }
     }
@@ -3956,59 +4643,87 @@ fn apply_chaos_traps(
             match wild_trap {
                 TrapFunction::AlmostThere => {
                     let count = vary_count(rng, 1, 3);
-                    create_almost_there_traps(tiles, start, goal, width, height, rng, count);
+                    run_trap_timed(ctx, wild_trap, || {
+                        create_almost_there_traps(tiles, start, goal, width, height, rng, count);
+                    });
                 }
                 TrapFunction::DecoyOpenAreas => {
                     let count = vary_count(rng, 2, 4);
-                    create_decoy_open_areas(tiles, start, goal, width, height, rng, count);
+                    run_trap_timed(ctx, wild_trap, || {
+                        create_decoy_open_areas(tiles, start, goal, width, height, rng, count);
+                    });
                 }
                 TrapFunction::HiddenChokePoints => {
                     let count = vary_count(rng, 1, 3);
-                    create_hidden_choke_points(tiles, start, goal, width, height, rng, count);
+                    run_trap_timed(ctx, wild_trap, || {
+                        create_hidden_choke_points(tiles, start, goal, width, height, rng, count);
+                    });
                 }
                 TrapFunction::MomentumTraps => {
                     let count = vary_count(rng, 2, 5);
-                    create_momentum_traps(tiles, start, goal, width, height, rng, count);
+                    run_trap_timed(ctx, wild_trap, || {
+                        create_momentum_traps(tiles, start, goal, width, height, rng, count);
+                    });
                 }
                 TrapFunction::AntiGradientZones => {
                     let count = vary_count(rng, 1, 3);
-                    create_anti_gradient_zones(tiles, start, goal, width, height, rng, count);
+                    run_trap_timed(ctx, wild_trap, || {
+                        create_anti_gradient_zones(tiles, start, goal, width, height, rng, count);
+                    });
                 }
                 TrapFunction::ParallelPathIllusion => {
                     let count = vary_count(rng, 2, 4);
-                    create_parallel_path_illusion(tiles, start, goal, width, height, rng, count);
+                    run_trap_timed(ctx, wild_trap, || {
+                        create_parallel_path_illusion(tiles, start, goal, width, height, rng, count);
+                    });
                 }
                 TrapFunction::LedgeMisdirection => {
                     let count = vary_count(rng, 3, 6);
-                    create_ledge_misdirection(tiles, start, goal, width, height, rng, count);
+                    run_trap_timed(ctx, wild_trap, || {
+                        create_ledge_misdirection(tiles, start, goal, width, height, rng, count);
+                    });
                 }
                 TrapFunction::GoalProximityDeadEnds => {
                     let count = vary_count(rng, 2, 4);
-                    create_goal_proximity_dead_ends(tiles, start, goal, width, height, rng, count);
+                    run_trap_timed(ctx, wild_trap, || {
+                        create_goal_proximity_dead_ends(tiles, start, goal, width, height, rng, count);
+                    });
                 }
                 TrapFunction::CommitmentTraps => {
                     let count = vary_count(rng, 2, 4);
-                    create_commitment_traps(tiles, start, goal, width, height, rng, count);
+                    run_trap_timed(ctx, wild_trap, || {
+                        create_commitment_traps(tiles, start, goal, width, height, rng, count);
+                    });
                 }
                 TrapFunction::PrecisionGates => {
                     let count = vary_count(rng, 2, 5);
-                    add_precision_gates(tiles, start, goal, width, height, rng, count);
+                    run_trap_timed(ctx, wild_trap, || {
+                        add_precision_gates(tiles, start, goal, width, height, rng, count);
+                    });
                 }
                 TrapFunction::FunnelPatterns => {
                     let count = vary_count(rng, 2, 4);
-                    add_funnel_patterns(tiles, start, goal, width, height, rng, count);
+                    run_trap_timed(ctx, wild_trap, || {
+                        add_funnel_patterns(tiles, start, goal, width, height, rng, count);
+                    });
                 }
                 TrapFunction::TrapAlcoves => {
                     let count = vary_count(rng, 3, 6);
-                    add_trap_alcoves(tiles, start, goal, width, height, rng, count);
+                    run_trap_timed(ctx, wild_trap, || {
+                        add_trap_alcoves(tiles, start, goal, width, height, rng, count);
+                    });
                 }
                 TrapFunction::DeceptivePaths => {
                     let count = vary_count(rng, 4, 8);
-                    add_deceptive_paths(tiles, start, goal, width, height, rng, count);
+                    run_trap_timed(ctx, wild_trap, || {
+                        add_deceptive_paths(tiles, start, goal, width, height, rng, count);
+                    });
                 }
                 TrapFunction::DeadEndMagnets => {
                     let count = vary_count(rng, 2, 4);
-                    add_dead_end_magnets(tiles, start, goal, width, height, rng, count);
+                    run_trap_timed(ctx, wild_trap, || {
+                        add_dead_end_magnets(tiles, start, goal, width, height, rng, count);
+                    });
                 }
             }
         }
@@ -4036,11 +4751,19 @@ pub fn generate_puzzle_with_cancel(
     cancel_flag: Option<Arc<AtomicBool>>,
 ) -> Result<PuzzleData, ()> {
     // Create per-run context for isolated tracking
+    #[cfg(not(target_arch = "wasm32"))]
     let ctx = Arc::new(GenerationContext::new(seed));
+    #[cfg(target_arch = "wasm32")]
+    let ctx = GenerationContext::new(seed);
+
     let run_id = &ctx.run_id;
 
     // Log generation start with run identifier
+    #[cfg(not(target_arch = "wasm32"))]
     let num_threads = rayon::current_num_threads();
+    #[cfg(target_arch = "wasm32")]
+    let num_threads = 1;
+
     info!("[{}] ━━━ Starting generation ━━━", run_id);
     info!("[{}] seed={} threads={}", run_id, seed, num_threads);
 
@@ -4049,9 +4772,10 @@ pub fn generate_puzzle_with_cancel(
         pick_size(&mut rng)
     };
 
-    // Compute scaled parameters for this map size
-    let prefilter_thresholds = compute_prefilter_thresholds(width, height);
-    let required_optimal_moves = compute_required_moves(width, height);
+    // Use config override if set, otherwise compute from map size
+    let required_optimal_moves = config.target_moves.unwrap_or_else(|| compute_required_moves(width, height));
+    // Compute scaled parameters for this map size AND target moves
+    let prefilter_thresholds = compute_prefilter_thresholds(width, height, required_optimal_moves);
 
     info!(
         "[{}] map={}x{} target_moves={} batch_size={}",
@@ -4068,9 +4792,17 @@ pub fn generate_puzzle_with_cancel(
         info!("[{}] Resuming from batch {}", run_id, batch);
     }
     let is_cancelled = |flag: &Option<Arc<AtomicBool>>| -> bool {
-        flag.as_ref()
-            .map(|f| f.load(Ordering::Relaxed))
-            .unwrap_or(false)
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = flag;
+            false
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            flag.as_ref()
+                .map(|f| f.load(Ordering::Relaxed))
+                .unwrap_or(false)
+        }
     };
 
     loop {
@@ -4090,8 +4822,11 @@ pub fn generate_puzzle_with_cancel(
             (scaled_min, scaled_max)
         };
 
-        // Clone context Arc for use in parallel closure
+        // Clone context for use in parallel closure
+        #[cfg(not(target_arch = "wasm32"))]
         let ctx_clone = ctx.clone();
+        #[cfg(target_arch = "wasm32")]
+        let ctx_clone = &ctx;
         let prefilter_thresholds_clone = prefilter_thresholds.clone();
 
         // Generate puzzles in parallel (native) or sequential (WASM)
@@ -4101,12 +4836,14 @@ pub fn generate_puzzle_with_cancel(
                 return None;
             }
 
+            #[cfg(not(target_arch = "wasm32"))]
             let t_start = Instant::now();
             
             let mut attempt_rng = SeededRandom::new(&format!("{}-{}", seed, attempt));
             let mut tiles = create_base_maze(width, height, &mut attempt_rng);
             let mut protected_cells = new_pos_set(width * height);
             
+            #[cfg(not(target_arch = "wasm32"))]
             let t_base = t_start.elapsed();
 
             let mut ice_tiles: Vec<Position> = Vec::new();
@@ -4199,8 +4936,14 @@ pub fn generate_puzzle_with_cancel(
                 &mut attempt_rng,
             );
 
+            #[cfg(not(target_arch = "wasm32"))]
             let t_pre_traps = Instant::now();
             
+            #[cfg(not(target_arch = "wasm32"))]
+            let ctx_for_traps: &GenerationContext = &ctx_clone;
+            #[cfg(target_arch = "wasm32")]
+            let ctx_for_traps: &GenerationContext = ctx_clone;
+
             // Apply trap functions with randomized selection and ordering
             let applied_traps = apply_chaos_traps(
                 &mut tiles,
@@ -4208,6 +4951,7 @@ pub fn generate_puzzle_with_cancel(
                 &goal,
                 width,
                 height,
+                ctx_for_traps,
                 &mut attempt_rng,
                 scale_range,
                 &mut protected_cells,
@@ -4264,6 +5008,7 @@ pub fn generate_puzzle_with_cancel(
                 &protected_cells,
             );
 
+            #[cfg(not(target_arch = "wasm32"))]
             let t_traps = t_pre_traps.elapsed();
 
             tiles[start.y as usize][start.x as usize] = TileType::Start;
@@ -4281,25 +5026,48 @@ pub fn generate_puzzle_with_cancel(
             // FAST EARLY BAILOUT: Check unique optimal path first (32% fail rate)
             // This avoids expensive psych score calculation for ~1/3 of candidates
             if !has_unique_optimal_path(&tiles, &start, &goal, width, height, optimal_moves) {
-                ctx_clone.total_checked.fetch_add(1, Ordering::Relaxed);
-                ctx_clone.fail_unique_opt.fetch_add(1, Ordering::Relaxed);
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    ctx_clone.total_checked.fetch_add(1, Ordering::Relaxed);
+                    ctx_clone.fail_unique_opt.fetch_add(1, Ordering::Relaxed);
+                }
+                #[cfg(target_arch = "wasm32")]
+                {
+                    ctx_clone
+                        .total_checked
+                        .set(ctx_clone.total_checked.get().saturating_add(1));
+                    ctx_clone
+                        .fail_unique_opt
+                        .set(ctx_clone.fail_unique_opt.get().saturating_add(1));
+                }
                 return None;
             }
 
+            #[cfg(not(target_arch = "wasm32"))]
             let t_pre_psych = Instant::now();
             let (psych_metrics, psych_timing) = calculate_psychology_score_timed(&tiles, &start, &goal, width, height);
+            #[cfg(not(target_arch = "wasm32"))]
             let t_psych = t_pre_psych.elapsed();
             
             // Record timing stats
-            ctx_clone.time_base_maze_us.fetch_add(t_base.as_micros() as u64, Ordering::Relaxed);
-            ctx_clone.time_traps_us.fetch_add(t_traps.as_micros() as u64, Ordering::Relaxed);
-            ctx_clone.time_psych_score_us.fetch_add(t_psych.as_micros() as u64, Ordering::Relaxed);
-            ctx_clone.time_find_path_us.fetch_add(psych_timing.find_path_us, Ordering::Relaxed);
-            ctx_clone.time_count_paths_us.fetch_add(psych_timing.count_paths_us, Ordering::Relaxed);
-            ctx_clone.time_overlap_us.fetch_add(psych_timing.overlap_us, Ordering::Relaxed);
-            
-            // Track which prefilters fail (using per-run context)
-            ctx_clone.total_checked.fetch_add(1, Ordering::Relaxed);
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                ctx_clone.time_base_maze_us.fetch_add(t_base.as_micros() as u64, Ordering::Relaxed);
+                ctx_clone.time_traps_us.fetch_add(t_traps.as_micros() as u64, Ordering::Relaxed);
+                ctx_clone.time_psych_score_us.fetch_add(t_psych.as_micros() as u64, Ordering::Relaxed);
+                ctx_clone.time_find_path_us.fetch_add(psych_timing.find_path_us, Ordering::Relaxed);
+                ctx_clone.time_count_paths_us.fetch_add(psych_timing.count_paths_us, Ordering::Relaxed);
+                ctx_clone.time_overlap_us.fetch_add(psych_timing.overlap_us, Ordering::Relaxed);
+
+                // Track which prefilters fail (using per-run context)
+                ctx_clone.total_checked.fetch_add(1, Ordering::Relaxed);
+            }
+            #[cfg(target_arch = "wasm32")]
+            {
+                ctx_clone
+                    .total_checked
+                    .set(ctx_clone.total_checked.get().saturating_add(1));
+            }
             let passed = {
                 // unique_opt already checked via early bailout above
                 let pass_unique_opt = true; // Already verified by has_unique_optimal_path
@@ -4314,23 +5082,76 @@ pub fn generate_puzzle_with_cancel(
                 let pass_bt = psych_metrics.backtrack_depth >= prefilter_thresholds_clone.min_backtrack_depth;
                 let pass_amb = psych_metrics.decision_ambiguity >= prefilter_thresholds_clone.min_decision_ambiguity;
                 let pass_paths = psych_metrics.near_optimal_paths >= prefilter_thresholds_clone.min_near_optimal_paths;
-                let pass_olap_best = psych_metrics.path_overlap <= prefilter_thresholds_clone.max_path_overlap_best;
+                let pass_olap_best = if prefilter_thresholds_clone.olap_best_enabled {
+                    psych_metrics.path_overlap <= prefilter_thresholds_clone.max_path_overlap_best
+                } else {
+                    true
+                };
                 let pass_olap_avg = psych_metrics.path_overlap_avg <= prefilter_thresholds_clone.max_path_overlap_avg;
                 let pass_ediv = psych_metrics.early_divergence >= prefilter_thresholds_clone.min_early_divergence;
 
                 // Note: fail_unique_opt already counted in early bailout
-                if !pass_ci { ctx_clone.fail_ci.fetch_add(1, Ordering::Relaxed); }
-                if !pass_dec { ctx_clone.fail_dec.fetch_add(1, Ordering::Relaxed); }
-                if !pass_gate { ctx_clone.fail_gate.fetch_add(1, Ordering::Relaxed); }
-                if !pass_fp { ctx_clone.fail_fp.fetch_add(1, Ordering::Relaxed); }
-                if !pass_loc { ctx_clone.fail_loc.fetch_add(1, Ordering::Relaxed); }
-                if !pass_dir { ctx_clone.fail_dir.fetch_add(1, Ordering::Relaxed); }
-                if !pass_bt { ctx_clone.fail_bt.fetch_add(1, Ordering::Relaxed); }
-                if !pass_amb { ctx_clone.fail_amb.fetch_add(1, Ordering::Relaxed); }
-                if !pass_paths { ctx_clone.fail_paths.fetch_add(1, Ordering::Relaxed); }
-                if !pass_olap_best { ctx_clone.fail_olap_best.fetch_add(1, Ordering::Relaxed); }
-                if !pass_olap_avg { ctx_clone.fail_olap_avg.fetch_add(1, Ordering::Relaxed); }
-                if !pass_ediv { ctx_clone.fail_ediv.fetch_add(1, Ordering::Relaxed); }
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    if !pass_ci { ctx_clone.fail_ci.fetch_add(1, Ordering::Relaxed); }
+                    if !pass_dec { ctx_clone.fail_dec.fetch_add(1, Ordering::Relaxed); }
+                    if !pass_gate { ctx_clone.fail_gate.fetch_add(1, Ordering::Relaxed); }
+                    if !pass_fp { ctx_clone.fail_fp.fetch_add(1, Ordering::Relaxed); }
+                    if !pass_loc { ctx_clone.fail_loc.fetch_add(1, Ordering::Relaxed); }
+                    if !pass_dir { ctx_clone.fail_dir.fetch_add(1, Ordering::Relaxed); }
+                    if !pass_bt { ctx_clone.fail_bt.fetch_add(1, Ordering::Relaxed); }
+                    if !pass_amb { ctx_clone.fail_amb.fetch_add(1, Ordering::Relaxed); }
+                    if !pass_paths { ctx_clone.fail_paths.fetch_add(1, Ordering::Relaxed); }
+                    if prefilter_thresholds_clone.olap_best_enabled && !pass_olap_best {
+                        ctx_clone.fail_olap_best.fetch_add(1, Ordering::Relaxed);
+                    }
+                    if !pass_olap_avg { ctx_clone.fail_olap_avg.fetch_add(1, Ordering::Relaxed); }
+                    if !pass_ediv { ctx_clone.fail_ediv.fetch_add(1, Ordering::Relaxed); }
+                }
+                #[cfg(target_arch = "wasm32")]
+                {
+                    if !pass_ci {
+                        ctx_clone.fail_ci.set(ctx_clone.fail_ci.get().saturating_add(1));
+                    }
+                    if !pass_dec {
+                        ctx_clone.fail_dec.set(ctx_clone.fail_dec.get().saturating_add(1));
+                    }
+                    if !pass_gate {
+                        ctx_clone.fail_gate.set(ctx_clone.fail_gate.get().saturating_add(1));
+                    }
+                    if !pass_fp {
+                        ctx_clone.fail_fp.set(ctx_clone.fail_fp.get().saturating_add(1));
+                    }
+                    if !pass_loc {
+                        ctx_clone.fail_loc.set(ctx_clone.fail_loc.get().saturating_add(1));
+                    }
+                    if !pass_dir {
+                        ctx_clone.fail_dir.set(ctx_clone.fail_dir.get().saturating_add(1));
+                    }
+                    if !pass_bt {
+                        ctx_clone.fail_bt.set(ctx_clone.fail_bt.get().saturating_add(1));
+                    }
+                    if !pass_amb {
+                        ctx_clone.fail_amb.set(ctx_clone.fail_amb.get().saturating_add(1));
+                    }
+                    if !pass_paths {
+                        ctx_clone.fail_paths.set(ctx_clone.fail_paths.get().saturating_add(1));
+                    }
+                    if prefilter_thresholds_clone.olap_best_enabled && !pass_olap_best {
+                        ctx_clone
+                            .fail_olap_best
+                            .set(ctx_clone.fail_olap_best.get().saturating_add(1));
+                    }
+                    if !pass_olap_avg {
+                        ctx_clone
+                            .fail_olap_avg
+                            .set(ctx_clone.fail_olap_avg.get().saturating_add(1));
+                    }
+                    if !pass_ediv {
+                        ctx_clone.fail_ediv.set(ctx_clone.fail_ediv.get().saturating_add(1));
+                    }
+                }
+
 
                 // Calculate closeness score for tracking (only for puzzles with unique optimal path)
                 // Higher score = closer to passing all thresholds
@@ -4511,7 +5332,7 @@ pub fn generate_puzzle_with_cancel(
                         metrics,
                         traps: applied_traps.clone(),
                     });
-                    
+
                     score
                 } else {
                     0.0 // No closeness score without unique optimal path
@@ -4519,9 +5340,9 @@ pub fn generate_puzzle_with_cancel(
 
                 // Accept puzzle if either:
                 // 1. All thresholds pass, OR
-                // 2. Closeness score is >= 1.0 (perfect match only)
+                // 2. Closeness score is >= configured closeness_threshold
                 let passes_all_thresholds = pass_unique_opt && pass_ci && pass_dec && pass_gate && pass_fp && pass_loc && pass_dir && pass_bt && pass_amb && pass_paths && pass_olap_best && pass_olap_avg && pass_ediv;
-                let passes_closeness_threshold = pass_unique_opt && closeness >= 1.0;
+                let passes_closeness_threshold = pass_unique_opt && closeness >= config.closeness_threshold;
                 
                 passes_all_thresholds || passes_closeness_threshold
             };
@@ -4544,7 +5365,6 @@ pub fn generate_puzzle_with_cancel(
                 goal,
                 optimal_moves,
                 solution_path: Some(optimal_path),
-                map_type: MapType::Ice,
                 difficulty_score: Some(base_score.round() as i32), // Store base score without bonus
                 selected_batch: None, // Will be set when puzzle is selected
                 // Original metrics (Phase 0)
@@ -4559,7 +5379,7 @@ pub fn generate_puzzle_with_cancel(
                 decision_ambiguity: Some(psych_metrics.decision_ambiguity),
                 // Path diversity metrics (Phase 2)
                 near_optimal_paths: Some(psych_metrics.near_optimal_paths),
-                path_overlap: Some(psych_metrics.path_overlap),
+                path_overlap: if PREFILTER_ENABLE_OLAP_BEST { Some(psych_metrics.path_overlap) } else { None },
                 path_overlap_avg: Some(psych_metrics.path_overlap_avg),
                 early_divergence: Some(psych_metrics.early_divergence),
             };
@@ -4619,6 +5439,7 @@ pub fn generate_puzzle_with_cancel(
             // Log timing every 50 batches (debug level)
             if batch % 50 == 0 {
                 debug!("[{}]   └─ timing: {}", run_id, ctx.format_timing());
+                debug!("[{}]   └─ trap timing: {}", run_id, ctx.format_trap_timing());
             }
         }
 

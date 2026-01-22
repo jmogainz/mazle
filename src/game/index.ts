@@ -4,16 +4,18 @@ export { onGameEvent, emitGameEvent } from './events';
 // Puzzle seed utilities
 export {
   getPuzzleNumber,
+  getPuzzleNumberFromNyDateString,
   getDailySeed,
   getNewYorkDateString,
-  MAP_REGISTRY,
+  getGameConfig,
 } from './puzzleGenerator';
-export type { MapTypeDefinition, PsychologyMetrics } from './puzzleGenerator';
+export type { GameConfig, PsychologyMetrics } from './puzzleGenerator';
 
 // Puzzle generation (WASM/Rust)
 export {
   generatePuzzleParallel,
   cancelRustRequest,
+  cancelWasmRequest,
   fetchDailyPuzzle,
   isRustBackendConfigured,
   getRustBackendUrl,
@@ -25,9 +27,7 @@ export type { GenerationProgress, GeneratorBackend, GeneratorStatus, DailyPuzzle
 // Movement system
 export {
   simulateMove,
-  getMovementConfig,
   iceMovementConfig,
-  groundMovementConfig,
 } from './movement';
 export type { MovementConfig, MoveResult } from './movement';
 

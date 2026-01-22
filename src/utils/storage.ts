@@ -1,9 +1,133 @@
 import { PlayerStats, DailyStats, PuzzleData, TileType, Position } from '@/game/types';
+import { addDays } from '@/lib/date';
+import { getPuzzleNumberFromNyDateString } from '@/game/puzzleGenerator';
 
 const STATS_KEY = 'mazle_stats';
 const DAILY_KEY = 'mazle_daily';
 const PUZZLE_CACHE_KEY = 'mazle_puzzle_cache_v1';
 const IN_PROGRESS_KEY = 'mazle_in_progress_v1';
+const DEV_STATS_SEEDED_KEY = 'mazle_dev_seeded_stats_v1';
+const STORAGE_SCOPE_KEY = 'mazle_storage_scope_v1';
+const STORAGE_SCOPE_CHANGED_EVENT = 'mazle_storage_scope_changed_v1';
+const DEFAULT_SCOPE = 'guest';
+
+export type StorageScope = string;
+
+function resolveScope(scope?: StorageScope): StorageScope {
+  if (scope && typeof scope === 'string') return scope;
+  if (typeof window === 'undefined') return DEFAULT_SCOPE;
+  try {
+    const stored = localStorage.getItem(STORAGE_SCOPE_KEY);
+    if (stored && typeof stored === 'string') return stored;
+  } catch {
+    // ignore
+  }
+  return DEFAULT_SCOPE;
+}
+
+function scopedKey(base: string, scope?: StorageScope): string {
+  return `${base}:${resolveScope(scope)}`;
+}
+
+function readRaw(key: string): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeRaw(key: string, value: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // ignore
+  }
+}
+
+function removeRaw(key: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // ignore
+  }
+}
+
+function readScopedJson<T>(base: string, scope?: StorageScope): T | null {
+  if (typeof window === 'undefined') return null;
+  const resolved = resolveScope(scope);
+  const key = scopedKey(base, resolved);
+  const raw = readRaw(key);
+  if (raw) {
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      return null;
+    }
+  }
+
+  // Legacy fallback only for guest scope
+  if (resolved !== DEFAULT_SCOPE) return null;
+  const legacyRaw = readRaw(base);
+  if (!legacyRaw) return null;
+  try {
+    const parsed = JSON.parse(legacyRaw) as T;
+    writeRaw(key, legacyRaw);
+    removeRaw(base);
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeScopedJson(base: string, value: unknown, scope?: StorageScope): void {
+  if (typeof window === 'undefined') return;
+  const key = scopedKey(base, scope);
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // ignore
+  }
+}
+
+function removeScoped(base: string, scope?: StorageScope): void {
+  removeRaw(scopedKey(base, scope));
+}
+
+export function getStorageScope(): StorageScope {
+  return resolveScope();
+}
+
+export function setStorageScope(scope: StorageScope): void {
+  if (typeof window === 'undefined') return;
+  const next = scope || DEFAULT_SCOPE;
+  let prev: string | null = null;
+  try {
+    prev = localStorage.getItem(STORAGE_SCOPE_KEY);
+  } catch {
+    prev = null;
+  }
+  if (prev === next) return;
+  try {
+    localStorage.setItem(STORAGE_SCOPE_KEY, next);
+  } catch {
+    // ignore
+  }
+  try {
+    window.dispatchEvent(new Event(STORAGE_SCOPE_CHANGED_EVENT));
+  } catch {
+    // ignore
+  }
+}
+
+export function onStorageScopeChanged(handler: () => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+  window.addEventListener(STORAGE_SCOPE_CHANGED_EVENT, handler);
+  return () => window.removeEventListener(STORAGE_SCOPE_CHANGED_EVENT, handler);
+}
 
 // In-progress game state for resume after refresh
 export interface InProgressState {
@@ -24,7 +148,7 @@ export interface InProgressState {
     deviationIndex?: number;
   }[];
   moveHistory: Position[];
-  boulderPositions?: string[];     // For ground maps with boulders
+  boulderPositions?: string[];     // Legacy field for backward compatibility
   isPlaying: boolean;
   // Hint state
   unlockedHintTiles?: string[];
@@ -47,14 +171,124 @@ function getDefaultStats(): PlayerStats {
   };
 }
 
-// Get player stats from localStorage
-export function getPlayerStats(): PlayerStats {
-  if (typeof window === 'undefined') return getDefaultStats();
+function isUiDevEnv(): boolean {
+  return process.env.NEXT_PUBLIC_ENV === 'dev' || process.env.NEXT_PUBLIC_ENV === 'dev-test';
+}
+
+function clampInt(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.max(min, Math.min(max, Math.floor(value)));
+}
+
+function devRandomInt(min: number, max: number): number {
+  return clampInt(min + Math.random() * (max - min + 1), min, max);
+}
+
+function seedDevStatsIfNeeded(scope?: StorageScope): void {
+  if (typeof window === 'undefined') return;
+  if (!isUiDevEnv()) return;
 
   try {
-    const stored = localStorage.getItem(STATS_KEY);
-    if (stored) {
-      return JSON.parse(stored) as PlayerStats;
+    if (readRaw(scopedKey(DEV_STATS_SEEDED_KEY, scope)) === '1') return;
+
+    const parsed = readScopedJson<PlayerStats>(STATS_KEY, scope);
+    if (parsed && typeof parsed === 'object' && Array.isArray(parsed.history) && parsed.history.length >= 20) {
+      writeRaw(scopedKey(DEV_STATS_SEEDED_KEY, scope), '1');
+      return;
+    }
+  } catch {
+    // Ignore seed pre-check failures
+  }
+
+  const today = getTodayString();
+  const yesterday = addDays(today, -1);
+
+  const history: DailyStats[] = [];
+  for (let i = 0; i < 20; i += 1) {
+    const date = addDays(yesterday, -i);
+    const puzzleNumber = getPuzzleNumberFromNyDateString(date);
+
+    const isStreakDay = i < 5;
+    const completed = isStreakDay ? true : Math.random() < 0.72;
+    const attemptsUsed = completed ? devRandomInt(1, 3) : undefined;
+    const timeMs = completed ? devRandomInt(32_000, 210_000) : devRandomInt(18_000, 260_000);
+    const moveCount = completed ? devRandomInt(8, 18) : devRandomInt(8, 26);
+    const failed = !completed;
+
+    const leaderboardRank = completed && Math.random() < 0.35 ? devRandomInt(1, 120) : undefined;
+
+    history.push({
+      date,
+      completed,
+      failed,
+      attemptsUsed: completed ? attemptsUsed : undefined,
+      timeMs,
+      moveCount,
+      puzzleNumber,
+      leaderboardRank,
+    });
+  }
+
+  history.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+  const totalGamesPlayed = history.length;
+  const totalGamesWon = history.filter((h) => h.completed).length;
+  const currentStreak = 5;
+  const maxStreak = Math.max(currentStreak, devRandomInt(6, 12));
+
+  const seeded: PlayerStats = {
+    currentStreak,
+    maxStreak,
+    totalGamesPlayed,
+    totalGamesWon,
+    lastPlayedDate: yesterday,
+    history,
+  };
+
+  writeScopedJson(STATS_KEY, seeded, scope);
+  writeRaw(scopedKey(DEV_STATS_SEEDED_KEY, scope), '1');
+}
+
+// Get player stats from localStorage
+export function getPlayerStats(scope?: StorageScope): PlayerStats {
+  if (typeof window === 'undefined') return getDefaultStats();
+
+  seedDevStatsIfNeeded(scope);
+
+  try {
+    const parsed = readScopedJson<PlayerStats>(STATS_KEY, scope);
+    if (parsed) {
+      if (!parsed || typeof parsed !== 'object') return getDefaultStats();
+      if (!Array.isArray(parsed.history)) {
+        const next: PlayerStats = { ...getDefaultStats(), ...parsed, history: [] };
+        savePlayerStats(next, scope);
+        return next;
+      }
+
+      // Sanitize legacy entries that stored full attempt paths in history (can get large).
+      // Keep the daily result fields, but drop attempts payloads (keep attemptsUsed count).
+      let changed = false;
+      const sanitizedHistory: DailyStats[] = [];
+      for (const raw of parsed.history) {
+        if (!raw || typeof raw !== 'object') continue;
+        const entry = raw as DailyStats & { attempts?: unknown[] };
+        const { attempts, ...rest } = entry as any;
+        // Compute attemptsUsed from attempts array if not already set
+        if (rest.attemptsUsed === undefined && Array.isArray(attempts)) {
+          rest.attemptsUsed = Math.min(3, Math.max(1, attempts.length + 1));
+          changed = true;
+        }
+        if (attempts != null) changed = true;
+        sanitizedHistory.push(rest as DailyStats);
+      }
+
+      if (changed) {
+        const next: PlayerStats = { ...parsed, history: sanitizedHistory };
+        savePlayerStats(next, scope);
+        return next;
+      }
+
+      return parsed;
     }
   } catch {
     console.error('Failed to load stats');
@@ -64,11 +298,11 @@ export function getPlayerStats(): PlayerStats {
 }
 
 // Save player stats to localStorage
-export function savePlayerStats(stats: PlayerStats): void {
+export function savePlayerStats(stats: PlayerStats, scope?: StorageScope): void {
   if (typeof window === 'undefined') return;
 
   try {
-    localStorage.setItem(STATS_KEY, JSON.stringify(stats));
+    writeScopedJson(STATS_KEY, stats, scope);
   } catch {
     console.error('Failed to save stats');
   }
@@ -80,14 +314,114 @@ function getTodayString(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 }
 
+function sortByDateAsc<T extends { date: string }>(rows: T[]): T[] {
+  return [...rows].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+}
+
+function recomputeStatsFromHistory(history: DailyStats[]): PlayerStats {
+  const sorted = sortByDateAsc(history);
+  const totalGamesPlayed = sorted.length;
+  const totalGamesWon = sorted.filter((h) => h.completed).length;
+  const lastPlayedDate = sorted.length > 0 ? sorted[sorted.length - 1]!.date : null;
+
+  // Max streak over all time (played days).
+  let maxStreak = 0;
+  let currentRun = 0;
+  let prevPlayedDate: string | null = null;
+  for (const entry of sorted) {
+    if (prevPlayedDate && entry.date === addDays(prevPlayedDate, 1)) {
+      currentRun += 1;
+    } else {
+      currentRun = 1;
+    }
+    prevPlayedDate = entry.date;
+    maxStreak = Math.max(maxStreak, currentRun);
+  }
+
+  // Current streak (played days), only if last played is today or yesterday.
+  const today = getTodayString();
+  const yesterday = addDays(today, -1);
+  let currentStreak = 0;
+  if (lastPlayedDate === today || lastPlayedDate === yesterday) {
+    // Walk backwards in date order and count consecutive plays.
+    const desc = [...sorted].reverse();
+    for (let i = 0; i < desc.length; i += 1) {
+      const row = desc[i]!;
+      if (i === 0) {
+        currentStreak = 1;
+        continue;
+      }
+      const prev = desc[i - 1]!;
+      if (row.date !== addDays(prev.date, -1)) break;
+      currentStreak += 1;
+    }
+  }
+
+  return {
+    currentStreak,
+    maxStreak,
+    totalGamesPlayed,
+    totalGamesWon,
+    lastPlayedDate,
+    history: sorted,
+  };
+}
+
+export function mergePlayerStats(primary: PlayerStats, secondary: PlayerStats): PlayerStats {
+  const byDate = new Map<string, DailyStats>();
+  for (const entry of secondary.history) {
+    if (entry?.date) byDate.set(entry.date, entry);
+  }
+  for (const entry of primary.history) {
+    if (entry?.date) byDate.set(entry.date, entry);
+  }
+  let merged = Array.from(byDate.values());
+  if (merged.length > 2000) {
+    merged = merged.slice(-2000);
+  }
+  return recomputeStatsFromHistory(merged);
+}
+
+export function setTodaysResultForDev(result: DailyStats | null, scope?: StorageScope): void {
+  if (typeof window === 'undefined') return;
+  if (!isUiDevEnv()) return;
+
+  try {
+    if (result == null) {
+      removeScoped(DAILY_KEY, scope);
+    } else {
+      writeScopedJson(DAILY_KEY, result, scope);
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    const stats = getPlayerStats(scope);
+    const today = getTodayString();
+
+    const filtered = stats.history.filter((h) => h.date !== today);
+    const nextHistory = result ? [...filtered, result] : filtered;
+    const nextStats = recomputeStatsFromHistory(nextHistory);
+    savePlayerStats(nextStats, scope);
+  } catch {
+    // ignore
+  }
+
+  try {
+    writeRaw(scopedKey(DEV_STATS_SEEDED_KEY, scope), '1');
+  } catch {
+    // ignore
+  }
+}
+
 // Check if player has played today
-export function hasPlayedToday(): boolean {
+export function hasPlayedToday(scope?: StorageScope): boolean {
   if (typeof window === 'undefined') return false;
 
   try {
-    const stored = localStorage.getItem(DAILY_KEY);
-    if (stored) {
-      const daily = JSON.parse(stored);
+    const daily = readScopedJson<DailyStats>(DAILY_KEY, scope);
+    if (daily) {
       return daily.date === getTodayString();
     }
   } catch {
@@ -98,16 +432,13 @@ export function hasPlayedToday(): boolean {
 }
 
 // Get today's result if already played
-export function getTodaysResult(): DailyStats | null {
+export function getTodaysResult(scope?: StorageScope): DailyStats | null {
   if (typeof window === 'undefined') return null;
 
   try {
-    const stored = localStorage.getItem(DAILY_KEY);
-    if (stored) {
-      const daily = JSON.parse(stored);
-      if (daily.date === getTodayString()) {
-        return daily as DailyStats;
-      }
+    const daily = readScopedJson<DailyStats>(DAILY_KEY, scope);
+    if (daily && daily.date === getTodayString()) {
+      return daily as DailyStats;
     }
   } catch {
     console.error('Failed to get daily result');
@@ -117,48 +448,147 @@ export function getTodaysResult(): DailyStats | null {
 }
 
 // Save today's result
-export function saveTodaysResult(result: DailyStats): void {
+export function saveTodaysResult(result: DailyStats, scope?: StorageScope): void {
   if (typeof window === 'undefined') return;
 
   try {
-    localStorage.setItem(DAILY_KEY, JSON.stringify(result));
+    writeScopedJson(DAILY_KEY, result, scope);
 
     // Update overall stats
-    const stats = getPlayerStats();
+    const stats = getPlayerStats(scope);
     const today = getTodayString();
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    const yesterday = addDays(today, -1);
+
+    const alreadyRecorded = stats.history.some((h) => h.date === today);
+    if (alreadyRecorded) {
+      return;
+    }
 
     stats.totalGamesPlayed++;
 
     if (result.completed) {
       stats.totalGamesWon++;
-
-      // Update streak
-      if (stats.lastPlayedDate === yesterday || stats.lastPlayedDate === today) {
-        if (stats.lastPlayedDate !== today) {
-          stats.currentStreak++;
-        }
-      } else {
-        stats.currentStreak = 1;
-      }
-
-      stats.maxStreak = Math.max(stats.maxStreak, stats.currentStreak);
-    } else {
-      stats.currentStreak = 0;
     }
+
+    // Update streak (played days)
+    if (stats.lastPlayedDate === yesterday || stats.lastPlayedDate === today) {
+      if (stats.lastPlayedDate !== today) {
+        stats.currentStreak++;
+      }
+    } else {
+      stats.currentStreak = 1;
+    }
+
+    stats.maxStreak = Math.max(stats.maxStreak, stats.currentStreak);
 
     stats.lastPlayedDate = today;
-    stats.history.push(result);
+    const { attempts, ...rest } = result as any;
+    stats.history.push(rest as DailyStats);
 
-    // Keep only last 30 days of history
-    if (stats.history.length > 30) {
-      stats.history = stats.history.slice(-30);
+    if (stats.history.length > 2000) {
+      stats.history = stats.history.slice(-2000);
     }
 
-    savePlayerStats(stats);
+    savePlayerStats(stats, scope);
   } catch {
     console.error('Failed to save daily result');
   }
+}
+
+export function upsertTodaysResult(result: DailyStats, scope?: StorageScope): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    writeScopedJson(DAILY_KEY, result, scope);
+
+    const stats = getPlayerStats(scope);
+    const today = getTodayString();
+    const { attempts, ...rest } = result as any;
+    const filtered = stats.history.filter((h) => h.date !== today);
+    let nextHistory = [...filtered, rest as DailyStats];
+    if (nextHistory.length > 2000) {
+      nextHistory = nextHistory.slice(-2000);
+    }
+    const nextStats = recomputeStatsFromHistory(nextHistory);
+    savePlayerStats(nextStats, scope);
+  } catch {
+    console.error('Failed to upsert daily result');
+  }
+}
+
+export function recordLeaderboardRank(date: string, rank: number, scope?: StorageScope): void {
+  if (typeof window === 'undefined') return;
+  if (!Number.isFinite(rank) || rank < 1) return;
+  const normalizedRank = Math.floor(rank);
+
+  try {
+    const daily = readScopedJson<DailyStats>(DAILY_KEY, scope);
+    if (daily?.date === date) {
+      const next: DailyStats = { ...daily, leaderboardRank: normalizedRank };
+      writeScopedJson(DAILY_KEY, next, scope);
+    }
+  } catch {
+    // Ignore localStorage update failures
+  }
+
+  try {
+    const stats = getPlayerStats(scope);
+    let changed = false;
+    for (const entry of stats.history) {
+      if (entry.date !== date) continue;
+      if (entry.leaderboardRank !== normalizedRank) {
+        entry.leaderboardRank = normalizedRank;
+        changed = true;
+      }
+      break;
+    }
+    if (changed) savePlayerStats(stats, scope);
+  } catch {
+    // Ignore localStorage update failures
+  }
+}
+
+export function getGuestHistoryForAccountImport(): Array<{
+  date: string;
+  completed: boolean;
+  timeMs: number | null;
+  attemptsUsed: number | null;
+}> {
+  const stats = getPlayerStats(DEFAULT_SCOPE);
+  const byDate = new Map<string, DailyStats>();
+  for (const entry of stats.history) {
+    if (!entry?.date || typeof entry.date !== 'string') continue;
+    if (!byDate.has(entry.date)) {
+      byDate.set(entry.date, entry);
+    }
+  }
+
+  const today = getTodayString();
+  const todayResult = getTodaysResult(DEFAULT_SCOPE);
+  if (todayResult && todayResult.date === today) {
+    byDate.set(today, todayResult);
+  }
+
+  const rows = Array.from(byDate.values());
+  rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+  return rows.map((r) => {
+    const completed = !!r.completed;
+    const timeMs = completed && typeof r.timeMs === 'number' && Number.isFinite(r.timeMs) && r.timeMs > 0 ? Math.round(r.timeMs) : null;
+    const attemptsUsed = (() => {
+      const rawAttempts = (r as any).attempts;
+      if (!completed || !Array.isArray(rawAttempts)) return null;
+      const failedAttempts = rawAttempts.length ?? 0;
+      return Math.min(3, Math.max(1, failedAttempts + 1));
+    })();
+
+    return {
+      date: r.date,
+      completed,
+      timeMs,
+      attemptsUsed,
+    };
+  });
 }
 
 // Format time for display (mm:ss)
@@ -169,7 +599,16 @@ export function formatTime(ms: number): string {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
-// Format time with milliseconds (mm:ss.mmm)
+// Format time with milliseconds (m:ss.xxx)
+export function formatTimeMs(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  const millis = ms % 1000;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}.${millis.toString().padStart(3, '0')}`;
+}
+
+// Format time with tenths (mm:ss.m)
 export function formatTimeDetailed(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
   const minutes = Math.floor(totalSeconds / 60);
@@ -246,7 +685,7 @@ export function cachePuzzle(seed: string, puzzle: PuzzleData): void {
 }
 
 // Save in-progress game state for resume after refresh
-export function saveInProgressState(seed: string, state: Omit<InProgressState, 'date' | 'seed'>): void {
+export function saveInProgressState(seed: string, state: Omit<InProgressState, 'date' | 'seed'>, scope?: StorageScope): void {
   if (typeof window === 'undefined') return;
 
   try {
@@ -255,32 +694,30 @@ export function saveInProgressState(seed: string, state: Omit<InProgressState, '
       date: getTodayString(),
       seed,
     };
-    localStorage.setItem(IN_PROGRESS_KEY, JSON.stringify(fullState));
+    writeScopedJson(IN_PROGRESS_KEY, fullState, scope);
   } catch (error) {
     console.error('Failed to save in-progress state', error);
   }
 }
 
 // Get in-progress game state if it matches today's date and seed
-export function getInProgressState(seed: string): InProgressState | null {
+export function getInProgressState(seed: string, scope?: StorageScope): InProgressState | null {
   if (typeof window === 'undefined') return null;
 
   try {
-    const stored = localStorage.getItem(IN_PROGRESS_KEY);
-    if (!stored) return null;
-
-    const state = JSON.parse(stored) as InProgressState;
+    const state = readScopedJson<InProgressState>(IN_PROGRESS_KEY, scope);
+    if (!state) return null;
 
     // Validate it's for today and the same puzzle
     if (state.date !== getTodayString() || state.seed !== seed) {
       // Stale state, clear it
-      localStorage.removeItem(IN_PROGRESS_KEY);
+      removeScoped(IN_PROGRESS_KEY, scope);
       return null;
     }
 
     // Basic validation
     if (typeof state.playerPos?.x !== 'number' || typeof state.playerPos?.y !== 'number') {
-      localStorage.removeItem(IN_PROGRESS_KEY);
+      removeScoped(IN_PROGRESS_KEY, scope);
       return null;
     }
 
@@ -292,11 +729,11 @@ export function getInProgressState(seed: string): InProgressState | null {
 }
 
 // Clear in-progress state (called on game complete)
-export function clearInProgressState(): void {
+export function clearInProgressState(scope?: StorageScope): void {
   if (typeof window === 'undefined') return;
 
   try {
-    localStorage.removeItem(IN_PROGRESS_KEY);
+    removeScoped(IN_PROGRESS_KEY, scope);
   } catch (error) {
     console.error('Failed to clear in-progress state', error);
   }

@@ -1,0 +1,751 @@
+.sectionTitle {
+  font-size: 0.85rem;
+  color: var(--color-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 800;
+  margin: 0 0 0.75rem 0;
+}
+
+/* Grid now acts as a flex column container */
+.grid {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-height: 75vh;
+  gap: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Horizontal carousel with scroll-snap */
+.carousel {
+  display: flex;
+  flex: 1;
+  gap: 1.5rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  /* Hide scrollbar */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.carousel::-webkit-scrollbar {
+  display: none;
+}
+
+
+
+/* Each day panel takes full width */
+.dayPanel {
+  flex: 0 0 100%;
+  width: 100%;
+  min-width: 100%;
+  padding: 0 0.5rem;
+  box-sizing: border-box;
+  scroll-snap-align: center;
+  scroll-snap-stop: always;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  /* Custom Scrollbar for vertical scroll */
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.dayPanel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.dayPanel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dayPanel::-webkit-scrollbar-thumb {
+  background-color: var(--color-border);
+  border-radius: 20px;
+}
+
+/* Day title inside each panel - slides with content */
+.dayTitle {
+  text-align: center;
+  padding: 0.5rem 0 1rem;
+  flex-shrink: 0;
+}
+
+.dayTitleMain {
+  font-weight: 900;
+  font-size: 1.1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text);
+  line-height: 1.2;
+}
+
+.dayTitleSub {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-secondary);
+  margin-top: 0.1rem;
+}
+
+.panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 0.9rem;
+}
+
+/* Scrollable container for the list - now handled by PullToRefresh */
+.scrollArea {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  /* Required for flex scrolling */
+  padding-bottom: 0;
+}
+
+/* Sticky footer for user rank */
+.footer {
+  margin-top: auto;
+  border-top: 1px solid var(--color-border);
+  padding-top: 0.75rem;
+  padding-bottom: 0.25rem;
+  background: var(--color-background);
+  /* Ensure opaque background */
+  z-index: 10;
+}
+
+.meRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.meLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.meName {
+  font-weight: 800;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.meMeta {
+  font-size: 0.85rem;
+  color: var(--color-secondary);
+}
+
+.meRight {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.rank {
+  font-weight: 900;
+  font-size: 1.15rem;
+  color: var(--color-text);
+}
+
+.buttonRow {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.primaryButton,
+.secondaryButton {
+  border: none;
+  border-radius: 10px;
+  padding: 0.75rem 0.9rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.06s ease, filter 0.2s;
+  width: 100%;
+}
+
+.primaryButton {
+  background: var(--color-primary);
+  color: #ffffff;
+}
+
+.secondaryButton {
+  background: var(--color-background);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+}
+
+.primaryButton:active,
+.secondaryButton:active {
+  transform: scale(0.98);
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.submitButtonSmall {
+  background: var(--color-primary);
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.45rem 0.85rem;
+  font-weight: 800;
+  font-size: 0.75rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 0.06s ease;
+  font-family: var(--font-main);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+}
+
+.submitButtonSmall:active {
+  transform: scale(0.96);
+}
+
+.submitButtonSmall:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.submitButtonSmall.submitting {
+  opacity: 1;
+  background: linear-gradient(90deg, var(--color-primary) 0%, #7dc576 50%, var(--color-primary) 100%);
+  background-size: 200% 100%;
+  animation: shimmerButton 1.5s ease-in-out infinite;
+}
+
+@keyframes shimmerButton {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+.submitButtonContent {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+.submitSpinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-bottom: 0.5rem;
+}
+
+.loadMoreRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.6rem 0;
+  color: var(--color-secondary);
+  font-size: 0.75rem;
+}
+
+.loadMoreSpinner {
+  width: 18px;
+  height: 18px;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.loadMoreHint {
+  font-size: 0.75rem;
+  color: var(--color-secondary);
+}
+
+.loadMoreEnd {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--color-secondary);
+  padding: 0.6rem 0 0.2rem;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 40px 1fr auto auto;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-background);
+  border-radius: 8px;
+  will-change: transform, opacity;
+  transform-origin: center bottom;
+}
+
+.rowPlaceholder {
+  opacity: 0.55;
+  background: var(--color-surface);
+}
+
+.rowPlaceholder .rowName,
+.rowPlaceholder .rowTime,
+.rowPlaceholder .rowAttempts {
+  color: var(--color-secondary);
+}
+
+.rowMe {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px rgba(106, 170, 100, 0.2);
+}
+
+/* Highlighted user row - same layout as regular rows but visually distinct */
+.rowMeHighlight {
+  border-color: var(--color-primary);
+  background: var(--color-surface);
+}
+
+/* Pending/unsubmitted user row - yellow theme */
+.rowMePending {
+  border-color: var(--color-warning, #D4A500);
+  background: var(--color-surface);
+}
+
+/* Pending rank indicator - animated dots */
+.pendingRank {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  justify-content: center;
+  height: 1em;
+  margin-left: 4px;
+  line-height: 1;
+}
+
+.pendingRank > span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-warning, #D4A500);
+  animation: pendingDot 1.4s ease-in-out infinite;
+}
+
+.pendingRank > span:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.pendingRank > span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.pendingRank > span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+
+@keyframes pendingDot {
+  0%, 80%, 100% { opacity: 0.3; }
+  40% { opacity: 1; }
+}
+
+/* Sticky anchors for user row (overlay, no layout shift) */
+.stickyAnchor {
+  position: sticky;
+  height: 0;
+  width: 100%;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.stickyAnchorTop {
+  top: 0;
+}
+
+.stickyAnchorBottom {
+  bottom: 0;
+}
+
+/* Sticky positioning for user row */
+.stickyTop,
+.stickyBottom {
+  position: absolute;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  visibility: hidden;
+  opacity: 1;
+}
+
+.stickyTop {
+  top: -0.25px;
+}
+
+.stickyBottom {
+  bottom: 0.35px;
+}
+
+/* Class to show sticky row - uses inherit so parent visibility:hidden still hides it */
+.stickyVisible {
+  visibility: inherit;
+  pointer-events: auto;
+}
+
+/* Class to hide inline row when sticky version is showing */
+.inlineHidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+
+.rowClickable {
+  cursor: pointer;
+}
+
+.rowClickable:active {
+  transform: scale(0.98);
+}
+
+/* Submit prompt styling */
+.submitPrompt {
+  display: flex;
+  justify-content: center;
+  padding: 0.5rem 0;
+}
+
+.rowRank {
+  font-weight: 900;
+  color: var(--color-secondary);
+  display: flex;
+  align-items: center;
+}
+
+/* Podium rank colors */
+.rankGold {
+  color: #D4A500;
+}
+
+.rankSilver {
+  color: #c0c0c0;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+}
+
+@supports (-webkit-background-clip: text) or (background-clip: text) {
+  .rankSilver {
+    background: linear-gradient(180deg, #f4f4f4 0%, #b8b8b8 55%, #8a8a8a 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    text-shadow: none;
+  }
+}
+
+.rankBronze {
+  color: #CD7F32;
+}
+
+.rowName {
+  font-weight: 800;
+  color: var(--color-text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowTime {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  color: var(--color-text);
+}
+
+/* Spoiler blur for times when user hasn't played */
+.timeHidden {
+  filter: blur(6px);
+  user-select: none;
+  pointer-events: none;
+  opacity: 0.7;
+  transition: filter 0.3s ease, opacity 0.3s ease;
+}
+
+.rowAttempts {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-secondary);
+  font-weight: 800;
+}
+
+
+/* Spoiler anchor - uses sticky positioning */
+.spoilerAnchor {
+  position: sticky;
+  bottom: 0;
+  height: 0;
+  width: 100%;
+  z-index: 20;
+  pointer-events: none;
+}
+
+/* Spoiler hint banner - matches row styling exactly */
+.spoilerRow {
+  grid-template-columns: 1fr;
+  justify-items: center;
+  background: var(--color-surface);
+}
+
+.spoilerRowSticky {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+
+.spoilerBanner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-weight: 800;
+  color: var(--color-secondary);
+}
+
+.spoilerBanner svg {
+  width: 16px;
+  height: 16px;
+  opacity: 0.7;
+}
+
+.hintText {
+  font-size: 0.85rem;
+  color: var(--color-secondary);
+  line-height: 1.35;
+}
+
+.error {
+  background: rgba(207, 102, 121, 0.12);
+  border: 1px solid rgba(207, 102, 121, 0.35);
+  color: var(--color-text);
+  padding: 0.75rem;
+  border-radius: 10px;
+}
+
+/* Header with navigation arrows - positioned over carousel */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: absolute;
+  top: 0.5rem;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.navButton {
+  background: transparent;
+  border: none;
+  padding: 0.5rem;
+  font-weight: 400;
+  font-size: 1.25rem;
+  cursor: pointer;
+  color: var(--color-secondary);
+  transition: color 0.15s, opacity 0.15s;
+  line-height: 1;
+  pointer-events: auto;
+}
+
+@media (hover: hover) {
+  .navButton:hover {
+    color: var(--color-text);
+  }
+}
+
+.navButton:active {
+  transform: scale(0.92);
+}
+
+.navButton:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+.headerCenter {
+  text-align: center;
+  flex: 1;
+}
+
+.headerTitle {
+  font-weight: 900;
+  font-size: 1.1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text);
+  line-height: 1.2;
+}
+
+.headerSubtitle {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-secondary);
+  margin-top: 0.1rem;
+}
+
+/* Podium */
+.podium {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding: 0.5rem 0;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.podiumColumn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 90px;
+  max-width: 120px;
+  width: 32%;
+}
+
+/* Highlight for user's podium position */
+.podiumColumnMe .podiumName {
+  color: var(--color-primary);
+}
+
+.podiumBar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border-radius: 10px 10px 0 0;
+  padding: 0.6rem 0.5rem 0.4rem;
+  width: 100%;
+  border-radius: 8px;
+}
+
+.podiumGold {
+  background: linear-gradient(180deg, #FFD700 0%, #FFA500 100%);
+  height: 60px;
+}
+
+.podiumSilver {
+  background: linear-gradient(180deg, #E8E8E8 0%, #A0A0A0 100%);
+  height: 45px;
+}
+
+.podiumBronze {
+  background: linear-gradient(180deg, #CD7F32 0%, #8B4513 100%);
+  height: 35px;
+}
+
+.podiumRankBadge {
+  display: none;
+}
+
+.podiumName {
+  font-weight: 800;
+  font-size: 0.75rem;
+  color: var(--color-text);
+  text-align: center;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 0.1rem;
+  line-height: 1; /* Tightened line height */
+}
+
+.podiumAvatar {
+  margin-bottom: 2px;
+}
+
+.podiumTime {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: rgba(0, 0, 0, 0.6);
+  font-variant-numeric: tabular-nums;
+  margin-top: auto; /* Push to bottom of flex container */
+}
+
+/* Spoiler blur for podium times */
+.podiumTimeHidden {
+  filter: blur(5px);
+  user-select: none;
+  opacity: 0.6;
+}
+
+/* Shimmer skeleton loading */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-surface) 25%,
+    rgba(255, 255, 255, 0.15) 50%,
+    var(--color-surface) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+.skeletonText {
+  composes: skeleton;
+  height: 1em;
+  min-width: 40px;
+}
+
+.skeletonAvatar {
+  composes: skeleton;
+  border-radius: 50%;
+}
+
+.skeletonBar {
+  composes: skeleton;
+  border-radius: 8px;
+}
+
+.podiumLoading {
+  opacity: 1;
+}
+
+.podiumLoading .podiumName,
+.podiumLoading .podiumTime {
+  visibility: hidden;
+}
+
+.podiumLoading .podiumBar {
+  background: var(--color-surface);
+}

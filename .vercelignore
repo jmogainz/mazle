@@ -1,5 +1,36 @@
-# Ignore Rust backend - not needed for Vercel deployment
+# Framework/Tooling
+.next
+.next/
+node_modules
+node_modules/
+.git
+.git/
+.vercel
+.vercel/
+
+# Rust Backend & Artifacts
+generator-rust
 generator-rust/
+.cargo
+.cargo/
+.cargo-target
+.cargo-target/
+target
+target/
+
+# DevOps & Logs
+devops-toolkit
 devops-toolkit/
+logs
 logs/
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Data & Environment
+data
+data/
+.env
+.env*.local
+.DS_Store

@@ -1,32 +1,86 @@
 .header {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
+  grid-template-rows: auto auto;
   align-items: center;
-  padding: 0.75rem 1rem;
+  padding: calc(0.5rem * var(--ui-scale)) 1rem;
   background: var(--color-background);
-  transition: padding 0.2s;
+  transition: padding 0.15s ease-out;
+  border-bottom: none;
+  box-shadow: none;
+  /* Ensure header stacking context allows children to pop out if needed, but doesn't override modals */
+  position: relative;
+  z-index: 100;
 }
 
 .leftSection {
   display: flex;
   justify-content: flex-start;
+  align-items: center;
+  gap: 0.35rem;
+  grid-column: 1;
+  grid-row: 1;
 }
 
 .logo {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
+  line-height: 1;
+  grid-column: 2;
+  grid-row: 1;
 }
 
 .logoText {
   font-family: var(--font-nunito, 'Nunito', var(--font-system));
-  font-size: 2rem;
+  font-size: calc(2.05rem * var(--ui-scale));
   font-weight: 800;
   color: var(--color-text);
-  letter-spacing: 0.1em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  transition: font-size 0.2s;
+  transition: font-size 0.15s ease-out;
+  margin: 0;
+}
+
+.puzzleInfo {
+  font-family: var(--font-nunito, 'Nunito', var(--font-system));
+  font-size: calc(0.9rem * var(--ui-scale));
+  font-weight: 700;
+  color: var(--color-secondary);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  opacity: 0.65;
+}
+
+.puzzleInfoRow {
+  display: flex;
+  justify-content: center;
+  grid-column: 2;
+  grid-row: 2;
+  margin-top: calc(0.1rem * var(--ui-scale));
+}
+
+/* Shimmer skeleton animation */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(90deg,
+      var(--color-surface) 25%,
+      rgba(255, 255, 255, 0.15) 50%,
+      var(--color-surface) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: 4px;
+  color: transparent !important;
+  min-width: 60px;
 }
 
 .rightSection {
@@ -34,6 +88,8 @@
   align-items: center;
   justify-content: flex-end;
   gap: 0.5rem;
+  grid-column: 3;
+  grid-row: 1;
 }
 
 .iconButton {
@@ -41,61 +97,154 @@
   border: none;
   color: var(--color-text);
   cursor: pointer;
-  padding: 0.5rem;
+  padding: 0;
+  width: 44px;
+  height: 44px;
   border-radius: 6px;
-  transition: all 0.2s;
+  transition: all 0.15s ease-out;
   display: flex;
   align-items: center;
   justify-content: center;
+  text-decoration: none;
+  position: relative;
+  /* Needed for z-index */
 }
 
-.iconButton:hover {
+/* Elevated state for when menu is open */
+.iconButtonActive {
+  z-index: 1300;
+  /* Higher than dropdown (1250) */
+  background: var(--color-background);
+  /* Ensure opaque background if needed */
+  border-radius: 6px;
+}
+
+.iconButton svg {
+  width: 24px;
+  height: 24px;
+  transition: width 0.15s ease-out, height 0.15s ease-out;
+}
+
+@media (hover: hover) {
+  .iconButton:hover {
+    background: var(--color-surface);
+    color: var(--color-primary);
+  }
+}
+
+.iconButton:active {
+  transform: scale(0.92);
+}
+
+.themeToggle {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+  padding: calc(0.5rem * var(--ui-scale));
+  border-radius: 6px;
+  transition: background 0.15s ease-out;
+}
+
+@media (hover: hover) {
+  .themeToggle:hover {
+    background: var(--color-surface);
+  }
+}
+
+.themeToggle:active {
+  transform: scale(0.95);
+}
+
+.themeToggleInput {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.themeToggleTrack {
+  width: calc(44px * var(--ui-scale));
+  height: calc(24px * var(--ui-scale));
+  border-radius: 999px;
   background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.themeToggleThumb {
+  width: calc(20px * var(--ui-scale));
+  height: calc(20px * var(--ui-scale));
+  border-radius: 50%;
+  background: var(--color-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateX(0);
+  transition: transform 0.2s ease, background 0.2s ease;
+  color: var(--color-background);
+}
+
+.themeToggleThumb svg {
+  width: calc(14px * var(--ui-scale));
+  height: calc(14px * var(--ui-scale));
+}
+
+.themeToggleInput:checked+.themeToggleTrack {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.themeToggleInput:checked+.themeToggleTrack .themeToggleThumb {
+  transform: translateX(calc(20px * var(--ui-scale)));
+  background: #ffffff;
   color: var(--color-primary);
 }
 
-/* Compact mode for short screens (e.g., iPhone SE, mobile landscape) */
-@media (max-height: 740px) {
-  .header {
-    padding: 0.25rem 0.75rem;
-  }
-
-  .logoText {
-    font-size: 1.4rem;
-  }
-
-  .iconButton {
-    padding: 0.25rem;
-  }
-
-  .iconButton svg {
-    width: 20px;
-    height: 20px;
-  }
+/* Streak indicator */
+.streakIndicator {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: calc(0.3rem * var(--ui-scale)) calc(0.5rem * var(--ui-scale));
+  border-radius: 6px;
+  transition: all 0.2s ease;
 }
 
-/* Compact mode for 1024×768-class viewports (e.g., iPad landscape / smaller windows) */
-@media (max-height: 820px) and (min-height: 741px) {
-  .header {
-    padding: 0.5rem 0.75rem;
-  }
-
-  .logoText {
-    font-size: 1.6rem;
-  }
-
-  .iconButton {
-    padding: 0.35rem;
-  }
+.streakFlame {
+  width: calc(18px * var(--ui-scale));
+  height: calc(18px * var(--ui-scale));
+  transition: all 0.2s ease;
 }
 
-/* Mobile - bigger logo */
-@media (max-width: 768px) {
-  .header {
-    padding: 1rem 1rem 0.5rem;
-  }
+.streakNumber {
+  font-family: var(--font-nunito, 'Nunito', var(--font-system));
+  font-size: calc(0.95rem * var(--ui-scale));
+  font-weight: 800;
+  line-height: 1;
+  transition: color 0.2s ease;
+}
 
-  .logoText {
-    font-size: 2.4rem;
-  }
+/* Inactive streak (0) - greyed out */
+.streakInactive {
+  color: var(--color-secondary);
+  opacity: 0.4;
+}
+
+/* Active streak (> 0) - fire colors */
+.streakActive {
+  color: #ff6b35;
+}
+
+.streakActive .streakFlame {
+  filter: drop-shadow(0 0 4px rgba(255, 107, 53, 0.5));
+}
+
+.streakActive .streakNumber {
+  background: linear-gradient(180deg, #ffb347 0%, #ff6b35 50%, #e84118 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }

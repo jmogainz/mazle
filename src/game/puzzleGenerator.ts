@@ -1,20 +1,20 @@
 /**
  * Puzzle Seed Utilities
- * 
+ *
  * Provides deterministic seed generation for daily puzzles.
  * Actual puzzle generation is handled by WASM/Rust backend.
- * 
+ *
  * IMPORTANT: All daily puzzle logic uses New York timezone (America/New_York).
  * Puzzles roll over at midnight Eastern Time.
  */
 
 // Import maps to trigger registration of movement configs and tilesets
 import './maps/ice';
-import './maps/ground';
 
 // Launch date for puzzle numbering (in New York timezone)
-// Puzzle #1 starts on December 4, 2025
-const LAUNCH_DATE = '2025-12-04';
+// Puzzle #1 starts on December 4, 2025 (ET)
+// Keep this stable to preserve existing "Mazle #N" shares/history.
+export const LAUNCH_DATE_NY = '2025-12-04';
 
 /**
  * Get the current date string in New York timezone (YYYY-MM-DD format).
@@ -36,17 +36,22 @@ export function getDailySeed(date: Date = new Date()): string {
 
 /**
  * Get puzzle number (days since launch)
- * Puzzle #1 is December 4, 2024 (New York timezone)
+ * Puzzle #1 is `LAUNCH_DATE_NY` (New York timezone)
  */
-export function getPuzzleNumber(date: Date = new Date()): number {
-  const currentDateStr = getNewYorkDateString(date);
-  const currentDate = new Date(currentDateStr + 'T00:00:00');
-  const launchDate = new Date(LAUNCH_DATE + 'T00:00:00');
-  const diffTime = currentDate.getTime() - launchDate.getTime();
-  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+export function getPuzzleNumberFromNyDateString(dateStr: string): number {
+  const [year, month, day] = dateStr.split('-').map((v) => Number(v));
+  const [launchYear, launchMonth, launchDay] = LAUNCH_DATE_NY.split('-').map((v) => Number(v));
+
+  const currentUtc = Date.UTC(year, month - 1, day);
+  const launchUtc = Date.UTC(launchYear, launchMonth - 1, launchDay);
+  const diffDays = Math.floor((currentUtc - launchUtc) / (1000 * 60 * 60 * 24));
   return diffDays + 1;
 }
 
-// Re-export map registry utilities
-export { MAP_REGISTRY } from './maps/registry';
-export type { MapTypeDefinition, PsychologyMetrics } from './maps/registry';
+export function getPuzzleNumber(date: Date = new Date()): number {
+  return getPuzzleNumberFromNyDateString(getNewYorkDateString(date));
+}
+
+// Re-export game config utilities
+export { getGameConfig } from './maps/registry';
+export type { GameConfig, PsychologyMetrics } from './maps/registry';

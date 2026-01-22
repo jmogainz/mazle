@@ -81,18 +81,39 @@ async fn generate_daily_puzzles(cache: &PuzzleCache, config: &GenerationConfig) 
                 info!("✓ Pre-gen got '{}' from in-progress generation", seed);
                 continue;
             }
-            info!("⚠️ Pre-gen wait failed for '{}', will attempt to generate", seed);
+            info!("⚠️ Pre-gen wait failed for '{}', attempting to claim generation", seed);
         }
 
         // Mark as generating to prevent duplicate work
-        let we_are_generating = cache.start_generating(&seed);
+        let mut we_are_generating = cache.start_generating(&seed);
         if !we_are_generating {
             info!("⏳ Pre-gen race: waiting for '{}' generation...", seed);
             if let Some(_) = cache.wait_for_generation(&seed).await {
                 info!("✓ Pre-gen got '{}' from parallel generation", seed);
                 continue;
             }
-            info!("⚠️ Pre-gen wait failed for '{}', proceeding to generate", seed);
+            if cache.get(&seed).is_some() {
+                info!("✓ Pre-gen got '{}' from cache after wait", seed);
+                continue;
+            }
+
+            // Try to claim generation if no longer in progress.
+            we_are_generating = cache.start_generating(&seed);
+            if !we_are_generating {
+                if cache.is_generating(&seed) {
+                    info!("⚠️ Pre-gen wait failed for '{}' (still in progress), skipping", seed);
+                } else {
+                    info!("⚠️ Pre-gen wait failed for '{}' (no longer in progress), skipping", seed);
+                }
+                continue;
+            }
+        }
+
+        // If we claimed generation but cache was filled meanwhile, clear state and skip.
+        if cache.get(&seed).is_some() {
+            cache.finish_generating(&seed);
+            info!("✓ Pre-gen found cached '{}' after claiming generation", seed);
+            continue;
         }
 
         info!(

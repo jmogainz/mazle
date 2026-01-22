@@ -1,0 +1,210 @@
+import type { Metadata } from 'next';
+import Link from 'next/link';
+import { PENALTY_MS } from '@/constants';
+import styles from './page.module.css';
+
+export const metadata: Metadata = {
+  title: 'How to Play Mazle - Daily Puzzle Game Guide',
+  description: 'Learn how to play Mazle, the daily sliding puzzle game. Master ice sliding, ledges, and strategic movement to solve puzzles in optimal moves.',
+  keywords: ['mazle tutorial', 'how to play mazle', 'puzzle game guide', 'ice puzzle game', 'daily puzzle help', 'sliding puzzle rules'],
+  alternates: {
+    canonical: 'https://mazle.io/how-to-play',
+  },
+  openGraph: {
+    title: 'How to Play Mazle - Daily Puzzle Game Guide',
+    description: 'Learn how to play Mazle, the daily sliding puzzle game. Master ice sliding, ledges, and strategic movement.',
+    url: 'https://mazle.io/how-to-play',
+    siteName: 'Mazle',
+    type: 'article',
+    locale: 'en_US',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'How to Play Mazle',
+    description: 'Learn to master the daily ice puzzle game',
+  },
+};
+
+export default function HowToPlay() {
+  return (
+    <main className={styles.main}>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'HowTo',
+            name: 'How to Play Mazle',
+            description: 'A step-by-step guide to playing Mazle, the daily sliding puzzle game.',
+            step: [
+              {
+                '@type': 'HowToStep',
+                position: 1,
+                name: 'Understand the Goal',
+                text: 'Navigate your character to the star (goal) in exactly 10 moves. You have 3 lives to complete the puzzle.',
+              },
+              {
+                '@type': 'HowToStep',
+                position: 2,
+                name: 'Learn the Controls',
+                text: 'Use arrow keys, WASD, or swipe gestures to move your character in four directions.',
+              },
+              {
+                '@type': 'HowToStep',
+                position: 3,
+                name: 'Master Ice Tiles',
+                text: 'On ice tiles, you slide until hitting a wall, obstacle, or ground tile. Plan your slides carefully.',
+              },
+              {
+                '@type': 'HowToStep',
+                position: 4,
+                name: 'Use Ledges Strategically',
+                text: 'Ledges are one-way entrances - you can step onto them from any direction but can only exit in specific ways.',
+              },
+              {
+                '@type': 'HowToStep',
+                position: 5,
+                name: 'Solve Optimally',
+                text: 'Find the optimal path. Any wrong move costs a life. After losing a life, hints show which moves were correct.',
+              },
+            ],
+          }),
+        }}
+      />
+      
+      <nav className={styles.breadcrumb} aria-label="Breadcrumb">
+        <Link href="/">Mazle</Link>
+        <span aria-hidden="true">›</span>
+        <span>How to Play</span>
+      </nav>
+
+      <article className={styles.article}>
+        <header>
+          <h1 className={styles.title}>How to Play Mazle</h1>
+          <p className={styles.subtitle}>
+            Master the daily sliding puzzle game
+          </p>
+        </header>
+
+        <section className={styles.section}>
+          <h2>The Goal</h2>
+          <p>
+            Navigate your character to the <strong>star</strong> in exactly <strong>10 moves</strong>.
+            You have <strong>3 lives</strong> to find the optimal solution. Complete the puzzle
+            as fast as you can — every wrong move adds a time penalty!
+          </p>
+        </section>
+
+        <section className={styles.section}>
+          <h2>Controls</h2>
+          <div className={styles.controlsGrid}>
+            <div className={styles.controlItem}>
+              <span className={styles.controlIcon}>
+                <svg viewBox="0 0 24 24" className={styles.controlSvg}>
+                  <rect x="2" y="6" width="20" height="12" rx="2" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+                  <path d="M6 12h2M10 12h2M14 12h2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+              </span>
+              <span className={styles.controlLabel}>Arrow Keys</span>
+            </div>
+            <div className={styles.controlItem}>
+              <span className={styles.controlIcon}>
+                <svg viewBox="0 0 24 24" className={styles.controlSvg}>
+                  <rect x="3" y="8" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+                  <rect x="9.5" y="8" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+                  <rect x="16" y="8" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+                  <rect x="9.5" y="2" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+                </svg>
+              </span>
+              <span className={styles.controlLabel}>WASD</span>
+            </div>
+            <div className={styles.controlItem}>
+              <span className={styles.controlIcon}>
+                <svg viewBox="0 0 24 24" className={styles.controlSvg}>
+                  <path d="M12 2v14m0 0l-4-4m4 4l4-4M8 22h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                </svg>
+              </span>
+              <span className={styles.controlLabel}>Swipe</span>
+            </div>
+          </div>
+        </section>
+
+        <section className={styles.section}>
+          <h2>Tile Types</h2>
+          <div className={styles.tileList}>
+            <div className={styles.tileItem}>
+              <div className={styles.tileSwatchContainer}>
+                <div className={styles.tileIce} />
+              </div>
+              <div>
+                <strong>Ice</strong>
+                <p>You slide until you hit something — walls, obstacles, or ground tiles stop you.</p>
+              </div>
+            </div>
+            <div className={styles.tileItem}>
+              <div className={styles.tileSwatchContainer}>
+                <div className={styles.tileFloor} />
+              </div>
+              <div>
+                <strong>Ground</strong>
+                <p>Normal movement — you stop immediately after stepping onto ground.</p>
+              </div>
+            </div>
+            <div className={styles.tileItem}>
+              <div className={styles.tileSwatchContainer}>
+                <div className={styles.tileWall} />
+              </div>
+              <div>
+                <strong>Wall</strong>
+                <p>Impassable obstacles that block your movement.</p>
+              </div>
+            </div>
+            <div className={styles.tileItem}>
+              <div className={styles.tileSwatchContainer}>
+                <div className={styles.tileLedge}>
+                  <span className={styles.ledgeArrowDown}></span>
+                </div>
+              </div>
+              <div>
+                <strong>Ledge</strong>
+                <p>One-way tiles — you can enter from any direction but only jump down from the ledge side.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className={styles.section}>
+          <h2>Tips for Success</h2>
+          <ul className={styles.tipsList}>
+            <li>Think ahead — ice sliding means your moves chain together.</li>
+            <li>Count moves mentally before committing to a path.</li>
+            <li>After losing a life, green highlights show which moves were correct.</li>
+            <li>The puzzle resets daily at midnight (Eastern Time).</li>
+            <li>Share your results without spoilers!</li>
+          </ul>
+        </section>
+
+        <section className={styles.section}>
+          <h2>Scoring</h2>
+          <p>
+            Your time is recorded from when you press &quot;Begin&quot; until you reach the goal. 
+            Each life lost adds a <strong>{PENALTY_MS / 1000}-second penalty</strong>. The fastest solvers 
+            complete puzzles in under 20 seconds!
+          </p>
+        </section>
+
+        <section className={styles.ctaSection}>
+          <Link href="/" className={styles.playButton}>
+            Play Today&apos;s Puzzle →
+          </Link>
+        </section>
+      </article>
+
+      <footer className={styles.footer}>
+        <Link href="/">← Back to Game</Link>
+        <span>·</span>
+        <Link href="/about">About Mazle</Link>
+      </footer>
+    </main>
+  );
+}

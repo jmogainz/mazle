@@ -1,12 +1,6 @@
 // Feature flags
 export const HINTS_ENABLED = true;
 
-// Map types for different puzzle variants
-export enum MapType {
-  ICE = 'ice',
-  GROUND = 'ground',
-}
-
 // Tile types for the puzzle
 export enum TileType {
   GROUND = 0,  // Renamed from FLOOR - normal walkable tile
@@ -19,6 +13,11 @@ export enum TileType {
   LEDGE_LEFT = 7,  // Can only enter from right, exits left
   LEDGE_RIGHT = 8, // Can only enter from left, exits right
   BOULDER = 9,     // Pushable boulder - blocks movement but can be pushed
+}
+
+export enum MapType {
+  ICE = 'ice',
+  GROUND = 'ground',
 }
 
 export enum Direction {
@@ -41,22 +40,23 @@ export interface PuzzleData {
   goal: Position;
   optimalMoves: number;
   solutionPath?: Position[];
-  mapType: MapType;  // Type of map/puzzle variant
-  
+  mapType?: MapType;
+  variant?: 'daily' | 'archive';
+
   // Psychology-based difficulty metrics (for dev mode display)
   difficultyScore?: number;           // Overall psychology score
   selectedBatch?: number;             // Batch number where puzzle was selected
-  
+
   // TIER 1: Core difficulty metrics (what actually makes puzzles hard)
   nearOptimalPaths?: number;          // Count of paths within optimal+2 moves
   pathOverlap?: number;               // 0-1, min overlap (best alternative's overlap with optimal)
   pathOverlapAvg?: number;            // 0-1, avg overlap across all alternatives
   earlyDivergence?: number;           // 0-1, when alternatives diverge (higher = earlier = harder)
-  
+
   // TIER 2: Per-move confusion
   directionChanges?: number;          // How many times optimal path changes direction
   decisionAmbiguity?: number;         // Avg valid moves at each position on optimal path
-  
+
   // TIER 3: Legacy metrics (less relevant for binary lives game mechanic)
   counterIntuitiveMoves?: number;     // Moves that go away from goal
   attractiveDecoys?: number;          // Wrong moves that look better than optimal
@@ -71,8 +71,10 @@ export interface GameState {
   moveCount: number;
   currentAttemptMoves: number;
   currentAttemptCorrectMoves: number;
+  currentAttemptVisitedSolutionTiles: Set<string>;
   lives: number;
   penaltyTimeMs: number;
+  isPaused: boolean;
   attempts: {
     moveCount: number;
     correctMoves: number;
@@ -93,8 +95,9 @@ export interface DailyStats {
   moveCount: number;
   timeMs: number;
   puzzleNumber: number;
-  mapType?: MapType;  // Optional for legacy compatibility
   failed?: boolean;  // Track if player ran out of lives
+  attemptsUsed?: number;  // 1-3, how many attempts used (including final)
+  leaderboardRank?: number; // 1 = best (only present if submitted)
   attempts?: {
     moveCount: number;
     correctMoves?: number;
@@ -127,8 +130,8 @@ export const COLORS = {
 
   // Wall (Blocker)
   WALL_FACE: 0x202124,
-  WALL_EDGE: 0x0a0a0a,
-  
+  WALL_EDGE: 0x403d52,
+
   // Start (Yellow - "Wrong Pos")
   START_FACE: 0xd7b74a,
   START_EDGE: 0xbd9e3c,
@@ -165,7 +168,7 @@ export const COLORS = {
   // UI
   UI_PRIMARY: 0x000000,
   UI_SECONDARY: 0x787c7e,
-  
+
   // Boulders
   BOULDER: 0x787c7e,
   BOULDER_SHADOW: 0x5e6163,
@@ -179,6 +182,13 @@ export const COLORS = {
   HINT_TILE_EDGE: 0x538d4e,   // Match GOAL_EDGE - stopping points
   HINT_PATH_FACE: 0xa8d8a8,   // Lighter tint of goal green - intermediate path
   HINT_PATH_EDGE: 0x8fc98a,   // Light green edge - intermediate path
+
+  // Attempt Review (Red - similar to Hints but for failures)
+  ATTEMPT_GLOW: 0xff4d4d,
+  ATTEMPT_TILE_FACE: 0xff4d4d,
+  ATTEMPT_TILE_EDGE: 0xcc0000,
+  ATTEMPT_PATH_FACE: 0xffb3b3, // Lighter red
+  ATTEMPT_PATH_EDGE: 0xff8080,
 };
 
 export const TILE_SIZE = 64;

@@ -10,7 +10,7 @@
  * keep the main thread responsive during generation (~200-500ms).
  */
 
-import type { PuzzleData, MapType } from './types';
+import type { PuzzleData } from './types';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -57,7 +57,7 @@ function computeBackoffMs(attempt: number): number {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Get the Rust backend URL from environment (set at build time)
-// Prefer DEV URL (Ngrok) if available, otherwise use standard URL
+// Prefer DEV URL (tunnel) if available, otherwise use standard URL
 const RUST_BACKEND_URL = process.env.NEXT_PUBLIC_DEV_GENERATOR_URL || process.env.NEXT_PUBLIC_GENERATOR_URL || null;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -71,11 +71,72 @@ let wasmVersion: string | null = null;
 let requestId = 0;
 
 interface PendingRequest {
+  seed: string;
   resolve: (puzzle: PuzzleData) => void;
   reject: (error: Error) => void;
   onProgress?: (progress: GenerationProgress) => void;
 }
 const pendingRequests = new Map<number, PendingRequest>();
+const wasmInFlight = new Map<string, Set<number>>();
+
+function registerWasmRequest(seed: string, id: number) {
+  const existing = wasmInFlight.get(seed) ?? new Set<number>();
+  existing.add(id);
+  wasmInFlight.set(seed, existing);
+}
+
+function unregisterWasmRequest(seed: string, id: number) {
+  const existing = wasmInFlight.get(seed);
+  if (!existing) return;
+  existing.delete(id);
+  if (existing.size === 0) {
+    wasmInFlight.delete(seed);
+  } else {
+    wasmInFlight.set(seed, existing);
+  }
+}
+
+function resetWasmWorker(): void {
+  try {
+    generationWorker?.terminate();
+  } catch {
+    // ignore
+  }
+  generationWorker = null;
+  workerReady = false;
+  workerReadyPromise = null;
+  wasmVersion = null;
+}
+
+export function cancelWasmRequest(seed: string): boolean {
+  const ids = wasmInFlight.get(seed);
+  if (!ids || ids.size === 0) {
+    console.log('[WASM] No in-flight request to cancel for seed', seed);
+    return false;
+  }
+
+  // If multiple requests are waiting on the same seed, do not cancel to avoid
+  // aborting other listeners.
+  if (ids.size > 1) {
+    console.log('[WASM] Skipping cancel; another in-flight request for seed', seed);
+    return false;
+  }
+
+  let cancelled = false;
+  ids.forEach((id) => {
+    const pending = pendingRequests.get(id);
+    if (pending) {
+      pendingRequests.delete(id);
+      cancelled = true;
+      pending.reject(new DOMException('WASM generation cancelled', 'AbortError'));
+    }
+  });
+  wasmInFlight.delete(seed);
+
+  // WASM generation blocks the worker thread; termination is the only reliable cancel.
+  resetWasmWorker();
+  return cancelled;
+}
 
 /**
  * Initialize the generation worker
@@ -98,6 +159,12 @@ async function initGenerationWorker(): Promise<void> {
         const data = event.data;
         
         switch (data.type) {
+          case 'log': {
+            // Forward worker logs (including Rust panic hook output)
+            const level = (data.level as 'log' | 'info' | 'warn' | 'error') ?? 'log';
+            (console[level] ?? console.log)(...[`[WASM:worker]`, ...(data.args ?? [])]);
+            break;
+          }
           case 'ready':
             wasmVersion = data.version;
             workerReady = true;
@@ -159,22 +226,23 @@ async function initGenerationWorker(): Promise<void> {
  */
 async function generateFromWasm(
   seed: string,
-  mapType?: MapType,
-  onProgress?: (progress: GenerationProgress) => void
+  onProgress?: (progress: GenerationProgress) => void,
+  startBatch?: number,
+  closenessThreshold?: number
 ): Promise<PuzzleData> {
   // Ensure worker is ready
   await initGenerationWorker();
-  
+
   if (!generationWorker || !workerReady) {
     throw new Error('WASM worker not available');
   }
-  
+
   if (!workerReady) {
     throw new Error('WASM worker not initialized.');
   }
-  
+
   const id = ++requestId;
-  const type = mapType || 'ice';
+  registerWasmRequest(seed, id);
   
   console.log(`[WASM] Requesting puzzle generation for seed: ${seed}`);
   
@@ -218,8 +286,10 @@ async function generateFromWasm(
     };
     
     pendingRequests.set(id, { 
+      seed,
       resolve: (puzzle) => {
         cleanup();
+        unregisterWasmRequest(seed, id);
         // Send 100% progress on completion
         if (onProgress) {
           onProgress({
@@ -233,6 +303,7 @@ async function generateFromWasm(
       }, 
       reject: (error) => {
         cleanup();
+        unregisterWasmRequest(seed, id);
         reject(error);
       }, 
       onProgress 
@@ -242,7 +313,8 @@ async function generateFromWasm(
       type: 'generate',
       id,
       seed,
-      mapType: type,
+      startBatch,
+      closenessThreshold,
     });
   });
 }
@@ -345,19 +417,21 @@ export class BackendConnectionError extends Error {
 
 async function generateFromRustBackend(
   seed: string,
-  mapType?: MapType,
   onProgress?: (progress: GenerationProgress) => void,
   startBatch?: number,
   abortController?: AbortController,
+  closenessThreshold?: number
 ): Promise<PuzzleData> {
   if (!RUST_BACKEND_URL) {
     throw new Error('Rust backend URL not configured');
   }
 
-  const type = mapType || 'ice';
-  let url = `${RUST_BACKEND_URL}/api/generate/${encodeURIComponent(seed)}?map_type=${type}&parallel=true`;
+  let url = `${RUST_BACKEND_URL}/api/generate/${encodeURIComponent(seed)}?parallel=true`;
   if (startBatch !== undefined && startBatch > 0) {
     url += `&start_batch=${startBatch}`;
+  }
+  if (closenessThreshold !== undefined) {
+    url += `&closeness_threshold=${closenessThreshold}`;
   }
   
   console.log(`[Rust] Fetching puzzle from ${url}`);
@@ -468,20 +542,20 @@ async function generateFromRustBackend(
 // Shared retry wrapper used by both the general generator flow and daily flow
 interface RustRetryOptions {
   seed: string;
-  mapType?: MapType;
   onProgress?: (progress: GenerationProgress) => void;
   startBatch?: number;
   abortController?: AbortController;
   logLabel: string; // e.g., '[Engine]' or '[Daily]'
+  closenessThreshold?: number;
 }
 
 async function generateFromRustWithRetries({
   seed,
-  mapType,
   onProgress,
   startBatch,
   abortController,
   logLabel,
+  closenessThreshold,
 }: RustRetryOptions): Promise<PuzzleData | null> {
   // Quick health preflight (cached after first success/fail)
   await testRustBackend(onProgress);
@@ -493,7 +567,7 @@ async function generateFromRustWithRetries({
 
   while (true) {
     try {
-      return await generateFromRustBackend(seed, mapType, onProgress, startBatch, abortController);
+      return await generateFromRustBackend(seed, onProgress, startBatch, abortController, closenessThreshold);
     } catch (error) {
       console.warn(`${logLabel} Rust backend failed:`, error);
 
@@ -568,24 +642,24 @@ export async function preloadWasm(): Promise<void> {
 
 /**
  * Generate a puzzle using the specified engine.
- * 
+ *
  * Both Rust and WASM produce **identical puzzles** for the same seed.
- * 
+ *
  * @param seed - Seed string for deterministic generation
  * @param onProgress - Progress callback
- * @param forceMapType - Force a specific map type
  * @param forceBackend - Force a specific engine ('auto' uses priority: rust > wasm)
  * @param startBatch - Start generation at a specific batch number (for deterministic replay)
+ * @param closenessThreshold - Threshold for puzzle closeness (0.95 - 1.0)
  */
 export async function generatePuzzleParallel(
   seed: string,
   onProgress?: (progress: GenerationProgress) => void,
-  forceMapType?: MapType,
   forceBackend: GeneratorBackend = 'auto',
   startBatch?: number,
-  abortController?: AbortController
+  abortController?: AbortController,
+  closenessThreshold?: number
 ): Promise<PuzzleData> {
-  
+
   // ─────────────────────────────────────────────────────────────────────────
   // Force Rust backend
   // ─────────────────────────────────────────────────────────────────────────
@@ -593,12 +667,12 @@ export async function generatePuzzleParallel(
     if (!RUST_BACKEND_URL) {
       throw new Error('Rust backend not configured');
     }
-    
+
     // One quick health check; if it fails, surface error (no fallback in force mode)
     await testRustBackend(onProgress);
-    return await generateFromRustBackend(seed, forceMapType, onProgress, startBatch, abortController);
+    return await generateFromRustBackend(seed, onProgress, startBatch, abortController, closenessThreshold);
   }
-  
+
   // ─────────────────────────────────────────────────────────────────────────
   // Force WASM
   // ─────────────────────────────────────────────────────────────────────────
@@ -610,18 +684,17 @@ export async function generatePuzzleParallel(
         'WASM worker failed to initialize. Check browser console for details.'
       );
     }
-    
+
     // Progress is now tracked via worker messages
-    // Note: WASM doesn't support startBatch yet
-    const puzzle = await generateFromWasm(seed, forceMapType, onProgress);
-    
+    const puzzle = await generateFromWasm(seed, onProgress, startBatch, closenessThreshold);
+
     return puzzle;
   }
-  
+
   // ─────────────────────────────────────────────────────────────────────────
   // Auto mode: Try Rust first, fall back to WASM if available
   // ─────────────────────────────────────────────────────────────────────────
-  
+
   // Pre-check WASM availability for better error messages
   await initGenerationWorker();
 
@@ -629,11 +702,11 @@ export async function generatePuzzleParallel(
     console.log(`[Engine] Rust backend configured at ${RUST_BACKEND_URL}`);
     const rustPuzzle = await generateFromRustWithRetries({
       seed,
-      mapType: forceMapType,
       onProgress,
       startBatch,
       abortController,
       logLabel: '[Engine]',
+      closenessThreshold,
     });
 
     if (rustPuzzle) {
@@ -665,11 +738,10 @@ export async function generatePuzzleParallel(
 
   // Fall back to WASM
   console.log('[Engine] Using WASM engine...');
-  
+
   // Progress is now tracked via worker messages
-  // Note: WASM doesn't support startBatch yet
-  const puzzle = await generateFromWasm(seed, forceMapType, onProgress);
-  
+  const puzzle = await generateFromWasm(seed, onProgress, startBatch, closenessThreshold);
+
   return puzzle;
 }
 
@@ -802,7 +874,7 @@ export async function fetchDailyPuzzle(
     );
   }
   
-  const puzzle = await generateFromWasm(seed, undefined, onProgress);
+  const puzzle = await generateFromWasm(seed, onProgress);
   
   // Backfill KV cache so other users don't have to wait for WASM
   // Fire-and-forget: don't block the user, don't fail if this errors

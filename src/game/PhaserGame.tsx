@@ -11,9 +11,14 @@ export interface GameControls {
   canAcceptMoveInput: () => boolean;
   start: () => void;
   showAnalysis: (attempts: any[]) => void;
+  replayAnalysis: () => void;
   getSerializableState: () => ReturnType<GameScene['getSerializableState']> | null;
   restoreState: (state: Parameters<GameScene['restoreState']>[0]) => void;
   setHintsEnabled: (enabled: boolean) => void;
+  setMaxLives: (count: number) => void;
+  getMaxLives: () => number;
+  showSingleAttemptPath: (attemptIndex: number | null) => void;
+  setPaused: (paused: boolean) => void;
 }
 
 interface PhaserGameProps {
@@ -33,9 +38,14 @@ export interface PhaserGameRef {
 export default function PhaserGame({ puzzle, viewportWidth, viewportHeight, onReady }: PhaserGameProps) {
   const gameContainerRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
+  const onReadyRef = useRef<PhaserGameProps['onReady']>(onReady);
 
-  const baseWidth = viewportWidth ?? Math.max(420, puzzle.width * TILE_SIZE + 64);
-  const baseHeight = viewportHeight ?? Math.max(520, puzzle.height * TILE_SIZE + 120);
+  useEffect(() => {
+    onReadyRef.current = onReady;
+  }, [onReady]);
+
+  const baseWidth = viewportWidth ?? (puzzle.width * TILE_SIZE);
+  const baseHeight = viewportHeight ?? (puzzle.height * TILE_SIZE);
 
   const getControls = useCallback((): GameControls => ({
     restart: () => {
@@ -58,6 +68,10 @@ export default function PhaserGame({ puzzle, viewportWidth, viewportHeight, onRe
       const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;
       scene?.showAnalysis(attempts);
     },
+    replayAnalysis: () => {
+      const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;
+      scene?.replayAnalysis();
+    },
     getSerializableState: () => {
       const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;
       return scene?.getSerializableState() ?? null;
@@ -69,6 +83,22 @@ export default function PhaserGame({ puzzle, viewportWidth, viewportHeight, onRe
     setHintsEnabled: (enabled: boolean) => {
       const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;
       scene?.setHintsEnabled(enabled);
+    },
+    setMaxLives: (count: number) => {
+      const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;
+      scene?.setMaxLives(count);
+    },
+    getMaxLives: () => {
+      const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;
+      return scene?.getMaxLives() ?? 3;
+    },
+    showSingleAttemptPath: (attemptIndex: number | null) => {
+      const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;
+      scene?.showSingleAttemptPath(attemptIndex);
+    },
+    setPaused: (paused: boolean) => {
+      const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;
+      scene?.setPaused(paused);
     },
   }), []);
 
@@ -100,13 +130,12 @@ export default function PhaserGame({ puzzle, viewportWidth, viewportHeight, onRe
     const config: Phaser.Types.Core.GameConfig = {
       type: Phaser.CANVAS, // TEST: Force Canvas to debug WebGL performance issue
       parent: gameContainerRef.current,
-      backgroundColor: COLORS.BACKGROUND,
+      transparent: true, // Let CSS background show through for theme support
       audio: {
         noAudio: true,
       },
       scale: {
-        mode: Phaser.Scale.FIT,
-        autoCenter: Phaser.Scale.CENTER_BOTH,
+        mode: Phaser.Scale.NONE, // Don't auto-resize on viewport changes (allows browser zoom)
         width: baseWidth,
         height: baseHeight,
       },
@@ -135,7 +164,7 @@ export default function PhaserGame({ puzzle, viewportWidth, viewportHeight, onRe
 
     // Notify when ready (use a small delay to ensure scene is initialized)
     setTimeout(() => {
-      onReady?.(getControls());
+      onReadyRef.current?.(getControls());
     }, 100);
 
     return () => {
@@ -144,7 +173,7 @@ export default function PhaserGame({ puzzle, viewportWidth, viewportHeight, onRe
         gameRef.current = null;
       }
     };
-  }, [puzzle, onReady, getControls, baseWidth, baseHeight]);
+  }, [puzzle, getControls, baseWidth, baseHeight]);
 
   return (
     <div

@@ -1,0 +1,26 @@
+HYPERPARAMETER SWEEP RESULTS
+============================================================
+Baseline: 2.7% PASS
+
+2.7% - data_200k_base 
+2.7% - model_large 
+2.7% - large_model_200k 
+2.3% - data_300k_base 
+2.3% - data_200k_slow 
+2.0% - lr_2e4 
+2.0% - lr_3e4 
+2.0% - batch_32 
+2.0% - data_25k_long 
+1.6% - lr_5e5 
+1.6% - batch_128 
+1.6% - ema_999 
+1.6% - large_model_300k 
+1.2% - data_300k_small_batch 
+1.2% - model_small 
+1.2% - small_lr_small_batch 
+1.2% - with_augment 
+0.8% - data_300k_slow 
+0.4% - batch_16 
+0.4% - ema_99995 
+
+Completed: 20/20

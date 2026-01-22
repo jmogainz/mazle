@@ -2,7 +2,7 @@
 # Root Makefile for "mazle"
 # -------------------------
 
-SHELL := /bin/bash
+SHELL := bash
 
 # Connect devops-toolkit
 REPO_ROOT      := $(shell git -C $(CURDIR) rev-parse --show-toplevel)
@@ -19,16 +19,40 @@ ENV ?= dev-test
 COMPOSE_PROJECT_NAME := mazle
 COMPOSE_NETWORK_NAME ?= mazle_network
 
-COMPOSE_FILE := mazle.compose.yaml:mazle.wasm.compose.yaml
+COMPOSE_FILE := mazle.compose.yaml:mazle.wasm.compose.yaml:$(DEVOPS_TOOLKIT_PATH)/backend/docker/db.compose.yaml:$(DEVOPS_TOOLKIT_PATH)/backend/docker/stripe.compose.yaml:override.compose.yaml
 
 # Backend configuration (like worker-app pattern)
 BACKEND_GATEWAY_PATH := generator-rust
 APP_NAME := mazle
 
+# Database + migrations (devops-toolkit)
+export COMPOSE_DB_NAME := mazle_pg_db
+export MIGRATIONS_PATH := $(REPO_ROOT)/migrations
+
+# BWS projects: dev-test should reuse the dev Bitwarden project ("mazle-dev").
+BWS_ENV := $(if $(filter $(ENV),dev-test),dev,$(ENV))
+export BWS_PROJECT_NAME_FOR_DB_SECRETS := $(APP_NAME)-$(BWS_ENV)
+
+# stripe.compose.yaml configurations
+export STRIPE_WEBHOOK_CONNECTED_EVENTS := payment_intent.created
+export STRIPE_WEBHOOK_PLATFORM_EVENTS := checkout.session.completed,customer.subscription.updated,customer.subscription.deleted
+export STRIPE_WEBHOOK_ROUTE := /api/stripe/webhook
+export STRIPE_WEBHOOK_CHECK_ROUTE := /api/stripe/webhook/check
+STRIPE_WEBHOOK_CHECK_MODE ?= platform
+export STRIPE_WEBHOOK_CHECK_MODE
+STRIPE_LISTENER_BWS_PROJECT_NAME ?= $(APP_NAME)-$(BWS_ENV)
+export STRIPE_LISTENER_BWS_PROJECT_NAME
+STRIPE_WEBHOOK_CHECK_BWS_PROJECT_NAME ?= $(APP_NAME)-$(BWS_ENV)
+export STRIPE_WEBHOOK_CHECK_BWS_PROJECT_NAME
+
 # Include env configuration early so we can use DEV_TEST_ENV, PROD_ENV etc.
 ifndef INCLUDED_ENV_CONFIGURATION
   include $(DEVOPS_TOOLKIT_PATH)/shared/make/utils/env_configuration.mk
 endif
+
+# Unified health check path for all tooling/scripts.
+# (Matches Vercel deployment health checks.)
+export HEALTHCHECK_PATH := /api/health
 
 # --------------------------------
 # Backend dependency configuration
@@ -37,7 +61,8 @@ endif
 #   dev-test: WITH_DEPS=0 (WASM fallback, no backend needed)
 #   others:   WITH_DEPS=1 (backend auto-starts/deploys)
 #
-# Override with: make up WITH_DEPS=0
+# Override with:
+#   make up WITH_DEPS=0      # Manual override
 # --------------------------------
 ifeq ($(ENV),$(DEV_TEST_ENV))
   WITH_DEPS ?= 0
@@ -49,8 +74,22 @@ DEPS := DEP_GENERATOR_RUST:$(BACKEND_GATEWAY_PATH):8080
 
 # Ngrok Configuration (Managed by DevOps Toolkit)
 # Set to 1 to enable Ngrok tunnel (same default for all envs).
-ENABLE_NGROK_FOR_DEV ?= 1
+ENABLE_NGROK_FOR_DEV ?= 0
 export ENABLE_NGROK_FOR_DEV
+
+# Cloudflared Configuration (Managed by DevOps Toolkit)
+# Set to 1 to enable Cloudflare tunnel (dev/dev-test only).
+ENABLE_CLOUDFLARED_FOR_DEV ?= 1
+export ENABLE_CLOUDFLARED_FOR_DEV
+# Cloudflare tunnel hostname (named tunnel expected).
+CLOUDFLARED_HOSTNAME ?= $(subst _,-,$(UNIQUE_RUNNER_ID)).mazle.io
+export CLOUDFLARED_HOSTNAME
+# Cloudflare tunnel name (per-runner).
+CLOUDFLARED_TUNNEL_NAME ?= $(APP_NAME)-$(subst _,-,$(UNIQUE_RUNNER_ID))
+export CLOUDFLARED_TUNNEL_NAME
+# BWS project used to fetch Cloudflare API credentials (dev-test maps to dev).
+CLOUDFLARE_BWS_PROJECT ?= $(APP_NAME)-$(BWS_ENV)
+export CLOUDFLARE_BWS_PROJECT
 
 ifndef INCLUDED_COMPOSE_PROJECT_CONFIGURATION
   include $(DEVOPS_TOOLKIT_PATH)/backend/make/compose/compose-project-configurations/compose_project_configuration.mk
@@ -68,6 +107,14 @@ override APP_PORT := 8080
 PROD_DEPLOY_TARGET := vercel
 STAGING_DEPLOY_TARGET := vercel
 VERCEL_PROJECT_NAME := mazle
+# Optional: stable domain to alias staged deploys to (set empty to disable)
+VERCEL_STAGING_DOMAIN ?= staging.mazle.io
+export VERCEL_STAGING_DOMAIN
+# Optional: production domain for post-promotion checks (set empty to disable)
+VERCEL_DOMAIN ?= mazle.io
+export VERCEL_DOMAIN
+# Hold Vercel promotion after post-checks (1 = skip promote)
+VERCEL_HOLD_PROMOTION ?= 0
 
 # Public env wiring
 export NEXT_PUBLIC_ENV := $(ENV)
@@ -137,10 +184,15 @@ export HOST_GID
 # Next.js App Configuration (for backend URL resolution)
 # --------------------------------
 
+# WASM_ONLY=1 disables backend URL resolution/export so the app defaults to WASM.
+WASM_ONLY ?= 0
+
 ifneq ($(ENV),$(DEV_TEST_ENV))
-  # Tell the toolkit which env var to set with the backend URL
-  # This will be passed to Vercel via --build-env during deployment
-  NEXTJS_BACKEND_ENV_VAR := NEXT_PUBLIC_GENERATOR_URL
+  ifneq ($(WASM_ONLY),1)
+    # Tell the toolkit which env var to set with the backend URL
+    # This will be passed to Vercel via --build-env during deployment
+    NEXTJS_BACKEND_ENV_VAR := NEXT_PUBLIC_GENERATOR_URL
+  endif
 endif
 
 ifndef INCLUDED_NEXTJS_APP_CONFIGURATION
@@ -149,6 +201,19 @@ endif
 
 ifndef INCLUDED_NEXTJS_APP_TARGETS
   include $(DEVOPS_TOOLKIT_PATH)/frontend/make/utils/nextjs_app_targets.mk
+endif
+
+# --------------------------------
+# Local Env (BWS)
+# --------------------------------
+
+ifndef INCLUDED_ENV_LOCAL_UTILS
+  include $(DEVOPS_TOOLKIT_PATH)/shared/make/utils/env_local.mk
+endif
+
+# Load BWS .env.local in dev + dev-test.
+ifneq (,$(filter $(ENV),$(DEV_ENV) $(DEV_TEST_ENV)))
+up:: env-local
 endif
 
 # --------------------------------

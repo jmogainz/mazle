@@ -1,0 +1,18 @@
+<svg width="200" height="48" viewBox="0 0 200 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Center Trophy -->
+  <g transform="translate(84, 8)">
+    <path d="M8 0H24C26.2 0 28 1.8 28 4V6C28 10.4 24.4 14 20 14H12C7.6 14 4 10.4 4 6V4C4 1.8 5.8 0 8 0Z" fill="#FFD700"/>
+    <path d="M28 4H32V6C32 8.2 30.2 10 28 10V4Z" fill="#FFA500"/>
+    <path d="M4 4H0V6C0 8.2 1.8 10 4 10V4Z" fill="#FFA500"/>
+    <path d="M16 14V22" stroke="#FFD700" stroke-width="4"/>
+    <rect x="8" y="22" width="16" height="4" rx="2" fill="#FFD700"/>
+  </g>
+  <!-- Left Star -->
+  <g transform="translate(50, 14)">
+    <path d="M8 0L10.4 4.8L16 5.6L12 9.6L12.8 15.2L8 12.8L3.2 15.2L4 9.6L0 5.6L5.6 4.8L8 0Z" fill="#FFD700"/>
+  </g>
+  <!-- Right Star -->
+  <g transform="translate(134, 14)">
+    <path d="M8 0L10.4 4.8L16 5.6L12 9.6L12.8 15.2L8 12.8L3.2 15.2L4 9.6L0 5.6L5.6 4.8L8 0Z" fill="#FFD700"/>
+  </g>
+</svg>

@@ -1,0 +1,6 @@
+torch>=2.2
+tqdm>=4.66
+maturin>=1.5
+orjson>=3.10
+ray[tune]>=2.9
+PyYAML>=6.0

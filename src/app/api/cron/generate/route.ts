@@ -31,7 +31,7 @@ const GENERATOR_URL = process.env.GENERATOR_URL || process.env.NEXT_PUBLIC_GENER
  * Flow:
  * 1. Calculate tomorrow's date (since we run at 11 PM ET, generate for next day)
  * 2. Call Rust backend to generate puzzle
- * 3. Store in Vercel KV with 7-day TTL
+ * 3. Store in Vercel KV with no TTL (supports archive calendar)
  */
 export async function GET(request: NextRequest) {
   try {
@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
       if (result) {
         let cached = false;
         if (redis) {
-          await redis.set(todayKey, result.puzzle, { ex: 7 * 24 * 60 * 60 }); // 7 day TTL
+          await redis.set(todayKey, result.puzzle);
           cached = true;
         }
         results.push({ 
@@ -108,7 +108,7 @@ export async function GET(request: NextRequest) {
       if (result) {
         let cached = false;
         if (redis) {
-          await redis.set(tomorrowKey, result.puzzle, { ex: 7 * 24 * 60 * 60 }); // 7 day TTL
+          await redis.set(tomorrowKey, result.puzzle);
           cached = true;
         }
         results.push({ 
@@ -136,7 +136,7 @@ export async function GET(request: NextRequest) {
       if (result) {
         let cached = false;
         if (redis) {
-          await redis.set(dayAfterKey, result.puzzle, { ex: 7 * 24 * 60 * 60 }); // 7 day TTL
+          await redis.set(dayAfterKey, result.puzzle);
           cached = true;
         }
         results.push({ 

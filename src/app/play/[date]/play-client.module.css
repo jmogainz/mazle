@@ -1,0 +1,106 @@
+.topRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0 0.5rem;
+}
+
+.topRowLeft {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.topRowRight {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.backButton {
+  background: var(--color-background);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 0.55rem 0.8rem;
+  font-weight: 900;
+  cursor: pointer;
+  color: var(--color-text);
+}
+
+.backButton:active {
+  transform: scale(0.99);
+}
+
+.modeChip {
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-secondary);
+  font-weight: 900;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.55rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.puzzleNumberBlock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.puzzleDateText {
+  font-size: 0.85rem;
+  color: var(--color-secondary);
+  font-weight: 800;
+}
+
+.errorCard {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 1.25rem;
+  max-width: 520px;
+  margin: 2rem auto 0;
+  text-align: center;
+}
+
+.errorTitle {
+  font-weight: 900;
+  margin-bottom: 0.5rem;
+}
+
+.errorText {
+  color: var(--color-secondary);
+  line-height: 1.35;
+  margin-bottom: 1rem;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.primaryButton,
+.secondaryButton {
+  border: none;
+  border-radius: 10px;
+  padding: 0.75rem 0.9rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.primaryButton {
+  background: var(--color-primary);
+  color: #ffffff;
+}
+
+.secondaryButton {
+  background: var(--color-background);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+}

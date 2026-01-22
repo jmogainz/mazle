@@ -24,6 +24,7 @@ services:
         NEXT_PUBLIC_GENERATOR_URL: ${NEXT_PUBLIC_GENERATOR_URL:-}
         NEXT_PUBLIC_DEV_GENERATOR_URL: ${NEXT_PUBLIC_DEV_GENERATOR_URL:-}
         ENABLE_NGROK_FOR_DEV: ${ENABLE_NGROK_FOR_DEV:-1}
+        ENABLE_CLOUDFLARED_FOR_DEV: ${ENABLE_CLOUDFLARED_FOR_DEV:-0}
         APP_URL_FROM_ANYWHERE: ${APP_URL_FROM_ANYWHERE:-}
 
       # Have to do this until there is a better option to control this from the compose cli
@@ -40,11 +41,15 @@ services:
       - NEXT_PUBLIC_GENERATOR_URL=${NEXT_PUBLIC_GENERATOR_URL:-}
       - NEXT_PUBLIC_DEV_GENERATOR_URL=${NEXT_PUBLIC_DEV_GENERATOR_URL:-}
       - ENABLE_NGROK_FOR_DEV=${ENABLE_NGROK_FOR_DEV:-1}
+      - ENABLE_CLOUDFLARED_FOR_DEV=${ENABLE_CLOUDFLARED_FOR_DEV:-0}
       - APP_URL_FROM_ANYWHERE=${APP_URL_FROM_ANYWHERE:-}
       - PORT=${APP_PORT:-8080}
       - HOSTNAME=0.0.0.0
       - CHOKIDAR_USEPOLLING=${FRONTEND_CHOKIDAR_USEPOLLING:-1}
       - WATCHPACK_POLLING=${FRONTEND_WATCHPACK_POLLING:-1}
+      - APP_NAME=${APP_NAME}
+      - UNIQUE_RUNNER_ID=${UNIQUE_RUNNER_ID}
+      - UNIQUE_RUN_NUMBER=${UNIQUE_RUN_NUMBER}
     entrypoint: ["/usr/local/bin/dev-env-entrypoint.sh"]
     # Internal port only, accessed via Nginx
     # ports:
@@ -88,6 +93,7 @@ services:
     <<: *networks
     profiles:
       - app
+
 
 networks:
   app_network:

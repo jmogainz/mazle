@@ -191,7 +191,9 @@ function StatsModal({ stats, onClose }: StatsModalProps) {
                   <div key={index} className={`${styles.historyItem} ${game.completed ? '' : styles.historyItemFailed}`}>
                     <span className={styles.historyLeft}>
                       <span className={styles.historyPuzzle}>#{game.puzzleNumber}</span>
-                      <span className={styles.historyTime}>{game.completed ? formatTime(game.timeMs) : '—'}</span>
+                      <span className={styles.historyTime}>
+                        {game.completed && game.timeMs != null ? formatTime(game.timeMs) : '—'}
+                      </span>
                     </span>
                     {game.completed ? (
                       <span className={styles.historyAttempts}>{game.attemptsUsed ?? 1}/3</span>

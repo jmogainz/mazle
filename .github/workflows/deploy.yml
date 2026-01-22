@@ -111,7 +111,7 @@ jobs:
       - name: Deploy mazle-generator to Fly
         if: env.DEPLOY_BACKEND == '1' && steps.changes.outputs.backend == 'true'
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          BWS_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
           UNIQUE_RUNNER_ID: ${{ secrets.UNIQUE_RUNNER_ID }}
         run: |
           export PATH="$HOME/.fly/bin:$PATH"
@@ -121,8 +121,7 @@ jobs:
       - name: Deploy to Production
         if: steps.changes.outputs.frontend == 'true'
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          BWS_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
           UNIQUE_RUNNER_ID: ${{ secrets.UNIQUE_RUNNER_ID }}
         run: |
           export PATH="$HOME/.fly/bin:$PATH"

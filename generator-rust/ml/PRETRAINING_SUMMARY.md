@@ -1209,4 +1209,171 @@ EVAL: 0-1% pass, 14-20% real unique
 
 ---
 
-*Last updated: 2026-01-20*
+## Phase 13: Path-Conditioned Training (Jan 2026)
+
+After hitting the 2.7-3.1% ceiling, we tried a fundamentally different approach: **condition the tile generator on the ground-truth optimal path** from training data.
+
+### Core Hypothesis
+
+The model fails to produce 10-move puzzles because it can't "see" the intended path. By explicitly feeding the path as input conditioning, we test: **can the tile generator realize an explicit 10-move plan and preserve uniqueness?**
+
+### Path Conditioning Implementation
+
+**Two spatial encodings added to the model:**
+
+1. **Stop-step one-hot features** (`stop_step_feat`): shape `[B, 13, 13, 11]`
+   - For a 10-move puzzle (11 stops including start), channel `k` is 1.0 at the k-th stop position
+   - Handles rare revisits (two channels can be 1 at same cell)
+
+2. **On-path binary mask** (`on_path`): shape `[B, 13, 13, 1]`
+   - 1.0 for every cell traversed by the optimal path (including slide intermediates)
+   - Includes start and goal cells
+
+**Model modifications** (in `model_v2.py`):
+- Added `stop_step_proj = nn.Linear(11, model_dim)` and `on_path_proj = nn.Linear(1, model_dim)`
+- Conditioning added to per-cell embeddings: `h = h + stop_step_proj(stop_feat) + on_path_proj(on_path_mask)`
+
+**Augmentation:** Path coordinates transformed consistently with tile augmentation via `augment_puzzle_with_path()`.
+
+### Auxiliary Losses
+
+To ensure the model actually uses path conditioning, we added plan realization losses:
+
+1. **L_stop** - Stop positions must be CLEAR (ice, floor, or ledge-accessible)
+   - Penalizes walls at stop positions
+   
+2. **L_clear** - All traversed cells must be CLEAR
+   - Ensures slides can actually occur between stops
+
+Combined: `L_plan = λ_stop * L_stop + λ_clear * L_clear`
+
+### Run 1: Basic Path Conditioning (`output_v2_pathcond`)
+
+**Config:**
+- Base: `model_v2.py` with path conditioning
+- λ_stop = 0.15, λ_clear = 0.05 (fixed)
+- LR: 1e-4
+- EMA: 0.9999
+
+**Results:**
+| Step | solve | unique | t10 | PASS | moves_mean |
+|------|-------|--------|-----|------|------------|
+| 5k | 18.4% | 13.5% | 1.6% | 0.4% | 10.2 |
+| 10k | 22.8% | 18.1% | 2.4% | 0.8% | 9.5 |
+| 15k | 19.3% | 16.2% | 2.0% | **1.6%** | 8.1 |
+| 20k | 15.7% | 13.8% | 1.2% | 0.8% | 6.8 |
+
+**Problem:** moves_mean drifted from 10.2 → 6.8. Model found shortcuts despite path conditioning.
+
+### Run 2: Ramping λ Schedule (`output_v2_ramp`)
+
+**Hypothesis:** Ramp plan losses later so model learns tiles first.
+
+**Config:**
+- λ_stop: 0.15 → 0.40 (ramp 10k-18k steps)
+- λ_clear: 0.05 → 0.20 (ramp 10k-18k steps)
+- LR step-down: 1e-4 (0-18k), 3e-5 (18k-24k), 1e-5 (24k+)
+
+**Results:**
+| Step | solve | unique | t10 | PASS | moves_mean |
+|------|-------|--------|-----|------|------------|
+| 10k | 20.5% | 16.8% | 2.1% | 0.8% | 9.8 |
+| 15k | 25.3% | 20.9% | 3.2% | **2.4%** | 8.9 |
+| 19k | 27.1% | 22.5% | 3.5% | **2.8%** | 8.2 |
+| 22k | 23.8% | 19.7% | 2.8% | 2.0% | 7.4 |
+
+**Improvement:** Peaked at 2.8% vs 1.6% baseline. But still collapsed to 7.4 moves.
+
+### Run 3: Plan Scaler + Lock Basin (`output_lock_basin`)
+
+**Innovation:** Dynamic multiplier that scales plan loss to match CE gradient magnitude.
+
+**Config:**
+- Plan scaler: `mult = clamp(g_ce / g_plan, 0.5, 4.0)`, late_max=8.0 at step 18k
+- Same λ ramp schedule
+- Early stop: patience=6, moves_threshold=7.0
+
+**Results (Best Run):**
+| Step | solve | unique | t10 | PASS | moves_mean | mult |
+|------|-------|--------|-----|------|------------|------|
+| 10k | 22.1% | 17.8% | 2.5% | 1.2% | 9.2 | 3.42 |
+| 15k | 28.4% | 23.1% | 4.0% | 3.6% | 8.8 | 4.00 |
+| 19k | 31.2% | 25.8% | 5.1% | **4.8%** | 8.5 | 6.12 |
+| 22k | 26.4% | 21.9% | 3.2% | 2.8% | 6.7 | 8.00 |
+
+**New best: PASS = 4.8%** at step 19k! But still collapsed to 6.7 moves by step 22k.
+
+**Key insight:** Model learned to satisfy plan losses (intended path is viable) but found SHORTCUTS (cells off-plan that enable <10 solutions). Plan losses don't forbid shortcuts.
+
+### Run 4: L_shortcut Anti-Shortcut Loss (`output_shortcut_v3`)
+
+**New loss:** Explicitly penalize cells enabling shorter solutions.
+
+**Implementation:**
+```python
+def compute_shortcut_loss():
+    # Sample 25% of batch
+    # Argmax tiles → Run solver → Check if moves < 10
+    # If shortcut: culprit = solver_cells - intended_cells
+    # Penalize: -log(p_wall(culprit) + eps)
+```
+
+**Config:**
+- λ_shortcut: 0.0 → 0.30 (ramp 12k-18k steps)
+- All other settings from lock_basin
+
+**Results:**
+| Step | solve | unique | t10 | PASS | moves_mean |
+|------|-------|--------|-----|------|------------|
+| 5k | 19.6% | 14.6% | 1.7% | 0.3% | 9.9 |
+| 10k | 15.2% | 12.5% | 1.4% | 0.4% | 8.8 |
+| 11k | 21.9% | 18.5% | 2.6% | **0.8%** | 9.2 |
+
+**Problem:** Training stopped at step 12000 (right when L_shortcut was supposed to activate). Best PASS only 0.8% - **worse than lock_basin's 4.8%**.
+
+**Issues identified:**
+1. L_shortcut never actually activated (ramp starts at 12k, training stopped at 12k)
+2. Possible crash in shortcut computation (runs solver on model outputs)
+3. moves_mean drifted to 8.8-9.2 without anti-shortcut active
+
+### Summary of Path-Conditioned Results
+
+| Run | Best PASS | At Step | Final moves_mean | Notes |
+|-----|-----------|---------|------------------|-------|
+| Basic path-cond | 1.6% | 15k | 6.8 | Baseline |
+| Ramping λ | 2.8% | 19k | 7.4 | Better schedule |
+| Lock Basin | **4.8%** | 19k | 6.7 | Dynamic scaling |
+| L_shortcut | 0.8% | 11k | 9.2 | Incomplete (crashed at 12k) |
+
+### Key Learnings from Path-Conditioned Training
+
+| # | Lesson |
+|---|--------|
+| 26 | Path conditioning helps model "see" intended route |
+| 27 | Plan losses (L_stop, L_clear) ensure intended path is viable |
+| 28 | Plan losses do NOT forbid shortcuts - model still finds them |
+| 29 | Dynamic gradient-based scaling (plan scaler) helps balance losses |
+| 30 | 4.8% PASS is new ceiling - beats 3.1% SwiGLU baseline |
+| 31 | moves_mean drift from 10→6.7 indicates shortcut exploitation |
+| 32 | Need explicit anti-shortcut mechanism to prevent collapse |
+
+### Files Created/Modified
+
+- `pretrain_v2.py` - Path-conditioned training loop with L_plan, L_shortcut
+- `model_v2.py` - Added `stop_step_proj`, `on_path_proj` conditioning
+- `build_path_conditioning()` - Utility to create spatial path features
+- `expand_path_to_cells()` - Expand stop sequence to all traversed cells
+- `compute_plan_realization_loss()` - L_stop + L_clear computation
+- `compute_shortcut_loss()` - Anti-shortcut loss using solver
+
+### Next Steps
+
+1. **Fix L_shortcut run** - Investigate why training stopped at 12k, re-run
+2. **Earlier shortcut activation** - Start L_shortcut at step 0 or 6k instead of 12k
+3. **Debug shortcut computation** - May have performance/crash issues calling solver
+4. **Increase shortcut weight** - If 0.30 insufficient, try 0.50 or higher
+5. **Consider data composition** - Is training data itself limiting 10-move learning?
+
+---
+
+*Last updated: 2026-01-23*

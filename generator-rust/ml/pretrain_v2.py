@@ -233,14 +233,25 @@ def build_path_conditioning(optimal_path: List[Tuple[int, int]], W: int = 13, H:
         dx = 0 if x1 == x0 else (1 if x1 > x0 else -1)
         dy = 0 if y1 == y0 else (1 if y1 > y0 else -1)
 
+        # Safety: ignore diagonal segments (shouldn't happen in valid ice puzzles)
+        if (x1 != x0) and (y1 != y0):
+             continue
+
         x, y = x0, y0
         if 0 <= y < H and 0 <= x < W:
             on_path[y, x, 0] = 1.0
+            
+        # Traverse
+        steps = 0
+        max_steps = max(W, H) * 2
         while (x, y) != (x1, y1):
             x += dx
             y += dy
             if 0 <= y < H and 0 <= x < W:
                 on_path[y, x, 0] = 1.0
+            steps += 1
+            if steps > max_steps:
+                break
 
     return stop_step_feat.reshape(H * W, S), on_path.reshape(H * W, 1)
 
@@ -339,6 +350,9 @@ def compute_plan_realization_loss(
             dx = 0 if x1 == x0 else (1 if x1 > x0 else -1)
             dy = 0 if y1 == y0 else (1 if y1 > y0 else -1)
 
+            if (x1 != x0) and (y1 != y0):
+                continue
+
             approach = get_approach_direction(dx, dy)
             if approach is None:
                 continue
@@ -358,6 +372,8 @@ def compute_plan_realization_loss(
             # 2) Segment clearance: intermediate cells must be non-blocking
             # Enumerate cells from (x0+dx, y0+dy) to (x1-dx, y1-dy) exclusive of endpoints
             x, y = x0, y0
+            steps = 0
+            max_steps = max(W, H) * 2
             while (x, y) != (x1, y1):
                 x += dx
                 y += dy
@@ -369,6 +385,9 @@ def compute_plan_realization_loss(
                     p_clear = (tile_probs[b, cell_idx] * clear_masks[approach]).sum()
                     total_clear_loss += -torch.log(p_clear + eps)
                     num_clear_cells += 1
+                steps += 1
+                if steps > max_steps:
+                    break
 
     # Average over cells (avoid div by zero)
     if num_stop_cells > 0:
@@ -381,6 +400,168 @@ def compute_plan_realization_loss(
         total_clear_loss = torch.tensor(0.0, device=device)
 
     return total_stop_loss, total_clear_loss
+
+
+def expand_path_to_cells(path: List[Tuple[int, int]]) -> set:
+    """
+    Expand a stop-sequence path to all cells traversed (including intermediate slide cells).
+    
+    Args:
+        path: List of (x, y) stop positions
+        
+    Returns:
+        Set of (x, y) tuples for all cells on the path
+    """
+    cells = set()
+    for i, (x, y) in enumerate(path):
+        cells.add((x, y))
+        if i > 0:
+            x0, y0 = path[i - 1]
+            # Traverse intermediate cells
+            dx = 0 if x == x0 else (1 if x > x0 else -1)
+            dy = 0 if y == y0 else (1 if y > y0 else -1)
+            
+            if (x != x0) and (y != y0):
+                continue
+                
+            cx, cy = x0, y0
+            steps = 0
+            while (cx, cy) != (x, y):
+                cx += dx
+                cy += dy
+                cells.add((cx, cy))
+                steps += 1
+                if steps > 100:  # Safety break
+                    break
+    return cells
+
+
+def compute_shortcut_loss(
+    tile_logits: torch.Tensor,
+    tile_probs: torch.Tensor,
+    tiles_gt: torch.Tensor,
+    start_pos: torch.Tensor,
+    goal_pos: torch.Tensor,
+    training_paths: List[List[Tuple[int, int]]],
+    validate_fn,
+    sample_fraction: float = 0.25,
+    W: int = 13,
+    H: int = 13,
+    eps: float = 1e-8,
+) -> Tuple[torch.Tensor, int, int]:
+    """
+    Compute shortcut-cutting loss: penalize cells that enable <10 move solutions.
+    
+    For each sample where the model produces a shortcut (solver finds m < 10):
+    - Find cells on solver's path that are NOT on the training path
+    - Penalize those "culprit" cells being clear (push toward blocking)
+    
+    Args:
+        tile_logits: (B, H*W, num_tiles) logits from model
+        tile_probs: (B, H*W, num_tiles) softmax probabilities
+        tiles_gt: (B, H*W) ground-truth tiles (for fallback if needed)
+        start_pos: (B,) start positions as flat indices
+        goal_pos: (B,) goal positions as flat indices
+        training_paths: List of B training paths, each [(x0,y0), ..., (x10,y10)]
+        validate_fn: Rust solver function
+        sample_fraction: Fraction of batch to evaluate (for efficiency)
+        W, H: Grid dimensions
+        eps: Small value for numerical stability
+    
+    Returns:
+        Tuple of (L_shortcut, num_shortcuts_found, num_samples_checked)
+    """
+    B = tile_logits.shape[0]
+    device = tile_logits.device
+    
+    if validate_fn is None:
+        return torch.tensor(0.0, device=device), 0, 0
+    
+    # Sample subset of batch for efficiency
+    num_to_check = max(1, int(B * sample_fraction))
+    import random
+    indices = random.sample(range(B), num_to_check)
+    
+    total_loss = 0.0
+    num_culprit_cells = 0
+    num_shortcuts = 0
+    
+    # Pre-compute clear probability mask (not wall = floor or ice or ledges)
+    # We want to penalize cells being "traversable" when they shouldn't be
+    # Wall (idx=1) is the main blocker; we push culprit cells toward wall
+    # p_not_wall = 1 - p_wall
+    
+    for b_idx in indices:
+        path_gt = training_paths[b_idx]
+        if len(path_gt) != 11:
+            continue
+        
+        # Get discrete tiles from model output (argmax)
+        tiles_pred = tile_logits[b_idx].argmax(dim=-1)  # (H*W,)
+        
+        # Get start/goal
+        sp = start_pos[b_idx].item()
+        gp = goal_pos[b_idx].item()
+        sx, sy = sp % W, sp // W
+        gx, gy = gp % W, gp // W
+        
+        # Convert to grid format for solver
+        grid = []
+        for y in range(H):
+            row = []
+            for x in range(W):
+                idx = tiles_pred[y * W + x].item()
+                row.append(remap_tile_inv(idx))
+            grid.append(row)
+        
+        # Run solver
+        try:
+            result = validate_fn(grid, sx, sy, gx, gy, 10)
+            if not result.solvable:
+                continue
+            
+            moves = result.optimal_moves
+            if moves >= 10:
+                continue  # No shortcut
+            
+            # Found shortcut! Get solver's path
+            solver_path = [(x, y) for x, y in result.optimal_path]
+            if not solver_path:
+                continue
+            
+            num_shortcuts += 1
+            
+            # Expand both paths to cell sets
+            gt_cells = expand_path_to_cells(path_gt)
+            solver_cells = expand_path_to_cells(solver_path)
+            
+            # Culprit cells: on solver path but NOT on ground-truth path
+            culprit_cells = solver_cells - gt_cells
+            
+            if not culprit_cells:
+                continue
+            
+            # Take first 2 culprits (most impactful)
+            culprits = list(culprit_cells)[:2]
+            
+            for cx, cy in culprits:
+                if 0 <= cx < W and 0 <= cy < H:
+                    cell_idx = cy * W + cx
+                    # Probability of wall at this cell
+                    p_wall = tile_probs[b_idx, cell_idx, 1]  # idx 1 = wall
+                    # Push toward wall: -log(p_wall)
+                    total_loss += -torch.log(p_wall + eps)
+                    num_culprit_cells += 1
+                    
+        except Exception:
+            continue  # Solver error, skip
+    
+    if num_culprit_cells > 0:
+        L_shortcut = total_loss / num_culprit_cells
+    else:
+        L_shortcut = torch.tensor(0.0, device=device)
+    
+    return L_shortcut, num_shortcuts, num_to_check
 
 
 def augment_path(optimal_path: List[Tuple[int, int]], aug_type: int, H: int = 13, W: int = 13) -> List[Tuple[int, int]]:
@@ -1439,6 +1620,12 @@ def train_pretrain_with_path(args, model, device, validate_fn, out_dir, config):
         f"clear {args.lambda_clear_init}->{args.lambda_clear_final}, "
         f"ramp steps {args.lambda_ramp_start}->{args.lambda_ramp_end}", out_dir
     )
+    if args.lambda_shortcut_final > 0:
+        log_progress(
+            f"Shortcut schedule: {args.lambda_shortcut_init}->{args.lambda_shortcut_final}, "
+            f"ramp steps {args.lambda_shortcut_ramp_start}->{args.lambda_shortcut_ramp_end}, "
+            f"sample_fraction={args.shortcut_sample_fraction}", out_dir
+        )
 
     global_step = 0
     best_full_pass = 0.0
@@ -1537,6 +1724,25 @@ def train_pretrain_with_path(args, model, device, validate_fn, out_dir, config):
             )
             plan_loss = plan_mult * plan_loss_base
 
+            # L_shortcut: penalize cells enabling shortcuts (< 10 move solutions)
+            # Only compute after ramp starts and with scheduled lambda
+            t_shortcut = ramp_t(global_step, args.lambda_shortcut_ramp_start, args.lambda_shortcut_ramp_end)
+            lambda_shortcut = lerp(args.lambda_shortcut_init, args.lambda_shortcut_final, t_shortcut)
+            
+            if lambda_shortcut > 0 and validate_fn is not None:
+                tile_probs = F.softmax(tile_logits, dim=-1)
+                L_shortcut, num_shortcuts, num_checked = compute_shortcut_loss(
+                    tile_logits, tile_probs, tiles, start_pos, goal_pos,
+                    filtered_paths, validate_fn,
+                    sample_fraction=args.shortcut_sample_fraction,
+                )
+                shortcut_loss = lambda_shortcut * L_shortcut
+            else:
+                L_shortcut = torch.tensor(0.0, device=device)
+                shortcut_loss = torch.tensor(0.0, device=device)
+                num_shortcuts = 0
+                num_checked = 0
+
             # Position losses (still train these)
             start_logits = outputs["start_logits"]
             goal_logits = outputs["goal_logits"]
@@ -1544,7 +1750,7 @@ def train_pretrain_with_path(args, model, device, validate_fn, out_dir, config):
             goal_loss = F.cross_entropy(goal_logits, goal_pos, label_smoothing=args.label_smoothing)
 
             # Combined loss
-            loss = tile_loss + plan_loss + 0.5 * start_loss + 0.5 * goal_loss
+            loss = tile_loss + plan_loss + shortcut_loss + 0.5 * start_loss + 0.5 * goal_loss
 
             if not torch.isfinite(loss):
                 log_progress(f"nan loss at step {global_step}; skipping", out_dir)
@@ -1564,9 +1770,10 @@ def train_pretrain_with_path(args, model, device, validate_fn, out_dir, config):
             if global_step % args.log_every == 0:
                 dt = time.time() - t0
                 lr = scheduler.get_last_lr()[0]
+                shortcut_info = f" sc={shortcut_loss.item():.4f}({num_shortcuts}/{num_checked})" if lambda_shortcut > 0 else ""
                 log_progress(
                     f"step {global_step} loss={loss.item():.4f} tile={tile_loss.item():.4f} "
-                    f"plan={plan_loss.item():.4f} (mult={plan_mult:.2f}) start={start_loss.item():.4f} goal={goal_loss.item():.4f} "
+                    f"plan={plan_loss.item():.4f} (mult={plan_mult:.2f}){shortcut_info} start={start_loss.item():.4f} goal={goal_loss.item():.4f} "
                     f"lr={lr:.2e} λs={lambda_stop:.2f} λc={lambda_clear:.2f} dt={dt:.1f}s skipped={skipped_invalid}",
                     out_dir,
                 )
@@ -1728,6 +1935,13 @@ def main():
     parser.add_argument("--early-stop-patience", type=int, default=6, help="Stop after N evals without PASS% improvement")
     parser.add_argument("--early-stop-moves-threshold", type=float, default=7.0, help="Stop if moves_mean drops below this")
     parser.add_argument("--early-stop-moves-count", type=int, default=2, help="Stop after N consecutive low-moves evals")
+    
+    # L_shortcut: anti-shortcut loss (penalize cells enabling <10 move solutions)
+    parser.add_argument("--lambda-shortcut-init", type=float, default=0.0, help="Initial lambda_shortcut (usually 0)")
+    parser.add_argument("--lambda-shortcut-final", type=float, default=0.30, help="Final lambda_shortcut after ramp")
+    parser.add_argument("--lambda-shortcut-ramp-start", type=int, default=12000, help="Step to start ramping lambda_shortcut")
+    parser.add_argument("--lambda-shortcut-ramp-end", type=int, default=18000, help="Step to finish ramping lambda_shortcut")
+    parser.add_argument("--shortcut-sample-fraction", type=float, default=0.25, help="Fraction of batch to check for shortcuts")
 
     # Training
     parser.add_argument("--epochs", type=int, default=20)

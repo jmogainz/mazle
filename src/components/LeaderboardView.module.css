@@ -261,6 +261,11 @@
   padding-bottom: 0.5rem;
 }
 
+/* Extra padding when sticky row is present so last entry can scroll above it */
+.listWithStickyRow {
+  padding-bottom: 3rem;
+}
+
 .loadMoreRow {
   display: flex;
   align-items: center;

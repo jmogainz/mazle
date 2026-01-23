@@ -5,6 +5,8 @@ const profanityFilter = new Filter({
   allLanguages: true,
   wordBoundaries: false,
   allowObfuscatedMatch: true,
+  // >1 disables fuzzy subsequence matching (score max is 1.0)
+  fuzzyToleranceLevel: 1.01,
   detectLeetspeak: true,
   leetspeakLevel: 'aggressive',
   normalizeUnicode: true,

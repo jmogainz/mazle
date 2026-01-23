@@ -707,7 +707,7 @@ function LeaderboardView() {
         {showPostLoadUi && myEntryData && renderStickyRow('top')}
         
         {topState.status === 'loaded' && (
-          <div className={styles.list} ref={listRef}>
+          <div className={`${styles.list} ${myEntryData ? styles.listWithStickyRow : ''}`.trim()} ref={listRef}>
             {restEntries.length > 0 ? (
               <>
                 {restEntries.map((e) => {

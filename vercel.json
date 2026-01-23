@@ -17,7 +17,11 @@
     },
     {
       "path": "/api/cron/podium-snapshot",
-      "schedule": "15 6 * * *"
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/podium-snapshot",
+      "schedule": "0 5 * * *"
     }
   ],
   "headers": [

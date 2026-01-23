@@ -1892,6 +1892,362 @@ def train_pretrain_with_path(args, model, device, validate_fn, out_dir, config):
     log_progress(f"Training complete. Best full_pass={best_full_pass:.1%}", out_dir)
 
 
+def get_cond_dropout_p(step: int, args) -> float:
+    """
+    Compute conditioning dropout probability based on step.
+    
+    Schedule:
+    - Steps 0 → ramp1_end: p = p_init (0.10)
+    - Steps ramp1_end → ramp2_end: linear ramp p_init → 0.60  
+    - Steps ramp2_end → ramp3_end: linear ramp 0.60 → 0.90
+    - Steps ramp3_end → total_steps: p = p_final (0.95)
+    """
+    if step < args.cond_dropout_ramp1_end:
+        return args.cond_dropout_p_init
+    elif step < args.cond_dropout_ramp2_end:
+        # Ramp from p_init to 0.6
+        t = (step - args.cond_dropout_ramp1_end) / max(1, args.cond_dropout_ramp2_end - args.cond_dropout_ramp1_end)
+        return args.cond_dropout_p_init + t * (0.60 - args.cond_dropout_p_init)
+    elif step < args.cond_dropout_ramp3_end:
+        # Ramp from 0.6 to 0.9
+        t = (step - args.cond_dropout_ramp2_end) / max(1, args.cond_dropout_ramp3_end - args.cond_dropout_ramp2_end)
+        return 0.60 + t * (0.90 - 0.60)
+    else:
+        # Final phase: 0.95
+        return args.cond_dropout_p_final
+
+
+def train_cond_dropout(args, model, device, validate_fn, out_dir, config):
+    """
+    Fine-tune a path-conditioned model to work without path conditioning.
+    
+    Uses classifier-free conditioning dropout: randomly drop path features during
+    training while keeping the same loss targets, forcing the model to internalize
+    the planning signal rather than consuming it as input.
+    """
+    data_path = Path(args.data)
+    
+    # Data count
+    data_count = args.data_count
+    if data_count is None:
+        data_count = count_lines(data_path)
+    
+    train_count = max(1, int(data_count * (1.0 - args.val_pct - args.test_pct)))
+    steps_per_epoch = math.ceil(train_count / args.batch_size)
+    total_steps = args.cond_dropout_total_steps
+    
+    log_progress(f"[COND-DROPOUT] data={data_count} train={train_count} steps/epoch={steps_per_epoch}", out_dir)
+    log_progress(f"[COND-DROPOUT] total_steps={total_steps}, fine-tuning from checkpoint", out_dir)
+    
+    # Optimizer - lower LR for fine-tuning
+    optimizer = torch.optim.AdamW(
+        model.parameters(), lr=args.lr, weight_decay=args.weight_decay,
+        betas=(0.9, args.beta2)
+    )
+    
+    # Simple constant LR for fine-tuning (with short warmup)
+    warmup_steps = 500
+    def lr_lambda(step):
+        if step < warmup_steps:
+            return step / warmup_steps
+        return 1.0
+    
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+    log_progress(f"[COND-DROPOUT] LR={args.lr:.0e} (constant after {warmup_steps} warmup)", out_dir)
+    
+    # EMA
+    ema = EMA(model, decay=args.ema_decay)
+    log_progress(f"EMA initialized with decay={args.ema_decay}", out_dir)
+    
+    # Plan scaler (keep auxiliary losses relevant)
+    plan_scaler = PlanLossScaler(
+        target_ratio=0.3,
+        ema_beta=0.99,
+        mult_min=0.5,
+        mult_max=8.0,  # Wider range for conditioning dropout
+        mult_max_late=8.0,
+        activation_step=0,
+        late_step=0,
+    )
+    
+    # Log schedules
+    log_progress(
+        f"[COND-DROPOUT] p_drop: {args.cond_dropout_p_init} until {args.cond_dropout_ramp1_end}, "
+        f"ramp to 0.6 by {args.cond_dropout_ramp2_end}, ramp to 0.9 by {args.cond_dropout_ramp3_end}, "
+        f"then {args.cond_dropout_p_final}", out_dir
+    )
+    log_progress(
+        f"Lambda (fixed): stop={args.lambda_stop_final}, clear={args.lambda_clear_final}, "
+        f"shortcut={args.lambda_shortcut_final}", out_dir
+    )
+    
+    global_step = 0
+    epoch = 0
+    best_full_pass_uncond = 0.0
+    best_full_pass_cond = 0.0
+    evals_without_improvement = 0
+    skipped_invalid = 0
+    
+    while global_step < total_steps:
+        epoch += 1
+        epoch_losses = []
+        
+        # Create fresh dataset/loader each epoch
+        dataset = JsonlMazeDataset(
+            data_path,
+            split="train",
+            val_pct=args.val_pct,
+            test_pct=args.test_pct,
+            shuffle_buffer=args.shuffle_buffer,
+            shuffle_seed=epoch + 42,
+        )
+        loader = DataLoader(
+            dataset,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            collate_fn=CollateFnV2WithPath(augment=args.augment, validate_fn=validate_fn),
+        )
+        
+        model.train()
+        
+        for batch in tqdm(loader, desc=f"epoch {epoch}", total=steps_per_epoch):
+            if global_step >= total_steps:
+                break
+            
+            # Unpack batch
+            tiles = batch["tiles"].to(device)
+            start_pos = batch["start_pos"].to(device)
+            goal_pos = batch["goal_pos"].to(device)
+            stop_step_feat = batch["stop_step_feat"].to(device)
+            on_path = batch["on_path"].to(device)
+            valid_path = batch["valid_path"]
+            optimal_paths = batch["optimal_paths"]
+            
+            # Filter out samples without valid paths
+            valid_mask = valid_path.to(device)
+            if not valid_mask.any():
+                skipped_invalid += tiles.shape[0]
+                continue
+            
+            # Only use samples with valid paths
+            tiles = tiles[valid_mask]
+            start_pos = start_pos[valid_mask]
+            goal_pos = goal_pos[valid_mask]
+            stop_step_feat = stop_step_feat[valid_mask]
+            on_path = on_path[valid_mask]
+            valid_indices = valid_mask.cpu().numpy()
+            filtered_paths = [p for i, p in enumerate(optimal_paths) if valid_indices[i]]
+            batch_size = tiles.shape[0]
+            
+            # Sample timesteps
+            t = torch.randint(0, model.num_timesteps, (batch_size,), device=device)
+            
+            # Forward diffusion
+            x_t = model.q_sample(tiles, t)
+            
+            # Conditioning dropout: randomly drop path features
+            p_drop = get_cond_dropout_p(global_step, args)
+            drop_mask = torch.rand(batch_size, device=device) < p_drop
+            
+            # Create masked conditioning (None for dropped samples)
+            # We need per-sample dropout, so we zero out the features instead of passing None
+            stop_step_feat_masked = stop_step_feat.clone()
+            on_path_masked = on_path.clone()
+            stop_step_feat_masked[drop_mask] = 0.0
+            on_path_masked[drop_mask] = 0.0
+            
+            # Forward pass (with potentially zeroed conditioning)
+            outputs = model(x_t, t, start_pos, goal_pos,
+                           stop_step_feat=stop_step_feat_masked, 
+                           on_path=on_path_masked)
+            
+            # Tile loss (same for all samples)
+            tile_logits = outputs["tile_logits"]
+            tile_loss = F.cross_entropy(
+                tile_logits.reshape(-1, config.tile_vocab_size),
+                tiles.reshape(-1),
+                label_smoothing=args.label_smoothing,
+            )
+            
+            # Plan-realization loss (always computed with ground-truth paths)
+            # This is the key: we keep the constraints even when conditioning is dropped
+            L_stop, L_clear = compute_plan_realization_loss(
+                tile_logits, filtered_paths, W=13, H=13
+            )
+            
+            # Use final lambda values (no ramping in fine-tune)
+            lambda_stop = args.lambda_stop_final
+            lambda_clear = args.lambda_clear_final
+            
+            plan_loss_base = lambda_stop * L_stop + lambda_clear * L_clear
+            
+            # Shortcut loss (on subset of batch)
+            shortcut_loss = torch.tensor(0.0, device=device)
+            num_shortcuts = 0
+            num_checked = 0
+            if args.lambda_shortcut_final > 0 and validate_fn is not None:
+                tile_probs = F.softmax(tile_logits, dim=-1)
+                L_shortcut, num_shortcuts, num_checked = compute_shortcut_loss(
+                    tile_logits, tile_probs, tiles, start_pos, goal_pos,
+                    filtered_paths, validate_fn,
+                    sample_fraction=args.shortcut_sample_fraction,
+                )
+                shortcut_loss = args.lambda_shortcut_final * L_shortcut
+            
+            plan_loss = plan_loss_base + shortcut_loss
+            
+            # Scale plan loss to maintain gradient contribution
+            plan_mult = plan_scaler.update_and_get_multiplier(tile_loss.item(), plan_loss.item(), global_step)
+            
+            # Total loss
+            loss = tile_loss + plan_mult * plan_loss
+            
+            # Backward
+            optimizer.zero_grad()
+            loss.backward()
+            if args.clip_grad > 0:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad)
+            optimizer.step()
+            scheduler.step()
+            ema.update()
+            
+            epoch_losses.append(loss.item())
+            
+            # Logging
+            if global_step % args.log_every == 0:
+                lr = optimizer.param_groups[0]["lr"]
+                drop_pct = p_drop * 100
+                log_progress(
+                    f"step {global_step} loss={loss.item():.4f} tile={tile_loss.item():.4f} "
+                    f"plan={plan_loss.item():.4f} (mult={plan_mult:.2f}) "
+                    f"p_drop={drop_pct:.0f}% lr={lr:.2e}", out_dir
+                )
+            
+            # Evaluation - report BOTH conditioned and unconditioned
+            if global_step > 0 and global_step % args.eval_every == 0:
+                ema.apply_shadow()
+                
+                # Unconditioned eval (the metric we care about)
+                metrics_uncond = generate_and_validate(
+                    model, device, validate_fn,
+                    num_samples=args.generate_samples,
+                )
+                
+                # Conditioned eval (for reference)
+                metrics_cond = generate_and_validate_with_plan(
+                    model, device, validate_fn,
+                    num_samples=args.generate_samples,
+                    eval_data_path=data_path,
+                )
+                
+                ema.restore()
+                
+                # Log unconditioned
+                log_msg_uncond = (
+                    f"eval step={global_step} [UNCOND] solve={metrics_uncond['solvable']:.1%} "
+                    f"unique={metrics_uncond['unique_optimal']:.1%} t10={metrics_uncond['target_10']:.1%} "
+                    f"PASS={metrics_uncond['full_pass']:.1%}"
+                )
+                if "moves_mean" in metrics_uncond:
+                    log_msg_uncond += f" | moves={metrics_uncond['moves_mean']:.1f}"
+                log_progress(log_msg_uncond, out_dir)
+                
+                # Log conditioned
+                log_msg_cond = (
+                    f"eval step={global_step} [COND]   solve={metrics_cond['solvable']:.1%} "
+                    f"unique={metrics_cond['unique_optimal']:.1%} t10={metrics_cond['target_10']:.1%} "
+                    f"PASS={metrics_cond['full_pass']:.1%}"
+                )
+                if "moves_mean" in metrics_cond:
+                    log_msg_cond += f" | moves={metrics_cond['moves_mean']:.1f}"
+                log_progress(log_msg_cond, out_dir)
+                
+                # Save best based on UNCONDITIONED PASS (this is what we care about)
+                if metrics_uncond["full_pass"] > best_full_pass_uncond:
+                    best_full_pass_uncond = metrics_uncond["full_pass"]
+                    evals_without_improvement = 0
+                    ema.apply_shadow()
+                    torch.save({
+                        "model_state": model.state_dict(),
+                        "config": config,
+                        "step": global_step,
+                        "metrics_uncond": metrics_uncond,
+                        "metrics_cond": metrics_cond,
+                    }, out_dir / "best_model.pt")
+                    ema.restore()
+                    log_progress(f"  -> New best UNCOND PASS={best_full_pass_uncond:.1%}", out_dir)
+                else:
+                    evals_without_improvement += 1
+                
+                if metrics_cond["full_pass"] > best_full_pass_cond:
+                    best_full_pass_cond = metrics_cond["full_pass"]
+                
+                # Early stopping based on unconditioned metrics
+                if args.early_stop and evals_without_improvement >= args.early_stop_patience:
+                    uncond_moves = metrics_uncond.get("moves_mean", 0)
+                    if uncond_moves < args.early_stop_moves_threshold:
+                        log_progress(
+                            f"Early stop: {evals_without_improvement} evals without improvement, "
+                            f"moves_mean={uncond_moves:.1f} < {args.early_stop_moves_threshold}", out_dir
+                        )
+                        break
+            
+            # Checkpoint
+            if global_step > 0 and global_step % args.save_every == 0:
+                ema.apply_shadow()
+                torch.save({
+                    "model_state": model.state_dict(),
+                    "config": config,
+                    "step": global_step,
+                }, out_dir / f"checkpoint_{global_step}.pt")
+                ema.restore()
+            
+            global_step += 1
+        
+        if epoch_losses:
+            avg_loss = sum(epoch_losses) / len(epoch_losses)
+            log_progress(f"epoch {epoch} complete, avg_loss={avg_loss:.4f}", out_dir)
+    
+    # Final evaluation
+    ema.apply_shadow()
+    final_metrics_uncond = generate_and_validate(
+        model, device, validate_fn,
+        num_samples=args.generate_samples * 2,
+    )
+    final_metrics_cond = generate_and_validate_with_plan(
+        model, device, validate_fn,
+        num_samples=args.generate_samples * 2,
+        eval_data_path=data_path,
+    )
+    
+    log_progress(
+        f"FINAL [UNCOND] solve={final_metrics_uncond['solvable']:.1%} "
+        f"unique={final_metrics_uncond['unique_optimal']:.1%} "
+        f"t10={final_metrics_uncond['target_10']:.1%} PASS={final_metrics_uncond['full_pass']:.1%} "
+        f"| moves={final_metrics_uncond.get('moves_mean', 0):.1f}", out_dir
+    )
+    log_progress(
+        f"FINAL [COND]   solve={final_metrics_cond['solvable']:.1%} "
+        f"unique={final_metrics_cond['unique_optimal']:.1%} "
+        f"t10={final_metrics_cond['target_10']:.1%} PASS={final_metrics_cond['full_pass']:.1%} "
+        f"| moves={final_metrics_cond.get('moves_mean', 0):.1f}", out_dir
+    )
+    
+    torch.save({
+        "model_state": model.state_dict(),
+        "config": config,
+        "step": global_step,
+        "metrics_uncond": final_metrics_uncond,
+        "metrics_cond": final_metrics_cond,
+    }, out_dir / "final_model.pt")
+    ema.restore()
+    
+    log_progress(
+        f"Conditioning dropout fine-tune complete. "
+        f"Best UNCOND PASS={best_full_pass_uncond:.1%}, Best COND PASS={best_full_pass_cond:.1%}", out_dir
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(description="Train puzzle generator v2 (clean)")
 
@@ -1942,6 +2298,15 @@ def main():
     parser.add_argument("--lambda-shortcut-ramp-start", type=int, default=12000, help="Step to start ramping lambda_shortcut")
     parser.add_argument("--lambda-shortcut-ramp-end", type=int, default=18000, help="Step to finish ramping lambda_shortcut")
     parser.add_argument("--shortcut-sample-fraction", type=float, default=0.25, help="Fraction of batch to check for shortcuts")
+    
+    # Conditioning dropout fine-tuning (converts path-conditioned model to unconditional)
+    parser.add_argument("--cond-dropout", action="store_true", help="Enable conditioning dropout fine-tuning")
+    parser.add_argument("--cond-dropout-p-init", type=float, default=0.10, help="Initial conditioning dropout probability")
+    parser.add_argument("--cond-dropout-p-final", type=float, default=0.95, help="Final conditioning dropout probability")
+    parser.add_argument("--cond-dropout-ramp1-end", type=int, default=2000, help="End of phase 1 (constant p_init)")
+    parser.add_argument("--cond-dropout-ramp2-end", type=int, default=10000, help="End of phase 2 (ramp to 0.6)")
+    parser.add_argument("--cond-dropout-ramp3-end", type=int, default=20000, help="End of phase 3 (ramp to 0.9)")
+    parser.add_argument("--cond-dropout-total-steps", type=int, default=30000, help="Total fine-tuning steps")
 
     # Training
     parser.add_argument("--epochs", type=int, default=20)
@@ -2068,6 +2433,13 @@ def main():
         if not args.checkpoint:
             log_progress("WARNING: Running DPO without pretrained checkpoint", out_dir)
         train_dpo(args, model, device, validate_fn, out_dir)
+    elif args.cond_dropout:
+        if not args.data:
+            raise ValueError("--data required for conditioning dropout fine-tuning")
+        if not args.checkpoint:
+            raise ValueError("--checkpoint required for conditioning dropout (must start from trained model)")
+        log_progress("Starting conditioning dropout fine-tuning (path-conditioned → unconditional)", out_dir)
+        train_cond_dropout(args, model, device, validate_fn, out_dir, config)
     elif args.path_cond:
         if not args.data:
             raise ValueError("--data required for path-conditioned training")

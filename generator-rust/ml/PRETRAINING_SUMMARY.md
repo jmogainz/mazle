@@ -1376,4 +1376,453 @@ def compute_shortcut_loss():
 
 ---
 
+## Phase 7: L_shortcut Success and Conditioning Discovery
+
+### Run 5: Full L_shortcut Training (`output_shortcut_v1`)
+
+Re-ran L_shortcut with proper configuration and let it run to completion.
+
+**Config:**
+- λ_stop: 0.15 → 0.40 (ramp 10k-18k)
+- λ_clear: 0.05 → 0.20 (ramp 10k-18k)
+- λ_shortcut: 0.0 → 0.30 (ramp 12k-18k)
+- LR: 1e-4 until 18k, 3e-5 until 24k, 1e-5 after
+- Plan scaler: mult_max=4.0 until 18k, then 8.0
+- EMA decay: 0.9999
+
+**Results (Full Training - 42k steps, 13 epochs):**
+
+| Step | solve | unique | t10 | PASS | moves_mean | near10 |
+|------|-------|--------|-----|------|------------|--------|
+| 5k | 18.0% | 13.3% | 1.5% | 0.0% | 10.7 | 51.9% |
+| 10k | 29.5% | 24.2% | 6.3% | 2.0% | 9.9 | 64.5% |
+| 15k | 41.8% | 35.2% | 15.6% | 8.6% | 9.7 | 74.6% |
+| 18k | 48.4% | 41.0% | 24.6% | 15.2% | 9.5 | 77.7% |
+| 20k | 52.0% | 44.9% | 28.9% | 18.0% | 9.6 | 81.3% |
+| 25k | 55.9% | 48.4% | 33.2% | 22.3% | 9.6 | 85.9% |
+| 30k | 57.8% | 50.4% | 36.3% | 26.2% | 9.6 | 86.3% |
+| 35k | 58.6% | 51.6% | 38.7% | 29.3% | 9.6 | 86.7% |
+| 38k | 60.2% | 52.3% | 40.6% | **32.1%** | 9.7 | 87.5% |
+| 40k | 59.8% | 52.0% | 40.2% | **32.1%** | 9.6 | 86.7% |
+| 42k | 59.0% | 51.2% | 39.5% | 31.2% | 9.6 | 86.3% |
+
+**🎉 NEW BEST: PASS = 32.1%** at step 38-40k!
+
+**Key observations:**
+- L_shortcut prevented the collapse - moves_mean stayed at 9.6-9.7 throughout!
+- Previous runs collapsed to 6.7 moves; this held steady
+- PASS improved 6.7x over previous best (32.1% vs 4.8%)
+- near10% (moves within ±1 of 10) reached 87.5%
+
+### Run 6: Parallel Run (`output_shortcut_v3`)
+
+Same configuration as v1, ran in parallel.
+
+**Results:**
+| Step | solve | unique | t10 | PASS | moves_mean |
+|------|-------|--------|-----|------|------------|
+| 30k | 55.5% | 47.9% | 34.1% | 25.4% | 9.5 |
+| 33k | 56.6% | 49.0% | 36.7% | **29.4%** | 9.6 |
+| 34k | 56.3% | 48.6% | 36.3% | 28.5% | 9.6 |
+
+**Best: PASS = 29.4%** - slightly below v1 but confirmed reproducibility.
+
+### Critical Discovery: Path Conditioning Dependence
+
+After training, we attempted to use the model for seed → puzzle generation and discovered a fundamental issue.
+
+**Testing unconditioned generation:**
+```python
+# Using model.generate() without path features
+metrics = generate_and_validate(model, device, validate_fn, num_samples=200)
+# Result: Solvable=9%, Unique=8.5%, Target10=0%, PASS=0%, moves_mean=3.9
+```
+
+**The 32% PASS rate was achieved ONLY with path conditioning!**
+
+**Architecture analysis revealed:**
+
+The v2 model's forward signature:
+```python
+def forward(self, tiles, t, start_pos, goal_pos,
+            stop_step_feat: Optional = None,  # Path input
+            on_path: Optional = None):        # Path input
+```
+
+Training used `train_pretrain_with_path()` which:
+1. Loads ground-truth optimal paths from training data
+2. Builds path conditioning tensors (`stop_step_feat`, `on_path`)
+3. Passes path features to model during forward
+4. Evaluates using `generate_and_validate_with_plan()` which also provides paths
+
+**The model learned to be a "path realizer" not a "puzzle generator":**
+- Given a path → generates valid tiles (32% success)
+- Without a path → generates garbage (0% success)
+
+This is **Design A (path-conditioned generator)** vs intended **Design B (unconditional generator with path-supervised losses)**.
+
+### Inference Module Created
+
+To document proper usage, created `inference_v2.py`:
+
+```python
+from inference_v2 import PuzzleInference
+
+inf = PuzzleInference("output_shortcut_v1/best_model.pt")
+
+# Path-conditioned generation (works - 30% PASS)
+puzzles = inf.generate_from_data("../data/train-200k-with-paths.jsonl", 
+                                  num_samples=100, require_full_pass=True)
+
+# Seed-only generation (doesn't work - 0% PASS)
+puzzle = inf.generate_from_seed("my-seed", max_candidates=1000)  # Will fail
+```
+
+**Start/Goal Distribution Analysis (100 full-pass puzzles):**
+- Starts cluster in left half (x̄=4.1), spread vertically (ȳ=5.7)
+- Goals cluster in right half (x̄=8.5), corners especially (11,0), (12,11)
+- Manhattan distance: 4-22, mean=15.2 (diagonal traversal pattern)
+
+---
+
+## Phase 8: Conditioning Dropout Fine-Tuning
+
+### The Problem
+
+The model cannot generate puzzles from just a seed because it learned to depend on path input features. We need to convert it from path-conditioned to unconditional while preserving its 10-move generation capability.
+
+### Solution: Classifier-Free Conditioning Dropout
+
+Inspired by classifier-free guidance, we fine-tune the model by randomly dropping path conditioning during training while keeping the same auxiliary loss targets.
+
+**Key insight:** The path features are used to compute loss targets (L_stop, L_clear, L_shortcut) regardless of whether they're passed to the model. This transfers "10-move discipline" into the unconditional pathway.
+
+### Implementation
+
+Added new training mode `--cond-dropout` in `pretrain_v2.py`:
+
+```python
+def train_cond_dropout(args, model, device, validate_fn, out_dir, config):
+    """
+    Fine-tune path-conditioned model to work without path conditioning.
+    
+    Randomly drops path features during training while keeping same loss targets.
+    """
+    # ... setup ...
+    
+    for batch in loader:
+        # Compute conditioning dropout probability
+        p_drop = get_cond_dropout_p(global_step, args)
+        drop_mask = torch.rand(batch_size, device=device) < p_drop
+        
+        # Zero out path features for dropped samples
+        stop_step_feat_masked = stop_step_feat.clone()
+        on_path_masked = on_path.clone()
+        stop_step_feat_masked[drop_mask] = 0.0
+        on_path_masked[drop_mask] = 0.0
+        
+        # Forward with potentially zeroed conditioning
+        outputs = model(x_t, t, start_pos, goal_pos,
+                       stop_step_feat=stop_step_feat_masked,
+                       on_path=on_path_masked)
+        
+        # Losses still computed using ground-truth paths (not masked)
+        L_stop, L_clear = compute_plan_realization_loss(tile_logits, filtered_paths)
+        # ... L_shortcut also uses GT paths ...
+```
+
+**Dropout Schedule:**
+```python
+def get_cond_dropout_p(step, args):
+    # Steps 0 → 2k: p = 0.10 (mostly conditioned)
+    # Steps 2k → 10k: ramp 0.10 → 0.60
+    # Steps 10k → 20k: ramp 0.60 → 0.90
+    # Steps 20k → 30k: p = 0.95 (mostly unconditioned)
+```
+
+**Evaluation reports BOTH metrics:**
+```
+eval step=1000 [UNCOND] solve=9% unique=8% t10=0% PASS=0% | moves=3.4
+eval step=1000 [COND]   solve=40% unique=40% t10=32% PASS=29% | moves=9.7
+```
+
+### Run 7: Conditioning Dropout Fine-Tune (`output_cond_dropout_v1`)
+
+**Config:**
+- Checkpoint: `output_shortcut_v1/best_model.pt` (32.1% PASS with conditioning)
+- LR: 3e-5 (constant, lower for fine-tuning)
+- Total steps: 30,000
+- Lambda (fixed at final): stop=0.40, clear=0.20, shortcut=0.30
+- p_drop schedule: 0.10 → 0.60 → 0.90 → 0.95
+- EMA decay: 0.9999
+
+**Status:** Training in progress (started 2026-01-23 09:39)
+
+**Expected outcomes:**
+- `[UNCOND] moves_mean` should climb from ~3.4 toward 9-10
+- `[UNCOND] t10%` should move off zero
+- `[UNCOND] PASS%` should begin rising by step 5k-10k
+
+**Success criteria:**
+- Unconditioned PASS% > 5% would indicate transfer is working
+- Unconditioned moves_mean > 7 would indicate planning is internalized
+- If no improvement by 10k steps, may need architectural changes
+
+### Files Created/Modified
+
+- `pretrain_v2.py`:
+  - Added `--cond-dropout` training mode
+  - Added `train_cond_dropout()` function
+  - Added `get_cond_dropout_p()` for dropout schedule
+  - Added new CLI args: `--cond-dropout-*` family
+  
+- `inference_v2.py` (new file):
+  - `PuzzleInference` class for easy model loading/generation
+  - `generate_with_path()` - path-conditioned generation
+  - `generate_from_data()` - batch generation from training data
+  - `generate_from_seed()` - attempt unconditioned (currently ~0% success)
+  - `analyze_distribution()` - start/goal position analysis
+  - CLI interface for quick testing
+
+### Key Learnings
+
+| # | Lesson |
+|---|--------|
+| 33 | L_shortcut successfully prevented moves collapse (9.6 vs 6.7) |
+| 34 | 32.1% PASS is achievable but ONLY with path conditioning |
+| 35 | Path features as inputs create dependency - model won't work without them |
+| 36 | "Path-supervised losses" ≠ "path as input" - architecture matters |
+| 37 | Conditioning dropout can potentially transfer knowledge to unconditioned pathway |
+| 38 | Fine-tuning requires lower LR (3e-5 vs 1e-4) to avoid catastrophic forgetting |
+| 39 | Must evaluate BOTH conditioned and unconditioned to track transfer |
+
+### Summary Table
+
+| Run | Mode | Best PASS | At Step | moves_mean | Notes |
+|-----|------|-----------|---------|------------|-------|
+| shortcut_v1 | path-cond | **32.1%** | 38k | 9.7 | Best with conditioning |
+| shortcut_v3 | path-cond | 29.4% | 33k | 9.6 | Reproducibility check |
+| shortcut_v1 | uncond | 0.0% | - | 3.9 | Without path input |
+| cond_dropout_v1 | uncond | TBD | TBD | TBD | In progress |
+
+---
+
+## Appendix A: Current Model Architecture (PuzzleGeneratorV2)
+
+### Overview
+
+The model uses a **Transformer encoder with discrete diffusion** (BERT-style masked prediction). It generates a 13×13 tile grid given START/GOAL positions, optionally conditioned on an optimal path.
+
+### Model Configuration (Base Preset)
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| `model_dim` | 256 | Hidden dimension |
+| `num_layers` | 6 | Transformer layers |
+| `num_heads` | 8 | Attention heads |
+| `ff_dim` | 1024 | Feedforward dimension (4× model_dim) |
+| `tile_vocab_size` | 10 | Tile types (0-9 remapped) |
+| `grid_size` | 169 | 13×13 tiles |
+| `num_timesteps` | 50 | Diffusion steps |
+| `mask_schedule` | cosine | Masking probability over time |
+| **Total params** | **5.4M** | |
+
+### Tile Vocabulary (Internal ↔ Game Mapping)
+
+| Internal ID | Game ID | Type |
+|-------------|---------|------|
+| 0 | 0 | Floor |
+| 1 | 1 | Wall |
+| 2 | 4 | Ice |
+| 3 | 5 | Ledge_U |
+| 4 | 6 | Ledge_D |
+| 5 | 7 | Ledge_L |
+| 6 | 8 | Ledge_R |
+| 7 | 100 | START |
+| 8 | 101 | GOAL |
+| 9 | 2 | (reserved) |
+
+### Architecture Components
+
+```
+Input:
+  - tiles: (B, 169) tile indices (possibly masked with token 10)
+  - t: (B,) diffusion timestep
+  - start_pos: (B,) flat index 0-168
+  - goal_pos: (B,) flat index 0-168
+  - stop_step_feat: (B, 169, 11) [OPTIONAL] one-hot path stops
+  - on_path: (B, 169, 1) [OPTIONAL] binary path mask
+
+Embedding:
+  tile_embed: Embedding(11, 256)  # 10 tiles + 1 MASK token
+  pos_embed: learned (169, 256)
+  start_pos_embed: Embedding(169, 256)
+  goal_pos_embed: Embedding(169, 256)
+  time_embed: MLP(1 → 256)
+
+Path Conditioning (if provided):
+  stop_step_proj: Linear(11, 256)  # Which stop number at each cell
+  on_path_proj: Linear(1, 256)     # Binary: is cell on path?
+
+Transformer:
+  6× TransformerLayer:
+    - MultiHeadAttention(256, 8 heads)
+    - LayerNorm
+    - FFN(256 → 1024 → 256, GELU)
+    - LayerNorm
+
+Output Heads:
+  tile_head: Linear(256, 10)   → (B, 169, 10) tile logits
+  start_head: Linear(256, 1)   → (B, 169) start logits
+  goal_head: Linear(256, 1)    → (B, 169) goal logits
+```
+
+### Forward Pass
+
+```python
+def forward(self, tiles, t, start_pos, goal_pos, stop_step_feat=None, on_path=None):
+    # 1. Embed tiles + positions
+    x = tile_embed(tiles) + pos_embed
+    
+    # 2. Add timestep embedding (broadcast)
+    x = x + time_embed(t).unsqueeze(1)
+    
+    # 3. Add start/goal position context (broadcast)
+    x = x + start_pos_embed(start_pos).unsqueeze(1)
+    x = x + goal_pos_embed(goal_pos).unsqueeze(1)
+    
+    # 4. Add path conditioning if provided
+    if stop_step_feat is not None:
+        x = x + stop_step_proj(stop_step_feat)
+    if on_path is not None:
+        x = x + on_path_proj(on_path)
+    
+    # 5. Transformer layers
+    for layer in layers:
+        x = layer(x)
+    
+    # 6. Output heads
+    tile_logits = tile_head(x)      # (B, 169, 10)
+    start_logits = start_head(x)    # (B, 169)
+    goal_logits = goal_head(x)      # (B, 169)
+    
+    return {"tile_logits", "start_logits", "goal_logits"}
+```
+
+### Generation Process
+
+```python
+def generate(batch_size, device, seed):
+    # 1. Initialize all tiles as MASK tokens
+    x_t = full(MASK_TOKEN)  # (B, 169)
+    
+    # 2. Sample START/GOAL positions (one forward pass)
+    outputs = forward(x_t, t=T-1)
+    start_pos = gumbel_sample(outputs["start_logits"])
+    goal_pos = gumbel_sample(outputs["goal_logits"])
+    
+    # 3. Iterative denoising (T steps)
+    for t in reversed(range(T)):
+        outputs = forward(x_t, t, start_pos, goal_pos)
+        x_0_pred = sample(outputs["tile_logits"])
+        
+        # Re-mask some positions for next step
+        mask_prob = alpha_bar[t-1] / alpha_bar[t]
+        keep_mask = random() < mask_prob
+        x_t = where(keep_mask, MASK, x_0_pred)
+    
+    return tiles, start_pos, goal_pos
+```
+
+---
+
+## Appendix B: Current Training Hyperparameters
+
+### Best Configuration (L_shortcut run)
+
+| Parameter | Value | Notes |
+|-----------|-------|-------|
+| **Batch size** | 64 | |
+| **Learning rate** | 1e-4 → 3e-5 → 1e-5 | Step-down at 18k, 24k |
+| **Optimizer** | AdamW | β1=0.9, β2=0.999 |
+| **Weight decay** | 0.01 | |
+| **Gradient clipping** | 1.0 | |
+| **EMA decay** | 0.9999 | For stable sampling |
+| **Label smoothing** | 0.0 | |
+
+### Loss Weights (Final Values)
+
+| Loss | Symbol | Final Value | Ramp Schedule |
+|------|--------|-------------|---------------|
+| Tile cross-entropy | L_ce | 1.0 | Fixed |
+| Stop position loss | L_stop | 0.40 | 0.15→0.40 (10k-18k) |
+| Path clear loss | L_clear | 0.20 | 0.05→0.20 (10k-18k) |
+| Shortcut loss | L_shortcut | 0.30 | 0.0→0.30 (12k-18k) |
+| Start position | L_start | 0.5 | Fixed |
+| Goal position | L_goal | 0.5 | Fixed |
+
+### Plan Loss Scaler
+
+Dynamic multiplier to keep auxiliary losses influential:
+
+```python
+mult = clamp(target_ratio * (ema_tile_loss / ema_plan_loss), 0.5, 8.0)
+L_total = L_ce + mult * L_plan
+```
+
+- `target_ratio = 0.3`
+- `mult_max = 4.0` until step 18k, then `8.0`
+
+### Conditioning Dropout (Fine-tuning)
+
+| Parameter | Value |
+|-----------|-------|
+| LR | 3e-5 (constant) |
+| Total steps | 30,000 |
+| p_drop phase 1 | 0.10 (steps 0-2k) |
+| p_drop phase 2 | 0.10→0.60 (steps 2k-10k) |
+| p_drop phase 3 | 0.60→0.90 (steps 10k-20k) |
+| p_drop phase 4 | 0.95 (steps 20k-30k) |
+
+---
+
+## Appendix C: Problem Space Definition
+
+### Task
+
+Generate a 13×13 ice puzzle grid that:
+1. Has exactly one START and one GOAL tile
+2. Is solvable (path exists from START to GOAL)
+3. Has no stuck positions (every reachable tile can reach GOAL)
+4. Has exactly ONE optimal path (unique shortest solution)
+5. Optimal path is exactly 10 moves
+
+### Movement Rules
+
+- **Floor (0):** Player moves 1 tile in input direction
+- **Ice (4):** Player slides until hitting wall/ledge/floor
+- **Wall (1):** Impassable, stops sliding
+- **Ledges (5-8):** One-way tiles, can only be entered from specific direction
+- **START (100):** Starting position
+- **GOAL (101):** Win condition
+
+### Difficulty Philosophy
+
+The game uses a **binary lives system** - player must complete puzzle in exactly the optimal number of moves or they lose that life. Backtracking cost is irrelevant; once you make a wrong move, the life is burned.
+
+Key difficulty metrics (ranked by importance):
+1. **paths** (near_optimal_paths) - More paths = more confusion
+2. **olap** (path_overlap) - Low overlap = truly different routes
+3. **ediv** (early_divergence) - Confusion from move 1
+
+### Data Generation
+
+Training data is generated by the Rust generator which:
+1. Randomly places tiles
+2. Validates using BFS solver
+3. Filters for exactly 10-move unique-optimal solutions
+4. Takes 10-60 minutes per puzzle (motivates ML replacement)
+
+---
+
 *Last updated: 2026-01-23*

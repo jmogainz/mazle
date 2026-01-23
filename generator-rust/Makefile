@@ -315,7 +315,8 @@ dataset-gen: cargo-build
 # Daily KV backfill (native, outside Docker)
 # -------------------------
 ROOT_APP_NAME := $(shell sed -n 's/^APP_NAME[[:space:]]*:=[[:space:]]*//p' $(REPO_ROOT)/Makefile | head -n 1 | cut -d ' ' -f1)
-BWS_PROJECT_NAME_FOR_KV ?= $(ROOT_APP_NAME)-$(ENV)
+BWS_ENV := $(if $(filter $(ENV),dev-test),dev,$(ENV))
+BWS_PROJECT_NAME_FOR_KV ?= $(ROOT_APP_NAME)-$(BWS_ENV)
 
 	DAILIES_KV_START ?=
 	DAILIES_KV_END ?=

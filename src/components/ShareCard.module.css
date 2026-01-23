@@ -27,7 +27,7 @@
   background: var(--color-background);
   border: 2px solid var(--color-border);
   border-radius: 14px;
-  padding: 1.75rem;
+  padding: 1.75rem 1.75rem 0.75rem 1.75rem;
   max-width: 420px;
   width: 100%;
   max-height: 90vh;
@@ -93,21 +93,19 @@
   transition: color 0.2s;
 }
 
-.closeButton:hover {
-  color: var(--color-text);
+@media (hover: hover) {
+  .closeButton:hover {
+    color: var(--color-text);
+  }
+}
+
+.closeButton:active {
+  transform: scale(0.92);
 }
 
 .header {
   text-align: center;
   margin-bottom: 1rem;
-}
-
-.resultIcon {
-  display: block;
-  margin: 0 auto 1rem auto;
-  width: auto;
-  height: 32px;
-  max-width: 100%;
 }
 
 .title {
@@ -133,38 +131,6 @@
   font-size: 0.875rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-}
-
-.rating {
-  text-align: center;
-  font-size: 2rem;
-  margin-bottom: 1rem;
-  min-height: 2.5rem;
-}
-
-.efficiencySection {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 1.25rem;
-  padding: 1rem;
-  background: var(--color-surface);
-  border-radius: 8px;
-  border: 1px solid var(--color-border);
-}
-
-.efficiencyBar {
-  font-size: 1.25rem;
-  line-height: 1;
-  letter-spacing: 0.05em;
-}
-
-.efficiencyValue {
-  font-size: 1.5rem;
-  font-weight: bold;
-  color: var(--color-primary);
-  font-variant-numeric: tabular-nums;
 }
 
 .mainStat {
@@ -276,41 +242,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.statsRow {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 1.5rem;
-  margin-bottom: 1.25rem;
-}
-
-.statItem {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.statValue {
-  font-size: 1.2rem;
-  font-weight: 700;
-  color: var(--color-text);
-  font-variant-numeric: tabular-nums;
-}
-
-.statLabel {
-  font-size: 0.7rem;
-  color: var(--color-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.statDivider {
-  width: 1px;
-  height: 32px;
-  background: var(--color-border);
-}
-
 /* Share Section */
 .shareSection {
   display: flex;
@@ -319,8 +250,6 @@
 }
 
 .shareButton,
-.copyButton,
-.playAgainButton,
 .secondaryActionButton {
   flex: 1;
   padding: 0.75rem 1rem;
@@ -329,8 +258,14 @@
   font-size: 0.95rem;
   font-weight: 800;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.15s, opacity 0.15s;
   font-family: var(--font-main);
+  outline: none;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .shareButton {
@@ -366,13 +301,44 @@
   display: none;
 }
 
-.shareButton:hover {
+/* Sharing state - maintain hollow fill from press state during native share sheet */
+.shareButton.sharing {
+  pointer-events: none;
+  transition: none;
   background: transparent;
   color: var(--color-primary);
+  border-color: var(--color-primary);
 }
 
-.cardFailed .shareButton:hover {
+.cardFailed .shareButton.sharing {
   color: var(--color-error);
+  border-color: var(--color-error);
+}
+
+@media (hover: hover) {
+  .shareButton:hover {
+    background: transparent;
+    color: var(--color-primary);
+  }
+
+  .cardFailed .shareButton:hover {
+    color: var(--color-error);
+  }
+}
+
+.shareButton:active,
+.cardFailed .shareButton:active {
+  background: transparent;
+}
+
+.shareButton:active {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.cardFailed .shareButton:active {
+  color: var(--color-error);
+  border-color: var(--color-error);
 }
 
 .shareButton.copied,
@@ -382,51 +348,19 @@
   color: var(--color-background);
 }
 
-.shareButton.copied:hover,
-.cardFailed .shareButton.copied:hover {
-  background: var(--color-text);
-  border-color: var(--color-text);
-  color: var(--color-background);
+@media (hover: hover) {
+  .shareButton.copied:hover,
+  .cardFailed .shareButton.copied:hover {
+    background: var(--color-text);
+    border-color: var(--color-text);
+    color: var(--color-background);
+  }
 }
 
 .shareButton.failed {
   background: var(--color-error);
   border-color: var(--color-error);
   color: var(--color-background);
-}
-
-.copyButton {
-  background: transparent;
-  border-color: var(--color-secondary);
-  color: var(--color-text);
-}
-
-.copyButton:hover {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-}
-
-.copyButton.copied {
-  background: var(--color-text);
-  border-color: var(--color-text);
-  color: var(--color-background);
-}
-
-.copyButton.failed {
-  background: var(--color-error);
-  border-color: var(--color-error);
-  color: var(--color-background);
-}
-
-.playAgainButton {
-  background: transparent;
-  border-color: var(--color-secondary);
-  color: var(--color-secondary);
-}
-
-.playAgainButton:hover {
-  border-color: var(--color-text);
-  color: var(--color-text);
 }
 
 .secondaryActionButton {
@@ -443,9 +377,15 @@
   color: var(--color-secondary);
 }
 
-.secondaryActionButton:hover {
-  border-color: var(--color-text);
-  color: var(--color-text);
+@media (hover: hover) {
+  .secondaryActionButton:hover {
+    border-color: var(--color-text);
+    color: var(--color-text);
+  }
+}
+
+.secondaryActionButton:active {
+  transform: scale(0.98);
 }
 
 /* Footer */
@@ -458,6 +398,14 @@
   margin-right: 0.5rem;
 }
 
+.footerCountdown {
+  display: block;
+  color: var(--color-text);
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
 .footerText {
   color: var(--color-secondary);
   font-size: 0.75rem;
@@ -465,31 +413,59 @@
 
 /* Feedback Section */
 .feedbackSection {
+  margin-bottom: 0.5rem;
+}
+
+/* Support Section */
+.supportSection {
+  text-align: center;
   margin-bottom: 0.75rem;
 }
 
+.supportText {
+  color: var(--color-secondary);
+  font-size: 0.8rem;
+  margin: 0 0 0.6rem 0;
+}
+
+/* Support Row Layout */
+.supportRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+}
+
 /* Feedback Trigger Simple Text */
-.feedbackTriggerSimple {
+.feedbackTriggerSimple,
+.buyCoffeeLink {
   background: none;
   border: none;
   color: var(--color-secondary);
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   font-weight: 500;
   text-decoration: underline;
   text-decoration-thickness: 1px;
-  text-underline-offset: 3px;
+  text-underline-offset: 2px;
   cursor: pointer;
-  padding: 0.5rem;
-  width: 100%;
+  padding: 0.25rem 0.4rem;
   text-align: center;
   transition: color 0.2s;
   font-family: var(--font-main);
-  opacity: 0.8;
+  white-space: nowrap;
 }
 
-.feedbackTriggerSimple:hover {
-  color: var(--color-text);
-  opacity: 1;
+@media (hover: hover) {
+
+  .feedbackTriggerSimple:hover,
+  .buyCoffeeLink:hover {
+    color: var(--color-text);
+  }
+}
+
+.feedbackTriggerSimple:active,
+.buyCoffeeLink:active {
+  transform: scale(0.95);
 }
 
 .feedbackForm {
@@ -533,8 +509,14 @@
   justify-content: center;
 }
 
-.star:hover:not(:disabled) {
-  transform: scale(1.1);
+@media (hover: hover) {
+  .star:hover:not(:disabled) {
+    transform: scale(1.1);
+  }
+}
+
+.star:active:not(:disabled) {
+  transform: scale(0.9);
 }
 
 .star:disabled {
@@ -546,10 +528,6 @@
   height: 1.5rem;
   fill: var(--color-border);
   transition: fill 0.15s;
-}
-
-.star:hover:not(:disabled) .starIcon {
-  /* Removed fill change on hover since it's handled by JS state now */
 }
 
 .starFilled .starIcon {
@@ -600,15 +578,17 @@
   gap: 0.5rem;
 }
 
-.feedbackSubmit:hover:not(:disabled) {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-  filter: none;
-  transform: none;
+@media (hover: hover) {
+  .feedbackSubmit:hover:not(:disabled) {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+    filter: none;
+    transform: none;
+  }
 }
 
 .feedbackSubmit:active:not(:disabled) {
-  transform: none;
+  transform: scale(0.98);
 }
 
 .feedbackSubmit:disabled {
@@ -626,7 +606,6 @@
 }
 
 .feedbackSubmit.error {
-  /* No special styling for error, just keep primary button look */
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   color: var(--color-text);
@@ -644,229 +623,15 @@
   font-family: var(--font-main);
 }
 
-.feedbackCancel:hover {
-  border-color: var(--color-secondary);
-  color: var(--color-text);
+@media (hover: hover) {
+  .feedbackCancel:hover {
+    border-color: var(--color-secondary);
+    color: var(--color-text);
+  }
 }
 
-.tabBar {
-  display: flex;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  border-radius: 12px;
-  overflow: hidden;
-  margin-bottom: 1rem;
-}
-
-.tabButton {
-  flex: 1;
-  border: none;
-  background: transparent;
-  padding: 0.65rem 0.75rem;
-  font-family: var(--font-main);
-  font-weight: 800;
-  font-size: 0.75rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-secondary);
-  cursor: pointer;
-}
-
-.tabButton:hover {
-  background: rgba(0, 0, 0, 0.04);
-  color: var(--color-text);
-}
-
-.tabButtonActive {
-  background: var(--color-primary);
-  color: var(--color-background);
-}
-
-.tabButtonActive:hover {
-  background: var(--color-primary);
-  color: var(--color-background);
-}
-
-.leaderboardPanel {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.leaderboardHeader {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.75rem;
-}
-
-.leaderboardTitle {
-  font-weight: 900;
-  font-size: 1rem;
-  letter-spacing: 0.04em;
-}
-
-.leaderboardSubtitle {
-  color: var(--color-secondary);
-  font-size: 0.8rem;
-  margin-top: 0.15rem;
-}
-
-.leaderboardRefreshButton {
-  border: 1px solid var(--color-border);
-  background: var(--color-background);
-  border-radius: 10px;
-  width: 2.5rem;
-  height: 2.5rem;
-  cursor: pointer;
-  color: var(--color-text);
-  font-weight: 900;
-}
-
-.leaderboardRefreshButton:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
-.leaderboardCard {
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  border-radius: 12px;
-  padding: 0.75rem 0.9rem;
-}
-
-.leaderboardSectionTitle {
-  font-size: 0.75rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-secondary);
-  font-weight: 800;
-  margin-bottom: 0.5rem;
-}
-
-.leaderboardHint {
-  color: var(--color-secondary);
-  font-size: 0.85rem;
-  line-height: 1.35;
-}
-
-.leaderboardError {
-  color: var(--color-error);
-  font-size: 0.85rem;
-  line-height: 1.35;
-}
-
-.leaderboardSubmitButton {
-  width: 100%;
-  margin-top: 0.75rem;
-  padding: 0.75rem 1rem;
-  border: 2px solid var(--color-primary);
-  background: var(--color-primary);
-  color: var(--color-background);
-  border-radius: 10px;
-  font-size: 0.95rem;
-  font-weight: 800;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-family: var(--font-main);
-}
-
-.leaderboardSubmitButton:hover:not(:disabled) {
-  background: transparent;
-  color: var(--color-primary);
-}
-
-.leaderboardSubmitButton:disabled {
-  opacity: 0.7;
-  cursor: default;
-}
-
-.meRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.65rem 0.75rem;
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  background: var(--color-background);
-}
-
-.meMetaLeft {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-}
-
-.meName {
-  font-weight: 900;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.meMeta {
-  color: var(--color-secondary);
-  font-size: 0.8rem;
-}
-
-.meRank {
-  font-weight: 900;
-  font-variant-numeric: tabular-nums;
-}
-
-.leaderboardList {
-  border: 1px solid var(--color-border);
-  background: var(--color-background);
-  border-radius: 10px;
-  overflow: hidden;
-}
-
-.leaderboardRow {
-  display: grid;
-  grid-template-columns: 3.2rem 1fr 4.2rem 2.4rem;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.55rem 0.6rem;
-  border-top: 1px solid var(--color-border);
-  font-size: 0.85rem;
-}
-
-.leaderboardRow:first-child {
-  border-top: none;
-}
-
-.leaderboardRowMe {
-  background: rgba(106, 170, 100, 0.16);
-}
-
-.leaderboardRank {
-  color: var(--color-secondary);
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-}
-
-.leaderboardName {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 800;
-  color: var(--color-text);
-}
-
-.leaderboardTime {
-  justify-self: end;
-  font-variant-numeric: tabular-nums;
-  font-weight: 900;
-  color: var(--color-text);
-}
-
-.leaderboardTries {
-  justify-self: end;
-  font-variant-numeric: tabular-nums;
-  font-weight: 800;
-  color: var(--color-secondary);
+.feedbackCancel:active {
+  transform: scale(0.95);
 }
 
 /* Spinner */
@@ -886,12 +651,17 @@
 }
 
 /* Failed card overrides */
-.cardFailed .feedbackTriggerSimple:hover {
-  color: var(--color-text);
+@media (hover: hover) {
+  .cardFailed .feedbackTriggerSimple:hover {
+    color: var(--color-text);
+  }
+}
+
+.cardFailed .feedbackTriggerSimple:active {
+  transform: scale(0.95);
 }
 
 /* Dead Player Icon */
-.gameOverIcon,
 .characterIcon {
   display: block;
   margin: 0 auto 1rem auto;
@@ -923,9 +693,12 @@
 }
 
 @keyframes bob {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: translateY(0);
   }
+
   50% {
     transform: translateY(-0.5px);
   }
@@ -935,45 +708,8 @@
   from {
     opacity: 0.3;
   }
+
   to {
     opacity: 0.6;
   }
 }
-
-.deadPlayerIcon {
-  margin: 0 auto 1rem auto;
-  width: 48px;
-  height: 54px;
-  background-color: #ff4d4d;
-  border: 4px solid #cc0000;
-  border-radius: 9px;
-  position: relative;
-  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.2);
-}
-
-.eyeLeft, .eyeRight {
-  position: absolute;
-  top: 12px;
-  width: 12px;
-  height: 12px;
-}
-
-.eyeLeft { left: 9px; }
-.eyeRight { right: 9px; }
-
-.eyeLeft::before, .eyeLeft::after,
-.eyeRight::before, .eyeRight::after {
-  content: '';
-  position: absolute;
-  width: 100%;
-  height: 4.5px;
-  background-color: white;
-  top: 50%;
-  left: 0;
-  border-radius: 2px;
-}
-
-.eyeLeft::before, .eyeRight::before { transform: translateY(-50%) rotate(45deg); }
-.eyeLeft::after, .eyeRight::after { transform: translateY(-50%) rotate(-45deg); }
-
-/* Backflip Animation Removed */

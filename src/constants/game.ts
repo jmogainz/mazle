@@ -22,6 +22,7 @@ export const CLOSENESS_THRESHOLD_PROD = 0.90;
 // Local storage keys
 export const STORAGE_KEYS = {
   HINTS_ENABLED: 'mazle_hints_enabled',
+  LIVES_TOOLTIP_SEEN: 'mazle_lives_tooltip_seen',
 } as const;
 
 /**

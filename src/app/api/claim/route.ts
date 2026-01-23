@@ -5,6 +5,8 @@ import { jsonError, readJsonBody } from '@/lib/server/responses';
 import { getLeaderboardRedis } from '@/lib/server/redis';
 import { LB_NAMES_KEY } from '@/lib/server/leaderboard';
 import { guestDisplayNameExists } from '@/lib/server/guestStore';
+import { DISPLAY_NAME_MAX_LEN, DISPLAY_NAME_MIN_LEN } from '@/lib/server/displayNameRules';
+import { isInappropriateDisplayName, isValidDisplayName, normalizeDisplayName } from '@/lib/server/displayNameValidation';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -12,15 +14,6 @@ export const runtime = 'nodejs';
 type Body = {
   displayName?: string;
 };
-
-function normalizeDisplayName(raw: string): string {
-  return raw.trim().slice(0, 24);
-}
-
-function isValidDisplayName(name: string): boolean {
-  // Keep it simple for v1: alnum only, 3-24 chars.
-  return /^[A-Za-z0-9]{3,24}$/.test(name);
-}
 
 export async function POST(request: Request) {
   const userId = await getSessionUserId(request);
@@ -36,7 +29,22 @@ export async function POST(request: Request) {
     const requested = body.displayName ? normalizeDisplayName(body.displayName) : null;
 
     if (requested && !isValidDisplayName(requested)) {
-      return jsonError(400, 'INVALID_NAME', 'Display name must be 3–24 letters/numbers.');
+      return jsonError(400, 'INVALID_NAME', `Display name must be ${DISPLAY_NAME_MIN_LEN}\u2013${DISPLAY_NAME_MAX_LEN} letters/numbers (any language).`);
+    }
+
+    const currentRes = await pool.query<{ display_name: string | null; display_name_updated_at: string | Date | null }>(
+      'select display_name, display_name_updated_at from users where id=$1',
+      [userId]
+    );
+    const currentName = currentRes.rows[0]?.display_name ?? null;
+    const lastChangedRaw = currentRes.rows[0]?.display_name_updated_at ?? null;
+
+    if (!currentRes.rowCount) {
+      return jsonError(404, 'USER_NOT_FOUND', 'User not found.');
+    }
+
+    if (requested && currentName && requested === currentName) {
+      return NextResponse.json({ displayName: currentName }, { headers: { 'Cache-Control': 'no-store' } });
     }
 
     if (requested) {
@@ -55,7 +63,25 @@ export async function POST(request: Request) {
         return jsonError(409, 'NAME_TAKEN', 'That name is already taken.');
       }
 
-      await pool.query('update users set display_name=$2, updated_at=now() where id=$1', [userId, requested]);
+      if (isInappropriateDisplayName(requested)) {
+        return jsonError(400, 'INAPPROPRIATE_NAME', 'Display name isn\u2019t allowed.');
+      }
+
+      if (lastChangedRaw) {
+        const lastChanged = lastChangedRaw instanceof Date ? lastChangedRaw : new Date(lastChangedRaw);
+        if (!Number.isNaN(lastChanged.getTime())) {
+          const nextAllowed = new Date(lastChanged.getTime() + 30 * 24 * 60 * 60 * 1000);
+          if (Date.now() < nextAllowed.getTime()) {
+            const nextDate = nextAllowed.toISOString().slice(0, 10);
+            return jsonError(429, 'NAME_CHANGE_LIMIT', `You can change your name again on ${nextDate}.`);
+          }
+        }
+      }
+
+      await pool.query(
+        'update users set display_name=$2, display_name_updated_at=now(), updated_at=now() where id=$1',
+        [userId, requested]
+      );
 
       const redis = getLeaderboardRedis();
       if (redis) {
@@ -68,6 +94,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ displayName }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (err) {
+    if (err && typeof err === 'object' && 'code' in err && (err as { code?: string }).code === '23505') {
+      return jsonError(409, 'NAME_TAKEN', 'That name is already taken.');
+    }
     const message = err instanceof Error ? err.message : 'Failed to claim name';
     return jsonError(500, 'CLAIM_FAILED', message);
   }

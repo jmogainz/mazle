@@ -79,6 +79,18 @@ jobs:
               - 'devops-toolkit'
               - 'Makefile'
 
+      # ---------- Install Bitwarden Secrets Manager CLI ----------
+      - name: Install BWS CLI
+        if: steps.changes.outputs.backend == 'true' || steps.changes.outputs.frontend == 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ca-certificates curl jq unzip
+          BWS_VERSION="1.0.0"
+          curl -L -o /tmp/bws.zip "https://github.com/bitwarden/sdk/releases/download/bws-v${BWS_VERSION}/bws-x86_64-unknown-linux-gnu-${BWS_VERSION}.zip"
+          sudo unzip -o /tmp/bws.zip -d /usr/local/bin/
+          rm -f /tmp/bws.zip
+          bws --version
+
       # ---------- Install Fly.io CLI ----------
       - name: Install Fly.io CLI
         if: env.DEPLOY_BACKEND == '1' && steps.changes.outputs.backend == 'true'
@@ -111,7 +123,7 @@ jobs:
       - name: Deploy mazle-generator to Fly
         if: env.DEPLOY_BACKEND == '1' && steps.changes.outputs.backend == 'true'
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          BWS_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
           UNIQUE_RUNNER_ID: ${{ secrets.UNIQUE_RUNNER_ID }}
         run: |
           export PATH="$HOME/.fly/bin:$PATH"
@@ -121,13 +133,12 @@ jobs:
       - name: Deploy to Production
         if: steps.changes.outputs.frontend == 'true'
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          BWS_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
           UNIQUE_RUNNER_ID: ${{ secrets.UNIQUE_RUNNER_ID }}
         run: |
           export PATH="$HOME/.fly/bin:$PATH"
           # Backend already deployed above (or skipped), skip deps
-          make up ENV=prod WITH_DEPS=0 WASM_ONLY=1
+          make up ENV=prod WITH_DEPS=0 WASM_ONLY=1 ALLOW_PROD_MIGRATIONS=1
 
   merge:
     runs-on: ubuntu-latest

@@ -7,28 +7,6 @@
   flex-direction: column;
 }
 
-/* Shimmer skeleton animation for loading states */
-@keyframes shimmer {
-  0% {
-    background-position: -200% 0;
-  }
-  100% {
-    background-position: 200% 0;
-  }
-}
-
-.skeleton {
-  background: linear-gradient(
-    90deg,
-    var(--color-surface) 25%,
-    rgba(255, 255, 255, 0.1) 50%,
-    var(--color-surface) 75%
-  );
-  background-size: 200% 100%;
-  animation: shimmer 1.5s ease-in-out infinite;
-  border-radius: 4px;
-}
-
 .gameWrapper {
   flex: 1;
   display: flex;
@@ -774,10 +752,32 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 0;
   min-height: 0;
   min-width: 0;
   width: 100%;
   overflow: visible;
+}
+
+/* GameUI wrapper for visibility transitions */
+.gameUiWrapper {
+  width: 100%;
+  opacity: 1;
+  transition: opacity 0.3s ease-out;
+  margin-bottom: var(--game-gap-top);
+  position: relative;
+  z-index: 101;
+}
+
+/* Hide scoreboard during initial load if puzzle already played today */
+:global(html[data-puzzle-played='true']) .gameUiWrapper {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.gameUiHidden {
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* Game Area - centers the game frame */
@@ -833,7 +833,8 @@
   position: relative;
   z-index: 1;
   border-radius: 10px;
-  overflow: visible; /* Changed from hidden to visible for the arrow */
+  overflow: visible;
+  /* Changed from hidden to visible for the arrow */
   max-width: min(var(--game-size, 520px), calc(100vw - 1rem));
   max-height: var(--game-size, 520px);
   width: var(--game-size, 520px);
@@ -845,31 +846,48 @@
   box-sizing: border-box;
 }
 
-/* Canvas styling - fill the frame, constrained by frame's max dimensions */
+/* Hide canvas while loader is visible */
+.gameFrameLoading :global(canvas) {
+  visibility: hidden;
+}
+
+/* Canvas styling - ensure canvas defines the frame size */
 .gameFrame :global(canvas) {
   display: block;
   border-radius: 10px;
   width: 100%;
   height: 100%;
-  touch-action: none; /* Prevent scrolling while interacting with game */
+  touch-action: none;
+  /* Prevent scrolling while interacting with game */
+  transition: filter 0.2s ease-out;
 }
 
-/* Blur overlay - separate element, not on container */
-.blurOverlay {
+/* Dark overlay on top of canvas (gets blurred with canvas) */
+.darkOverlay {
   position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-radius: 10px;
-  z-index: 5;
+  inset: 8px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 6px;
+  z-index: 1;
   pointer-events: none;
-  transition: opacity 0.15s ease-out;
-  overflow: hidden; /* Ensure blur doesn't spill if frame is visible */
+  opacity: 0;
+  transition: opacity 0.2s ease-out, filter 0.2s ease-out;
 }
 
-.blurOverlayHidden {
-  opacity: 0;
+.darkOverlayVisible {
+  opacity: 1;
+}
+
+/* Blur both the canvas AND dark overlay (so overlay edges are also blurred) */
+.gameFrameBlurred :global(canvas),
+.gameFrameBlurred .darkOverlay {
+  filter: blur(12px);
+}
+
+/* General blur class for UI elements */
+.blurred {
+  filter: blur(2px);
+  transition: filter 0.2s ease-out;
 }
 
 /* Life flash overlay */
@@ -912,11 +930,70 @@
   display: flex;
   justify-content: center;
   align-items: flex-start;
+  gap: calc(0.5rem * var(--ui-scale));
   min-height: calc(48px * var(--ui-scale));
-  padding-top: calc(0.5rem * var(--ui-scale));
-  padding-bottom: calc(0.25rem * var(--ui-scale));
-  transition: min-height 0.15s ease-out, padding 0.15s ease-out;
+  margin-top: var(--game-gap-bottom);
+  padding-top: 4px;
+  padding-bottom: 4px;
+  transition: min-height 0.15s ease-out;
   position: relative;
+}
+
+/* Replay Solution overlay button - fades in center of game frame */
+.replaySolutionOverlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10;
+  background: rgba(var(--color-surface-rgb), 0.75);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: var(--color-text);
+  border: 1.5px solid var(--color-border);
+  border-radius: 8px;
+  padding: calc(0.4rem * var(--ui-scale)) calc(0.7rem * var(--ui-scale));
+  font-size: calc(0.65rem * var(--ui-scale));
+  font-weight: 600;
+  font-family: var(--font-main);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  transition: background 0.2s, border-color 0.2s;
+  animation: replayPulse 2.5s ease-in-out infinite;
+  touch-action: manipulation;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+@media (hover: hover) {
+  .replaySolutionOverlay:hover {
+    background: rgba(var(--color-primary-rgb), 0.85);
+    border-color: var(--color-primary);
+    animation: none;
+    transform: translate(-50%, -50%) scale(1.05);
+  }
+}
+
+.replaySolutionOverlay:active {
+  background: rgba(var(--color-primary-rgb), 0.85);
+  border-color: var(--color-primary);
+  animation: none;
+  transform: translate(-50%, -50%) scale(0.98);
+}
+
+@keyframes replayPulse {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: translate(-50%, -50%) scale(0.97);
+  }
+
+  50% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
 }
 
 /* Unified share button (works on all devices) */
@@ -932,17 +1009,118 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
   cursor: pointer;
-  box-shadow: 0 3px 10px rgba(99, 102, 241, 0.25);
-  transition: opacity 0.2s, transform 0.2s, box-shadow 0.2s, padding 0.15s ease-out, font-size 0.15s ease-out;
-}
-
-.shareButton:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.4);
+  box-shadow: 0 3px 10px rgba(106, 170, 100, 0.25);
+  transition: background 0.15s, color 0.15s, border-color 0.15s, opacity 0.2s, transform 0.2s, box-shadow 0.2s, padding 0.15s ease-out, font-size 0.15s ease-out;
+  touch-action: manipulation;
 }
 
 .shareButton:active {
+  background: transparent;
+  color: var(--color-primary);
+  border-color: var(--color-primary);
   transform: translateY(0);
+}
+
+.shareButtonFailed {
+  background: var(--color-error);
+  border-color: var(--color-error);
+  box-shadow: 0 3px 10px rgba(239, 68, 68, 0.25);
+}
+
+.shareButtonFailed:active {
+  background: transparent;
+  color: var(--color-error);
+  border-color: var(--color-error);
+}
+
+@media (hover: hover) {
+  .shareButton:hover {
+    transform: translateY(-2px);
+    background: transparent;
+    color: var(--color-primary);
+    box-shadow: 0 6px 16px rgba(106, 170, 100, 0.4);
+  }
+
+  .shareButtonFailed:hover {
+    background: transparent;
+    color: var(--color-error);
+    box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
+  }
+}
+
+@media (hover: none) {
+  .shareButton:active {
+    transform: translateY(1px);
+    box-shadow: 0 1px 6px rgba(106, 170, 100, 0.3);
+  }
+
+  .shareButtonFailed:active {
+    box-shadow: 0 1px 6px rgba(239, 68, 68, 0.3);
+  }
+}
+
+/* Controls row with icon buttons flanking share button */
+.controlsRow {
+  display: flex;
+  align-items: center;
+  gap: calc(0.75rem * var(--ui-scale));
+}
+
+.controlsRowVisible {
+  animation: popIn 0.25s ease-out;
+}
+
+.controlsRowHidden {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.controlsRow .shareButton {
+  min-width: calc(140px * var(--ui-scale));
+  padding-left: calc(2rem * var(--ui-scale));
+  padding-right: calc(2rem * var(--ui-scale));
+}
+
+.iconButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(44px * var(--ui-scale));
+  height: calc(44px * var(--ui-scale));
+  background: var(--color-surface);
+  border: 2px solid var(--color-border);
+  border-radius: 10px;
+  color: var(--color-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+@media (hover: hover) {
+  .iconButton:hover {
+    background: rgba(var(--color-primary-rgb, 99, 102, 241), 0.15);
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+    transform: translateY(-2px);
+  }
+}
+
+.iconButton:active {
+  transform: translateY(0);
+}
+
+@media (hover: none) {
+  .iconButton:active {
+    transform: translateY(1px);
+    background: rgba(var(--color-primary-rgb, 99, 102, 241), 0.15);
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+  }
+}
+
+.iconButton svg {
+  width: calc(20px * var(--ui-scale));
+  height: calc(20px * var(--ui-scale));
 }
 
 @keyframes popIn {
@@ -963,11 +1141,11 @@
   font-weight: 800;
   font-family: var(--font-main);
   color: var(--color-text);
-  background: var(--color-surface);
+  background: var(--color-background);
   border: 2px solid var(--color-border);
-  border-radius: 14px;
+  border-radius: 12px;
   cursor: pointer;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1), padding 0.15s ease-out, font-size 0.15s ease-out;
@@ -975,16 +1153,14 @@
 }
 
 .startButton:hover {
-  transform: translateY(-2px) scale(1.02);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
-  background: var(--color-primary);
-  color: var(--color-background);
-  border-color: var(--color-primary);
+  transform: translateY(-1px);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.35);
+  border-color: var(--color-secondary);
 }
 
 .startButton:active {
-  transform: translateY(0) scale(0.98);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
 .frameLoader {
@@ -1051,66 +1227,153 @@
 
 .previousResult {
   text-align: center;
-  padding: calc(1.5rem * var(--ui-scale));
+  padding: calc(1.25rem * var(--ui-scale)) calc(1rem * var(--ui-scale));
   background: var(--color-background);
   border-radius: 14px;
   border: 2px solid var(--color-border);
   backdrop-filter: blur(4px);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
-  width: 80%;
-  max-width: calc(300px * var(--ui-scale));
+  width: 90%;
+  max-width: calc(320px * var(--ui-scale));
   font-family: var(--font-main);
   transition: padding 0.15s ease-out, max-width 0.15s ease-out;
 }
 
-.previousResult p {
+.previousResultTitle {
+  color: var(--color-text);
+  font-size: calc(0.85rem * var(--ui-scale));
+  margin: 0 0 calc(0.75rem * var(--ui-scale)) 0;
+  font-weight: 600;
+  transition: font-size 0.15s ease-out;
+}
+
+.previousResultStats {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(1rem * var(--ui-scale));
+  margin-bottom: calc(0.5rem * var(--ui-scale));
+}
+
+.previousResultAttempts,
+.previousResultTimeBlock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: calc(50px * var(--ui-scale));
+}
+
+.previousResultAttemptsValue,
+.previousResultTimeValue {
+  font-size: calc(1.1rem * var(--ui-scale));
+  font-weight: 800;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.previousResultAttemptsLabel,
+.previousResultTimeLabel {
+  font-size: calc(0.65rem * var(--ui-scale));
   color: var(--color-secondary);
-  font-size: calc(0.9rem * var(--ui-scale));
-  margin-bottom: calc(1rem * var(--ui-scale));
-  font-weight: 500;
-  transition: font-size 0.15s ease-out, margin-bottom 0.15s ease-out;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+.previousResultCharacter {
+  width: calc(64px * var(--ui-scale));
+  height: calc(80px * var(--ui-scale));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.previousResultCharacterSvg {
+  width: calc(64px * var(--ui-scale));
+  height: auto;
+  overflow: visible;
+}
+
+.previousResultCountdown {
+  color: var(--color-text);
+  font-size: calc(0.85rem * var(--ui-scale));
+  margin: calc(0.75rem * var(--ui-scale)) 0 0 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Crown animation for the overlay */
+.crownGroup {
+  animation: crownBob 1.8s ease-in-out infinite;
+  transform-origin: center center;
+}
+
+.crownGlow {
+  opacity: 0.5;
+  animation: crownGlowPulse 2s ease-in-out infinite alternate;
+}
+
+@keyframes crownBob {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-0.5px);
+  }
+}
+
+@keyframes crownGlowPulse {
+  from {
+    opacity: 0.3;
+  }
+
+  to {
+    opacity: 0.6;
+  }
 }
 
 .previousResultActions {
   display: flex;
-  flex-direction: column;
-  gap: calc(0.5rem * var(--ui-scale));
-}
-
-.previousResultActions button {
+  flex-direction: row;
+  align-items: stretch;
+  gap: calc(0.6rem * var(--ui-scale));
   width: 100%;
 }
 
-.previousResultActions .shareButton,
-.previousResultActions .viewResultButton {
-  padding-top: calc(0.65rem * var(--ui-scale));
-  padding-bottom: calc(0.65rem * var(--ui-scale));
-  font-size: calc(0.9rem * var(--ui-scale));
+.previousResultActions .viewResultButtonFull {
+  flex: 1;
 }
 
-.viewResultButton {
-  padding: calc(0.75rem * var(--ui-scale)) calc(1.5rem * var(--ui-scale));
-  background: var(--color-surface);
+.previousResultActions .shareButton {
+  flex: 1;
+}
+
+.viewResultButtonFull {
+  padding: calc(0.6rem * var(--ui-scale)) calc(1rem * var(--ui-scale));
+  background: transparent;
   color: var(--color-text);
   border: 2px solid var(--color-border);
   border-radius: 10px;
-  font-size: calc(0.9rem * var(--ui-scale));
+  font-size: calc(0.8rem * var(--ui-scale));
   font-weight: 700;
   font-family: var(--font-main);
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1), padding 0.15s ease-out, font-size 0.15s ease-out;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
-.viewResultButton:hover {
-  transform: translateY(-2px) scale(1.02);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
-  background: var(--color-primary);
+.viewResultButtonFull:hover {
+  transform: translateY(-2px);
+  background: var(--color-text);
   color: var(--color-background);
-  border-color: var(--color-primary);
+  border-color: var(--color-text);
 }
-
 
 .inlineResultContainer {
   width: 100%;
@@ -1195,7 +1458,7 @@
   .footerTextDesktop {
     display: none;
   }
-  
+
   .footerTextMobile {
     display: inline;
   }
@@ -1206,7 +1469,8 @@
   .gameWrapper {
     padding: 1rem;
     gap: 0.5rem;
-    max-width: none; /* Allow wrapper to expand fully */
+    max-width: none;
+    /* Allow wrapper to expand fully */
   }
 
   .gameCluster {
@@ -1214,7 +1478,9 @@
   }
 
   .gameArea {
-    max-width: none; /* Remove any artificial constraint */
+    padding: 0.5rem;
+    max-width: none;
+    /* Remove any artificial constraint */
   }
 
   .footer {
@@ -1236,7 +1502,8 @@
     gap: 0;
     padding: 0.75rem 0.25rem 0.5rem;
     justify-content: flex-start;
-    max-width: none; /* Ensure mobile also uses full width */
+    max-width: none;
+    /* Ensure mobile also uses full width */
   }
 
   .gameCluster {
@@ -1245,18 +1512,20 @@
     justify-content: center;
   }
 
+  .gameArea {
+    flex: 0 1 auto;
+  }
+
   .puzzleNumberBanner {
     margin-bottom: calc(0.35rem * var(--ui-scale));
   }
 }
 
 /* iPhone XR / mid-size phones (376px - 414px) */
-@media (min-width: 376px) and (max-width: 414px) {
-}
+@media (min-width: 376px) and (max-width: 414px) {}
 
 /* iPhone SE and very small screens */
-@media (max-width: 375px) {
-}
+@media (max-width: 375px) {}
 
 /* Puzzle Number Banner - sits between header and stats */
 .puzzleNumberBanner {
@@ -1303,16 +1572,45 @@
    Total: 8.86s
 */
 @keyframes swipeHintFull {
-  0% { opacity: 0; }
-  4.9% { opacity: 0.3; }
-  16.1% { opacity: 1; }
-  27.4% { opacity: 0.3; }
-  38.7% { opacity: 1; }
-  50% { opacity: 0.3; }
-  61.3% { opacity: 1; }
-  72.6% { opacity: 0.3; }
-  83.9% { opacity: 1; }
-  100% { opacity: 0; }
+  0% {
+    opacity: 0;
+  }
+
+  4.9% {
+    opacity: 0.3;
+  }
+
+  16.1% {
+    opacity: 1;
+  }
+
+  27.4% {
+    opacity: 0.3;
+  }
+
+  38.7% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.3;
+  }
+
+  61.3% {
+    opacity: 1;
+  }
+
+  72.6% {
+    opacity: 0.3;
+  }
+
+  83.9% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
 }
 
 @media (min-width: 769px) {

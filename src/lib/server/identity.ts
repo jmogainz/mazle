@@ -2,9 +2,25 @@ import crypto from 'node:crypto';
 import { getToken } from 'next-auth/jwt';
 import { ensureDbSchema, getDbPool } from './db';
 import { env } from './env';
+import { ensureUserSettings } from './account';
 import { getLeaderboardRedis } from './redis';
-import { LB_NAMES_KEY } from './leaderboard';
-import { getGuestProfile, guestDisplayNameExists, reserveGuestDisplayName, saveGuestProfile } from './guestStore';
+import {
+  encodeLeaderboardScore,
+  leaderboardMemberIndexKey,
+  leaderboardZsetKey,
+  LB_NAMES_KEY,
+  makeLeaderboardMember,
+} from './leaderboard';
+import {
+  getGuestDisplayNameOwner,
+  getGuestProfile,
+  guestDisplayNameExists,
+  refreshGuestDisplayNameReservation,
+  reserveGuestDisplayName,
+  saveGuestProfile,
+} from './guestStore';
+import { randomDisplayNameCandidate } from './displayNames';
+import { isInappropriateDisplayName, isValidDisplayName, normalizeDisplayName } from './displayNameValidation';
 
 export type MeIdentity = {
   mode: 'guest' | 'user';
@@ -12,6 +28,7 @@ export type MeIdentity = {
   entitlements: {
     archiveAccess: boolean;
     adsRemoved: boolean;
+    unlockedSkins: string[];
   };
   userId: string | null;
   guestId: string;
@@ -20,51 +37,12 @@ export type MeIdentity = {
 
 export const GUEST_COOKIE = 'mazle_guest_id';
 
-const DISPLAY_NAME_MAX_LEN = 24;
-
-const ADJECTIVES = [
-  'Frosty',
-  'Swift',
-  'Misty',
-  'Brave',
-  'Calm',
-  'Clever',
-  'Bold',
-  'Chill',
-  'Sunny',
-  'Glowy',
-  'Sly',
-  'Nimble',
-];
-
-const NOUNS = [
-  'Zubat',
-  'Pikachu',
-  'Eevee',
-  'Snorlax',
-  'Psyduck',
-  'Cubone',
-  'Lapras',
-  'Abra',
-  'Onix',
-  'Jigglypuff',
-  'Vulpix',
-  'Magikarp',
-];
-
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 function randomInt(min: number, max: number): number {
   return crypto.randomInt(min, max + 1);
-}
-
-function randomDisplayNameCandidate(): string {
-  const adjective = ADJECTIVES[randomInt(0, ADJECTIVES.length - 1)];
-  const noun = NOUNS[randomInt(0, NOUNS.length - 1)];
-  const num = randomInt(10, 99);
-  return `${adjective}${noun}${num}`.slice(0, DISPLAY_NAME_MAX_LEN);
 }
 
 async function isUserDisplayNameTaken(name: string, excludeUserId?: string | null): Promise<boolean> {
@@ -83,7 +61,7 @@ async function isUserDisplayNameTaken(name: string, excludeUserId?: string | nul
 
 async function generateUniqueDisplayNameForUser(): Promise<string> {
   for (let i = 0; i < 30; i++) {
-    const candidate = randomDisplayNameCandidate();
+    const candidate = randomDisplayNameCandidate(randomInt);
     // eslint-disable-next-line no-await-in-loop
     const userTaken = await isUserDisplayNameTaken(candidate);
     if (userTaken) continue;
@@ -96,7 +74,7 @@ async function generateUniqueDisplayNameForUser(): Promise<string> {
 
 async function generateUniqueDisplayNameForGuest(guestId: string): Promise<string> {
   for (let i = 0; i < 30; i++) {
-    const candidate = randomDisplayNameCandidate();
+    const candidate = randomDisplayNameCandidate(randomInt);
     // eslint-disable-next-line no-await-in-loop
     const userTaken = await isUserDisplayNameTaken(candidate);
     if (userTaken) continue;
@@ -116,6 +94,28 @@ async function generateUniqueDisplayNameForGuest(guestId: string): Promise<strin
   throw new Error('Failed to allocate guest display name');
 }
 
+function sanitizePreferredGuestName(raw: string | null): string | null {
+  if (!raw || typeof raw !== 'string') return null;
+  const normalized = normalizeDisplayName(raw);
+  if (!isValidDisplayName(normalized)) return null;
+  if (isInappropriateDisplayName(normalized)) return null;
+  return normalized;
+}
+
+async function tryReservePreferredGuestName(preferredName: string | null, guestId: string): Promise<string | null> {
+  if (!preferredName) return null;
+  if (await isUserDisplayNameTaken(preferredName)) return null;
+  const owner = await getGuestDisplayNameOwner(preferredName);
+  if (owner && owner !== guestId) return null;
+  if (!owner) {
+    const reserved = await reserveGuestDisplayName(preferredName, guestId);
+    if (!reserved) return null;
+  } else {
+    await refreshGuestDisplayNameReservation(preferredName);
+  }
+  return preferredName;
+}
+
 export async function getSessionUserId(request: Request): Promise<string | null> {
   const secret = env('AUTH_SECRET') || env('NEXTAUTH_SECRET');
   if (!secret) return null;
@@ -128,16 +128,27 @@ export function subjectKeyFor(identity: { userId: string | null; guestId: string
   return identity.userId ? `user:${identity.userId}` : `guest:${identity.guestId}`;
 }
 
-async function getOrCreateGuest(guestIdCandidate: string | null): Promise<{ guestId: string; displayName: string; setCookie: boolean }> {
+async function getOrCreateGuest(
+  guestIdCandidate: string | null,
+  preferredName: string | null
+): Promise<{ guestId: string; displayName: string; setCookie: boolean }> {
+  const preferred = sanitizePreferredGuestName(preferredName);
   if (guestIdCandidate && isUuid(guestIdCandidate)) {
     const existing = await getGuestProfile(guestIdCandidate);
     if (existing) {
       return { guestId: existing.guestId, displayName: existing.displayName, setCookie: false };
     }
+    
+    // Guest profile expired in Redis but the guest ID is still valid from cookie.
+    const reclaimed = await tryReservePreferredGuestName(preferred, guestIdCandidate);
+    const displayName = reclaimed ?? (await generateUniqueDisplayNameForGuest(guestIdCandidate));
+    await saveGuestProfile(guestIdCandidate, displayName);
+    return { guestId: guestIdCandidate, displayName, setCookie: false };
   }
 
   const guestId = crypto.randomUUID();
-  const displayName = await generateUniqueDisplayNameForGuest(guestId);
+  const reclaimed = await tryReservePreferredGuestName(preferred, guestId);
+  const displayName = reclaimed ?? (await generateUniqueDisplayNameForGuest(guestId));
   await saveGuestProfile(guestId, displayName);
   return { guestId, displayName, setCookie: true };
 }
@@ -156,25 +167,47 @@ async function ensureUserDisplayName(userId: string, preferredName: string | nul
   const current = await getUserDisplayName(userId);
   if (current) return current;
 
-  const next = preferredName ?? (await generateUniqueDisplayNameForUser());
+  // Check if preferred name is available (not taken by another user)
+  let next: string;
+  if (preferredName && !(await isUserDisplayNameTaken(preferredName, userId))) {
+    next = preferredName;
+  } else {
+    next = await generateUniqueDisplayNameForUser();
+  }
+  
   await pool.query('update users set display_name=$2, updated_at=now() where id=$1 and display_name is null', [userId, next]);
   return (await getUserDisplayName(userId)) ?? next;
 }
 
 async function linkGuestToUser(userId: string, guestId: string): Promise<void> {
+  console.log(`[LINK] Linking guest ${guestId} to user ${userId}`);
   await ensureDbSchema();
   const pool = getDbPool();
-  if (!isUuid(userId)) return;
+  if (!isUuid(userId)) {
+    console.log(`[LINK] Invalid userId: ${userId}`);
+    return;
+  }
   await pool.query('insert into users (id) values ($1) on conflict do nothing', [userId]);
 
   const guest = await getGuestProfile(guestId);
+  console.log(`[LINK] Guest profile: ${guest ? guest.displayName : 'null'}`);
   const guestName = guest?.displayName ?? null;
   const userDisplayName = guestName ? await ensureUserDisplayName(userId, guestName) : await ensureUserDisplayName(userId, null);
 
-  await migrateTodayLeaderboardIfPresent({ userId, guestId, userDisplayName }).catch(() => null);
+  await migrateTodayLeaderboardIfPresent({ userId, guestId, userDisplayName }).catch((e) => {
+    console.log(`[LINK] migrateTodayLeaderboardIfPresent error:`, e);
+    return null;
+  });
+  // Guest history is stored locally and imported client-side.
+  
+  // Auto-submit today's result if user has auto-submit enabled and result exists but wasn't submitted
+  await autoSubmitTodayIfEnabled({ userId, userDisplayName }).catch((e) => {
+    console.log(`[LINK] autoSubmitTodayIfEnabled error:`, e);
+    return null;
+  });
 }
 
-export async function getEntitlementsForUser(userId: string): Promise<{ archiveAccess: boolean; adsRemoved: boolean }> {
+export async function getEntitlementsForUser(userId: string): Promise<{ archiveAccess: boolean; adsRemoved: boolean; unlockedSkins: string[] }> {
   await ensureDbSchema();
   const pool = getDbPool();
   const res = await pool.query<{ key: string }>(
@@ -185,6 +218,10 @@ export async function getEntitlementsForUser(userId: string): Promise<{ archiveA
   return {
     archiveAccess: keys.has('archive_access'),
     adsRemoved: keys.has('ads_removed'),
+    unlockedSkins: Array.from(keys)
+      .filter((k) => k.startsWith('skin_'))
+      .map((k) => k.slice('skin_'.length))
+      .filter((id) => id.length > 0),
   };
 }
 
@@ -192,20 +229,24 @@ export async function resolveMeIdentity(request: Request): Promise<MeIdentity> {
   await ensureDbSchema();
 
   const guestCookie = (request as any).cookies?.get?.(GUEST_COOKIE)?.value as string | undefined;
-  const guest = await getOrCreateGuest(guestCookie ?? null);
+  const preferredGuestName = request.headers.get('x-guest-name');
+  console.log(`[RESOLVE] Guest cookie: ${guestCookie ?? 'none'}`);
+  const guest = await getOrCreateGuest(guestCookie ?? null, preferredGuestName);
+  console.log(`[RESOLVE] Guest ID: ${guest.guestId}, setCookie: ${guest.setCookie}`);
 
   const userId = await getSessionUserId(request);
   if (!userId) {
     return {
       mode: 'guest',
       displayName: guest.displayName,
-      entitlements: { archiveAccess: false, adsRemoved: false },
+      entitlements: { archiveAccess: false, adsRemoved: false, unlockedSkins: [] },
       userId: null,
       guestId: guest.guestId,
       setGuestCookie: guest.setCookie,
     };
   }
 
+  console.log(`[RESOLVE] User ID: ${userId}, linking with guest ${guest.guestId}`);
   await linkGuestToUser(userId, guest.guestId);
   const displayName = await ensureUserDisplayName(userId, null);
   const entitlements = await getEntitlementsForUser(userId);
@@ -303,4 +344,58 @@ async function migrateTodayLeaderboardIfPresent(identity: { userId: string; gues
   } finally {
     client.release();
   }
+}
+
+async function autoSubmitTodayIfEnabled(identity: { userId: string; userDisplayName: string }): Promise<void> {
+  const redis = getLeaderboardRedis();
+  if (!redis) return;
+
+  // Check if user has auto-submit enabled (default true for new accounts)
+  const settings = await ensureUserSettings(identity.userId);
+  if (!settings.leaderboardAutoSubmit) return;
+
+  const { getNewYorkDateString } = await import('@/game/puzzleGenerator');
+  const date = getNewYorkDateString();
+  const zkey = leaderboardZsetKey(date);
+  const indexKey = leaderboardMemberIndexKey(date);
+  const userKey = `user:${identity.userId}`;
+
+  // Check if already submitted
+  const existingMember = await redis.hget<string>(indexKey, userKey);
+  if (existingMember) return;
+
+  // Check if user has a completed result for today
+  const pool = getDbPool();
+  const dailyRes = await pool.query<{ completed: boolean; time_ms: number | null; attempts_used: number | null }>(
+    `select completed, time_ms, attempts_used
+     from daily_results
+     where user_id=$1 and date=$2::date`,
+    [identity.userId, date]
+  );
+
+  if ((dailyRes.rowCount ?? 0) === 0) return;
+  const daily = dailyRes.rows[0]!;
+  if (!daily.completed || daily.time_ms == null || daily.attempts_used == null) return;
+
+  const timeMs = daily.time_ms;
+  const attemptsUsed = daily.attempts_used;
+
+  const submittedAtMs = Date.now();
+  const member = makeLeaderboardMember(submittedAtMs, userKey);
+  const score = encodeLeaderboardScore(timeMs, attemptsUsed);
+
+  // Submit to Redis
+  await redis.multi()
+    .zadd(zkey, { score, member })
+    .hset(indexKey, { [userKey]: member })
+    .hset(LB_NAMES_KEY, { [userKey]: identity.userDisplayName })
+    .exec();
+
+  // Durable audit row
+  await pool.query(
+    `insert into leaderboard_submissions (date, subject_type, subject_id, time_ms, attempts_used, submitted_at)
+     values ($1, 'user', $2, $3, $4, to_timestamp($5 / 1000.0))
+     on conflict do nothing`,
+    [date, identity.userId, timeMs, attemptsUsed, submittedAtMs]
+  );
 }

@@ -1,17 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useState } from 'react';
 import Image from 'next/image';
-import { api } from '@/lib/api';
-import { cachedApi, fetchLeaderboardMeFresh, fetchLeaderboardTopFresh } from '@/lib/api/cached';
-import type { LeaderboardEntry, LeaderboardMeResponse, LeaderboardTopResponse } from '@/lib/api/types';
+import { MapType } from '@/game/types';
 import { formatTime } from '@/utils/storage';
 import styles from './ShareCard.module.css';
-
-type LoadState<T> =
-  | { status: 'idle' | 'loading' }
-  | { status: 'loaded'; data: T }
-  | { status: 'error'; message: string };
 
 interface ShareCardProps {
   puzzleNumber: number;
@@ -21,13 +14,34 @@ interface ShareCardProps {
   failed?: boolean;
   attempts?: any[]; // Keep flexible for now
   maxLives?: number; // Dynamic lives count (default 3)
+  solutionPath?: { x: number; y: number }[];
+  mapType?: MapType;
   onClose: () => void;
   inline?: boolean;
   secondaryActionLabel?: string;
   onSecondaryAction?: () => void;
   footerText?: string;
-  leaderboardDate?: string; // NY YYYY-MM-DD
-  leaderboardAllowSubmit?: boolean;
+  countdownText?: string; // "Next puzzle in Xh Ym"
+}
+
+function isSamePos(a: { x: number; y: number }, b: { x: number; y: number }) {
+  return a.x === b.x && a.y === b.y;
+}
+
+function positionKey(pos: { x: number; y: number }) {
+  return `${pos.x},${pos.y}`;
+}
+
+// Get emoji for map type
+function getMapEmoji(mapType: MapType): string {
+  switch (mapType) {
+    case MapType.ICE:
+      return '🧊';
+    case MapType.GROUND:
+      return '🟤';
+    default:
+      return '🧩';
+  }
 }
 
 // Fallback copy method using execCommand for older browsers
@@ -64,158 +78,182 @@ export default function ShareCard({
   failed = false,
   attempts = [],
   maxLives = 3,
+  solutionPath,
+  mapType,
   onClose,
   inline = false,
   secondaryActionLabel,
   onSecondaryAction,
-  footerText = 'Come back tomorrow for a new puzzle!',
-  leaderboardDate,
-  leaderboardAllowSubmit = true,
+  footerText,
+  countdownText,
 }: ShareCardProps) {
-  const [shareState, setShareState] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const [shareState, setShareState] = useState<'idle' | 'sharing' | 'copied' | 'failed'>('idle');
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedbackText, setFeedbackText] = useState('');
   const [feedbackRating, setFeedbackRating] = useState<number | null>(null);
   const [hoverRating, setHoverRating] = useState<number | null>(null);
   const [feedbackState, setFeedbackState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
 
-  const hasLeaderboard = !!leaderboardDate;
-  const [activeTab, setActiveTab] = useState<'share' | 'leaderboard'>('share');
-  const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
-  const swipeIgnoreRef = useRef(false);
-
-  const [leaderboardTopState, setLeaderboardTopState] = useState<LoadState<LeaderboardTopResponse>>({ status: 'idle' });
-  const [leaderboardMeState, setLeaderboardMeState] = useState<LoadState<LeaderboardMeResponse>>({ status: 'idle' });
-  const [leaderboardSubmitState, setLeaderboardSubmitState] = useState<'idle' | 'submitting' | 'submitted' | 'failed'>('idle');
-
   const displayLabel = puzzleLabel ?? `#${puzzleNumber}`;
-  const maxBlocks = Math.max(optimalMoves, 1);
+  const mapEmoji = mapType != null ? getMapEmoji(mapType) : '';
 
-  const attemptsUsed = useMemo(() => {
-    if (failed) return null;
-    const failedAttempts = attempts?.length ?? 0;
-    return Math.min(3, Math.max(1, failedAttempts + 1));
-  }, [attempts, failed]);
+  const resolveAttemptProgress = (attempt: any): number => {
+    if (!attempt) return 0;
+    // Prefer correctMoves (new system), fall back to deviationIndex (legacy)
+    if (attempt.correctMoves !== undefined) {
+      return attempt.correctMoves;
+    }
+    if (attempt.deviationIndex !== undefined && attempt.deviationIndex !== -1) {
+      return Math.max(0, attempt.deviationIndex - 1);
+    }
+    return attempt.moveCount ?? 0;
+  };
 
-  // Calculate best attempt for failed runs (using correctMoves if available)
-  const bestAttempt = attempts && attempts.length > 0
-    ? Math.max(...attempts.map(a => {
-      // Prefer correctMoves (new system), fall back to deviationIndex (legacy)
-      if (a.correctMoves !== undefined) {
-        return a.correctMoves;
-      }
-      if (a.deviationIndex !== undefined && a.deviationIndex !== -1) {
-        return Math.max(0, a.deviationIndex - 1);
-      }
-      return a.moveCount;
-    }))
-    : 0;
-
-  // Generate progress blocks - one row per attempt/life
+  // Build share text (progress bar format before mazle.me)
   const generateProgressBlocks = (): string => {
-    const getAttemptProgress = (attempt: any): number => {
-      // Prefer correctMoves (new system), fall back to deviationIndex (legacy)
-      if (attempt.correctMoves !== undefined) {
-        return attempt.correctMoves;
+    if (solutionPath) {
+      const getContiguousCorrectMoves = (attempt: any): number => {
+        if (!attempt) return 0;
+
+        if (typeof attempt.deviationIndex === 'number') {
+          if (attempt.deviationIndex === -1) {
+            return Math.min(optimalMoves, solutionPath.length - 1);
+          }
+          return Math.max(0, attempt.deviationIndex - 1);
+        }
+
+        if (!Array.isArray(attempt.path)) {
+          return resolveAttemptProgress(attempt);
+        }
+
+        const maxSteps = Math.min(optimalMoves, solutionPath.length - 1, attempt.path.length - 1);
+        let correct = 0;
+        for (let i = 1; i <= maxSteps; i++) {
+          if (isSamePos(attempt.path[i], solutionPath[i])) correct++;
+          else break;
+        }
+        return correct;
+      };
+
+      const getAttemptStatuses = (attempt: any): ('correct' | 'present' | 'empty')[] => {
+        const hasPathData = attempt && Array.isArray(attempt.path) && attempt.path.length > 0;
+
+        if (!hasPathData) {
+          const correct = getContiguousCorrectMoves(attempt);
+          const statuses: ('correct' | 'present' | 'empty')[] = [];
+          for (let i = 0; i < optimalMoves; i++) statuses.push(i < correct ? 'correct' : 'empty');
+          return statuses;
+        }
+
+        const attemptPath = attempt.path;
+        const attemptKeys = new Set(attemptPath.map((pos: any) => positionKey(pos)));
+        const contiguousCorrect = getContiguousCorrectMoves(attempt);
+
+        const statuses: ('correct' | 'present' | 'empty')[] = [];
+        for (let i = 1; i <= optimalMoves; i++) {
+          const solutionTile = solutionPath[i];
+          if (!solutionTile) {
+            statuses.push('empty');
+            continue;
+          }
+
+          if (i <= contiguousCorrect) statuses.push('correct');
+          else if (attemptKeys.has(positionKey(solutionTile))) statuses.push('present');
+          else statuses.push('empty');
+        }
+        return statuses;
+      };
+
+      const rows: string[] = [];
+      const hasWinRow = !failed;
+
+      for (let i = 0; i < maxLives; i++) {
+        if (i < attempts.length) {
+          const statuses = getAttemptStatuses(attempts[i]);
+          const rowStr = statuses.map((s) => {
+            if (s === 'correct') return '🟩';
+            if (s === 'present') return '🟨';
+            return '⬜';
+          }).join('');
+          rows.push(rowStr);
+        } else if (hasWinRow && i === attempts.length) {
+          rows.push('🟩'.repeat(optimalMoves) + '🏆');
+        } else {
+          rows.push('⬜'.repeat(optimalMoves));
+        }
       }
-      if (attempt.deviationIndex !== undefined && attempt.deviationIndex !== -1) {
-        return Math.max(0, attempt.deviationIndex - 1);
-      }
-      return attempt.moveCount;
-    };
+
+      return rows.join('\n');
+    }
 
     if (failed) {
-      // Show each attempt as a separate row
       const rows: string[] = [];
 
       for (let i = 0; i < attempts.length; i++) {
-        const progress = getAttemptProgress(attempts[i]);
-
+        const progress = resolveAttemptProgress(attempts[i]);
         const filledBlocks = Math.min(progress, optimalMoves - 1);
         const remainingBlocks = optimalMoves - filledBlocks - 1;
         rows.push('🟥'.repeat(filledBlocks) + '❌' + '⬜'.repeat(remainingBlocks));
       }
 
-      // Show rows up to maxLives for failed attempts
       while (rows.length < maxLives) {
         rows.push('⬜'.repeat(optimalMoves));
       }
 
       return rows.join('\n');
-    } else {
-      // Success: show each attempt as a row
-      const rows: string[] = [];
-
-      // Add rows for failed attempts (only if there were any)
-      for (let i = 0; i < attempts.length; i++) {
-        const progress = getAttemptProgress(attempts[i]);
-
-        const filledBlocks = Math.min(progress, optimalMoves - 1);
-        const remainingBlocks = optimalMoves - filledBlocks - 1;
-        rows.push('🟥'.repeat(filledBlocks) + '❌' + '⬜'.repeat(remainingBlocks));
-      }
-
-      // Final successful attempt (always present)
-      rows.push('🟩'.repeat(optimalMoves) + '🏆');
-
-      return rows.join('\n');
     }
+
+    const rows: string[] = [];
+
+    for (let i = 0; i < attempts.length; i++) {
+      const progress = resolveAttemptProgress(attempts[i]);
+      const filledBlocks = Math.min(progress, optimalMoves - 1);
+      const remainingBlocks = optimalMoves - filledBlocks - 1;
+      rows.push('🟥'.repeat(filledBlocks) + '❌' + '⬜'.repeat(remainingBlocks));
+    }
+
+    rows.push('🟩'.repeat(optimalMoves) + '🏆');
+
+    return rows.join('\n');
   };
 
-  const attemptsUsed = failed ? maxLives : Math.min(attempts.length + 1, maxLives);
-  const scoreText = failed ? `X/${maxLives}` : `${attemptsUsed}/${maxLives}`;
-  const shareText = `Mazle ${displayLabel}\n\n${generateProgressBlocks()}\n\n${formatTime(timeMs)} • ${scoreText}\nmazle.io`;
+  const attemptsUsedForScore = failed
+    ? maxLives
+    : Math.min(maxLives, Math.max(1, attempts.length + 1));
+  const scoreText = failed ? `X/${maxLives}` : `${attemptsUsedForScore}/${maxLives}`;
+  const shareTitle = mapEmoji ? `Mazle ${displayLabel} ${mapEmoji}` : `Mazle ${displayLabel}`;
+  const shareText = `${shareTitle}\n\n${generateProgressBlocks()}\n\n${formatTime(timeMs)} • ${scoreText}\nmazle.io`;
 
-  const reloadLeaderboard = useCallback(async (force = false) => {
-    if (!leaderboardDate) return;
-    setLeaderboardTopState({ status: 'loading' });
-    setLeaderboardMeState({ status: 'loading' });
+  // Calculate max blocks for progress bar visualization
+  const maxBlocks = Math.max(optimalMoves, 1);
 
-    try {
-      const [top, me] = await Promise.all([
-        force ? fetchLeaderboardTopFresh(leaderboardDate, 20) : cachedApi.leaderboardTop(leaderboardDate, 20),
-        force ? fetchLeaderboardMeFresh(leaderboardDate) : cachedApi.leaderboardMe(leaderboardDate),
-      ]);
-      setLeaderboardTopState({ status: 'loaded', data: top });
-      setLeaderboardMeState({ status: 'loaded', data: me });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load leaderboard';
-      setLeaderboardTopState({ status: 'error', message });
-      setLeaderboardMeState({ status: 'error', message });
+  // Calculate the best attempt progress
+  const bestAttempt = attempts && attempts.length > 0
+    ? Math.max(...attempts.map((a: any) => resolveAttemptProgress(a)))
+    : 0;
+
+  // Build the attempt bars data
+  const attemptBars = (): { progress: number; status: 'success' | 'fail' | 'empty' }[] => {
+    const rows: { progress: number; status: 'success' | 'fail' | 'empty' }[] = [];
+
+    // Failed attempts
+    for (const attempt of attempts) {
+      rows.push({ progress: Math.min(resolveAttemptProgress(attempt), maxBlocks), status: 'fail' });
     }
-  }, [leaderboardDate]);
 
-  useEffect(() => {
-    if (!hasLeaderboard) {
-      setActiveTab('share');
-      return;
+    // Success row (if not failed)
+    if (!failed) {
+      rows.push({ progress: optimalMoves, status: 'success' });
     }
-    setLeaderboardTopState({ status: 'idle' });
-    setLeaderboardMeState({ status: 'idle' });
-    setLeaderboardSubmitState('idle');
-  }, [hasLeaderboard, leaderboardDate]);
 
-  useEffect(() => {
-    if (!hasLeaderboard) return;
-    if (activeTab !== 'leaderboard') return;
-    if (leaderboardTopState.status !== 'idle') return;
-    reloadLeaderboard();
-  }, [activeTab, hasLeaderboard, leaderboardTopState.status, reloadLeaderboard]);
-
-  const canSubmitLeaderboard = hasLeaderboard && leaderboardAllowSubmit && attemptsUsed != null;
-  const alreadySubmitted = leaderboardMeState.status === 'loaded' && !!leaderboardMeState.data;
-
-  const handleLeaderboardSubmit = useCallback(async () => {
-    if (!leaderboardDate || !canSubmitLeaderboard || attemptsUsed == null || failed) return;
-    setLeaderboardSubmitState('submitting');
-    try {
-      await api.leaderboardSubmit({ date: leaderboardDate, timeMs, attemptsUsed });
-      setLeaderboardSubmitState('submitted');
-      await reloadLeaderboard(true);
-    } catch {
-      setLeaderboardSubmitState('failed');
+    while (rows.length < maxLives) {
+      rows.push({ progress: 0, status: 'empty' });
     }
-  }, [attemptsUsed, canSubmitLeaderboard, failed, leaderboardDate, reloadLeaderboard, timeMs]);
+
+    return rows.slice(0, maxLives);
+  };
+
+  const bars = attemptBars();
 
   const handleCopy = async (): Promise<boolean> => {
     // Try modern clipboard API first
@@ -238,12 +276,18 @@ export default function ShareCard({
 
     if (isMobileDevice && navigator.share) {
       try {
+        // Set sharing state to prevent visual flash when iOS share sheet opens
+        setShareState('sharing');
+        // Wait for DOM to update before opening share sheet
+        await new Promise(resolve => requestAnimationFrame(resolve));
         await navigator.share({
-          title: `Mazle ${displayLabel}`,
+          title: shareTitle,
           text: shareText,
         });
+        setShareState('idle');
         return; // Native share succeeded, no need to show copied state
       } catch (err) {
+        setShareState('idle');
         // User cancelled or share failed - fall through to copy
         if (err instanceof Error && err.name === 'AbortError') {
           return; // User cancelled, don't copy
@@ -278,7 +322,7 @@ export default function ShareCard({
           attempts: failed ? attempts.length : attempts.length + 1,
           timeMs,
           optimalMoves,
-          attemptScores: attempts.map((a: any) => calcProgress(a)),
+          attemptScores: attempts.map((a: any) => resolveAttemptProgress(a)),
           rating: feedbackRating,
         }),
       });
@@ -303,191 +347,26 @@ export default function ShareCard({
 
   const getShareButtonText = () => {
     switch (shareState) {
-      case 'copied': return 'Copied!';
-      case 'failed': return 'Failed';
-      default: return 'Share';
+      case 'copied':
+        return 'Copied!';
+      case 'failed':
+        return 'Failed';
+      default:
+        return 'Share';
     }
   };
 
   const getFeedbackButtonText = () => {
     switch (feedbackState) {
-      case 'sending': return ''; // Handled in JSX to allow spinner
-      case 'sent': return 'Sent!';
-      case 'error': return 'Try Again';
-      default: return 'Send Feedback';
+      case 'sending':
+        return ''; // Handled in JSX to allow spinner
+      case 'sent':
+        return 'Sent!';
+      case 'error':
+        return 'Try Again';
+      default:
+        return 'Send Feedback';
     }
-  };
-
-  const calcProgress = (attempt: any) => {
-    if (!attempt) return 0;
-    // Prefer correctMoves (new system), fall back to deviationIndex (legacy)
-    if (attempt.correctMoves !== undefined) {
-      return attempt.correctMoves;
-    }
-    if (attempt.deviationIndex !== undefined && attempt.deviationIndex !== -1) {
-      return Math.max(0, attempt.deviationIndex - 1);
-    }
-    return attempt.moveCount ?? 0;
-  };
-
-  const attemptBars = () => {
-    const rows: { progress: number; status: 'fail' | 'success' | 'empty' }[] = [];
-
-    attempts.forEach((attempt: any) => {
-      rows.push({ progress: Math.min(calcProgress(attempt), maxBlocks), status: 'fail' });
-    });
-
-    if (!failed) {
-      rows.push({ progress: optimalMoves, status: 'success' });
-    }
-
-    while (rows.length < maxLives) {
-      rows.push({ progress: 0, status: 'empty' });
-    }
-
-    return rows.slice(0, maxLives);
-  };
-
-  const bars = attemptBars();
-
-  const renderLeaderboardRows = (entries: LeaderboardEntry[]) => {
-    return (
-      <div className={styles.leaderboardList}>
-        {entries.map((e) => (
-          <div
-            key={`${e.rank}-${e.displayName}`}
-            className={`${styles.leaderboardRow} ${e.isMe ? styles.leaderboardRowMe : ''}`.trim()}
-          >
-            <div className={styles.leaderboardRank}>#{e.rank}</div>
-            <div className={styles.leaderboardName}>{e.displayName}</div>
-            <div className={styles.leaderboardTime}>{formatTime(e.timeMs)}</div>
-            <div className={styles.leaderboardTries}>{e.attemptsUsed}/3</div>
-          </div>
-        ))}
-      </div>
-    );
-  };
-
-  const leaderboardTab = () => {
-    if (!leaderboardDate) return null;
-
-    const submissionNote = !leaderboardAllowSubmit
-      ? 'Archive plays don’t submit to the leaderboard.'
-      : failed
-        ? 'Only successful solves can be submitted.'
-        : null;
-
-    const mePanel = () => {
-      switch (leaderboardMeState.status) {
-        case 'idle':
-        case 'loading':
-          return <div className={styles.leaderboardHint}>Loading your rank…</div>;
-        case 'error':
-          return <div className={styles.leaderboardHint}>Unable to load your rank.</div>;
-        case 'loaded': {
-          const me = leaderboardMeState.data;
-          if (!me) {
-            return <div className={styles.leaderboardHint}>Not submitted for this day.</div>;
-          }
-
-          return (
-            <div className={styles.meRow}>
-              <div className={styles.meMetaLeft}>
-                <div className={styles.meName}>{me.displayName}</div>
-                <div className={styles.meMeta}>
-                  {formatTime(me.timeMs)} • {me.attemptsUsed}/3 tries
-                </div>
-              </div>
-              <div className={styles.meRank}>#{me.rank}</div>
-            </div>
-          );
-        }
-      }
-    };
-
-    const submitPanel = () => {
-      if (!leaderboardAllowSubmit) return null;
-      if (!canSubmitLeaderboard) return null;
-      if (alreadySubmitted) return null;
-      if (leaderboardMeState.status !== 'loaded') return null;
-
-      const label =
-        leaderboardSubmitState === 'submitting'
-          ? 'Submitting…'
-          : leaderboardSubmitState === 'submitted'
-            ? 'Submitted ✓'
-            : 'Submit my time';
-
-      return (
-        <button
-          type="button"
-          className={styles.leaderboardSubmitButton}
-          onClick={handleLeaderboardSubmit}
-          disabled={leaderboardSubmitState === 'submitting'}
-        >
-          {label}
-        </button>
-      );
-    };
-
-    return (
-      <div className={styles.leaderboardPanel}>
-        <div className={styles.leaderboardHeader}>
-          <div>
-            <div className={styles.leaderboardTitle}>Leaderboard</div>
-            <div className={styles.leaderboardSubtitle}>
-              Mazle #{puzzleNumber} • {leaderboardDate} (ET)
-            </div>
-          </div>
-          <button
-            type="button"
-            className={styles.leaderboardRefreshButton}
-            onClick={() => reloadLeaderboard(true)}
-            disabled={leaderboardTopState.status === 'loading'}
-            aria-label="Refresh leaderboard"
-            title="Refresh"
-          >
-            ↻
-          </button>
-        </div>
-
-        <div className={styles.leaderboardCard}>
-          <div className={styles.leaderboardSectionTitle}>Me</div>
-          {mePanel()}
-          {submitPanel()}
-          {leaderboardSubmitState === 'failed' && <div className={styles.leaderboardError}>Couldn’t submit. Try again.</div>}
-          {submissionNote && (
-            <div className={styles.leaderboardHint} style={{ marginTop: '0.6rem' }}>
-              {submissionNote}
-            </div>
-          )}
-        </div>
-
-        <div className={styles.leaderboardCard}>
-          <div className={styles.leaderboardSectionTitle}>Top</div>
-          {(() => {
-            switch (leaderboardTopState.status) {
-              case 'idle':
-              case 'loading':
-                return <div className={styles.leaderboardHint}>Loading…</div>;
-              case 'error':
-                return <div className={styles.leaderboardError}>{leaderboardTopState.message}</div>;
-              case 'loaded': {
-                const entries = leaderboardTopState.data.entries;
-                if (entries.length === 0) {
-                  return <div className={styles.leaderboardHint}>No submissions yet.</div>;
-                }
-                return renderLeaderboardRows(entries);
-              }
-            }
-          })()}
-
-          <div className={styles.leaderboardHint} style={{ marginTop: '0.75rem' }}>
-            Ranking: time • tries • submitted
-          </div>
-        </div>
-      </div>
-    );
   };
 
   return (
@@ -495,35 +374,6 @@ export default function ShareCard({
       <div
         className={`${styles.card} ${failed ? styles.cardFailed : styles.cardSuccess} ${inline ? styles.cardInline : ''}`}
         onClick={(e) => e.stopPropagation()}
-        onPointerDown={(e) => {
-          if (!hasLeaderboard) return;
-          const target = e.target as HTMLElement | null;
-          if (target?.closest('textarea, input, select')) {
-            swipeIgnoreRef.current = true;
-            swipeStartRef.current = null;
-            return;
-          }
-          swipeIgnoreRef.current = false;
-          swipeStartRef.current = { x: e.clientX, y: e.clientY };
-        }}
-        onPointerCancel={() => {
-          swipeIgnoreRef.current = false;
-          swipeStartRef.current = null;
-        }}
-        onPointerUp={(e) => {
-          if (!hasLeaderboard) return;
-          const start = swipeStartRef.current;
-          swipeStartRef.current = null;
-          if (!start || swipeIgnoreRef.current) return;
-
-          const dx = e.clientX - start.x;
-          const dy = e.clientY - start.y;
-          if (Math.abs(dx) < 60) return;
-          if (Math.abs(dx) < Math.abs(dy) * 1.2) return;
-
-          if (dx < 0) setActiveTab('leaderboard');
-          if (dx > 0) setActiveTab('share');
-        }}
       >
         {!inline && (
           <button className={styles.closeButton} onClick={onClose}>
@@ -543,32 +393,27 @@ export default function ShareCard({
             />
           ) : (
             <div className={styles.victoryCharacterContainer}>
-              <svg 
-                viewBox="0 -16 64 80" 
-                className={styles.victoryCharacterSvg}
-                width="64" 
-                height="80"
-              >
+              <svg viewBox="0 -16 64 80" className={styles.victoryCharacterSvg} width="64" height="80">
                 {/* Shadow */}
-                <ellipse cx="32" cy="48" rx="32" ry="12" fill="black" fillOpacity="0.25"/>
-                
+                <ellipse cx="32" cy="48" rx="32" ry="12" fill="black" fillOpacity="0.25" />
+
                 {/* Body */}
-                <rect x="16" y="12" width="32" height="36" rx="6" fill="#FF4D4D" stroke="#CC0000" strokeWidth="2.5"/>
-                
+                <rect x="16" y="12" width="32" height="36" rx="6" fill="#FF4D4D" stroke="#CC0000" strokeWidth="2.5" />
+
                 {/* Eyes */}
-                <circle cx="26" cy="24" r="6" fill="white"/>
-                <circle cx="38" cy="24" r="6" fill="white"/>
-                
+                <circle cx="26" cy="24" r="6" fill="white" />
+                <circle cx="38" cy="24" r="6" fill="white" />
+
                 {/* Pupils */}
-                <circle cx="28" cy="24" r="3" fill="black"/>
-                <circle cx="40" cy="24" r="3" fill="black"/>
+                <circle cx="28" cy="24" r="3" fill="black" />
+                <circle cx="40" cy="24" r="3" fill="black" />
 
                 {/* Animated Crown */}
                 <g className={styles.crownGroup}>
                   {/* Glow Effect - dilated and blurred */}
-                  <path 
-                    d="M16 12 L16 0 L24 8 L32 0 L40 8 L48 0 L48 12 Z" 
-                    fill="#FFE082" 
+                  <path
+                    d="M16 12 L16 0 L24 8 L32 0 L40 8 L48 0 L48 12 Z"
+                    fill="#FFE082"
                     stroke="#FFE082"
                     strokeWidth="8"
                     strokeLinejoin="round"
@@ -577,10 +422,10 @@ export default function ShareCard({
                     filter="url(#softGlow)"
                   />
                   {/* Main Crown */}
-                  <path 
-                    d="M16 12 L16 0 L24 8 L32 0 L40 8 L48 0 L48 12 Z" 
-                    fill="#FFD700" 
-                    stroke="#DAA520" 
+                  <path
+                    d="M16 12 L16 0 L24 8 L32 0 L40 8 L48 0 L48 12 Z"
+                    fill="#FFD700"
+                    stroke="#DAA520"
                     strokeWidth="1.5"
                     strokeLinejoin="round"
                     transform="translate(0, -6)"
@@ -589,188 +434,169 @@ export default function ShareCard({
 
                 <defs>
                   <filter id="softGlow" x="-100%" y="-100%" width="300%" height="300%">
-                    <feGaussianBlur stdDeviation="6" result="coloredBlur"/>
+                    <feGaussianBlur stdDeviation="6" result="coloredBlur" />
                   </filter>
                 </defs>
               </svg>
             </div>
           )}
           <h2 className={styles.title}>{failed ? 'Game Over' : 'Victory'}</h2>
-          <span className={styles.puzzleNumber}>Mazle {displayLabel}</span>
+          <span className={styles.puzzleNumber}>
+            {mapEmoji ? `${mapEmoji} ` : ''}Mazle {displayLabel}
+          </span>
         </div>
 
-        {hasLeaderboard && (
-          <div className={styles.tabBar} role="tablist" aria-label="Share or leaderboard">
-            <button
-              type="button"
-              className={`${styles.tabButton} ${activeTab === 'share' ? styles.tabButtonActive : ''}`.trim()}
-              role="tab"
-              aria-selected={activeTab === 'share'}
-              onClick={() => setActiveTab('share')}
-            >
-              Share
-            </button>
-            <button
-              type="button"
-              className={`${styles.tabButton} ${activeTab === 'leaderboard' ? styles.tabButtonActive : ''}`.trim()}
-              role="tab"
-              aria-selected={activeTab === 'leaderboard'}
-              onClick={() => setActiveTab('leaderboard')}
-            >
-              Leaderboard
-            </button>
+        <div className={styles.mainStat}>
+          <span className={styles.mainStatValue}>{formatTime(timeMs)}</span>
+          <span className={styles.mainStatLabel}>TOTAL TIME</span>
+        </div>
+
+        {failed && (
+          <div className={styles.subStat}>
+            <span>
+              Best Attempt: {bestAttempt}/{optimalMoves} moves
+            </span>
           </div>
         )}
 
-        {activeTab === 'leaderboard' && hasLeaderboard ? (
-          leaderboardTab()
-        ) : (
-          <>
-            <div className={styles.mainStat}>
-              <span className={styles.mainStatValue}>{formatTime(timeMs)}</span>
-              <span className={styles.mainStatLabel}>TOTAL TIME</span>
-            </div>
-
-            {failed && (
-              <div className={styles.subStat}>
-                <span>Best Attempt: {bestAttempt}/{optimalMoves} moves</span>
-              </div>
-            )}
-
-            <div className={styles.progressSection}>
-              <div className={styles.progressHeader}>Attempts</div>
-              <div className={styles.progressList}>
-                {bars.map((bar, idx) => (
-                  <div className={styles.progressRow} key={idx}>
-                    <span className={styles.progressLabel}>
-                      {idx + 1}
-                    </span>
-                    <div className={styles.progressBar}>
-                      <div
-                        className={`
-                          ${styles.progressFill}
-                          ${bar.status === 'success' ? styles.progressFillSuccess : ''}
-                          ${bar.status === 'fail' ? styles.progressFillFail : ''}
-                          ${bar.status === 'empty' ? styles.progressFillEmpty : ''}
-                        `}
-                        style={{ width: `${Math.max(0, Math.min((bar.progress / maxBlocks) * 100, 100))}%` }}
-                      />
-                    </div>
-                    <span className={styles.progressValue}>
-                      {bar.progress}/{optimalMoves}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Share & Feedback Section */}
-            <div className={styles.shareSection}>
-              <button
-                className={`${styles.shareButton} ${shareState === 'copied' ? styles.copied : ''} ${shareState === 'failed' ? styles.failed : ''}`}
-                onClick={handleShare}
-              >
-                <span className={styles.shareBtnIcon}>
-                  <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
-                    <path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z" />
-                  </svg>
-                </span>
-                {getShareButtonText()}
-              </button>
-
-              {secondaryActionLabel && onSecondaryAction && (
-                <button className={styles.secondaryActionButton} onClick={onSecondaryAction}>
-                  {secondaryActionLabel}
-                </button>
-              )}
-            </div>
-
-            {/* Feedback Section */}
-            <div className={styles.feedbackSection}>
-              {!feedbackOpen ? (
-                <button
-                  className={styles.feedbackTriggerSimple}
-                  onClick={() => setFeedbackOpen(true)}
-                >
-                  Share feedback
-                </button>
-              ) : (
-                <div className={styles.feedbackForm}>
-                  {/* Star Rating - optional */}
-                  <div className={styles.starRating}>
-                    <span className={styles.starLabel}>Rate your experience (optional):</span>
-                    <div
-                      className={styles.stars}
-                      onMouseLeave={() => setHoverRating(null)}
-                    >
-                      {[1, 2, 3, 4, 5].map((star) => {
-                        const isFilled = (hoverRating !== null ? hoverRating : feedbackRating) !== null &&
-                          (hoverRating !== null ? hoverRating : feedbackRating!) >= star;
-                        return (
-                          <button
-                            key={star}
-                            type="button"
-                            className={`${styles.star} ${isFilled ? styles.starFilled : ''}`}
-                            onClick={() => setFeedbackRating(star)}
-                            onMouseEnter={() => setHoverRating(star)}
-                            disabled={feedbackState === 'sending' || feedbackState === 'sent'}
-                            aria-label={`Rate ${star} star${star > 1 ? 's' : ''}`}
-                          >
-                            <svg viewBox="0 0 24 24" className={styles.starIcon}>
-                              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                            </svg>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                  <textarea
-                    className={styles.feedbackTextarea}
-                    placeholder="Bug report, suggestion, or just say hi..."
-                    value={feedbackText}
-                    onChange={(e) => setFeedbackText(e.target.value)}
-                    maxLength={1000}
-                    disabled={feedbackState === 'sending' || feedbackState === 'sent'}
+        <div className={styles.progressSection}>
+          <div className={styles.progressHeader}>Attempts</div>
+          <div className={styles.progressList}>
+            {bars.map((bar, idx) => (
+              <div className={styles.progressRow} key={idx}>
+                <span className={styles.progressLabel}>{idx + 1}</span>
+                <div className={styles.progressBar}>
+                  <div
+                    className={`
+                      ${styles.progressFill}
+                      ${bar.status === 'success' ? styles.progressFillSuccess : ''}
+                      ${bar.status === 'fail' ? styles.progressFillFail : ''}
+                      ${bar.status === 'empty' ? styles.progressFillEmpty : ''}
+                    `}
+                    style={{ width: `${Math.max(0, Math.min((bar.progress / maxBlocks) * 100, 100))}%` }}
                   />
-                  <div className={styles.feedbackActions}>
-                    <button
-                      className={`${styles.feedbackSubmit} ${styles[feedbackState]}`}
-                      onClick={handleFeedback}
-                      disabled={(!feedbackText.trim() && feedbackRating === null) || feedbackState === 'sending' || feedbackState === 'sent'}
-                    >
-                      {feedbackState === 'sending' ? (
-                        <>
-                          <span className={styles.spinner} />
-                          Sending...
-                        </>
-                      ) : (
-                        getFeedbackButtonText()
-                      )}
-                    </button>
-                    <button
-                      className={styles.feedbackCancel}
-                      onClick={() => {
-                        setFeedbackOpen(false);
-                        setFeedbackText('');
-                        setFeedbackRating(null);
-                        setFeedbackState('idle');
-                      }}
-                      disabled={feedbackState === 'sending'}
-                    >
-                      Cancel
-                    </button>
-                  </div>
                 </div>
-              )}
-            </div>
-
-            {/* Footer */}
-            {footerText && (
-              <div className={styles.footer}>
-                <span className={styles.footerText}>{footerText}</span>
+                <span className={styles.progressValue}>
+                  {bar.progress}/{optimalMoves}
+                </span>
               </div>
-            )}
-          </>
+            ))}
+          </div>
+        </div>
+
+        {/* Share & Feedback Section */}
+        <div className={styles.shareSection}>
+          <button
+            className={`${styles.shareButton} ${shareState === 'sharing' ? styles.sharing : ''} ${shareState === 'copied' ? styles.copied : ''} ${shareState === 'failed' ? styles.failed : ''}`}
+            onClick={handleShare}
+          >
+            <span className={styles.shareBtnIcon}>
+              <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+                <path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z" />
+              </svg>
+            </span>
+            {getShareButtonText()}
+          </button>
+
+          {secondaryActionLabel && onSecondaryAction && (
+            <button className={styles.secondaryActionButton} onClick={onSecondaryAction}>
+              {secondaryActionLabel}
+            </button>
+          )}
+        </div>
+
+        {/* Support Section */}
+        <div className={styles.supportSection}>
+          <p className={styles.supportText}>Help us keep building new features!</p>
+
+          {!feedbackOpen ? (
+            <div className={styles.supportRow}>
+              <a
+                href="https://ko-fi.com/mazle"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.buyCoffeeLink}
+              >
+                Buy us a coffee
+              </a>
+              <button className={styles.feedbackTriggerSimple} onClick={() => setFeedbackOpen(true)}>
+                Share feedback
+              </button>
+            </div>
+          ) : (
+            <div className={styles.feedbackForm}>
+              {/* Star Rating - optional */}
+              <div className={styles.starRating}>
+                <span className={styles.starLabel}>Rate your experience (optional):</span>
+                <div className={styles.stars} onMouseLeave={() => setHoverRating(null)}>
+                  {[1, 2, 3, 4, 5].map((star) => {
+                    const isFilled =
+                      (hoverRating !== null ? hoverRating : feedbackRating) !== null &&
+                      (hoverRating !== null ? hoverRating : feedbackRating!) >= star;
+                    return (
+                      <button
+                        key={star}
+                        type="button"
+                        className={`${styles.star} ${isFilled ? styles.starFilled : ''}`}
+                        onClick={() => setFeedbackRating(star)}
+                        onMouseEnter={() => setHoverRating(star)}
+                        disabled={feedbackState === 'sending' || feedbackState === 'sent'}
+                        aria-label={`Rate ${star} star${star > 1 ? 's' : ''}`}
+                      >
+                        <svg viewBox="0 0 24 24" className={styles.starIcon}>
+                          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                        </svg>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <textarea
+                className={styles.feedbackTextarea}
+                placeholder="Bug report, suggestion, or just say hi..."
+                value={feedbackText}
+                onChange={(e) => setFeedbackText(e.target.value)}
+                maxLength={1000}
+                disabled={feedbackState === 'sending' || feedbackState === 'sent'}
+              />
+              <div className={styles.feedbackActions}>
+                <button
+                  className={`${styles.feedbackSubmit} ${styles[feedbackState]}`}
+                  onClick={handleFeedback}
+                  disabled={(!feedbackText.trim() && feedbackRating === null) || feedbackState === 'sending' || feedbackState === 'sent'}
+                >
+                  {feedbackState === 'sending' ? (
+                    <>
+                      <span className={styles.spinner} />
+                      Sending...
+                    </>
+                  ) : (
+                    getFeedbackButtonText()
+                  )}
+                </button>
+                <button
+                  className={styles.feedbackCancel}
+                  onClick={() => {
+                    setFeedbackOpen(false);
+                    setFeedbackText('');
+                    setFeedbackRating(null);
+                    setFeedbackState('idle');
+                  }}
+                  disabled={feedbackState === 'sending'}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        {(footerText || countdownText) && (
+          <div className={styles.footer}>
+            {countdownText && <span className={styles.footerCountdown}>{countdownText}</span>}
+            {footerText && <span className={styles.footerText}>{footerText}</span>}
+          </div>
         )}
       </div>
     </div>

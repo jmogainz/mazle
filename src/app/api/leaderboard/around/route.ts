@@ -9,9 +9,13 @@ import {
   LB_NAMES_KEY,
   parseLeaderboardMember,
 } from '@/lib/server/leaderboard';
+import { ensureDevLeaderboardSeed } from '@/lib/server/leaderboardSeed';
+import { getNewYorkDateString } from '@/game/puzzleGenerator';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+
+const LEADERBOARD_MAX_ROWS = 1000;
 
 function isValidNyDateString(value: string | null): value is string {
   if (!value) return false;
@@ -28,6 +32,11 @@ export async function GET(request: Request) {
     return jsonError(400, 'INVALID_DATE', 'Missing or invalid date.');
   }
 
+  const today = getNewYorkDateString();
+  if (dateParam !== today) {
+    return jsonError(400, 'DATE_NOT_TODAY', 'Only today’s leaderboard is available.');
+  }
+
   const rank = Math.max(1, Number(rankParam ?? '1') || 1);
   const windowSize = Math.max(1, Math.min(50, Number(windowParam ?? '5') || 5));
 
@@ -37,11 +46,20 @@ export async function GET(request: Request) {
   }
 
   try {
+    await ensureDevLeaderboardSeed(redis, dateParam);
     const me = await resolveSubjectIdentity(request);
     const mySubjectKey = subjectKeyFor({ userId: me.subjectType === 'user' ? me.subjectId : null, guestId: me.guestId });
 
+    if (rank > LEADERBOARD_MAX_ROWS) {
+      const res = NextResponse.json({ date: dateParam, entries: [] }, { headers: { 'Cache-Control': 'no-store' } });
+      if (me.setGuestCookie) {
+        setGuestIdCookie(res, me.guestId);
+      }
+      return res;
+    }
+
     const start = Math.max(0, rank - 1 - windowSize);
-    const stop = rank - 1 + windowSize;
+    const stop = Math.min(rank - 1 + windowSize, LEADERBOARD_MAX_ROWS - 1);
 
     const zkey = leaderboardZsetKey(dateParam);
     const raw = await redis.zrange<(string | number)[]>(zkey, start, stop, { withScores: true });

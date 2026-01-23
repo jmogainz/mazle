@@ -1,6 +1,7 @@
 'use client';
 
-import { HINTS_ENABLED } from '@/game/types';
+import React from 'react';
+import { MapType, HINTS_ENABLED } from '@/game/types';
 import styles from './HelpModal.module.css';
 import { HELP_CONTENT } from './helpContent';
 import Image from 'next/image';
@@ -10,7 +11,7 @@ interface HelpModalProps {
   hintsEnabled?: boolean;
 }
 
-export default function HelpModal({
+function HelpModal({
   onClose,
   hintsEnabled = HINTS_ENABLED,
 }: HelpModalProps) {
@@ -202,3 +203,5 @@ export default function HelpModal({
     </div>
   );
 }
+
+export default React.memo(HelpModal);

@@ -9,7 +9,7 @@ import {
   TILE_SIZE,
   HINTS_ENABLED,
 } from './types';
-import { emitGameEvent } from './events';
+import { emitGameEvent, onGameEvent } from './events';
 import {
   simulateMove,
   getDelta,
@@ -18,12 +18,50 @@ import {
   positionKey,
 } from './movement';
 import { PENALTY_MS } from '@/constants';
+import { getSkinById } from '@/lib/skins';
+
+function cssHexToPhaserColor(value: string): number | null {
+  const m = /^#?([0-9a-f]{6})$/i.exec(value.trim());
+  if (!m) return null;
+  return parseInt(m[1], 16);
+}
+
+function fnvHue(input: string): number {
+  let acc = 2166136261;
+  for (let i = 0; i < input.length; i += 1) {
+    acc ^= input.charCodeAt(i);
+    acc = Math.imul(acc, 16777619);
+  }
+  return ((acc % 360) + 360) % 360;
+}
+
+function hslToPhaserColor(h: number, s: number, l: number): number {
+  const hue = ((((h % 360) + 360) % 360) / 360);
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+
+  const hueToRgb = (t: number) => {
+    let tt = t;
+    if (tt < 0) tt += 1;
+    if (tt > 1) tt -= 1;
+    if (tt < 1 / 6) return p + (q - p) * 6 * tt;
+    if (tt < 1 / 2) return q;
+    if (tt < 2 / 3) return p + (q - p) * (2 / 3 - tt) * 6;
+    return p;
+  };
+
+  const r = Math.round(hueToRgb(hue + 1 / 3) * 255);
+  const g = Math.round(hueToRgb(hue) * 255);
+  const b = Math.round(hueToRgb(hue - 1 / 3) * 255);
+  return (r << 16) | (g << 8) | b;
+}
 
 export class GameScene extends Phaser.Scene {
   private puzzle!: PuzzleData;
   private gameState!: GameState;
   private movementConfig!: MovementConfig;
   private player!: Phaser.GameObjects.Container;
+  private playerBody!: Phaser.GameObjects.Graphics;
   private tileGraphics!: Phaser.GameObjects.Graphics;
   private hintTileContainers: Phaser.GameObjects.Container[] = [];
   private hintTileTweens: Phaser.Tweens.Tween[] = [];
@@ -46,6 +84,7 @@ export class GameScene extends Phaser.Scene {
   private analysisObjects: Phaser.GameObjects.GameObject[] = [];
   private analysisTimers: Phaser.Time.TimerEvent[] = [];
   private analysisTweens: Phaser.Tweens.Tween[] = [];
+  private analysisCompleted = false; // Track if analysis animation finished playing
 
   private solutionIndexByKey: Map<string, number> | null = null;
   private solutionNextByKey: Map<string, string> | null = null;
@@ -55,6 +94,9 @@ export class GameScene extends Phaser.Scene {
   private unlockedHintEdges: Set<string> = new Set();
   private unlockedThisLifeTiles: Set<string> = new Set();
   private unlockedThisLifeEdges: Set<string> = new Set();
+
+  private cosmetics: { characterId: string; skinId: string } = { characterId: 'default', skinId: 'default' };
+  private unsubscribeCosmeticsUpdate: (() => void) | null = null;
 
   /**
    * Generate pre-rendered number textures to avoid Canvas text rasterization artifacts.
@@ -165,8 +207,12 @@ export class GameScene extends Phaser.Scene {
     super({ key: 'GameScene' });
   }
 
-  init(data: { puzzle: PuzzleData }) {
+  init(data: { puzzle: PuzzleData; cosmetics?: { characterId?: string | null; skinId?: string | null } }) {
     this.puzzle = data.puzzle;
+    this.applyCosmetics({
+      characterId: typeof data.cosmetics?.characterId === 'string' ? data.cosmetics.characterId : undefined,
+      skinId: typeof data.cosmetics?.skinId === 'string' ? data.cosmetics.skinId : undefined,
+    });
     // Get movement config based on map type (defaults to ice for legacy puzzles)
     this.movementConfig = iceMovementConfig;
     this.isPlaying = false;
@@ -234,8 +280,62 @@ export class GameScene extends Phaser.Scene {
     // Setup input
     this.setupInput();
 
+    // Listen for cosmetics updates from UI (Account screen)
+    this.unsubscribeCosmeticsUpdate?.();
+    this.unsubscribeCosmeticsUpdate = onGameEvent('cosmeticsUpdate', (payload) => {
+      const data = payload as { characterId?: unknown; skinId?: unknown } | null;
+      this.applyCosmetics({
+        characterId: typeof data?.characterId === 'string' ? data.characterId : undefined,
+        skinId: typeof data?.skinId === 'string' ? data.skinId : undefined,
+      });
+      this.redrawPlayer();
+    });
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.unsubscribeCosmeticsUpdate?.();
+      this.unsubscribeCosmeticsUpdate = null;
+    });
+
     // Emit initial state
     emitGameEvent('stateUpdate', { ...this.gameState });
+  }
+
+  private applyCosmetics(patch: { characterId?: string; skinId?: string }) {
+    const characterId = patch.characterId ?? this.cosmetics.characterId;
+    const skinId = patch.skinId ?? this.cosmetics.skinId;
+    this.cosmetics = {
+      characterId: typeof characterId === 'string' && characterId.length > 0 ? characterId : 'default',
+      skinId: typeof skinId === 'string' && skinId.length > 0 ? skinId : 'default',
+    };
+  }
+
+  private resolveCharacterShape(): 'cube' | 'cylinder' | 'pyramid' {
+    const id = (this.cosmetics.characterId || 'default').toLowerCase();
+    if (id === 'cylinder') return 'cylinder';
+    if (id === 'pyramid') return 'pyramid';
+    return 'cube';
+  }
+
+  private resolvePlayerColors(): { face: number; edge: number } {
+    const skin = getSkinById(this.cosmetics.skinId);
+    if (skin) {
+      const face = cssHexToPhaserColor(skin.face) ?? COLORS.PLAYER_FACE;
+      const edge = cssHexToPhaserColor(skin.edge) ?? COLORS.PLAYER_EDGE;
+      return { face, edge };
+    }
+
+    const hue = fnvHue(`${this.cosmetics.characterId}:${this.cosmetics.skinId}`);
+    return {
+      face: hslToPhaserColor(hue, 0.85, 0.60),
+      edge: hslToPhaserColor(hue, 0.85, 0.40),
+    };
+  }
+
+  private redrawPlayer() {
+    if (!this.playerBody || !this.playerBody.scene) return;
+    const s = TILE_SIZE / 32;
+    const shape = this.resolveCharacterShape();
+    const { face, edge } = this.resolvePlayerColors();
+    this.drawCharacterGraphic(this.playerBody, { s, faceColor: face, edgeColor: edge, shape, dead: false });
   }
 
   private drawTiles() {
@@ -258,9 +358,18 @@ export class GameScene extends Phaser.Scene {
     const size = TILE_SIZE;
     const s = size / 32; // Scale factor based on original design (32px)
 
+    const isArchive = this.puzzle.variant === 'archive';
+
     const padding = 2 * s; // Gap between tiles
     const radius = 8 * s;
     const depth = 4 * s;   // 3D lip height
+
+    const shadeColor = (color: number, factor: number): number => {
+      const r = Math.max(0, Math.min(255, Math.round(((color >> 16) & 0xff) * factor)));
+      const g = Math.max(0, Math.min(255, Math.round(((color >> 8) & 0xff) * factor)));
+      const b = Math.max(0, Math.min(255, Math.round((color & 0xff) * factor)));
+      return (r << 16) | (g << 8) | b;
+    };
 
     // Helper: Draw a "Waffle Style" 3D Tile
     const draw3DTile = (faceColor: number, edgeColor: number) => {
@@ -304,6 +413,11 @@ export class GameScene extends Phaser.Scene {
         // Intermediate path: lighter green
         actualFace = COLORS.HINT_PATH_FACE;
         actualEdge = COLORS.HINT_PATH_EDGE;
+      }
+
+      if (isArchive && hintLevel === 0) {
+        actualFace = shadeColor(actualFace, 0.88);
+        actualEdge = shadeColor(actualEdge, 0.88);
       }
 
       // 1. Draw Edge (Bottom Layer / Shadow)
@@ -513,29 +627,81 @@ export class GameScene extends Phaser.Scene {
     const s = TILE_SIZE / 32;
 
     // Classic little character with eyes (returns from pre-overhaul)
-    const body = this.add.graphics();
+    this.playerBody = this.add.graphics();
+    this.redrawPlayer();
+    this.player.add(this.playerBody);
+  }
+
+  private drawCharacterGraphic(
+    g: Phaser.GameObjects.Graphics,
+    opts: { s: number; faceColor: number; edgeColor: number; shape: 'cube' | 'cylinder' | 'pyramid'; dead: boolean }
+  ) {
+    const { s, faceColor, edgeColor, shape, dead } = opts;
+    g.clear();
 
     // Shadow
-    body.fillStyle(0x000000, 0.25);
-    body.fillEllipse(0, 8 * s, 16 * s, 6 * s);
+    g.fillStyle(0x000000, 0.25);
+    g.fillEllipse(0, 8 * s, 16 * s, 6 * s);
 
-    // Body
-    body.fillStyle(COLORS.PLAYER_FACE);
-    body.fillRoundedRect(-8 * s, -10 * s, 16 * s, 18 * s, 3 * s);
+    if (shape === 'pyramid') {
+      const top = { x: 0, y: -12 * s };
+      const left = { x: -10 * s, y: 10 * s };
+      const right = { x: 10 * s, y: 10 * s };
 
-    // Outline
-    body.lineStyle(1.25 * s, COLORS.PLAYER_EDGE);
-    body.strokeRoundedRect(-8 * s, -10 * s, 16 * s, 18 * s, 3 * s);
+      g.fillStyle(faceColor);
+      g.fillTriangle(top.x, top.y, left.x, left.y, right.x, right.y);
 
-    // Eyes
-    body.fillStyle(0xffffff);
-    body.fillCircle(-3 * s, -4 * s, 3 * s);
-    body.fillCircle(3 * s, -4 * s, 3 * s);
-    body.fillStyle(0x000000);
-    body.fillCircle(-2 * s, -4 * s, 1.5 * s);
-    body.fillCircle(4 * s, -4 * s, 1.5 * s);
+      g.lineStyle(1.25 * s, edgeColor, 1);
+      g.beginPath();
+      g.moveTo(top.x, top.y);
+      g.lineTo(left.x, left.y);
+      g.lineTo(right.x, right.y);
+      g.closePath();
+      g.strokePath();
+    } else {
+      const radius = shape === 'cylinder' ? 8 * s : 3 * s;
+      g.fillStyle(faceColor);
+      g.fillRoundedRect(-8 * s, -10 * s, 16 * s, 18 * s, radius);
 
-    this.player.add(body);
+      g.lineStyle(1.25 * s, edgeColor, 1);
+      g.strokeRoundedRect(-8 * s, -10 * s, 16 * s, 18 * s, radius);
+
+      if (shape === 'cylinder') {
+        g.fillStyle(faceColor);
+        g.fillEllipse(0, -10 * s, 16 * s, 6 * s);
+        g.lineStyle(1.25 * s, edgeColor, 1);
+        g.strokeEllipse(0, -10 * s, 16 * s, 6 * s);
+      }
+    }
+
+    const eyeYOffset = shape === 'pyramid' ? 2 * s : 0;
+
+    if (!dead) {
+      g.fillStyle(0xffffff);
+      g.fillCircle(-3 * s, (-4 * s) + eyeYOffset, 3 * s);
+      g.fillCircle(3 * s, (-4 * s) + eyeYOffset, 3 * s);
+      g.fillStyle(0x000000);
+      g.fillCircle(-2 * s, (-4 * s) + eyeYOffset, 1.5 * s);
+      g.fillCircle(4 * s, (-4 * s) + eyeYOffset, 1.5 * s);
+      return;
+    }
+
+    // X eyes for dead marker
+    g.lineStyle(1.5 * s, 0xffffff, 1);
+    // Left eye X
+    g.beginPath();
+    g.moveTo(-5 * s, (-6 * s) + eyeYOffset);
+    g.lineTo(-1 * s, (-2 * s) + eyeYOffset);
+    g.moveTo(-1 * s, (-6 * s) + eyeYOffset);
+    g.lineTo(-5 * s, (-2 * s) + eyeYOffset);
+    g.strokePath();
+    // Right eye X
+    g.beginPath();
+    g.moveTo(1 * s, (-6 * s) + eyeYOffset);
+    g.lineTo(5 * s, (-2 * s) + eyeYOffset);
+    g.moveTo(5 * s, (-6 * s) + eyeYOffset);
+    g.lineTo(1 * s, (-2 * s) + eyeYOffset);
+    g.strokePath();
   }
 
   private createFlashOverlay() {
@@ -595,6 +761,8 @@ export class GameScene extends Phaser.Scene {
     this.gameState.lives--;
     this.gameState.penaltyTimeMs += PENALTY_MS; // 30s penalty
 
+    // Penalty animation is now handled by DOM (GameUI) for proper z-index control
+
     if (this.hintsEnabled) {
       this.mergeHintsForNextLife();
     }
@@ -617,7 +785,8 @@ export class GameScene extends Phaser.Scene {
       emitGameEvent('stateUpdate', { ...this.gameState });
       emitGameEvent('lifeLost', {
         lives: this.gameState.lives,
-        penaltyMs: PENALTY_MS
+        penaltyMs: PENALTY_MS,
+        finalPos: finalPos
       });
       this.handleGameOver();
       return;
@@ -635,11 +804,11 @@ export class GameScene extends Phaser.Scene {
       this.redrawHintOverlays();
     }
 
-    // Emit event for UI (penalty visual)
     emitGameEvent('stateUpdate', { ...this.gameState });
     emitGameEvent('lifeLost', {
       lives: this.gameState.lives,
-      penaltyMs: PENALTY_MS
+      penaltyMs: PENALTY_MS,
+      finalPos: finalPos
     });
 
     // Block input during respawn sequence
@@ -690,10 +859,54 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  private showPenaltyAnimation(pos: Position) {
+    const px = this.offsetX + pos.x * TILE_SIZE + TILE_SIZE / 2;
+    const py = this.offsetY + pos.y * TILE_SIZE + TILE_SIZE / 2 - this.tileFaceLift;
+
+    const s = TILE_SIZE / 32;
+    // Use bold Nunito to match UI
+    const text = this.add.text(px, py, '+30s', {
+      fontFamily: 'Nunito, sans-serif',
+      fontSize: `${Math.round(24 * s)}px`,
+      fontStyle: '900',
+      color: '#ff4d4d',
+      stroke: '#000000',
+      strokeThickness: 3 * s,
+    });
+    text.setOrigin(0.5);
+    text.setDepth(100);
+    text.setScale(0);
+
+    // Sequence: Pop -> Float & Fade
+    this.tweens.add({
+      targets: text,
+      scale: 1.2,
+      y: py - 25 * s,
+      duration: 400,
+      ease: 'Back.out',
+      onComplete: () => {
+        this.tweens.add({
+          targets: text,
+          y: py - 40 * s,
+          alpha: 0,
+          scale: 0.8,
+          duration: 600,
+          ease: 'Sine.easeIn',
+          onComplete: () => {
+            text.destroy();
+          }
+        });
+      }
+    });
+  }
+
   private handleGameOver() {
     this.isPlaying = false;
     this.gameState.isComplete = true;
     this.gameState.endTime = Date.now(); // Timer continues until end
+
+    // Emit state update immediately so UI stops timer right away
+    emitGameEvent('stateUpdate', { ...this.gameState });
 
     // Hide player
     this.player.setVisible(false);
@@ -710,9 +923,6 @@ export class GameScene extends Phaser.Scene {
       delay: 200, // Linger for 200ms before fading
       ease: 'Quad.easeOut',
       onComplete: () => {
-        // Emit state update so UI knows game is complete
-        emitGameEvent('stateUpdate', { ...this.gameState });
-
         // Show analysis first, then emit gameComplete when animation finishes
         this.drawEndGameAnalysis(() => {
           emitGameEvent('gameComplete', {
@@ -734,8 +944,17 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    // Clear previous analysis if any
+    // If analysis already completed, don't replay - just fire onComplete
+    if (this.analysisCompleted) {
+      onComplete?.();
+      return;
+    }
+
+    // Clear previous analysis if any (this also resets analysisCompleted to false)
     this.clearAnalysis();
+
+    // Clear hint overlays so they don't shake during solution replay
+    this.clearHintOverlays();
 
     const path = this.puzzle.solutionPath;
     const s = TILE_SIZE / 32;
@@ -911,6 +1130,10 @@ export class GameScene extends Phaser.Scene {
           });
           this.analysisTweens.push(fadeOutTween);
           this.drawUserAttemptPaths();
+          // Mark analysis as completed so it won't replay
+          this.analysisCompleted = true;
+          // Emit event so UI can show replay button
+          emitGameEvent('analysisComplete', {});
           // Notify when analysis is fully complete (after attempt paths fade in)
           if (onComplete) {
             this.time.delayedCall(400, onComplete);
@@ -1072,6 +1295,8 @@ export class GameScene extends Phaser.Scene {
     if (this.gameState.attempts.length === 0) return;
 
     const s = TILE_SIZE / 32;
+    const shape = this.resolveCharacterShape();
+    const { face, edge } = this.resolvePlayerColors();
 
     // Group attempts by failure position
     const failuresByPos = new Map<string, { pos: Position, indices: number[] }>();
@@ -1097,37 +1322,9 @@ export class GameScene extends Phaser.Scene {
       container.setAlpha(0);
       this.analysisObjects.push(container);
 
-      // Draw character body (same as player but with X eyes)
+      // Draw character body (same cosmetics as player, but with X eyes)
       const body = this.add.graphics();
-
-      // Shadow
-      body.fillStyle(0x000000, 0.25);
-      body.fillEllipse(0, 8 * s, 16 * s, 6 * s);
-
-      // Body
-      body.fillStyle(COLORS.PLAYER_FACE);
-      body.fillRoundedRect(-8 * s, -10 * s, 16 * s, 18 * s, 3 * s);
-
-      // Outline
-      body.lineStyle(1.25 * s, COLORS.PLAYER_EDGE);
-      body.strokeRoundedRect(-8 * s, -10 * s, 16 * s, 18 * s, 3 * s);
-
-      // X eyes instead of normal eyes
-      body.lineStyle(1.5 * s, 0xffffff, 1);
-      // Left eye X
-      body.beginPath();
-      body.moveTo(-5 * s, -6 * s);
-      body.lineTo(-1 * s, -2 * s);
-      body.moveTo(-1 * s, -6 * s);
-      body.lineTo(-5 * s, -2 * s);
-      body.strokePath();
-      // Right eye X
-      body.beginPath();
-      body.moveTo(1 * s, -6 * s);
-      body.lineTo(5 * s, -2 * s);
-      body.moveTo(5 * s, -6 * s);
-      body.lineTo(1 * s, -2 * s);
-      body.strokePath();
+      this.drawCharacterGraphic(body, { s, faceColor: face, edgeColor: edge, shape, dead: true });
 
       container.add(body);
 
@@ -1143,7 +1340,7 @@ export class GameScene extends Phaser.Scene {
 
       indices.slice(0, 5).forEach((attemptNum, i) => {
         const badgePos = positions[i];
-        
+
         const badgeG = this.add.graphics();
         badgeG.fillStyle(0xffffff, 1);
         badgeG.fillCircle(badgePos.x, badgePos.y, 6 * s);
@@ -1410,6 +1607,14 @@ export class GameScene extends Phaser.Scene {
     this.gameState.attempts = attempts || [];
     this.gameState.isComplete = true;
     this.player.setVisible(false);
+    this.drawEndGameAnalysis();
+  }
+
+  // Public method to force replay the analysis animation
+  public replayAnalysis() {
+    // Clear existing analysis and reset completed flag
+    this.clearAnalysis();
+    // Now draw fresh
     this.drawEndGameAnalysis();
   }
 
@@ -1853,10 +2058,23 @@ export class GameScene extends Phaser.Scene {
     this.reviewTileContainers.forEach(c => c.destroy());
     this.reviewTileContainers = [];
 
-    // If clearing (null index) or invalid index, stop here
+    4    // If clearing (null index) or invalid index, restore solution and stop here
     if (attemptIndex === null || attemptIndex < 0 || !this.gameState.attempts[attemptIndex]) {
+      // Restore solution analysis visibility
+      this.analysisObjects.forEach(obj => {
+        if ('setAlpha' in obj && typeof obj.setAlpha === 'function') {
+          obj.setAlpha(1);
+        }
+      });
       return;
     }
+
+    // Hide solution analysis to show only the failed attempt
+    this.analysisObjects.forEach(obj => {
+      if ('setAlpha' in obj && typeof obj.setAlpha === 'function') {
+        obj.setAlpha(0);
+      }
+    });
 
     const attempt = this.gameState.attempts[attemptIndex];
     const path = attempt.path;
@@ -2199,5 +2417,8 @@ export class GameScene extends Phaser.Scene {
     // Destroy all analysis game objects
     this.analysisObjects.forEach(obj => obj.destroy());
     this.analysisObjects = [];
+
+    // Reset completed flag so interrupted animations can be replayed
+    this.analysisCompleted = false;
   }
 }

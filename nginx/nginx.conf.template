@@ -57,10 +57,17 @@ http {
             proxy_set_header X-Forwarded-Proto $scheme;
         }
 
-        # Health check (proxied to backend to ensure it's actually up)
-        # Nginx will only return 200 if backend is reachable
-        location /health {
-            proxy_pass http://backend;
+        # Health checks (always handled by Next.js)
+        location = /health {
+            proxy_pass http://frontend/api/health;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        location = /api/health {
+            proxy_pass http://frontend;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

@@ -8,11 +8,12 @@ import MoreMenuModal from '@/components/MoreMenuModal';
 import OverlayShell from '@/components/OverlayShell';
 import AccountView from '@/components/AccountView';
 import LeaderboardView from '@/components/LeaderboardView';
-import { onGameEvent, TILE_SIZE, getNewYorkDateString, type Direction, type PuzzleData } from '@/game';
+import HallOfFameView from '@/components/HallOfFameView';
+import { onGameEvent, emitGameEvent, TILE_SIZE, getNewYorkDateString, type Direction, type PuzzleData } from '@/game';
 import type { GameControls } from '@/game/PhaserGame';
 import { api } from '@/lib/api';
-import { prefetchAccount, prefetchLeaderboard } from '@/lib/api/cached';
-import { getPlayerStats } from '@/utils/storage';
+import { cachedApi, prefetchAccount, prefetchLeaderboard, readCachedMe } from '@/lib/api/cached';
+import { getPlayerStats, getStorageScope, setStorageScope } from '@/utils/storage';
 import { useGlobalSwipeMoves } from '@/game/useGlobalSwipeMoves';
 import baseStyles from '@/app/page.module.css';
 import styles from './play-client.module.css';
@@ -26,8 +27,6 @@ const PhaserGame = dynamic(() => import('@/game/PhaserGame'), {
   ),
 });
 
-const DEVTOOLS_PREVIEW_FEATURES_KEY = 'mazle_devtools_preview_features_v1';
-
 function isValidNyDateString(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
@@ -40,13 +39,14 @@ export default function ArchivePlayClient({ date }: { date: string }) {
   const [loadError, setLoadError] = useState<{ kind: 'invalid' | 'locked' | 'missing' | 'unknown'; message: string } | null>(null);
 
   const [stats, setStats] = useState(() => getPlayerStats());
+  const [accountMe, setAccountMe] = useState(() => readCachedMe());
   const [showShareCard, setShowShareCard] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [showHallOfFame, setShowHallOfFame] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
-  const [previewFeaturesEnabled, setPreviewFeaturesEnabled] = useState(false);
   const [gameResult, setGameResult] = useState<{ moveCount: number; timeMs: number; failed?: boolean; attempts?: any[] } | null>(null);
   const [isGameReady, setIsGameReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -61,38 +61,57 @@ export default function ArchivePlayClient({ date }: { date: string }) {
   const gameControlsRef = useRef<GameControls | null>(null);
   const gameFrameRef = useRef<HTMLDivElement | null>(null);
   const gameStageRef = useRef<HTMLDivElement | null>(null);
+  const menuButtonRef = useRef<HTMLButtonElement | null>(null);
   const [gameFrameSizePx, setGameFrameSizePx] = useState<{ width: number; height: number } | null>(null);
 
   const safeDate = useMemo(() => (isValidNyDateString(date) ? date : null), [date]);
   const expectedPath = safeDate ? `/play/${safeDate}` : null;
   const isRouteOverlayOpen = expectedPath != null && pathname !== expectedPath;
-  const isModalOpen = showHelp || showStats || showShareCard || showMenu || showLeaderboard || showAccount;
+  const isModalOpen = showHelp || showStats || showShareCard || showMenu || showLeaderboard || showHallOfFame || showAccount;
   const shouldPause = isRouteOverlayOpen || isModalOpen;
 
   useEffect(() => {
-    try {
-      setPreviewFeaturesEnabled(localStorage.getItem(DEVTOOLS_PREVIEW_FEATURES_KEY) === '1');
-    } catch {
-      setPreviewFeaturesEnabled(false);
-    }
+    let cancelled = false;
+    cachedApi
+      .me()
+      .then((me) => {
+        setAccountMe(me ?? null);
+        const scope = me?.mode === 'user' && me.userId ? `user:${me.userId}` : 'guest';
+        setStorageScope(scope);
+        if (!cancelled) {
+          setStats(getPlayerStats(scope));
+        }
+      })
+      .catch(() => {
+        setAccountMe(readCachedMe());
+        const fallbackScope = getStorageScope();
+        setStorageScope(fallbackScope);
+        if (!cancelled) {
+          setStats(getPlayerStats(fallbackScope));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
-    if (process.env.NODE_ENV === 'production' && !previewFeaturesEnabled) return;
     const todayNy = getNewYorkDateString();
     const runPrefetch = () => {
       prefetchAccount();
-      prefetchLeaderboard(todayNy, 50);
+      prefetchLeaderboard(todayNy, 200);
     };
 
-    if ('requestIdleCallback' in window) {
-      const id = window.requestIdleCallback(runPrefetch, { timeout: 1500 });
-      return () => window.cancelIdleCallback(id);
+    const ric = (window as any).requestIdleCallback as ((cb: IdleRequestCallback, opts?: { timeout: number }) => number) | undefined;
+    const cic = (window as any).cancelIdleCallback as ((id: number) => void) | undefined;
+    if (typeof ric === 'function') {
+      const id = ric(runPrefetch, { timeout: 1500 });
+      return () => cic?.(id);
     }
 
     const id = window.setTimeout(runPrefetch, 800);
     return () => window.clearTimeout(id);
-  }, [previewFeaturesEnabled]);
+  }, []);
 
   // Sync CSS custom property to the real visual viewport height (iOS-safe)
   useEffect(() => {
@@ -137,7 +156,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
       .archivePuzzle(safeDate)
       .then((res) => {
         if (cancelled) return;
-        setPuzzle(res.puzzle);
+        setPuzzle({ ...res.puzzle, variant: 'archive' });
         setPuzzleNumber(res.puzzleNumber);
       })
       .catch((err) => {
@@ -163,6 +182,8 @@ export default function ArchivePlayClient({ date }: { date: string }) {
       setGameResult(result);
       setShowShareCard(true);
       setIsPlaying(false);
+      // Notify LeaderboardView to refresh with latest data
+      emitGameEvent('leaderboardRefresh', {});
 
       const failedAttempts = result.attempts?.length ?? 0;
       const livesRemaining = result.failed ? 0 : 3 - failedAttempts;
@@ -174,8 +195,13 @@ export default function ArchivePlayClient({ date }: { date: string }) {
       });
     });
 
+    const unsubscribeOpenAccount = onGameEvent('openAccount', () => {
+      setShowAccount(true);
+    });
+
     return () => {
       unsubscribeComplete();
+      unsubscribeOpenAccount();
     };
   }, []);
 
@@ -251,11 +277,8 @@ export default function ArchivePlayClient({ date }: { date: string }) {
     setIsGameReady(true);
     controls.setPaused(shouldPause);
 
-    const hasSeenHelp = localStorage.getItem('mazle_seen_help');
-    if (!hasSeenHelp) {
-      setShowHelp(true);
-      localStorage.setItem('mazle_seen_help', 'true');
-    }
+    const me = readCachedMe();
+    emitGameEvent('cosmeticsUpdate', me?.mode === 'user' && me.profile ? me.profile : { characterId: 'default', skinId: 'default' });
   }, [shouldPause]);
 
   const handleBegin = useCallback(() => {
@@ -301,16 +324,28 @@ export default function ArchivePlayClient({ date }: { date: string }) {
 
   const isPostGame = !isPlaying && !!gameResult;
   const shouldBlur = showShareCard || (!isPlaying && isGameReady && !showInlineResult);
+  const useLightBlur =
+    showMenu &&
+    !showShareCard &&
+    !showHelp &&
+    !showStats &&
+    !showLeaderboard &&
+    !showAccount &&
+    !showHallOfFame;
   const showResultsButton = showInlineResult;
-  const showMenuButton = process.env.NODE_ENV !== 'production' || previewFeaturesEnabled;
+
+  const handleOpenStats = useCallback(() => {
+    setStats(getPlayerStats());
+    setShowStats(true);
+  }, []);
 
   const onBackToToday = useCallback(() => {
     router.push('/');
   }, [router]);
 
   const onBackToArchive = useCallback(() => {
-    window.location.assign('/archive');
-  }, []);
+    router.push('/archive');
+  }, [router]);
 
   const onUnlockArchive = useCallback(() => {
     if (!safeDate) return;
@@ -321,17 +356,19 @@ export default function ArchivePlayClient({ date }: { date: string }) {
     return (
       <main className={`${baseStyles.main} bg-pattern`} style={{ justifyContent: 'flex-start' }}>
         <Header
-          streak={stats.currentStreak || 0}
+          streak={accountMe?.mode === 'user' && accountMe.stats ? accountMe.stats.playedStreak : (stats.currentStreak || 0)}
           onHelpClick={() => setShowHelp(true)}
-          onStatsClick={() => setShowStats(true)}
-          onMenuClick={showMenuButton ? () => setShowMenu(true) : undefined}
+          onMenuClick={() => setShowMenu(true)}
+          menuButtonRef={menuButtonRef}
         />
         <MoreMenuModal
           open={showMenu}
           onClose={() => setShowMenu(false)}
+          onOpenStats={handleOpenStats}
           onOpenLeaderboard={() => setShowLeaderboard(true)}
+          onOpenHallOfFame={() => setShowHallOfFame(true)}
           onOpenAccount={() => setShowAccount(true)}
-          onOpenArchive={onBackToArchive}
+          triggerButtonRef={menuButtonRef}
         />
         <div className={styles.errorCard}>
           <div className={styles.errorTitle}>
@@ -372,24 +409,32 @@ export default function ArchivePlayClient({ date }: { date: string }) {
     <ErrorBoundary>
       <main className={`${baseStyles.main} bg-pattern`}>
         <Header
-          streak={stats.currentStreak || 0}
+          streak={accountMe?.mode === 'user' && accountMe.stats ? accountMe.stats.playedStreak : (stats.currentStreak || 0)}
           onHelpClick={() => setShowHelp(true)}
-          onStatsClick={() => setShowStats(true)}
-          onMenuClick={showMenuButton ? () => setShowMenu(true) : undefined}
+          onMenuClick={() => setShowMenu(true)}
+          menuButtonRef={menuButtonRef}
         />
 
         <div className={baseStyles.gameWrapper}>
           <div className={styles.topRow}>
-            <button type="button" className={styles.backButton} onClick={onBackToArchive}>
-              ← Archive
-            </button>
-            <button type="button" className={styles.backButton} onClick={onBackToToday}>
-              Today
-            </button>
+            <div className={styles.topRowLeft}>
+              <button type="button" className={styles.backButton} onClick={onBackToArchive}>
+                ← Archive
+              </button>
+              <button type="button" className={styles.backButton} onClick={onBackToToday}>
+                Today
+              </button>
+            </div>
+            <div className={styles.topRowRight}>
+              <button type="button" className={styles.backButton} onClick={() => setShowHallOfFame(true)}>
+                Podium
+              </button>
+            </div>
           </div>
 
           <div className={baseStyles.puzzleNumberBanner}>
             <div className={styles.puzzleNumberBlock}>
+              <span className={styles.modeChip}>Archive</span>
               <span className={baseStyles.puzzleNumberText}>Mazle #{puzzleNumber}</span>
               <span className={styles.puzzleDateText}>{safeDate}</span>
             </div>
@@ -408,7 +453,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
           <div ref={gameStageRef} className={baseStyles.gameArea}>
             <div
               ref={gameFrameRef}
-              className={baseStyles.gameFrame}
+              className={`${baseStyles.gameFrame} ${shouldBlur ? (useLightBlur ? baseStyles.gameFrameBlurredLight : baseStyles.gameFrameBlurred) : ''}`}
               style={{
                 width: gameFrameSizePx ? `${gameFrameSizePx.width}px` : undefined,
                 height: gameFrameSizePx ? `${gameFrameSizePx.height}px` : undefined,
@@ -420,7 +465,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
                 viewportHeight={baseHeight}
                 onReady={handleGameReady}
               />
-              <div className={`${baseStyles.blurOverlay} ${!shouldBlur ? baseStyles.blurOverlayHidden : ''}`} />
+              <div className={`${baseStyles.darkOverlay} ${shouldBlur ? baseStyles.darkOverlayVisible : ''}`} />
               {!isPlaying && isGameReady && !showInlineResult && !showShareCard && (
                 <div className={baseStyles.startOverlay}>
                   {isPostGame ? (
@@ -466,19 +511,32 @@ export default function ArchivePlayClient({ date }: { date: string }) {
         <MoreMenuModal
           open={showMenu}
           onClose={() => setShowMenu(false)}
+          onOpenStats={handleOpenStats}
           onOpenLeaderboard={() => setShowLeaderboard(true)}
+          onOpenHallOfFame={() => setShowHallOfFame(true)}
           onOpenAccount={() => setShowAccount(true)}
-          onOpenArchive={onBackToArchive}
+          triggerButtonRef={menuButtonRef}
         />
 
-        {showLeaderboard && (
+        <OverlayShell
+          title="Leaderboard"
+          // subtitle="Today"
+          variant="overlay"
+          onClose={() => setShowLeaderboard(false)}
+          open={showLeaderboard}
+        >
+          <LeaderboardView />
+          <AdSlot placement="leaderboard" />
+        </OverlayShell>
+
+        {showHallOfFame && (
           <OverlayShell
-            title="Leaderboard"
-            subtitle="Today"
+            title="Hall of Fame"
+            subtitle="Podium history"
             variant="overlay"
-            onClose={() => setShowLeaderboard(false)}
+            onClose={() => setShowHallOfFame(false)}
           >
-            <LeaderboardView />
+            <HallOfFameView initialDate={safeDate} />
             <AdSlot placement="leaderboard" />
           </OverlayShell>
         )}
@@ -486,7 +544,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
         {showAccount && (
           <OverlayShell
             title="Account"
-            subtitle="Name, sign-in, settings"
+            // subtitle="Name, sign-in, settings"
             variant="overlay"
             onClose={() => setShowAccount(false)}
           >
@@ -503,8 +561,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
             optimalMoves={puzzle.optimalMoves}
             failed={gameResult.failed}
             attempts={gameResult.attempts}
-            leaderboardDate={(process.env.NODE_ENV !== 'production' || previewFeaturesEnabled) ? safeDate : undefined}
-            leaderboardAllowSubmit={false}
+            mapType={puzzle.mapType}
             secondaryActionLabel="Back to Archive"
             onSecondaryAction={onBackToArchive}
             footerText="Pick another day in the Archive."

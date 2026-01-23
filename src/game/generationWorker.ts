@@ -154,7 +154,7 @@ async function generate(
 
       puzzle = wasm.generateWithConfig(seed, config);
     } else {
-      puzzle = wasm.generate(seed);
+      puzzle = wasm.generateIce(seed);
     }
 
     const elapsed = performance.now() - startTime;

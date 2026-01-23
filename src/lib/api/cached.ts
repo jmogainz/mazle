@@ -1,5 +1,9 @@
-import { realApi } from './real';
+import { api } from './index';
+import { setPrefs } from '@/lib/prefs';
+import { setGuestDisplayName } from '@/utils/storage';
 import type {
+  ArchiveDaysResponse,
+  HallOfFamePodiumResponse,
   LeaderboardAroundResponse,
   LeaderboardMeResponse,
   LeaderboardTopResponse,
@@ -15,8 +19,10 @@ const CACHE = new Map<string, CacheEntry<unknown>>();
 const INFLIGHT = new Map<string, { promise: Promise<unknown>; epoch: number }>();
 const EPOCH = new Map<string, number>();
 
-const ME_TTL_MS = 5 * 60 * 1000;
-const LEADERBOARD_TTL_MS = 20 * 1000;
+const ME_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const LEADERBOARD_TTL_MS = 5 * 60 * 1000; // 5 minutes (longer for better navigation UX)
+const ARCHIVE_DAYS_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const HALL_OF_FAME_TTL_MS = 10 * 60 * 1000; // 10 minutes (historical data, rarely changes)
 
 function nowMs(): number {
   return Date.now();
@@ -87,8 +93,8 @@ function primeCache<T>(key: string, fetcher: () => Promise<T>, ttlMs: number): v
   void fetchCached(key, fetcher, ttlMs).catch(() => null);
 }
 
-function leaderboardTopKey(date: string, limit: number): string {
-  return `lb:top:${date}:${limit}`;
+function leaderboardTopKey(date: string, limit: number, offset: number): string {
+  return `lb:top:${date}:${limit}:${offset}`;
 }
 
 function leaderboardMeKey(date: string): string {
@@ -99,41 +105,114 @@ function leaderboardAroundKey(date: string, rank: number, window: number): strin
   return `lb:around:${date}:${rank}:${window}`;
 }
 
-export const cachedApi = {
-  me: async (): Promise<MeResponse> => fetchCached('me', () => realApi.me(), ME_TTL_MS),
+// Invalidate all leaderboard cache entries for a given date
+export function invalidateLeaderboardCache(date: string): void {
+  const prefix = `lb:`;
+  const datePrefix = `${prefix}top:${date}:`;
+  const meKey = `lb:me:${date}`;
+  const aroundPrefix = `${prefix}around:${date}:`;
 
-  leaderboardTop: async (date: string, limit = 50): Promise<LeaderboardTopResponse> =>
-    fetchCached(leaderboardTopKey(date, limit), () => realApi.leaderboardTop(date, limit), LEADERBOARD_TTL_MS),
+  for (const key of CACHE.keys()) {
+    if (key.startsWith(datePrefix) || key === meKey || key.startsWith(aroundPrefix)) {
+      CACHE.delete(key);
+      bumpEpoch(key); // Invalidate any in-flight requests too
+    }
+  }
+}
+
+export function invalidateMeCache(): void {
+  CACHE.delete('me');
+  INFLIGHT.delete('me');
+  bumpEpoch('me');
+}
+
+function archiveDaysKey(from: string, to: string): string {
+  return `archive:days:${from}:${to}`;
+}
+
+function hallOfFamePodiumKey(date: string): string {
+  return `hof:podium:${date}`;
+}
+
+// Sync server settings to local prefs when user data is available
+function syncMeSettingsToPrefs(me: MeResponse): void {
+  if (me.mode === 'user' && typeof me.settings?.leaderboardAutoSubmit === 'boolean') {
+    setPrefs({ leaderboardAutoSubmitWins: me.settings.leaderboardAutoSubmit });
+  }
+}
+
+function syncGuestNameToStorage(me: MeResponse): void {
+  if (me.mode !== 'guest') return;
+  if (typeof me.displayName !== 'string' || me.displayName.length === 0) return;
+  setGuestDisplayName(me.displayName);
+}
+
+export const cachedApi = {
+  me: async (): Promise<MeResponse> => {
+    const me = await fetchCached('me', () => api.me(), ME_TTL_MS);
+    syncMeSettingsToPrefs(me);
+    syncGuestNameToStorage(me);
+    return me;
+  },
+
+  leaderboardTop: async (date: string, limit = 50, offset = 0): Promise<LeaderboardTopResponse> =>
+    fetchCached(
+      leaderboardTopKey(date, limit, offset),
+      () => api.leaderboardTop(date, limit, offset),
+      LEADERBOARD_TTL_MS
+    ),
 
   leaderboardMe: async (date: string): Promise<LeaderboardMeResponse> =>
-    fetchCached(leaderboardMeKey(date), () => realApi.leaderboardMe(date), LEADERBOARD_TTL_MS),
+    fetchCached(leaderboardMeKey(date), () => api.leaderboardMe(date), LEADERBOARD_TTL_MS),
 
   leaderboardAround: async (date: string, rank: number, window = 5): Promise<LeaderboardAroundResponse> =>
-    fetchCached(leaderboardAroundKey(date, rank, window), () => realApi.leaderboardAround(date, rank, window), LEADERBOARD_TTL_MS),
+    fetchCached(
+      leaderboardAroundKey(date, rank, window),
+      () => api.leaderboardAround(date, rank, window),
+      LEADERBOARD_TTL_MS
+    ),
+
+  hallOfFamePodium: async (date: string): Promise<HallOfFamePodiumResponse> =>
+    fetchCached(
+      hallOfFamePodiumKey(date),
+      () => api.hallOfFamePodium(date),
+      HALL_OF_FAME_TTL_MS
+    ),
 };
 
 export async function fetchMeFresh(): Promise<MeResponse> {
-  return fetchFresh('me', () => realApi.me(), ME_TTL_MS);
+  const me = await fetchFresh('me', () => api.me(), ME_TTL_MS);
+  syncMeSettingsToPrefs(me);
+  syncGuestNameToStorage(me);
+  return me;
 }
 
-export async function fetchLeaderboardTopFresh(date: string, limit = 50): Promise<LeaderboardTopResponse> {
-  return fetchFresh(leaderboardTopKey(date, limit), () => realApi.leaderboardTop(date, limit), LEADERBOARD_TTL_MS);
+export async function fetchLeaderboardTopFresh(date: string, limit = 50, offset = 0): Promise<LeaderboardTopResponse> {
+  return fetchFresh(
+    leaderboardTopKey(date, limit, offset),
+    () => api.leaderboardTop(date, limit, offset),
+    LEADERBOARD_TTL_MS
+  );
 }
 
 export async function fetchLeaderboardMeFresh(date: string): Promise<LeaderboardMeResponse> {
-  return fetchFresh(leaderboardMeKey(date), () => realApi.leaderboardMe(date), LEADERBOARD_TTL_MS);
+  return fetchFresh(leaderboardMeKey(date), () => api.leaderboardMe(date), LEADERBOARD_TTL_MS);
 }
 
 export async function fetchLeaderboardAroundFresh(date: string, rank: number, window = 5): Promise<LeaderboardAroundResponse> {
-  return fetchFresh(leaderboardAroundKey(date, rank, window), () => realApi.leaderboardAround(date, rank, window), LEADERBOARD_TTL_MS);
+  return fetchFresh(
+    leaderboardAroundKey(date, rank, window),
+    () => api.leaderboardAround(date, rank, window),
+    LEADERBOARD_TTL_MS
+  );
 }
 
 export function readCachedMe(): MeResponse | null {
   return readCache<MeResponse>('me');
 }
 
-export function readCachedLeaderboardTop(date: string, limit = 50): LeaderboardTopResponse | null {
-  return readCache<LeaderboardTopResponse>(leaderboardTopKey(date, limit));
+export function readCachedLeaderboardTop(date: string, limit = 50, offset = 0): LeaderboardTopResponse | null {
+  return readCache<LeaderboardTopResponse>(leaderboardTopKey(date, limit, offset));
 }
 
 export function readCachedLeaderboardMe(date: string): LeaderboardMeResponse | null {
@@ -145,19 +224,19 @@ export function readCachedLeaderboardAround(date: string, rank: number, window =
 }
 
 export function prefetchAccount(): void {
-  primeCache('me', () => realApi.me(), ME_TTL_MS);
+  primeCache('me', () => api.me(), ME_TTL_MS);
 }
 
 export function prefetchLeaderboard(date: string, limit = 50): void {
-  primeCache(leaderboardTopKey(date, limit), () => realApi.leaderboardTop(date, limit), LEADERBOARD_TTL_MS);
+  primeCache(leaderboardTopKey(date, limit, 0), () => api.leaderboardTop(date, limit, 0), LEADERBOARD_TTL_MS);
   primeCache(
     leaderboardMeKey(date),
     async () => {
-      const me = await realApi.leaderboardMe(date);
+      const me = await api.leaderboardMe(date);
       if (me?.rank) {
         primeCache(
           leaderboardAroundKey(date, me.rank, 5),
-          () => realApi.leaderboardAround(date, me.rank, 5),
+          () => api.leaderboardAround(date, me.rank, 5),
           LEADERBOARD_TTL_MS
         );
       }
@@ -165,4 +244,26 @@ export function prefetchLeaderboard(date: string, limit = 50): void {
     },
     LEADERBOARD_TTL_MS
   );
+}
+
+export function prefetchArchiveDays(from: string, to: string): void {
+  primeCache(archiveDaysKey(from, to), () => api.archiveDays(from, to), ARCHIVE_DAYS_TTL_MS);
+}
+
+export function readCachedArchiveDays(from: string, to: string): ArchiveDaysResponse | null {
+  return readCache<ArchiveDaysResponse>(archiveDaysKey(from, to));
+}
+
+export async function getCachedArchiveDays(from: string, to: string): Promise<ArchiveDaysResponse> {
+  return fetchCached(archiveDaysKey(from, to), () => api.archiveDays(from, to), ARCHIVE_DAYS_TTL_MS);
+}
+
+export function prefetchHallOfFame(dates: string[]): void {
+  for (const date of dates) {
+    primeCache(hallOfFamePodiumKey(date), () => api.hallOfFamePodium(date), HALL_OF_FAME_TTL_MS);
+  }
+}
+
+export function readCachedHallOfFamePodium(date: string): HallOfFamePodiumResponse | null {
+  return readCache<HallOfFamePodiumResponse>(hallOfFamePodiumKey(date));
 }

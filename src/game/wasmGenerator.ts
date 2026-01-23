@@ -57,7 +57,7 @@ function computeBackoffMs(attempt: number): number {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Get the Rust backend URL from environment (set at build time)
-// Prefer DEV URL (Ngrok) if available, otherwise use standard URL
+// Prefer DEV URL (tunnel) if available, otherwise use standard URL
 const RUST_BACKEND_URL = process.env.NEXT_PUBLIC_DEV_GENERATOR_URL || process.env.NEXT_PUBLIC_GENERATOR_URL || null;
 
 // ─────────────────────────────────────────────────────────────────────────────

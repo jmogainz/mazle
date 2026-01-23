@@ -3,13 +3,42 @@ export type ApiError = {
   message: string;
 };
 
+export type ThemePreference = 'system' | 'light' | 'dark';
+
+export type UserProfile = {
+  characterId: string;
+  skinId: string;
+};
+
+export type UserSettings = {
+  theme: ThemePreference;
+  leaderboardAutoSubmit: boolean;
+};
+
+export type UserStats = {
+  playedStreak: number;
+  winStreak: number;
+  maxPlayedStreak: number;
+  totalPlayed: number;
+  totalWins: number;
+  avgSolveTimeMs: number | null;
+  goldCount: number;
+  silverCount: number;
+  bronzeCount: number;
+};
+
 export type MeResponse = {
   mode: 'guest' | 'user';
+  userId?: string | null;
   displayName: string;
   entitlements: {
     archiveAccess: boolean;
     adsRemoved: boolean;
+    unlockedSkins: string[];
   };
+  profile?: UserProfile;
+  settings?: UserSettings;
+  stats?: UserStats;
 };
 
 export type GuestResponse = {
@@ -56,19 +85,32 @@ export type LeaderboardEntry = {
   isMe?: boolean;
 };
 
+export type LeaderboardPodiumEntry = {
+  rank: 1 | 2 | 3;
+  displayName: string;
+  timeMs: number;
+  attemptsUsed: number;
+  characterId: string;
+  skinId: string;
+  isMe?: boolean;
+};
+
 export type LeaderboardTopResponse = {
   date: string;
   entries: LeaderboardEntry[];
+  podium?: LeaderboardPodiumEntry[];
+  total?: number;
+  nextOffset?: number | null;
 };
 
 export type LeaderboardMeResponse =
   | {
-      date: string;
-      rank: number;
-      displayName: string;
-      timeMs: number;
-      attemptsUsed: number;
-    }
+    date: string;
+    rank: number;
+    displayName: string;
+    timeMs: number;
+    attemptsUsed: number;
+  }
   | null;
 
 export type LeaderboardAroundResponse = {
@@ -78,14 +120,111 @@ export type LeaderboardAroundResponse = {
 
 export type LeaderboardSubmitRequest = {
   date: string;
-  timeMs: number;
-  attemptsUsed: number;
 };
 
 export type LeaderboardSubmitResponse = {
   ok: true;
   rank?: number;
   updated: boolean;
+};
+
+export type ResultsAttempt = {
+  moveCount: number;
+  correctMoves?: number;
+  deviationIndex?: number;
+  failedAt?: { x: number; y: number } | null;
+  path?: Array<{ x: number; y: number }>;
+};
+
+export type ResultsRecordRequest = {
+  date: string;
+  completed: boolean;
+  timeMs?: number;
+  attemptsUsed?: number;
+  attemptScores?: number[];
+  attempts?: ResultsAttempt[];
+};
+
+export type ResultsRecordResponse = {
+  ok: true;
+  created: boolean;
+  result: {
+    date: string;
+    completed: boolean;
+    timeMs: number | null;
+    attemptsUsed: number | null;
+    attemptScores: number[] | null;
+    attempts: ResultsAttempt[] | null;
+  };
+};
+
+export type ResultsDayResponse = {
+  ok: true;
+  result: {
+    date: string;
+    completed: boolean;
+    timeMs: number | null;
+    attemptsUsed: number | null;
+    attemptScores: number[] | null;
+    attempts: ResultsAttempt[] | null;
+  } | null;
+};
+
+export type ResultsHistoryRow = {
+  date: string;
+  completed: boolean;
+  timeMs: number | null;
+  attemptsUsed: number | null;
+  attemptScores: number[] | null;
+};
+
+export type ResultsHistoryResponse = {
+  ok: true;
+  history: ResultsHistoryRow[];
+};
+
+export type ResultsImportRow = {
+  date: string;
+  completed: boolean;
+  timeMs?: number | null;
+  attemptsUsed?: number | null;
+  attemptScores?: number[] | null;
+  attempts?: ResultsAttempt[] | null;
+};
+
+export type ResultsImportRequest = {
+  history: ResultsImportRow[];
+};
+
+export type ResultsImportResponse = {
+  ok: true;
+  imported: number;
+  skipped: number;
+};
+
+export type HallOfFamePodiumResponse = {
+  date: string;
+  podium: LeaderboardPodiumEntry[];
+};
+
+export type SettingsUpdateRequest = Partial<{
+  theme: ThemePreference;
+  leaderboardAutoSubmit: boolean;
+}>;
+
+export type SettingsUpdateResponse = {
+  ok: true;
+  settings: UserSettings;
+};
+
+export type ProfileUpdateRequest = Partial<{
+  characterId: string;
+  skinId: string;
+}>;
+
+export type ProfileUpdateResponse = {
+  ok: true;
+  profile: UserProfile;
 };
 
 export type ArchiveDay = {

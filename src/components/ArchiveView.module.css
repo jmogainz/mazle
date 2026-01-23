@@ -1,41 +1,173 @@
-.headerRow {
+/* Container for the entire archive view */
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Unified Header */
+.fixedHeader {
+  display: flex;
+  flex-direction: column;
+  background: var(--color-background);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.navRow {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 0.75rem;
+  padding: 0.75rem 0.5rem;
 }
 
-.monthNav {
+.actionRow {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem 0.75rem;
+  gap: 1rem;
 }
 
 .navButton {
-  background: var(--color-background);
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  padding: 0.55rem 0.7rem;
+  background: transparent;
+  border: none;
+  padding: 0.5rem;
   cursor: pointer;
-  font-weight: 800;
-  color: var(--color-text);
+  color: var(--color-secondary);
+  transition: color 0.1s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (hover: hover) {
+  .navButton:hover {
+    color: var(--color-text);
+  }
+}
+
+.navButton:active {
+  transform: scale(0.92);
 }
 
 .navButton:disabled {
-  opacity: 0.5;
+  opacity: 0.25;
   cursor: not-allowed;
 }
 
-.monthLabel {
+.todayButton {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 0.45rem 0.7rem;
+  font-family: var(--font-nunito, 'Nunito', var(--font-system));
   font-weight: 900;
   letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
 }
 
-.subtle {
-  font-size: 0.85rem;
+@media (hover: hover) {
+  .todayButton:hover {
+    background: rgba(var(--color-text-rgb), 0.08);
+    border-color: rgba(var(--color-text-rgb), 0.22);
+  }
+}
+
+.todayButton:active {
+  transform: scale(0.96);
+}
+
+.viewToggle {
+  display: flex;
+  gap: 0.35rem;
+  background: rgba(var(--color-text-rgb), 0.04);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 0.25rem;
+}
+
+.viewToggleButton {
+  width: 34px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
   color: var(--color-secondary);
-  line-height: 1.3;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+@media (hover: hover) {
+  .viewToggleButton:hover {
+    color: var(--color-text);
+    background: rgba(var(--color-text-rgb), 0.06);
+  }
+}
+
+.viewToggleButton:active {
+  transform: scale(0.92);
+}
+
+.viewToggleButtonActive {
+  color: var(--color-primary);
+  background: rgba(106, 170, 100, 0.12);
+}
+
+.monthTitleMain {
+  font-family: var(--font-nunito, 'Nunito', var(--font-system));
+  font-weight: 900;
+  font-size: 1.15rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text);
+  text-align: center;
+}
+
+/* Horizontal carousel with scroll-snap */
+.carousel {
+  flex: 1;
+  display: flex;
+  gap: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.carousel::-webkit-scrollbar {
+  display: none;
+}
+
+/* Each month panel takes full width */
+.monthPanel {
+  flex: 0 0 100%;
+  width: 100%;
+  min-width: 100%;
+  scroll-snap-align: center;
+  scroll-snap-stop: always;
+  display: flex;
+  flex-direction: column;
+  padding: 1rem 0.5rem;
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+.monthTitleSub {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-secondary);
+  margin-top: 0.1rem;
 }
 
 .calendar {
@@ -43,6 +175,8 @@
   border-radius: 12px;
   overflow: hidden;
   background: var(--color-background);
+  display: flex;
+  flex-direction: column;
 }
 
 .weekdays {
@@ -56,6 +190,7 @@
   padding: 0.45rem 0.2rem;
   text-align: center;
   font-size: 0.75rem;
+  font-family: var(--font-nunito, 'Nunito', var(--font-system));
   font-weight: 800;
   color: var(--color-secondary);
   text-transform: uppercase;
@@ -65,6 +200,127 @@
 .grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
+}
+
+.list {
+  flex: 1;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-background);
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.listRow {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-nunito, 'Nunito', var(--font-system));
+}
+
+@media (hover: hover) {
+  .listRow:hover {
+    border-color: rgba(var(--color-text-rgb), 0.22);
+  }
+}
+
+.listRow:active:not(:disabled) {
+  transform: scale(0.995);
+  background: rgba(var(--color-text-rgb), 0.04);
+}
+
+.listRow:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.listRowToday {
+  border-color: rgba(106, 170, 100, 0.45);
+}
+
+.listRowLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.listRowTitle {
+  font-weight: 900;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.listRowSubtitle {
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--color-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.listRowRight {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.statusBadge {
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-radius: 999px;
+  padding: 0.3rem 0.55rem;
+  border: 1px solid transparent;
+}
+
+.statusSolved {
+  background: rgba(106, 170, 100, 0.14);
+  border-color: rgba(106, 170, 100, 0.25);
+  color: var(--color-text);
+}
+
+.statusDnf {
+  background: rgba(255, 77, 77, 0.12);
+  border-color: rgba(255, 77, 77, 0.22);
+  color: var(--color-text);
+}
+
+.statusUnplayed {
+  background: rgba(var(--color-text-rgb), 0.04);
+  border-color: rgba(var(--color-text-rgb), 0.10);
+  color: var(--color-secondary);
+}
+
+.statusLocked {
+  background: rgba(var(--color-text-rgb), 0.04);
+  border-color: rgba(var(--color-text-rgb), 0.10);
+  color: var(--color-secondary);
+}
+
+.listRowTime {
+  font-weight: 900;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
 }
 
 .cell {
@@ -92,6 +348,7 @@
   background: none;
   border: none;
   cursor: pointer;
+  font-family: var(--font-nunito, 'Nunito', var(--font-system));
   font-weight: 900;
   color: var(--color-text);
   display: flex;
@@ -99,6 +356,10 @@
   justify-content: center;
   gap: 0.25rem;
   padding: 0.2rem;
+}
+
+.dayButton:active:not(:disabled) {
+  transform: scale(0.9);
 }
 
 .dayButton:disabled {
@@ -112,6 +373,36 @@
   right: 6px;
   font-size: 0.8rem;
   color: var(--color-secondary);
+}
+
+/* Today's date highlight */
+.todayCell {
+  background: var(--color-surface);
+}
+
+.todayCell .dayButton {
+  color: var(--color-primary);
+  position: relative;
+}
+
+.todayCell .dayButton::after {
+  content: '';
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--color-primary);
+}
+
+.subtle {
+  font-size: 0.85rem;
+  color: var(--color-secondary);
+  line-height: 1.3;
+  text-align: center;
+  padding: 0 0.5rem;
 }
 
 .hintBar {
@@ -138,6 +429,16 @@
   padding: 0.65rem 0.85rem;
   font-weight: 900;
   cursor: pointer;
+  font-family: var(--font-nunito), 'Nunito', var(--font-system);
+}
+
+.hintBar .subtle {
+  text-align: left;
+  padding: 0;
+}
+
+.hintButton:active:not(:disabled) {
+  transform: scale(0.96);
 }
 
 .hintButton:disabled {
@@ -158,12 +459,12 @@
 
 .paywallCard {
   width: 100%;
-  max-width: 420px;
+  max-width: 380px;
   border-radius: 14px;
   border: 2px solid var(--color-border);
   background: var(--color-background);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
-  padding: 1.25rem;
+  padding: 1rem;
   position: relative;
 }
 
@@ -180,6 +481,7 @@
   color: var(--color-secondary);
   line-height: 1.35;
   margin-bottom: 1rem;
+  font-size: 0.8rem;
 }
 
 .paywallPrice {
@@ -202,6 +504,7 @@
   padding: 0.8rem 1rem;
   font-weight: 900;
   cursor: pointer;
+  font-family: var(--font-nunito), 'Nunito', var(--font-system);
 }
 
 .secondary {
@@ -212,6 +515,15 @@
   padding: 0.8rem 1rem;
   font-weight: 900;
   cursor: pointer;
+  font-family: var(--font-nunito), 'Nunito', var(--font-system);
+}
+
+.primary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.secondary:active:not(:disabled) {
+  transform: scale(0.98);
 }
 
 .secondary:disabled,
@@ -238,3 +550,236 @@
   font-weight: 800;
 }
 
+.planOption {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  padding: 0.5rem;
+  border: 2px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+  gap: 0.25rem;
+  color: var(--color-text);
+  font-family: var(--font-nunito), 'Nunito', var(--font-system);
+}
+
+.planOption:active {
+  transform: scale(0.98);
+}
+
+.planOptionSelected {
+  border-color: var(--color-primary);
+  background: rgba(var(--color-primary-rgb), 0.05);
+  /* Safe fallback if var missing */
+  color: var(--color-primary);
+}
+
+.planOptionTitle {
+  font-weight: 900;
+  font-size: 0.95rem;
+}
+
+.planOptionPrice {
+  font-weight: 500;
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+
+.notNowButton {
+  background: transparent;
+  color: var(--color-secondary);
+  border: none;
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  width: auto;
+  margin: 0.25rem auto 0;
+  display: block;
+  font-family: var(--font-nunito), 'Nunito', var(--font-system);
+}
+
+.notNowButton:active {
+  transform: scale(0.95);
+}
+
+.disclaimer {
+  font-size: 0.7rem;
+  color: var(--color-secondary);
+  text-align: center;
+  margin-top: 1rem;
+  line-height: 1.3;
+  opacity: 0.8;
+}
+
+.customLock {
+  position: relative;
+  width: 14px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lockShackle {
+  position: absolute;
+  top: 0px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 8px;
+  height: 11px;
+  border: 2px solid #95A5A6;
+  /* Greyish Silver */
+  border-bottom: 0;
+  border-radius: 4px 4px 0 0;
+  z-index: 1;
+}
+
+.lockBody {
+  position: absolute;
+  bottom: 0px;
+  width: 12px;
+  height: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #FFB142;
+  /* Flat Orange-Gold */
+  border-radius: 2px;
+  z-index: 2;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+/* Override lockedBadge to fit custom lock better */
+.lockedBadge {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  opacity: 1;
+  font-size: 1rem;
+  line-height: 1;
+  pointer-events: none;
+}
+
+@media (max-width: 420px) {
+  .customLock {
+    transform: scale(0.85);
+    transform-origin: top right;
+  }
+}
+
+/* Google Sign-In Button (Official Styles) */
+.googleButton {
+  -moz-user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-appearance: none;
+  appearance: none;
+  background-color: #ffffff;
+  background-image: none;
+  border: 1px solid #747775;
+  -webkit-border-radius: 12px;
+  border-radius: 12px;
+  -webkit-box-sizing: border-box;
+  box-sizing: border-box;
+  color: #1f1f1f;
+  cursor: pointer;
+  font-family: var(--font-roboto), 'Roboto', arial, sans-serif;
+  font-size: 14px;
+  height: 40px;
+  letter-spacing: 0.25px;
+  outline: none;
+  overflow: hidden;
+  padding: 0 12px;
+  position: relative;
+  text-align: center;
+  -webkit-transition: background-color .218s, border-color .218s, box-shadow .218s;
+  transition: background-color .218s, border-color .218s, box-shadow .218s;
+  vertical-align: middle;
+  white-space: nowrap;
+  width: 100%;
+  max-width: 280px;
+  min-width: min-content;
+  display: flex;
+  align-items: center;
+  margin: 0 auto;
+}
+
+.googleButton:disabled {
+  cursor: default;
+  background-color: #ffffff61;
+  border-color: #1f1f1f1f;
+}
+
+.googleButton:disabled .googleButtonContents {
+  opacity: 0.38;
+}
+
+.googleButton:disabled .googleButtonIcon {
+  opacity: 0.38;
+}
+
+.googleButton:not(:disabled):active .googleButtonState,
+.googleButton:not(:disabled):focus .googleButtonState {
+  background-color: #303030;
+  opacity: 0.12;
+}
+
+@media (hover: hover) {
+  .googleButton:not(:disabled):hover {
+    -webkit-box-shadow: 0 1px 2px 0 rgba(60, 64, 67, .30), 0 1px 3px 1px rgba(60, 64, 67, .15);
+    box-shadow: 0 1px 2px 0 rgba(60, 64, 67, .30), 0 1px 3px 1px rgba(60, 64, 67, .15);
+  }
+
+  .googleButton:not(:disabled):hover .googleButtonState {
+    background-color: #303030;
+    opacity: 0.08;
+  }
+}
+
+.googleButtonContentWrapper {
+  display: flex;
+  align-items: center;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  height: 100%;
+  justify-content: space-between;
+  position: relative;
+  width: 100%;
+}
+
+.googleButtonIcon {
+  height: 20px;
+  margin-right: 12px;
+  min-width: 20px;
+  width: 20px;
+}
+
+.googleButtonContents {
+  -webkit-flex-grow: 1;
+  flex-grow: 1;
+  font-family: var(--font-roboto), 'Roboto', arial, sans-serif;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: top;
+}
+
+.signInOptions {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-height 0.5s cubic-bezier(0.19, 1, 0.22, 1), opacity 0.4s ease, margin 0.4s ease;
+  margin-top: 0;
+}
+
+.signInOptionsVisible {
+  max-height: 80px;
+  opacity: 1;
+  margin-top: 0.5rem;
+}

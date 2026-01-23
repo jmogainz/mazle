@@ -1,0 +1,270 @@
+.grid {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-height: 75vh;
+  overflow: hidden;
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.track {
+  flex: 1;
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+.track::-webkit-scrollbar {
+  display: none;
+}
+
+.panel {
+  flex: 0 0 100%;
+  width: 100%;
+  min-width: 100%;
+  scroll-snap-align: center;
+  scroll-snap-stop: always;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.9rem;
+}
+
+.content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  touch-action: pan-y;
+  user-select: none;
+  overflow: hidden;
+}
+
+@keyframes slideInFromRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInFromLeft {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.slideLeft {
+  animation: slideInFromRight 0.2s ease-out;
+}
+
+.slideRight {
+  animation: slideInFromLeft 0.2s ease-out;
+}
+
+.carousel {
+  display: flex;
+  flex: 1;
+  gap: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.carousel::-webkit-scrollbar {
+  display: none;
+}
+
+.dayPanel {
+  flex: 0 0 100%;
+  width: 100%;
+  min-width: 100%;
+  padding: 0 0.5rem;
+  box-sizing: border-box;
+  scroll-snap-align: center;
+  scroll-snap-stop: always;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.dayPanel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.dayPanel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dayPanel::-webkit-scrollbar-thumb {
+  background-color: var(--color-border);
+  border-radius: 20px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.navButton {
+  background: transparent;
+  border: none;
+  padding: 0.5rem;
+  cursor: pointer;
+  color: var(--color-secondary);
+  transition: color 0.15s, opacity 0.15s;
+  line-height: 1;
+}
+
+@media (hover: hover) {
+  .navButton:hover {
+    color: var(--color-text);
+  }
+}
+
+.navButton:active {
+  transform: scale(0.92);
+}
+
+.navButton:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+.dayTitle {
+  text-align: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.dayTitleMain {
+  font-weight: 900;
+  font-size: 1.1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text);
+  line-height: 1.2;
+}
+
+.dayTitleSub {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-secondary);
+  margin-top: 0.1rem;
+}
+
+.hintText {
+  font-size: 0.85rem;
+  color: var(--color-secondary);
+  line-height: 1.35;
+}
+
+.error {
+  background: rgba(207, 102, 121, 0.12);
+  border: 1px solid rgba(207, 102, 121, 0.35);
+  color: var(--color-text);
+  padding: 0.75rem;
+  border-radius: 10px;
+}
+
+.podium {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+}
+
+.podiumColumn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 90px;
+  max-width: 120px;
+  width: 32%;
+}
+
+.podiumAvatar {
+  margin-bottom: 2px;
+}
+
+.podiumName {
+  font-weight: 800;
+  font-size: 0.75rem;
+  color: var(--color-text);
+  text-align: center;
+  margin-bottom: 0.1rem;
+  line-height: 1;
+}
+
+.podiumBar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border-radius: 8px;
+  padding: 0.6rem 0.5rem 0.4rem;
+  width: 100%;
+}
+
+.podiumGold {
+  background: linear-gradient(180deg, #FFD700 0%, #FFA500 100%);
+  height: 60px;
+}
+
+.podiumSilver {
+  background: linear-gradient(180deg, #E8E8E8 0%, #A0A0A0 100%);
+  height: 45px;
+}
+
+.podiumBronze {
+  background: linear-gradient(180deg, #CD7F32 0%, #8B4513 100%);
+  height: 35px;
+}
+
+.podiumRankBadge {
+  display: none;
+}
+
+.podiumTime {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: rgba(0, 0, 0, 0.6);
+  font-variant-numeric: tabular-nums;
+  margin-top: auto; /* Push to bottom of flex container */
+}

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { ensureDbSchema, getDbPool } from '@/lib/server/db';
-import { resolveSubjectIdentity, subjectKeyFor } from '@/lib/server/identity';
+import { resolveMeIdentity, subjectKeyFor } from '@/lib/server/identity';
 import { getLeaderboardRedis } from '@/lib/server/redis';
 import { jsonError, readJsonBody } from '@/lib/server/responses';
 import { setGuestIdCookie } from '@/lib/server/cookies';
@@ -18,8 +18,6 @@ export const runtime = 'nodejs';
 
 type Body = {
   date: string;
-  timeMs: number;
-  attemptsUsed: number;
 };
 
 function isValidNyDateString(value: string | null): value is string {
@@ -43,12 +41,6 @@ export async function POST(request: Request) {
   if (!isValidNyDateString(body.date)) {
     return jsonError(400, 'INVALID_DATE', 'Invalid date.');
   }
-  if (!Number.isFinite(body.timeMs) || body.timeMs <= 0) {
-    return jsonError(400, 'INVALID_TIME', 'Invalid timeMs.');
-  }
-  if (!Number.isFinite(body.attemptsUsed) || body.attemptsUsed < 1 || body.attemptsUsed > 3) {
-    return jsonError(400, 'INVALID_ATTEMPTS', 'attemptsUsed must be 1..3.');
-  }
 
   const today = getNewYorkDateString();
   if (body.date !== today) {
@@ -56,8 +48,12 @@ export async function POST(request: Request) {
   }
 
   try {
-    const me = await resolveSubjectIdentity(request);
-    const mySubjectKey = subjectKeyFor({ userId: me.subjectType === 'user' ? me.subjectId : null, guestId: me.guestId });
+    const me = await resolveMeIdentity(request);
+    if (!me.userId) {
+      return jsonError(401, 'AUTH_REQUIRED', 'Sign in to submit to the leaderboard.');
+    }
+
+    const mySubjectKey = subjectKeyFor({ userId: me.userId, guestId: me.guestId });
 
     const zkey = leaderboardZsetKey(body.date);
     const indexKey = leaderboardMemberIndexKey(body.date);
@@ -78,9 +74,28 @@ export async function POST(request: Request) {
     await ensureDbSchema();
     const pool = getDbPool();
 
+    const dailyRes = await pool.query<{ completed: boolean; time_ms: number | null; attempts_used: number | null }>(
+      `select completed, time_ms, attempts_used
+       from daily_results
+       where user_id=$1 and date=$2::date`,
+      [me.userId, body.date]
+    );
+
+    if ((dailyRes.rowCount ?? 0) === 0) {
+      return jsonError(400, 'NO_RECORDED_RESULT', 'No recorded result found for today.');
+    }
+
+    const daily = dailyRes.rows[0]!;
+    if (!daily.completed || daily.time_ms == null || daily.attempts_used == null) {
+      return jsonError(400, 'NOT_COMPLETED', 'Only completed wins can be submitted.');
+    }
+
+    const timeMs = daily.time_ms;
+    const attemptsUsed = daily.attempts_used;
+
     const submittedAtMs = Date.now();
     const member = makeLeaderboardMember(submittedAtMs, mySubjectKey);
-    const score = encodeLeaderboardScore(body.timeMs, body.attemptsUsed);
+    const score = encodeLeaderboardScore(timeMs, attemptsUsed);
 
     // Write-through to Redis (hot path)
     await redis.multi()
@@ -94,7 +109,7 @@ export async function POST(request: Request) {
       `insert into leaderboard_submissions (date, subject_type, subject_id, time_ms, attempts_used, submitted_at)
        values ($1, $2, $3, $4, $5, to_timestamp($6 / 1000.0))
        on conflict do nothing`,
-      [body.date, me.subjectType, me.subjectId, body.timeMs, body.attemptsUsed, submittedAtMs]
+      [body.date, 'user', me.userId, timeMs, attemptsUsed, submittedAtMs]
     );
 
     const rank0 = await redis.zrank(zkey, member);
@@ -111,4 +126,3 @@ export async function POST(request: Request) {
     return jsonError(500, 'SUBMIT_FAILED', message);
   }
 }
-

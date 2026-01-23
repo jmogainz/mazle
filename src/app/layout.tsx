@@ -1,7 +1,8 @@
 import type { Metadata, Viewport } from 'next';
 import { Analytics } from '@vercel/analytics/next';
-import { Nunito, Press_Start_2P } from 'next/font/google';
+import { Nunito, Press_Start_2P, Roboto } from 'next/font/google';
 import Script from 'next/script';
+import ThemeApplier from '@/components/ThemeApplier';
 import './globals.css';
 
 const CMP_SCRIPT_SRC = process.env.NEXT_PUBLIC_CMP_SCRIPT_SRC || '';
@@ -21,6 +22,13 @@ const nunito = Nunito({
   weight: ['400', '600', '700', '800'],
   subsets: ['latin'],
   variable: '--font-nunito',
+  display: 'swap',
+});
+
+const roboto = Roboto({
+  weight: ['400', '500'],
+  subsets: ['latin'],
+  variable: '--font-roboto',
   display: 'swap',
 });
 
@@ -131,7 +139,11 @@ export default function RootLayout({
   overlay: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${pixelFont.variable} ${nunito.variable}`} suppressHydrationWarning>
+    <html
+      lang="en"
+      className={`${pixelFont.variable} ${nunito.variable} ${roboto.variable}`}
+      suppressHydrationWarning
+    >
       <head>
         {CMP_SCRIPT_SRC ? (
           <Script
@@ -147,9 +159,20 @@ export default function RootLayout({
       <body suppressHydrationWarning>
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var d=document;var w=window;var vh=(w.visualViewport&&w.visualViewport.height)||w.innerHeight;var vw=w.innerWidth;var showTopAd=${Boolean(ADSENSE_TOP_SLOT)};var showBottomAd=${Boolean(ADSENSE_BOTTOM_SLOT)};var HEADER_HEIGHT=56;var PUZZLE_NUM_HEIGHT=32;var SCOREBOARD_HEIGHT=70;var CONTROLS_HEIGHT=56;var FOOTER_HEIGHT=vw>768?32:0;var AD_HEIGHT=(showTopAd?${AD_BANNER_HEIGHT}+8:0)+(showBottomAd?${AD_BANNER_HEIGHT}+8:0);var PADDING=24;var totalUIHeight=HEADER_HEIGHT+PUZZLE_NUM_HEIGHT+SCOREBOARD_HEIGHT+CONTROLS_HEIGHT+FOOTER_HEIGHT+AD_HEIGHT+PADDING;var availableForMaze=vh-totalUIHeight;var MAX_MAZE_SIZE=520;var UI_SCALE_MIN=0.70;var UI_SCALE_MAX=1;var maxMazeByWidth=Math.max(1,Math.min(vw-4,MAX_MAZE_SIZE));var idealMazeSize=Math.min(maxMazeByWidth,MAX_MAZE_SIZE);var neededForIdealMaze=idealMazeSize;var uiScale=UI_SCALE_MAX;if(availableForMaze<neededForIdealMaze){var uiScalableHeight=HEADER_HEIGHT+PUZZLE_NUM_HEIGHT+SCOREBOARD_HEIGHT+CONTROLS_HEIGHT;var deficit=neededForIdealMaze-availableForMaze;var maxUISavings=uiScalableHeight*(1-UI_SCALE_MIN);if(deficit<=maxUISavings){uiScale=1-(deficit/uiScalableHeight);uiScale=Math.max(UI_SCALE_MIN,Math.min(UI_SCALE_MAX,uiScale));}else{uiScale=UI_SCALE_MIN;}}var uiScaleValue=Math.round(uiScale*1000)/1000;var scaledUIHeight=(HEADER_HEIGHT+PUZZLE_NUM_HEIGHT+SCOREBOARD_HEIGHT+CONTROLS_HEIGHT)*uiScale+FOOTER_HEIGHT+AD_HEIGHT+PADDING;var actualAvailable=vh-scaledUIHeight;var gameSize=Math.min(maxMazeByWidth,Math.max(1,Math.floor(actualAvailable)),MAX_MAZE_SIZE);var style=d.getElementById('ui-scale-preload-style');if(!style){style=d.createElement('style');style.id='ui-scale-preload-style';style.type='text/css';d.head.appendChild(style);}style.textContent=':root{--vh:'+vh+'px;--ui-scale:'+uiScaleValue.toFixed(3)+';--game-size:'+gameSize+'px;}';}catch(e){}})();`,
+            __html: `(function(){try{var d=document;var w=window;var vh=(w.visualViewport&&w.visualViewport.height)||w.innerHeight;var vw=w.innerWidth;var showTopAd=${Boolean(ADSENSE_TOP_SLOT)};var showBottomAd=${Boolean(ADSENSE_BOTTOM_SLOT)};var HEADER_HEIGHT=56;var PUZZLE_NUM_HEIGHT=32;var SCOREBOARD_HEIGHT=70;var CONTROLS_HEIGHT=64;var FOOTER_HEIGHT=vw>768?32:0;var AD_HEIGHT=(showTopAd?${AD_BANNER_HEIGHT}+8:0)+(showBottomAd?${AD_BANNER_HEIGHT}+8:0);var PADDING=24;var CLUSTER_GAP_TOP=8;var CLUSTER_GAP_BOTTOM=10;var CLUSTER_GAP_TOTAL=CLUSTER_GAP_TOP+CLUSTER_GAP_BOTTOM;var totalUIHeight=HEADER_HEIGHT+PUZZLE_NUM_HEIGHT+SCOREBOARD_HEIGHT+CONTROLS_HEIGHT+FOOTER_HEIGHT+AD_HEIGHT+PADDING+CLUSTER_GAP_TOTAL;var availableForMaze=vh-totalUIHeight;var MAX_MAZE_SIZE=520;var UI_SCALE_MIN=0.70;var UI_SCALE_MAX=1;var maxMazeByWidth=Math.max(1,Math.min(vw-4,MAX_MAZE_SIZE));var idealMazeSize=Math.min(maxMazeByWidth,MAX_MAZE_SIZE);var neededForIdealMaze=idealMazeSize;var uiScale=UI_SCALE_MAX;if(availableForMaze<neededForIdealMaze){var uiScalableHeight=HEADER_HEIGHT+PUZZLE_NUM_HEIGHT+SCOREBOARD_HEIGHT+CONTROLS_HEIGHT;var deficit=neededForIdealMaze-availableForMaze;var maxUISavings=uiScalableHeight*(1-UI_SCALE_MIN);if(deficit<=maxUISavings){uiScale=1-(deficit/uiScalableHeight);uiScale=Math.max(UI_SCALE_MIN,Math.min(UI_SCALE_MAX,uiScale));}else{uiScale=UI_SCALE_MIN;}}var uiScaleValue=Math.round(uiScale*1000)/1000;var scaledUIHeight=(HEADER_HEIGHT+PUZZLE_NUM_HEIGHT+SCOREBOARD_HEIGHT+CONTROLS_HEIGHT)*uiScale+FOOTER_HEIGHT+AD_HEIGHT+PADDING+CLUSTER_GAP_TOTAL;var actualAvailable=vh-scaledUIHeight;var gameSize=Math.min(maxMazeByWidth,Math.max(1,Math.floor(actualAvailable)),MAX_MAZE_SIZE);var style=d.getElementById('ui-scale-preload-style');if(!style){style=d.createElement('style');style.id='ui-scale-preload-style';style.type='text/css';d.head.appendChild(style);}style.textContent=':root{--vh:'+vh+'px;--ui-scale:'+uiScaleValue.toFixed(3)+';--game-size:'+gameSize+'px;}';}catch(e){}})();`,
           }}
         />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var p='system';try{var raw=localStorage.getItem('mazle_prefs_v1');if(raw){var j=JSON.parse(raw);if(j.themePreference)p=j.themePreference;}}catch(e){}var t=p;if(p==='system'){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.dataset.theme=t;document.documentElement.style.colorScheme=t;}catch(e){}})();`,
+          }}
+        />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var today=new Date().toLocaleDateString('en-CA',{timeZone:'America/New_York'});var scope='guest';try{var storedScope=localStorage.getItem('mazle_storage_scope_v1');if(storedScope)scope=storedScope;}catch(e){}var raw=localStorage.getItem('mazle_daily:'+scope)||localStorage.getItem('mazle_daily');if(raw){var d=JSON.parse(raw);if(d.date===today){document.documentElement.dataset.puzzlePlayed='true';}}}catch(e){}})();`,
+          }}
+        />
+        <ThemeApplier />
         <Script
           id="adsense"
           strategy="beforeInteractive"

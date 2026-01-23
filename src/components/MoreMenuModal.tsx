@@ -1,62 +1,56 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useEffect, useState } from 'react';
 import styles from './MoreMenuModal.module.css';
 
 type MoreMenuModalProps = {
   open: boolean;
   onClose: () => void;
+  onOpenStats?: () => void;
   onOpenLeaderboard?: () => void;
+  onOpenHallOfFame?: () => void;
   onOpenAccount?: () => void;
-  onOpenArchive?: () => void;
+  triggerButtonRef?: React.RefObject<HTMLButtonElement>;
 };
 
-const DEVTOOLS_PREVIEW_FEATURES_KEY = 'mazle_devtools_preview_features_v1';
-
-export default function MoreMenuModal({
+function MoreMenuModal({
   open,
   onClose,
+  onOpenStats,
   onOpenLeaderboard,
+  onOpenHallOfFame,
   onOpenAccount,
-  onOpenArchive,
+  triggerButtonRef,
 }: MoreMenuModalProps) {
-  const router = useRouter();
-  const firstButtonRef = useRef<HTMLButtonElement | null>(null);
-  const [previewFeaturesEnabled, setPreviewFeaturesEnabled] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null);
 
-  const showLockedFeatures = useMemo(() => {
-    if (process.env.NODE_ENV !== 'production') return true;
-    return previewFeaturesEnabled;
-  }, [previewFeaturesEnabled]);
-
+  // Calculate menu position based on trigger button
   useEffect(() => {
-    if (!open) return;
-    firstButtonRef.current?.focus();
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    try {
-      setPreviewFeaturesEnabled(localStorage.getItem(DEVTOOLS_PREVIEW_FEATURES_KEY) === '1');
-    } catch {
-      setPreviewFeaturesEnabled(false);
+    if (!open || !triggerButtonRef?.current) {
+      setMenuPosition(null);
+      return;
     }
-  }, [open]);
 
-  const nav = useCallback(
-    (href: string, onOpen?: () => void) => {
-      if (onOpen) {
-        onOpen();
-        onClose();
-        return;
-      }
-      onClose();
-      router.push(href);
-    },
-    [onClose, router],
-  );
+    const updatePosition = () => {
+      const button = triggerButtonRef.current;
+      if (!button) return;
 
+      const rect = button.getBoundingClientRect();
+      // Position menu below the button with a small gap
+      setMenuPosition({
+        top: rect.bottom + 4, // 4px gap below button
+        right: window.innerWidth - rect.right, // Align to right edge of button
+      });
+    };
+
+    updatePosition();
+
+    // Update position on window resize
+    window.addEventListener('resize', updatePosition);
+    return () => window.removeEventListener('resize', updatePosition);
+  }, [open, triggerButtonRef]);
+
+  // Close on Escape
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -66,47 +60,92 @@ export default function MoreMenuModal({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [open, onClose]);
 
+  const handleClick = (callback?: () => void) => {
+    if (callback) {
+      callback();
+    }
+    onClose();
+  };
+
   if (!open) return null;
 
+  const style = menuPosition
+    ? { top: `${menuPosition.top}px`, right: `${menuPosition.right}px` }
+    : undefined;
+
   return (
-    <div className={styles.overlay} role="dialog" aria-modal="true" aria-label="Menu" onClick={onClose}>
-      <div className={styles.card} onClick={(e) => e.stopPropagation()}>
-        <div className={styles.header}>
-          <div className={styles.title}>Menu</div>
-          <button type="button" className={styles.closeButton} onClick={onClose} aria-label="Close">
-            ✕
-          </button>
-        </div>
-        <div className={styles.list}>
-          {showLockedFeatures && (
-            <>
-              <button
-                ref={firstButtonRef}
-                type="button"
-                className={styles.menuButton}
-                onClick={() => nav('/leaderboard', onOpenLeaderboard)}
-              >
-                <span>Leaderboard</span>
-                <span aria-hidden="true">›</span>
-              </button>
-              <button type="button" className={styles.menuButton} onClick={() => nav('/archive', onOpenArchive)}>
-                <span>Archive</span>
-                <span aria-hidden="true">›</span>
-              </button>
-            </>
-          )}
-          <button
-            ref={showLockedFeatures ? undefined : firstButtonRef}
-            type="button"
-            className={styles.menuButton}
-            onClick={() => nav('/account', onOpenAccount)}
-          >
-            <span>Account</span>
-            <span aria-hidden="true">›</span>
-          </button>
-        </div>
-        <div className={styles.hint}>Mazle #N is the primary label. Dates are shown as a secondary label.</div>
+    <>
+      <div className={styles.overlay} onClick={onClose} />
+      <div className={styles.dropdown} style={style} role="menu" aria-label="Menu">
+        <button
+          type="button"
+          className={styles.menuItem}
+          onClick={() => handleClick(onOpenStats)}
+          role="menuitem"
+        >
+          <span>Stats</span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 3v18h18" />
+            <path d="M18 17V9" />
+            <path d="M13 17V5" />
+            <path d="M8 17v-3" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          className={styles.menuItem}
+          onClick={() => handleClick(onOpenLeaderboard)}
+          role="menuitem"
+        >
+          <span>Leaderboard</span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 21V10h6V3h6v4h6v14H3zM9 10v11M15 7v14" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          className={styles.menuItem}
+          onClick={() => handleClick(onOpenHallOfFame)}
+          role="menuitem"
+        >
+          <span>Hall of Fame</span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M8 18h8" />
+            <path d="M12 12v6" />
+            <path d="M7 4h10" />
+            <path d="M17 4v3a5 5 0 0 1-10 0V4" />
+            <path d="M5 5a2 2 0 0 0 2 2" />
+            <path d="M19 5a2 2 0 0 1-2 2" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          className={styles.menuItem}
+          onClick={() => handleClick(onOpenAccount)}
+          role="menuitem"
+        >
+          <span>Account</span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="8" r="4" />
+            <path d="M4 20c0-4 4-6 8-6s8 2 8 6" />
+          </svg>
+        </button>
+        <a
+          href="https://ko-fi.com/mazle"
+          target="_blank"
+          rel="noopener noreferrer"
+          className={styles.menuItem}
+          onClick={() => onClose()}
+          role="menuitem"
+        >
+          <span>Support Us</span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+          </svg>
+        </a>
       </div>
-    </div>
+    </>
   );
 }
+
+export default React.memo(MoreMenuModal);

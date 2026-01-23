@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ensureDbSchema, getDbPool } from '@/lib/server/db';
 import { getLeaderboardRedis } from '@/lib/server/redis';
 import { decodeLeaderboardScore, leaderboardZsetKey, parseLeaderboardMember } from '@/lib/server/leaderboard';
+import { addDays } from '@/lib/date';
+import { getNewYorkDateString } from '@/game/puzzleGenerator';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -25,7 +27,9 @@ export async function GET(request: NextRequest) {
     }
 
     const url = new URL(request.url);
-    const dateParam = url.searchParams.get('date');
+    const requestedDate = url.searchParams.get('date');
+    const fallbackDate = addDays(getNewYorkDateString(), -1);
+    const dateParam = requestedDate && requestedDate.trim().length > 0 ? requestedDate : fallbackDate;
     if (!isValidNyDateString(dateParam)) {
       return NextResponse.json({ error: 'Missing or invalid date.' }, { status: 400 });
     }

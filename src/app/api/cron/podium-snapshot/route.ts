@@ -28,22 +28,6 @@ export async function GET(request: NextRequest) {
 
     const url = new URL(request.url);
     const requestedDate = url.searchParams.get('date');
-    if (!requestedDate || requestedDate.trim().length === 0) {
-      const parts = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'America/New_York',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-      }).formatToParts(new Date());
-      const hour = Number(parts.find((p) => p.type === 'hour')?.value ?? '0');
-      const minute = Number(parts.find((p) => p.type === 'minute')?.value ?? '0');
-      if (hour !== 0 || minute !== 0) {
-        return NextResponse.json(
-          { ok: true, skipped: true, reason: 'NOT_MIDNIGHT_NY' },
-          { headers: { 'Cache-Control': 'no-store' } }
-        );
-      }
-    }
 
     const fallbackDate = addDays(getNewYorkDateString(), -1);
     const dateParam = requestedDate && requestedDate.trim().length > 0 ? requestedDate : fallbackDate;

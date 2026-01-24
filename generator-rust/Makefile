@@ -276,6 +276,7 @@ DATASET_LOG ?= $(CURDIR)/data/mazle-train.log
 DATASET_PID ?= $(CURDIR)/data/mazle-train.pid
 DATASET_WATCHER_PID ?= $(dir $(DATASET_OUT))mazle-train-watcher.pid
 DATASET_WATCHER_LOG ?= $(dir $(DATASET_OUT))mazle-train-watcher.log
+DATASET_WATCHER_CFG ?= $(dir $(DATASET_OUT))mazle-train-watcher.cfg
 DATASET_WATCHER_INTERVAL ?= 15
 DATASET_COUNT ?= 100000
 DATASET_RESUME ?= 1
@@ -337,13 +338,21 @@ dataset-gen: cargo-build
 dataset-gen-status:
 	@outfile="$(DATASET_OUT)"; \
 	pidfile="$(DATASET_PID)"; \
+	cfgfile="$(DATASET_WATCHER_CFG)"; \
 	count=$$( ( [ -f "$$outfile" ] && wc -l < "$$outfile" ) || echo 0 | tr -d ' ' ); \
+	if [ -f "$$cfgfile" ]; then \
+		. "$$cfgfile"; \
+	else \
+		START_INDEX=1; TOTAL_COUNT=$(DATASET_COUNT); \
+	fi; \
+	current_index=$$((START_INDEX + count)); \
+	target_index=$$((START_INDEX + TOTAL_COUNT)); \
 	if [ -f "$$pidfile" ] && ps -p $$(cat "$$pidfile") > /dev/null 2>&1; then \
 		status="running"; \
 	else \
 		status="stopped"; \
 	fi; \
-	echo "dataset-gen: $$count / $(DATASET_COUNT) ($$status)"
+	echo "dataset-gen: $$current_index / $$target_index ($$status)"
 
 .PHONY: dataset-gen-stop
 dataset-gen-stop:
@@ -371,7 +380,7 @@ dataset-gen-restart-dead:
 	pidfile="$(DATASET_PID)"; \
 	existing=$$( ( [ -f "$$outfile" ] && wc -l < "$$outfile" ) || echo 0 | tr -d ' ' ); \
 	remaining=$$(($(DATASET_COUNT) - existing)); \
-	start=$$((existing + 1)); \
+	start=$$(($(DATASET_START_INDEX) + existing)); \
 	if [ $$remaining -le 0 ]; then \
 		: ; \
 	elif [ -f "$$pidfile" ] && ps -p $$(cat "$$pidfile") > /dev/null 2>&1; then \
@@ -408,10 +417,13 @@ dataset-gen-watcher:
 	fi
 	@watcherpid="$(DATASET_WATCHER_PID)"; \
 	watcherlog="$(DATASET_WATCHER_LOG)"; \
+	watchercfg="$(DATASET_WATCHER_CFG)"; \
 	if [ -f "$$watcherpid" ] && ps -p $$(cat "$$watcherpid") > /dev/null 2>&1; then \
 		echo "Watcher already running (PID $$(cat $$watcherpid))"; \
 	else \
 		echo "Starting watcher..."; \
+		echo "START_INDEX=$(DATASET_START_INDEX)" > "$$watchercfg"; \
+		echo "TOTAL_COUNT=$(DATASET_COUNT)" >> "$$watchercfg"; \
 		( \
 			while true; do \
 				outfile="$(DATASET_OUT)"; \
@@ -425,7 +437,7 @@ dataset-gen-watcher:
 				if [ -f "$$pidfile" ] && ps -p $$(cat "$$pidfile") > /dev/null 2>&1; then \
 					: ; \
 				else \
-					$(MAKE) --no-print-directory dataset-gen-restart-dead; \
+					$(MAKE) --no-print-directory dataset-gen-restart-dead DATASET_COUNT=$(DATASET_COUNT) DATASET_START_INDEX=$(DATASET_START_INDEX) DATASET_OUT="$(DATASET_OUT)"; \
 				fi; \
 				sleep $(DATASET_WATCHER_INTERVAL); \
 			done \

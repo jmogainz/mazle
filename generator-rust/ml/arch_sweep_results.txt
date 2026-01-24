@@ -6,3 +6,15 @@ Baseline: 2.7% PASS
 1.2% - rmsnorm (RMSNorm instead of LayerNorm) 
 2.0% - adaln_zero (AdaLN-Zero timestep conditioning) 
 2.3% - deep_12L (12 layers with residual scaling) 
+1.6% - droppath (DropPath 0.1 (stochastic depth)) 
+1.6% - combined (SwiGLU + RMSNorm + DropPath 0.1) 
+
+============================================================
+SORTED SUMMARY
+============================================================
+3.1% - swiglu ✓
+2.3% - deep_12L 
+2.0% - adaln_zero 
+1.6% - droppath 
+1.6% - combined 
+1.2% - rmsnorm 

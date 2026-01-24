@@ -539,19 +539,7 @@ enum PlacementStrategy {
     Random,
 }
 
-/// All available placement strategies for random selection
-const PLACEMENT_STRATEGIES: [PlacementStrategy; 10] = [
-    PlacementStrategy::LeftToRight,
-    PlacementStrategy::RightToLeft,
-    PlacementStrategy::TopToBottom,
-    PlacementStrategy::BottomToTop,
-    PlacementStrategy::DiagonalTLBR,
-    PlacementStrategy::DiagonalBRTL,
-    PlacementStrategy::DiagonalTRBL,
-    PlacementStrategy::DiagonalBLTR,
-    PlacementStrategy::Adjacent,
-    PlacementStrategy::Random,
-];
+// NOTE: Placement strategies are currently forced to Random in select_placement_strategy.
 
 /// Helper to scale a range based on map size relative to reference (35x35)
 /// Returns (scaled_min, scaled_max) ensuring min >= absolute_min and max > min
@@ -861,25 +849,26 @@ fn select_random_start_goal(
     height: usize,
     rng: &mut SeededRandom,
 ) -> Option<(Position, Position)> {
-    // Minimum manhattan distance scales with map size
-    let min_distance = ((width.min(height) as f64) * 0.3) as i32;
-
     for _ in 0..50 {
         let start = rng.random_choice(ice_tiles);
 
-        let far_enough: Vec<_> = ice_tiles.iter()
+        // Pure random start/goal, excluding orthogonal adjacency (manhattan distance == 1).
+        let candidates: Vec<_> = ice_tiles.iter()
             .filter(|p| {
+                if pos_eq(&start, p) {
+                    return false;
+                }
                 let dist = (start.x - p.x).abs() + (start.y - p.y).abs();
-                dist >= min_distance
+                dist != 1
             })
             .cloned()
             .collect();
 
-        if far_enough.is_empty() {
+        if candidates.is_empty() {
             continue;
         }
 
-        let goal = rng.random_choice(&far_enough);
+        let goal = rng.random_choice(&candidates);
 
         if is_inner(start.x, start.y, width, height)
             && is_inner(goal.x, goal.y, width, height)
@@ -893,17 +882,9 @@ fn select_random_start_goal(
 
 /// Select a random placement strategy with weighted distribution
 fn select_placement_strategy(rng: &mut SeededRandom) -> PlacementStrategy {
-    let roll = rng.random();
-    // 30% traditional (LeftToRight + DiagonalTLBR) for backwards compatibility
-    // 70% distributed across all strategies
-    if roll < 0.15 {
-        PlacementStrategy::LeftToRight
-    } else if roll < 0.30 {
-        PlacementStrategy::DiagonalTLBR
-    } else {
-        // Remaining 70% split among all 10 strategies
-        rng.random_choice(&PLACEMENT_STRATEGIES)
-    }
+    let _ = rng;
+    // Force pure random placement (with orthogonal adjacency excluded in select_random_start_goal).
+    PlacementStrategy::Random
 }
 
 /// Try multiple placement strategies and pick the candidate most likely to hit target moves

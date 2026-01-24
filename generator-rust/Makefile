@@ -410,7 +410,9 @@ dataset-gen-restart-dead:
 
 # Watcher process that monitors and restarts dead generator every interval
 .PHONY: dataset-gen-watcher
-dataset-gen-watcher:
+dataset-gen-watcher: RUST_BUILD_PROFILE := release
+dataset-gen-watcher: cargo-build
+	@mkdir -p "$(dir $(DATASET_OUT))"
 	@if [ -z "$(UNIQUE_RUNNER_ID)" ]; then \
 		echo "UNIQUE_RUNNER_ID not set. Run: export UNIQUE_RUNNER_ID=\$$(whoami)"; \
 		exit 1; \

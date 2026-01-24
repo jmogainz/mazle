@@ -359,6 +359,13 @@ class PuzzleGeneratorV2(nn.Module):
         # Tile head (predict tile types, conditioned on START/GOAL)
         self.tile_head = nn.Linear(config.model_dim, config.tile_vocab_size)
 
+        # Path conditioning projections (for plan-conditioned generation)
+        # stop_step_feat: [B, 169, 11] one-hot for which stop (0-10) occurs at each cell
+        # on_path: [B, 169, 1] binary mask for cells traversed by optimal path
+        self.num_stops = 11  # 10-move puzzles have 11 stops
+        self.stop_step_proj = nn.Linear(self.num_stops, config.model_dim, bias=False)
+        self.on_path_proj = nn.Linear(1, config.model_dim, bias=False)
+
         # Initialize diffusion schedule
         self._init_schedule()
 
@@ -456,6 +463,8 @@ class PuzzleGeneratorV2(nn.Module):
         t: torch.Tensor,
         start_pos: Optional[torch.Tensor] = None,
         goal_pos: Optional[torch.Tensor] = None,
+        stop_step_feat: Optional[torch.Tensor] = None,
+        on_path: Optional[torch.Tensor] = None,
     ) -> Dict[str, torch.Tensor]:
         """
         Forward pass for training.
@@ -465,6 +474,8 @@ class PuzzleGeneratorV2(nn.Module):
             t: (B,) timesteps
             start_pos: (B,) start positions (flat index 0-168)
             goal_pos: (B,) goal positions (flat index 0-168)
+            stop_step_feat: (B, 169, 11) one-hot for which stop at each cell
+            on_path: (B, 169, 1) binary mask for cells on optimal path
 
         Returns:
             dict with logits for tiles, start, goal
@@ -489,6 +500,13 @@ class PuzzleGeneratorV2(nn.Module):
         if goal_pos is not None:
             goal_emb = self.goal_pos_embed(goal_pos)  # (B, dim)
             x = x + goal_emb.unsqueeze(1)
+
+        # Add path conditioning if provided
+        if stop_step_feat is not None:
+            x = x + self.stop_step_proj(stop_step_feat)  # (B, 169, dim)
+
+        if on_path is not None:
+            x = x + self.on_path_proj(on_path)  # (B, 169, dim)
 
         # Transformer layers
         for layer in self.layers:
@@ -685,6 +703,115 @@ class PuzzleGeneratorV2(nn.Module):
             "tiles": torch.cat(all_tiles, dim=0),
             "start_pos": torch.cat(all_starts, dim=0),
             "goal_pos": torch.cat(all_goals, dim=0),
+        }
+
+    @torch.no_grad()
+    def generate_with_plan(
+        self,
+        batch_size: int,
+        device: torch.device,
+        start_pos: torch.Tensor,
+        goal_pos: torch.Tensor,
+        stop_step_feat: torch.Tensor,
+        on_path: torch.Tensor,
+        generator: Optional[torch.Generator] = None,
+        temperature: float = 1.0,
+        temperature_schedule: str = "linear",
+    ) -> Dict[str, torch.Tensor]:
+        """
+        Generate puzzles conditioned on a ground-truth plan.
+
+        This is for evaluating whether the model can realize a given path plan.
+        The plan (stop_step_feat, on_path) is provided from ground-truth data.
+
+        Args:
+            batch_size: Number of puzzles to generate
+            device: Device to generate on
+            start_pos: (B,) flat start positions
+            goal_pos: (B,) flat goal positions
+            stop_step_feat: (B, 169, 11) one-hot for which stop at each cell
+            on_path: (B, 169, 1) binary mask for cells on optimal path
+            generator: torch.Generator for deterministic sampling
+            temperature: Base temperature for sampling
+            temperature_schedule: How to vary temperature over timesteps
+
+        Returns:
+            dict with:
+                - tiles: (B, 13, 13) generated tile grid
+                - start_pos: (B, 2) start (x, y)
+                - goal_pos: (B, 2) goal (x, y)
+        """
+        H, W = self.config.grid_height, self.config.grid_width
+
+        # Initialize with all MASK tokens
+        x_t = torch.full((batch_size, self.grid_size), self.mask_token_id,
+                         dtype=torch.long, device=device)
+
+        # Iterative denoising for tiles (conditioned on provided plan)
+        for step in reversed(range(self.num_timesteps)):
+            t = torch.full((batch_size,), step, dtype=torch.long, device=device)
+
+            # Get temperature for this step
+            if temperature_schedule == "linear":
+                step_temp = temperature * (1.0 - step / self.num_timesteps) + 0.1
+            elif temperature_schedule == "cosine":
+                step_temp = temperature * math.cos(step / self.num_timesteps * math.pi / 2) + 0.1
+            else:
+                step_temp = temperature
+
+            # Forward pass with plan conditioning
+            outputs = self.forward(
+                x_t, t, start_pos, goal_pos,
+                stop_step_feat=stop_step_feat,
+                on_path=on_path,
+            )
+            logits = outputs["tile_logits"]  # (B, 169, vocab_size)
+            logits = logits / step_temp
+
+            # Sample tiles
+            probs = F.softmax(logits, dim=-1)  # (B, 169, vocab_size)
+            probs_flat = probs.reshape(-1, self.config.tile_vocab_size)
+
+            if generator is not None:
+                # Gumbel-max for deterministic sampling
+                gumbel_noise = torch.rand(probs_flat.shape, device=device, generator=generator)
+                gumbel = -torch.log(-torch.log(gumbel_noise.clamp(min=1e-10)))
+                logits_flat = logits.reshape(-1, self.config.tile_vocab_size)
+                sampled = (logits_flat + gumbel).argmax(dim=-1)
+            else:
+                sampled = torch.multinomial(probs_flat, 1).squeeze(-1)
+
+            x_0_pred = sampled.reshape(batch_size, self.grid_size)
+
+            if step > 0:
+                # Re-mask some positions for next step
+                mask_prob_t = 1.0 - self.alpha_bar[step]
+                mask_prob_prev = 1.0 - self.alpha_bar[step - 1]
+                keep_mask_prob = mask_prob_prev / mask_prob_t.clamp(min=1e-8)
+
+                if generator is not None:
+                    rand_vals = torch.rand((batch_size, self.grid_size), device=device,
+                                          generator=generator)
+                    keep_mask = rand_vals < keep_mask_prob
+                else:
+                    keep_mask = torch.rand(batch_size, self.grid_size, device=device) < keep_mask_prob
+
+                currently_masked = x_t == self.mask_token_id
+                x_t = torch.where(currently_masked & keep_mask, self.mask_token_id, x_0_pred)
+            else:
+                x_t = x_0_pred
+
+        # Reshape to 2D grid
+        tiles = x_t.reshape(batch_size, H, W)
+
+        # Convert flat positions to (x, y)
+        start_xy = torch.stack([start_pos % W, start_pos // W], dim=-1)  # (B, 2)
+        goal_xy = torch.stack([goal_pos % W, goal_pos // W], dim=-1)  # (B, 2)
+
+        return {
+            "tiles": tiles,
+            "start_pos": start_xy,
+            "goal_pos": goal_xy,
         }
 
     @torch.no_grad()

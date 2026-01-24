@@ -1009,12 +1009,35 @@ The discrete diffusion transformer with cross-entropy loss cannot learn to contr
 
 ---
 
+## Phase 11: Architecture Variants (Jan 2026)
+
+Tested 6 architecture modifications against the 2.7% baseline:
+
+| Experiment | Config | Result | Notes |
+|------------|--------|--------|-------|
+| **swiglu** | SwiGLU activation | **3.1%** ✓ | +0.4%, new best! |
+| deep_12L | 12 layers + residual scaling | 2.3% | 10.1M params, slower |
+| adaln_zero | AdaLN-Zero conditioning | 2.0% | 7.7M params, slow convergence |
+| droppath | DropPath 0.1 | 1.6% | Regularization hurt |
+| combined | SwiGLU + RMSNorm + DropPath | 1.6% | Variants don't stack |
+| rmsnorm | RMSNorm instead of LayerNorm | 1.2% | Worst result |
+
+**Key findings:**
+- SwiGLU activation alone improves from 2.7% → 3.1%
+- Combining multiple changes makes things worse
+- Deeper models (12L) don't help despite 2x params
+- RMSNorm hurts this task (unlike in LLMs)
+
+**New best:** `output_arch_01_swiglu/best_model.pt` at 3.1% PASS
+
+---
+
 ## Current Status
 
-**Best checkpoint:** `output_v2_50k_ema9999/best_model.pt`
-- 2.7% full PASS rate (10 moves, unique optimal, no stuck)
-- ~37 attempts needed on average to get a valid puzzle
-- With K-candidates (K=100), effective success rate ~93%
+**Best checkpoint:** `output_arch_01_swiglu/best_model.pt`
+- 3.1% full PASS rate (10 moves, unique optimal, no stuck)
+- ~32 attempts needed on average to get a valid puzzle
+- With K-candidates (K=100), effective success rate ~96%
 
 **Datasets available:**
 - `train-10move-25k.jsonl` (25k samples)
@@ -1049,3 +1072,757 @@ The discrete diffusion transformer with cross-entropy loss cannot learn to contr
 | 14 | Larger datasets (200k-300k) don't improve results over 50k |
 | 15 | **2.7% appears to be the ceiling for this architecture** |
 | 16 | Cross-entropy loss cannot learn emergent global properties |
+| 17 | SwiGLU activation gives modest improvement (+0.4%) |
+| 18 | Architecture variants don't stack - combining hurts |
+| 19 | **3.1% is the new ceiling with SwiGLU** |
+
+---
+
+## Phase 12: RL Fine-tuning Experiments (Jan 2026)
+
+After hitting the 2.7-3.1% pretraining ceiling, we attempted RL fine-tuning to break through by directly optimizing puzzle validity.
+
+### Attempt 1: REINFORCE with Sparse Rewards (v3-v6)
+
+**Script:** `rl_finetune.py`
+
+**Setup:**
+- Reward: +1 for full pass, -0.3 for fail
+- Batch size: 32, LR: 1e-5
+- k-candidate evaluation (k=32) for faster signal
+
+**Results:**
+| Version | Initial | Best | Final | Notes |
+|---------|---------|------|-------|-------|
+| v3 | 30% (k=32) | 43% | 15% | Mode collapse - learned "safe" short puzzles |
+| v4 | 30% (k=32) | 43% | 20% | Overfit to fixed eval seeds (fake improvement) |
+| v5 | 26.7% (k=32) | 43.3% | 20% | Random eval seeds - collapsed again |
+| v6 | 1.3% (k=1) | ~1% | ~1% | Single-shot: pure noise, no signal |
+
+**Diagnosis:** 
+- k=32 inflated metrics but didn't improve underlying model
+- At 1% success rate, batch of 64 has ~0.6 successes = pure noise
+- Sparse reward provides no gradient signal at low success rates
+
+### Attempt 2: PPO with Shaped Rewards
+
+**Script:** `rl_ppo.py`
+
+**Motivation:** PPO clips updates to prevent collapse; shaped rewards give denser signal.
+
+**Shaped Reward Function:**
+```
+solvable:       +0.2
+no_stuck:       +0.2  
+unique_optimal: +0.2
+moves_bonus:    +0.4 * (1 - |moves - 10| / 10)^2
+unsolvable:     -0.3
+```
+
+**Config:** Batch=64, LR=3e-6, clip_eps=0.1, PPO epochs=4
+
+**Initial Bug:** Volatile KL (0.02 to 1.3+ swings)
+- Root cause: Log-prob approximation sampled random single timestep
+- Fix: Average log-prob over fixed timesteps [10, 25, 40]
+
+**Results (v2 after fix):**
+```
+Step 0:   unique=17%, exact10=0%
+Step 140: unique=25%, exact10=3% ← Best EVAL: 2.0%
+Step 290: unique=20%, exact10=1%
+Step 340: unique=22%, exact10=0.5%
+```
+
+**Observation:** Oscillating around baseline, no upward trend. Best 2.0% couldn't hold.
+
+### Attempt 3: PPO with Curriculum Learning
+
+**Hypothesis:** Focus on unique_optimal first (50% reward weight) since that's the bottleneck.
+
+**Stage 1 Reward:** 0.2 (solvable) + 0.3 (no_stuck) + 0.5 (unique_optimal)
+
+**Results:**
+```
+Step 0-300: unique oscillated 17-33%, no trend
+All EVALs: 1.0% pass - no improvement
+```
+
+**Conclusion:** Curriculum didn't help. Model's capacity for unique paths seems maxed.
+
+### Attempt 4: Differentiable Verifier
+
+**Script:** `train_diff.py`, `diff_verifier.py`
+
+**Concept:** Compute differentiable approximation of verification on tile LOGITS, so gradients flow through.
+
+**Implementation:**
+- Soft BFS via conv2d message passing (15 iterations)
+- Uniqueness proxy: 1 - (entropy / max_entropy)
+
+**Loss:** diffusion_loss + 0.1 * (solvable_loss + 2 * uniqueness_loss)
+
+**Results:**
+```
+Step 0:   soft_solv=0.42, soft_uniq=0.04
+Step 100: soft_solv=0.76, soft_uniq=0.02
+Step 290: soft_solv=0.70, soft_uniq=0.03
+EVAL: 0-1% pass, 14-20% real unique
+```
+
+**Problem:** Soft solvable improved but entropy-based uniqueness doesn't correlate with real path uniqueness. Would need differentiable path counting (research-level problem).
+
+### Key Lessons from RL
+
+| # | Lesson |
+|---|--------|
+| 20 | Credit assignment is fundamentally broken - 169 tiles, reward only at end |
+| 21 | "Unique optimal path" difference is often a single wall - geometrically hard |
+| 22 | At 1-2% success, RL signal is pure noise (~1 positive per batch) |
+| 23 | Shaped rewards prevent collapse but don't raise ceiling |
+| 24 | k-candidate is a bandaid - filters output but doesn't improve model |
+| 25 | Entropy-based soft uniqueness doesn't capture true path counting |
+
+### Files Created
+
+- `rl_finetune.py` - REINFORCE implementation
+- `rl_ppo.py` - Full PPO with shaped rewards and curriculum
+- `diff_verifier.py` - Differentiable ice puzzle verifier
+- `train_diff.py` - Training loop with diff verifier loss
+
+---
+
+## Remaining Options
+
+1. **Skeleton/Two-Stage** (highest potential, high effort)
+   - Train model to predict path waypoints first
+   - Second model fills tiles conditioned on path
+   - Explicitly teaches geometry
+
+2. **k-Candidate Filtering** (practical, doesn't improve model)
+   - Generate k=32+ candidates per seed
+   - Filter with real verifier
+   - ~50%+ success rate usable for production
+
+3. **Accept Ceiling**
+   - Use 3.1% SwiGLU model with k-candidate
+   - Focus engineering on other features
+
+---
+
+## Phase 13: Path-Conditioned Training (Jan 2026)
+
+After hitting the 2.7-3.1% ceiling, we tried a fundamentally different approach: **condition the tile generator on the ground-truth optimal path** from training data.
+
+### Core Hypothesis
+
+The model fails to produce 10-move puzzles because it can't "see" the intended path. By explicitly feeding the path as input conditioning, we test: **can the tile generator realize an explicit 10-move plan and preserve uniqueness?**
+
+### Path Conditioning Implementation
+
+**Two spatial encodings added to the model:**
+
+1. **Stop-step one-hot features** (`stop_step_feat`): shape `[B, 13, 13, 11]`
+   - For a 10-move puzzle (11 stops including start), channel `k` is 1.0 at the k-th stop position
+   - Handles rare revisits (two channels can be 1 at same cell)
+
+2. **On-path binary mask** (`on_path`): shape `[B, 13, 13, 1]`
+   - 1.0 for every cell traversed by the optimal path (including slide intermediates)
+   - Includes start and goal cells
+
+**Model modifications** (in `model_v2.py`):
+- Added `stop_step_proj = nn.Linear(11, model_dim)` and `on_path_proj = nn.Linear(1, model_dim)`
+- Conditioning added to per-cell embeddings: `h = h + stop_step_proj(stop_feat) + on_path_proj(on_path_mask)`
+
+**Augmentation:** Path coordinates transformed consistently with tile augmentation via `augment_puzzle_with_path()`.
+
+### Auxiliary Losses
+
+To ensure the model actually uses path conditioning, we added plan realization losses:
+
+1. **L_stop** - Stop positions must be CLEAR (ice, floor, or ledge-accessible)
+   - Penalizes walls at stop positions
+   
+2. **L_clear** - All traversed cells must be CLEAR
+   - Ensures slides can actually occur between stops
+
+Combined: `L_plan = λ_stop * L_stop + λ_clear * L_clear`
+
+### Run 1: Basic Path Conditioning (`output_v2_pathcond`)
+
+**Config:**
+- Base: `model_v2.py` with path conditioning
+- λ_stop = 0.15, λ_clear = 0.05 (fixed)
+- LR: 1e-4
+- EMA: 0.9999
+
+**Results:**
+| Step | solve | unique | t10 | PASS | moves_mean |
+|------|-------|--------|-----|------|------------|
+| 5k | 18.4% | 13.5% | 1.6% | 0.4% | 10.2 |
+| 10k | 22.8% | 18.1% | 2.4% | 0.8% | 9.5 |
+| 15k | 19.3% | 16.2% | 2.0% | **1.6%** | 8.1 |
+| 20k | 15.7% | 13.8% | 1.2% | 0.8% | 6.8 |
+
+**Problem:** moves_mean drifted from 10.2 → 6.8. Model found shortcuts despite path conditioning.
+
+### Run 2: Ramping λ Schedule (`output_v2_ramp`)
+
+**Hypothesis:** Ramp plan losses later so model learns tiles first.
+
+**Config:**
+- λ_stop: 0.15 → 0.40 (ramp 10k-18k steps)
+- λ_clear: 0.05 → 0.20 (ramp 10k-18k steps)
+- LR step-down: 1e-4 (0-18k), 3e-5 (18k-24k), 1e-5 (24k+)
+
+**Results:**
+| Step | solve | unique | t10 | PASS | moves_mean |
+|------|-------|--------|-----|------|------------|
+| 10k | 20.5% | 16.8% | 2.1% | 0.8% | 9.8 |
+| 15k | 25.3% | 20.9% | 3.2% | **2.4%** | 8.9 |
+| 19k | 27.1% | 22.5% | 3.5% | **2.8%** | 8.2 |
+| 22k | 23.8% | 19.7% | 2.8% | 2.0% | 7.4 |
+
+**Improvement:** Peaked at 2.8% vs 1.6% baseline. But still collapsed to 7.4 moves.
+
+### Run 3: Plan Scaler + Lock Basin (`output_lock_basin`)
+
+**Innovation:** Dynamic multiplier that scales plan loss to match CE gradient magnitude.
+
+**Config:**
+- Plan scaler: `mult = clamp(g_ce / g_plan, 0.5, 4.0)`, late_max=8.0 at step 18k
+- Same λ ramp schedule
+- Early stop: patience=6, moves_threshold=7.0
+
+**Results (Best Run):**
+| Step | solve | unique | t10 | PASS | moves_mean | mult |
+|------|-------|--------|-----|------|------------|------|
+| 10k | 22.1% | 17.8% | 2.5% | 1.2% | 9.2 | 3.42 |
+| 15k | 28.4% | 23.1% | 4.0% | 3.6% | 8.8 | 4.00 |
+| 19k | 31.2% | 25.8% | 5.1% | **4.8%** | 8.5 | 6.12 |
+| 22k | 26.4% | 21.9% | 3.2% | 2.8% | 6.7 | 8.00 |
+
+**New best: PASS = 4.8%** at step 19k! But still collapsed to 6.7 moves by step 22k.
+
+**Key insight:** Model learned to satisfy plan losses (intended path is viable) but found SHORTCUTS (cells off-plan that enable <10 solutions). Plan losses don't forbid shortcuts.
+
+### Run 4: L_shortcut Anti-Shortcut Loss (`output_shortcut_v3`)
+
+**New loss:** Explicitly penalize cells enabling shorter solutions.
+
+**Implementation:**
+```python
+def compute_shortcut_loss():
+    # Sample 25% of batch
+    # Argmax tiles → Run solver → Check if moves < 10
+    # If shortcut: culprit = solver_cells - intended_cells
+    # Penalize: -log(p_wall(culprit) + eps)
+```
+
+**Config:**
+- λ_shortcut: 0.0 → 0.30 (ramp 12k-18k steps)
+- All other settings from lock_basin
+
+**Results:**
+| Step | solve | unique | t10 | PASS | moves_mean |
+|------|-------|--------|-----|------|------------|
+| 5k | 19.6% | 14.6% | 1.7% | 0.3% | 9.9 |
+| 10k | 15.2% | 12.5% | 1.4% | 0.4% | 8.8 |
+| 11k | 21.9% | 18.5% | 2.6% | **0.8%** | 9.2 |
+
+**Problem:** Training stopped at step 12000 (right when L_shortcut was supposed to activate). Best PASS only 0.8% - **worse than lock_basin's 4.8%**.
+
+**Issues identified:**
+1. L_shortcut never actually activated (ramp starts at 12k, training stopped at 12k)
+2. Possible crash in shortcut computation (runs solver on model outputs)
+3. moves_mean drifted to 8.8-9.2 without anti-shortcut active
+
+### Summary of Path-Conditioned Results
+
+| Run | Best PASS | At Step | Final moves_mean | Notes |
+|-----|-----------|---------|------------------|-------|
+| Basic path-cond | 1.6% | 15k | 6.8 | Baseline |
+| Ramping λ | 2.8% | 19k | 7.4 | Better schedule |
+| Lock Basin | **4.8%** | 19k | 6.7 | Dynamic scaling |
+| L_shortcut | 0.8% | 11k | 9.2 | Incomplete (crashed at 12k) |
+
+### Key Learnings from Path-Conditioned Training
+
+| # | Lesson |
+|---|--------|
+| 26 | Path conditioning helps model "see" intended route |
+| 27 | Plan losses (L_stop, L_clear) ensure intended path is viable |
+| 28 | Plan losses do NOT forbid shortcuts - model still finds them |
+| 29 | Dynamic gradient-based scaling (plan scaler) helps balance losses |
+| 30 | 4.8% PASS is new ceiling - beats 3.1% SwiGLU baseline |
+| 31 | moves_mean drift from 10→6.7 indicates shortcut exploitation |
+| 32 | Need explicit anti-shortcut mechanism to prevent collapse |
+
+### Files Created/Modified
+
+- `pretrain_v2.py` - Path-conditioned training loop with L_plan, L_shortcut
+- `model_v2.py` - Added `stop_step_proj`, `on_path_proj` conditioning
+- `build_path_conditioning()` - Utility to create spatial path features
+- `expand_path_to_cells()` - Expand stop sequence to all traversed cells
+- `compute_plan_realization_loss()` - L_stop + L_clear computation
+- `compute_shortcut_loss()` - Anti-shortcut loss using solver
+
+### Next Steps
+
+1. **Fix L_shortcut run** - Investigate why training stopped at 12k, re-run
+2. **Earlier shortcut activation** - Start L_shortcut at step 0 or 6k instead of 12k
+3. **Debug shortcut computation** - May have performance/crash issues calling solver
+4. **Increase shortcut weight** - If 0.30 insufficient, try 0.50 or higher
+5. **Consider data composition** - Is training data itself limiting 10-move learning?
+
+---
+
+## Phase 7: L_shortcut Success and Conditioning Discovery
+
+### Run 5: Full L_shortcut Training (`output_shortcut_v1`)
+
+Re-ran L_shortcut with proper configuration and let it run to completion.
+
+**Config:**
+- λ_stop: 0.15 → 0.40 (ramp 10k-18k)
+- λ_clear: 0.05 → 0.20 (ramp 10k-18k)
+- λ_shortcut: 0.0 → 0.30 (ramp 12k-18k)
+- LR: 1e-4 until 18k, 3e-5 until 24k, 1e-5 after
+- Plan scaler: mult_max=4.0 until 18k, then 8.0
+- EMA decay: 0.9999
+
+**Results (Full Training - 42k steps, 13 epochs):**
+
+| Step | solve | unique | t10 | PASS | moves_mean | near10 |
+|------|-------|--------|-----|------|------------|--------|
+| 5k | 18.0% | 13.3% | 1.5% | 0.0% | 10.7 | 51.9% |
+| 10k | 29.5% | 24.2% | 6.3% | 2.0% | 9.9 | 64.5% |
+| 15k | 41.8% | 35.2% | 15.6% | 8.6% | 9.7 | 74.6% |
+| 18k | 48.4% | 41.0% | 24.6% | 15.2% | 9.5 | 77.7% |
+| 20k | 52.0% | 44.9% | 28.9% | 18.0% | 9.6 | 81.3% |
+| 25k | 55.9% | 48.4% | 33.2% | 22.3% | 9.6 | 85.9% |
+| 30k | 57.8% | 50.4% | 36.3% | 26.2% | 9.6 | 86.3% |
+| 35k | 58.6% | 51.6% | 38.7% | 29.3% | 9.6 | 86.7% |
+| 38k | 60.2% | 52.3% | 40.6% | **32.1%** | 9.7 | 87.5% |
+| 40k | 59.8% | 52.0% | 40.2% | **32.1%** | 9.6 | 86.7% |
+| 42k | 59.0% | 51.2% | 39.5% | 31.2% | 9.6 | 86.3% |
+
+**🎉 NEW BEST: PASS = 32.1%** at step 38-40k!
+
+**Key observations:**
+- L_shortcut prevented the collapse - moves_mean stayed at 9.6-9.7 throughout!
+- Previous runs collapsed to 6.7 moves; this held steady
+- PASS improved 6.7x over previous best (32.1% vs 4.8%)
+- near10% (moves within ±1 of 10) reached 87.5%
+
+### Run 6: Parallel Run (`output_shortcut_v3`)
+
+Same configuration as v1, ran in parallel.
+
+**Results:**
+| Step | solve | unique | t10 | PASS | moves_mean |
+|------|-------|--------|-----|------|------------|
+| 30k | 55.5% | 47.9% | 34.1% | 25.4% | 9.5 |
+| 33k | 56.6% | 49.0% | 36.7% | **29.4%** | 9.6 |
+| 34k | 56.3% | 48.6% | 36.3% | 28.5% | 9.6 |
+
+**Best: PASS = 29.4%** - slightly below v1 but confirmed reproducibility.
+
+### Critical Discovery: Path Conditioning Dependence
+
+After training, we attempted to use the model for seed → puzzle generation and discovered a fundamental issue.
+
+**Testing unconditioned generation:**
+```python
+# Using model.generate() without path features
+metrics = generate_and_validate(model, device, validate_fn, num_samples=200)
+# Result: Solvable=9%, Unique=8.5%, Target10=0%, PASS=0%, moves_mean=3.9
+```
+
+**The 32% PASS rate was achieved ONLY with path conditioning!**
+
+**Architecture analysis revealed:**
+
+The v2 model's forward signature:
+```python
+def forward(self, tiles, t, start_pos, goal_pos,
+            stop_step_feat: Optional = None,  # Path input
+            on_path: Optional = None):        # Path input
+```
+
+Training used `train_pretrain_with_path()` which:
+1. Loads ground-truth optimal paths from training data
+2. Builds path conditioning tensors (`stop_step_feat`, `on_path`)
+3. Passes path features to model during forward
+4. Evaluates using `generate_and_validate_with_plan()` which also provides paths
+
+**The model learned to be a "path realizer" not a "puzzle generator":**
+- Given a path → generates valid tiles (32% success)
+- Without a path → generates garbage (0% success)
+
+This is **Design A (path-conditioned generator)** vs intended **Design B (unconditional generator with path-supervised losses)**.
+
+### Inference Module Created
+
+To document proper usage, created `inference_v2.py`:
+
+```python
+from inference_v2 import PuzzleInference
+
+inf = PuzzleInference("output_shortcut_v1/best_model.pt")
+
+# Path-conditioned generation (works - 30% PASS)
+puzzles = inf.generate_from_data("../data/train-200k-with-paths.jsonl", 
+                                  num_samples=100, require_full_pass=True)
+
+# Seed-only generation (doesn't work - 0% PASS)
+puzzle = inf.generate_from_seed("my-seed", max_candidates=1000)  # Will fail
+```
+
+**Start/Goal Distribution Analysis (100 full-pass puzzles):**
+- Starts cluster in left half (x̄=4.1), spread vertically (ȳ=5.7)
+- Goals cluster in right half (x̄=8.5), corners especially (11,0), (12,11)
+- Manhattan distance: 4-22, mean=15.2 (diagonal traversal pattern)
+
+---
+
+## Phase 8: Conditioning Dropout Fine-Tuning
+
+### The Problem
+
+The model cannot generate puzzles from just a seed because it learned to depend on path input features. We need to convert it from path-conditioned to unconditional while preserving its 10-move generation capability.
+
+### Solution: Classifier-Free Conditioning Dropout
+
+Inspired by classifier-free guidance, we fine-tune the model by randomly dropping path conditioning during training while keeping the same auxiliary loss targets.
+
+**Key insight:** The path features are used to compute loss targets (L_stop, L_clear, L_shortcut) regardless of whether they're passed to the model. This transfers "10-move discipline" into the unconditional pathway.
+
+### Implementation
+
+Added new training mode `--cond-dropout` in `pretrain_v2.py`:
+
+```python
+def train_cond_dropout(args, model, device, validate_fn, out_dir, config):
+    """
+    Fine-tune path-conditioned model to work without path conditioning.
+    
+    Randomly drops path features during training while keeping same loss targets.
+    """
+    # ... setup ...
+    
+    for batch in loader:
+        # Compute conditioning dropout probability
+        p_drop = get_cond_dropout_p(global_step, args)
+        drop_mask = torch.rand(batch_size, device=device) < p_drop
+        
+        # Zero out path features for dropped samples
+        stop_step_feat_masked = stop_step_feat.clone()
+        on_path_masked = on_path.clone()
+        stop_step_feat_masked[drop_mask] = 0.0
+        on_path_masked[drop_mask] = 0.0
+        
+        # Forward with potentially zeroed conditioning
+        outputs = model(x_t, t, start_pos, goal_pos,
+                       stop_step_feat=stop_step_feat_masked,
+                       on_path=on_path_masked)
+        
+        # Losses still computed using ground-truth paths (not masked)
+        L_stop, L_clear = compute_plan_realization_loss(tile_logits, filtered_paths)
+        # ... L_shortcut also uses GT paths ...
+```
+
+**Dropout Schedule:**
+```python
+def get_cond_dropout_p(step, args):
+    # Steps 0 → 2k: p = 0.10 (mostly conditioned)
+    # Steps 2k → 10k: ramp 0.10 → 0.60
+    # Steps 10k → 20k: ramp 0.60 → 0.90
+    # Steps 20k → 30k: p = 0.95 (mostly unconditioned)
+```
+
+**Evaluation reports BOTH metrics:**
+```
+eval step=1000 [UNCOND] solve=9% unique=8% t10=0% PASS=0% | moves=3.4
+eval step=1000 [COND]   solve=40% unique=40% t10=32% PASS=29% | moves=9.7
+```
+
+### Run 7: Conditioning Dropout Fine-Tune (`output_cond_dropout_v1`)
+
+**Config:**
+- Checkpoint: `output_shortcut_v1/best_model.pt` (32.1% PASS with conditioning)
+- LR: 3e-5 (constant, lower for fine-tuning)
+- Total steps: 30,000
+- Lambda (fixed at final): stop=0.40, clear=0.20, shortcut=0.30
+- p_drop schedule: 0.10 → 0.60 → 0.90 → 0.95
+- EMA decay: 0.9999
+
+**Status:** Training in progress (started 2026-01-23 09:39)
+
+**Expected outcomes:**
+- `[UNCOND] moves_mean` should climb from ~3.4 toward 9-10
+- `[UNCOND] t10%` should move off zero
+- `[UNCOND] PASS%` should begin rising by step 5k-10k
+
+**Success criteria:**
+- Unconditioned PASS% > 5% would indicate transfer is working
+- Unconditioned moves_mean > 7 would indicate planning is internalized
+- If no improvement by 10k steps, may need architectural changes
+
+### Files Created/Modified
+
+- `pretrain_v2.py`:
+  - Added `--cond-dropout` training mode
+  - Added `train_cond_dropout()` function
+  - Added `get_cond_dropout_p()` for dropout schedule
+  - Added new CLI args: `--cond-dropout-*` family
+  
+- `inference_v2.py` (new file):
+  - `PuzzleInference` class for easy model loading/generation
+  - `generate_with_path()` - path-conditioned generation
+  - `generate_from_data()` - batch generation from training data
+  - `generate_from_seed()` - attempt unconditioned (currently ~0% success)
+  - `analyze_distribution()` - start/goal position analysis
+  - CLI interface for quick testing
+
+### Key Learnings
+
+| # | Lesson |
+|---|--------|
+| 33 | L_shortcut successfully prevented moves collapse (9.6 vs 6.7) |
+| 34 | 32.1% PASS is achievable but ONLY with path conditioning |
+| 35 | Path features as inputs create dependency - model won't work without them |
+| 36 | "Path-supervised losses" ≠ "path as input" - architecture matters |
+| 37 | Conditioning dropout can potentially transfer knowledge to unconditioned pathway |
+| 38 | Fine-tuning requires lower LR (3e-5 vs 1e-4) to avoid catastrophic forgetting |
+| 39 | Must evaluate BOTH conditioned and unconditioned to track transfer |
+
+### Summary Table
+
+| Run | Mode | Best PASS | At Step | moves_mean | Notes |
+|-----|------|-----------|---------|------------|-------|
+| shortcut_v1 | path-cond | **32.1%** | 38k | 9.7 | Best with conditioning |
+| shortcut_v3 | path-cond | 29.4% | 33k | 9.6 | Reproducibility check |
+| shortcut_v1 | uncond | 0.0% | - | 3.9 | Without path input |
+| cond_dropout_v1 | uncond | TBD | TBD | TBD | In progress |
+
+---
+
+## Appendix A: Current Model Architecture (PuzzleGeneratorV2)
+
+### Overview
+
+The model uses a **Transformer encoder with discrete diffusion** (BERT-style masked prediction). It generates a 13×13 tile grid given START/GOAL positions, optionally conditioned on an optimal path.
+
+### Model Configuration (Base Preset)
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| `model_dim` | 256 | Hidden dimension |
+| `num_layers` | 6 | Transformer layers |
+| `num_heads` | 8 | Attention heads |
+| `ff_dim` | 1024 | Feedforward dimension (4× model_dim) |
+| `tile_vocab_size` | 10 | Tile types (0-9 remapped) |
+| `grid_size` | 169 | 13×13 tiles |
+| `num_timesteps` | 50 | Diffusion steps |
+| `mask_schedule` | cosine | Masking probability over time |
+| **Total params** | **5.4M** | |
+
+### Tile Vocabulary (Internal ↔ Game Mapping)
+
+| Internal ID | Game ID | Type |
+|-------------|---------|------|
+| 0 | 0 | Floor |
+| 1 | 1 | Wall |
+| 2 | 4 | Ice |
+| 3 | 5 | Ledge_U |
+| 4 | 6 | Ledge_D |
+| 5 | 7 | Ledge_L |
+| 6 | 8 | Ledge_R |
+| 7 | 100 | START |
+| 8 | 101 | GOAL |
+| 9 | 2 | (reserved) |
+
+### Architecture Components
+
+```
+Input:
+  - tiles: (B, 169) tile indices (possibly masked with token 10)
+  - t: (B,) diffusion timestep
+  - start_pos: (B,) flat index 0-168
+  - goal_pos: (B,) flat index 0-168
+  - stop_step_feat: (B, 169, 11) [OPTIONAL] one-hot path stops
+  - on_path: (B, 169, 1) [OPTIONAL] binary path mask
+
+Embedding:
+  tile_embed: Embedding(11, 256)  # 10 tiles + 1 MASK token
+  pos_embed: learned (169, 256)
+  start_pos_embed: Embedding(169, 256)
+  goal_pos_embed: Embedding(169, 256)
+  time_embed: MLP(1 → 256)
+
+Path Conditioning (if provided):
+  stop_step_proj: Linear(11, 256)  # Which stop number at each cell
+  on_path_proj: Linear(1, 256)     # Binary: is cell on path?
+
+Transformer:
+  6× TransformerLayer:
+    - MultiHeadAttention(256, 8 heads)
+    - LayerNorm
+    - FFN(256 → 1024 → 256, GELU)
+    - LayerNorm
+
+Output Heads:
+  tile_head: Linear(256, 10)   → (B, 169, 10) tile logits
+  start_head: Linear(256, 1)   → (B, 169) start logits
+  goal_head: Linear(256, 1)    → (B, 169) goal logits
+```
+
+### Forward Pass
+
+```python
+def forward(self, tiles, t, start_pos, goal_pos, stop_step_feat=None, on_path=None):
+    # 1. Embed tiles + positions
+    x = tile_embed(tiles) + pos_embed
+    
+    # 2. Add timestep embedding (broadcast)
+    x = x + time_embed(t).unsqueeze(1)
+    
+    # 3. Add start/goal position context (broadcast)
+    x = x + start_pos_embed(start_pos).unsqueeze(1)
+    x = x + goal_pos_embed(goal_pos).unsqueeze(1)
+    
+    # 4. Add path conditioning if provided
+    if stop_step_feat is not None:
+        x = x + stop_step_proj(stop_step_feat)
+    if on_path is not None:
+        x = x + on_path_proj(on_path)
+    
+    # 5. Transformer layers
+    for layer in layers:
+        x = layer(x)
+    
+    # 6. Output heads
+    tile_logits = tile_head(x)      # (B, 169, 10)
+    start_logits = start_head(x)    # (B, 169)
+    goal_logits = goal_head(x)      # (B, 169)
+    
+    return {"tile_logits", "start_logits", "goal_logits"}
+```
+
+### Generation Process
+
+```python
+def generate(batch_size, device, seed):
+    # 1. Initialize all tiles as MASK tokens
+    x_t = full(MASK_TOKEN)  # (B, 169)
+    
+    # 2. Sample START/GOAL positions (one forward pass)
+    outputs = forward(x_t, t=T-1)
+    start_pos = gumbel_sample(outputs["start_logits"])
+    goal_pos = gumbel_sample(outputs["goal_logits"])
+    
+    # 3. Iterative denoising (T steps)
+    for t in reversed(range(T)):
+        outputs = forward(x_t, t, start_pos, goal_pos)
+        x_0_pred = sample(outputs["tile_logits"])
+        
+        # Re-mask some positions for next step
+        mask_prob = alpha_bar[t-1] / alpha_bar[t]
+        keep_mask = random() < mask_prob
+        x_t = where(keep_mask, MASK, x_0_pred)
+    
+    return tiles, start_pos, goal_pos
+```
+
+---
+
+## Appendix B: Current Training Hyperparameters
+
+### Best Configuration (L_shortcut run)
+
+| Parameter | Value | Notes |
+|-----------|-------|-------|
+| **Batch size** | 64 | |
+| **Learning rate** | 1e-4 → 3e-5 → 1e-5 | Step-down at 18k, 24k |
+| **Optimizer** | AdamW | β1=0.9, β2=0.999 |
+| **Weight decay** | 0.01 | |
+| **Gradient clipping** | 1.0 | |
+| **EMA decay** | 0.9999 | For stable sampling |
+| **Label smoothing** | 0.0 | |
+
+### Loss Weights (Final Values)
+
+| Loss | Symbol | Final Value | Ramp Schedule |
+|------|--------|-------------|---------------|
+| Tile cross-entropy | L_ce | 1.0 | Fixed |
+| Stop position loss | L_stop | 0.40 | 0.15→0.40 (10k-18k) |
+| Path clear loss | L_clear | 0.20 | 0.05→0.20 (10k-18k) |
+| Shortcut loss | L_shortcut | 0.30 | 0.0→0.30 (12k-18k) |
+| Start position | L_start | 0.5 | Fixed |
+| Goal position | L_goal | 0.5 | Fixed |
+
+### Plan Loss Scaler
+
+Dynamic multiplier to keep auxiliary losses influential:
+
+```python
+mult = clamp(target_ratio * (ema_tile_loss / ema_plan_loss), 0.5, 8.0)
+L_total = L_ce + mult * L_plan
+```
+
+- `target_ratio = 0.3`
+- `mult_max = 4.0` until step 18k, then `8.0`
+
+### Conditioning Dropout (Fine-tuning)
+
+| Parameter | Value |
+|-----------|-------|
+| LR | 3e-5 (constant) |
+| Total steps | 30,000 |
+| p_drop phase 1 | 0.10 (steps 0-2k) |
+| p_drop phase 2 | 0.10→0.60 (steps 2k-10k) |
+| p_drop phase 3 | 0.60→0.90 (steps 10k-20k) |
+| p_drop phase 4 | 0.95 (steps 20k-30k) |
+
+---
+
+## Appendix C: Problem Space Definition
+
+### Task
+
+Generate a 13×13 ice puzzle grid that:
+1. Has exactly one START and one GOAL tile
+2. Is solvable (path exists from START to GOAL)
+3. Has no stuck positions (every reachable tile can reach GOAL)
+4. Has exactly ONE optimal path (unique shortest solution)
+5. Optimal path is exactly 10 moves
+
+### Movement Rules
+
+- **Floor (0):** Player moves 1 tile in input direction
+- **Ice (4):** Player slides until hitting wall/ledge/floor
+- **Wall (1):** Impassable, stops sliding
+- **Ledges (5-8):** One-way tiles, can only be entered from specific direction
+- **START (100):** Starting position
+- **GOAL (101):** Win condition
+
+### Difficulty Philosophy
+
+The game uses a **binary lives system** - player must complete puzzle in exactly the optimal number of moves or they lose that life. Backtracking cost is irrelevant; once you make a wrong move, the life is burned.
+
+Key difficulty metrics (ranked by importance):
+1. **paths** (near_optimal_paths) - More paths = more confusion
+2. **olap** (path_overlap) - Low overlap = truly different routes
+3. **ediv** (early_divergence) - Confusion from move 1
+
+### Data Generation
+
+Training data is generated by the Rust generator which:
+1. Randomly places tiles
+2. Validates using BFS solver
+3. Filters for exactly 10-move unique-optimal solutions
+4. Takes 10-60 minutes per puzzle (motivates ML replacement)
+
+---
+
+*Last updated: 2026-01-23*

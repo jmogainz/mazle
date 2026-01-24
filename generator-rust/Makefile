@@ -274,6 +274,9 @@ assert data_path.exists(), f"data path not found: {data_path}";' "$(ML_TUNE_CONF
 DATASET_OUT ?= $(CURDIR)/data/mazle-train.jsonl
 DATASET_LOG ?= $(CURDIR)/data/mazle-train.log
 DATASET_PID ?= $(CURDIR)/data/mazle-train.pid
+DATASET_WATCHER_PID ?= $(dir $(DATASET_OUT))mazle-train-watcher.pid
+DATASET_WATCHER_LOG ?= $(dir $(DATASET_OUT))mazle-train-watcher.log
+DATASET_WATCHER_INTERVAL ?= 15
 DATASET_COUNT ?= 100000
 	DATASET_START_INDEX ?= 1
 	DATASET_APPEND ?= 0
@@ -289,27 +292,146 @@ dataset-gen: cargo-build
 		exit 1; \
 	fi
 	@mkdir -p "$(dir $(DATASET_OUT))"
-	@if command -v setsid >/dev/null 2>&1; then \
-		DATASET_OUT="$(DATASET_OUT)" \
-			DATASET_COUNT="$(DATASET_COUNT)" \
-			DATASET_START_INDEX="$(DATASET_START_INDEX)" \
-			DATASET_APPEND="$(DATASET_APPEND)" \
-			DATASET_SEED_PREFIX="$(DATASET_SEED_PREFIX)" \
-			DATASET_SIZE="$(DATASET_SIZE)" \
-			$(if $(DATASET_TARGET_MOVES),DATASET_TARGET_MOVES="$(DATASET_TARGET_MOVES)") \
-			setsid ./target/release/mazle-generator </dev/null > "$(DATASET_LOG)" 2>&1 & \
-			echo $$! | tee "$(DATASET_PID)"; \
+	@if [ -n "$(DATASET_START_INDEX)" ]; then \
+		start="$(DATASET_START_INDEX)"; \
+		remaining="$(DATASET_COUNT)"; \
+		echo "dataset-gen: Manual mode - starting from index $$start, generating $$remaining"; \
+	else \
+		existing=$$(wc -l < "$(DATASET_OUT)" 2>/dev/null | tr -d ' ' || echo 0); \
+		remaining=$$(($(DATASET_COUNT) - existing)); \
+		start=$$((existing + 1)); \
+		echo "dataset-gen: Auto mode - file has $$existing, need $$remaining more (starting at $$start)"; \
+	fi; \
+	if [ $$remaining -le 0 ]; then \
+		echo "dataset-gen: already complete"; \
+	elif [ -f "$(DATASET_PID)" ] && ps -p $$(cat "$(DATASET_PID)") > /dev/null 2>&1; then \
+		echo "dataset-gen: already running (PID $$(cat $(DATASET_PID)))"; \
+	else \
+		if command -v setsid >/dev/null 2>&1; then \
+			DATASET_OUT="$(DATASET_OUT)" \
+				DATASET_COUNT="$$remaining" \
+				DATASET_START_INDEX="$$start" \
+				DATASET_APPEND="1" \
+				DATASET_SEED_PREFIX="$(DATASET_SEED_PREFIX)" \
+				DATASET_SIZE="$(DATASET_SIZE)" \
+				$(if $(DATASET_TARGET_MOVES),DATASET_TARGET_MOVES="$(DATASET_TARGET_MOVES)") \
+				setsid ./target/release/mazle-generator </dev/null > "$(DATASET_LOG)" 2>&1 & \
+				echo $$! | tee "$(DATASET_PID)"; \
 		else \
-		DATASET_OUT="$(DATASET_OUT)" \
-			DATASET_COUNT="$(DATASET_COUNT)" \
-			DATASET_START_INDEX="$(DATASET_START_INDEX)" \
-			DATASET_APPEND="$(DATASET_APPEND)" \
+			DATASET_OUT="$(DATASET_OUT)" \
+				DATASET_COUNT="$$remaining" \
+				DATASET_START_INDEX="$$start" \
+				DATASET_APPEND="1" \
+				DATASET_SEED_PREFIX="$(DATASET_SEED_PREFIX)" \
+				DATASET_SIZE="$(DATASET_SIZE)" \
+				$(if $(DATASET_TARGET_MOVES),DATASET_TARGET_MOVES="$(DATASET_TARGET_MOVES)") \
+				nohup ./target/release/mazle-generator </dev/null > "$(DATASET_LOG)" 2>&1 & \
+				echo $$! | tee "$(DATASET_PID)"; \
+		fi; \
+	fi
+	@# Start the watcher to auto-restart if it dies
+	@$(MAKE) --no-print-directory dataset-gen-watcher UNIQUE_RUNNER_ID="$(UNIQUE_RUNNER_ID)"
+
+.PHONY: dataset-gen-status
+dataset-gen-status:
+	@outfile="$(DATASET_OUT)"; \
+	pidfile="$(DATASET_PID)"; \
+	count=$$(wc -l < "$$outfile" 2>/dev/null | tr -d ' ' || echo 0); \
+	if [ -f "$$pidfile" ] && ps -p $$(cat "$$pidfile") > /dev/null 2>&1; then \
+		status="running"; \
+	else \
+		status="stopped"; \
+	fi; \
+	echo "dataset-gen: $$count / $(DATASET_COUNT) ($$status)"
+
+.PHONY: dataset-gen-stop
+dataset-gen-stop:
+	@watcherpid="$(DATASET_WATCHER_PID)"; \
+	if [ -f "$$watcherpid" ]; then \
+		pid=$$(cat "$$watcherpid"); \
+		if ps -p $$pid > /dev/null 2>&1; then \
+			kill $$pid 2>/dev/null && echo "Killed watcher (PID $$pid)"; \
+		fi; \
+		rm -f "$$watcherpid"; \
+	fi
+	@pidfile="$(DATASET_PID)"; \
+	if [ -f "$$pidfile" ]; then \
+		pid=$$(cat "$$pidfile"); \
+		if ps -p $$pid > /dev/null 2>&1; then \
+			kill $$pid 2>/dev/null && echo "Killed dataset-gen (PID $$pid)"; \
+		fi; \
+	fi
+
+# Internal target to restart dead generator (called by watcher)
+.PHONY: dataset-gen-restart-dead
+dataset-gen-restart-dead:
+	@outfile="$(DATASET_OUT)"; \
+	logfile="$(DATASET_LOG)"; \
+	pidfile="$(DATASET_PID)"; \
+	existing=$$(wc -l < "$$outfile" 2>/dev/null | tr -d ' ' || echo 0); \
+	remaining=$$(($(DATASET_COUNT) - existing)); \
+	start=$$((existing + 1)); \
+	if [ $$remaining -le 0 ]; then \
+		: ; \
+	elif [ -f "$$pidfile" ] && ps -p $$(cat "$$pidfile") > /dev/null 2>&1; then \
+		: ; \
+	else \
+		echo "$$(date '+%Y-%m-%d %H:%M:%S') Restarting dataset-gen from index $$start ($$existing done)"; \
+		if command -v setsid >/dev/null 2>&1; then \
+			DATASET_OUT="$$outfile" \
+			DATASET_COUNT="$$remaining" \
+			DATASET_START_INDEX="$$start" \
 			DATASET_SEED_PREFIX="$(DATASET_SEED_PREFIX)" \
 			DATASET_SIZE="$(DATASET_SIZE)" \
 			$(if $(DATASET_TARGET_MOVES),DATASET_TARGET_MOVES="$(DATASET_TARGET_MOVES)") \
-			nohup ./target/release/mazle-generator </dev/null > "$(DATASET_LOG)" 2>&1 & \
-			echo $$! | tee "$(DATASET_PID)"; \
-		fi
+			setsid ./target/release/mazle-generator </dev/null >> "$$logfile" 2>&1 & \
+			echo $$! > "$$pidfile"; \
+		else \
+			DATASET_OUT="$$outfile" \
+			DATASET_COUNT="$$remaining" \
+			DATASET_START_INDEX="$$start" \
+			DATASET_SEED_PREFIX="$(DATASET_SEED_PREFIX)" \
+			DATASET_SIZE="$(DATASET_SIZE)" \
+			$(if $(DATASET_TARGET_MOVES),DATASET_TARGET_MOVES="$(DATASET_TARGET_MOVES)") \
+			nohup ./target/release/mazle-generator </dev/null >> "$$logfile" 2>&1 & \
+			echo $$! > "$$pidfile"; \
+		fi; \
+	fi
+
+# Watcher process that monitors and restarts dead generator every interval
+.PHONY: dataset-gen-watcher
+dataset-gen-watcher:
+	@if [ -z "$(UNIQUE_RUNNER_ID)" ]; then \
+		echo "UNIQUE_RUNNER_ID not set. Run: export UNIQUE_RUNNER_ID=\$$(whoami)"; \
+		exit 1; \
+	fi
+	@watcherpid="$(DATASET_WATCHER_PID)"; \
+	watcherlog="$(DATASET_WATCHER_LOG)"; \
+	if [ -f "$$watcherpid" ] && ps -p $$(cat "$$watcherpid") > /dev/null 2>&1; then \
+		echo "Watcher already running (PID $$(cat $$watcherpid))"; \
+	else \
+		echo "Starting watcher..."; \
+		( \
+			while true; do \
+				outfile="$(DATASET_OUT)"; \
+				count=$$(wc -l < "$$outfile" 2>/dev/null | tr -d ' ' || echo 0); \
+				if [ $$count -ge $(DATASET_COUNT) ]; then \
+					echo "$$(date '+%Y-%m-%d %H:%M:%S') Complete! Total: $$count samples. Watcher exiting."; \
+					rm -f "$(DATASET_WATCHER_PID)"; \
+					exit 0; \
+				fi; \
+				pidfile="$(DATASET_PID)"; \
+				if [ -f "$$pidfile" ] && ps -p $$(cat "$$pidfile") > /dev/null 2>&1; then \
+					: ; \
+				else \
+					$(MAKE) --no-print-directory dataset-gen-restart-dead; \
+				fi; \
+				sleep $(DATASET_WATCHER_INTERVAL); \
+			done \
+		) >> "$$watcherlog" 2>&1 & \
+		echo $$! | tee "$$watcherpid"; \
+		echo "Watcher started. Log: $$watcherlog"; \
+	fi
 
 # -------------------------
 # Daily KV backfill (native, outside Docker)

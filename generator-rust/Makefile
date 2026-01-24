@@ -278,11 +278,12 @@ DATASET_WATCHER_PID ?= $(dir $(DATASET_OUT))mazle-train-watcher.pid
 DATASET_WATCHER_LOG ?= $(dir $(DATASET_OUT))mazle-train-watcher.log
 DATASET_WATCHER_INTERVAL ?= 15
 DATASET_COUNT ?= 100000
-	DATASET_START_INDEX ?= 1
-	DATASET_APPEND ?= 0
-	DATASET_SEED_PREFIX ?= train
-	DATASET_SIZE ?= 15
-	DATASET_TARGET_MOVES ?=
+DATASET_RESUME ?= 1
+DATASET_START_INDEX ?= 1
+DATASET_APPEND ?= 0
+DATASET_SEED_PREFIX ?= train
+DATASET_SIZE ?= 15
+DATASET_TARGET_MOVES ?=
 
 .PHONY: dataset-gen
 dataset-gen: RUST_BUILD_PROFILE := release
@@ -292,15 +293,15 @@ dataset-gen: cargo-build
 		exit 1; \
 	fi
 	@mkdir -p "$(dir $(DATASET_OUT))"
-	@if [ -n "$(DATASET_START_INDEX)" ]; then \
-		start="$(DATASET_START_INDEX)"; \
-		remaining="$(DATASET_COUNT)"; \
-		echo "dataset-gen: Manual mode - starting from index $$start, generating $$remaining"; \
-	else \
-		existing=$$(wc -l < "$(DATASET_OUT)" 2>/dev/null | tr -d ' ' || echo 0); \
+	@if [ "$(DATASET_RESUME)" = "1" ]; then \
+		existing=$$( ( [ -f "$(DATASET_OUT)" ] && wc -l < "$(DATASET_OUT)" ) || echo 0 | tr -d ' ' ); \
 		remaining=$$(($(DATASET_COUNT) - existing)); \
 		start=$$((existing + 1)); \
 		echo "dataset-gen: Auto mode - file has $$existing, need $$remaining more (starting at $$start)"; \
+	else \
+		start="$(DATASET_START_INDEX)"; \
+		remaining="$(DATASET_COUNT)"; \
+		echo "dataset-gen: Manual mode - starting from index $$start, generating $$remaining"; \
 	fi; \
 	if [ $$remaining -le 0 ]; then \
 		echo "dataset-gen: already complete"; \
@@ -330,13 +331,13 @@ dataset-gen: cargo-build
 		fi; \
 	fi
 	@# Start the watcher to auto-restart if it dies
-	@$(MAKE) --no-print-directory dataset-gen-watcher UNIQUE_RUNNER_ID="$(UNIQUE_RUNNER_ID)"
+	@$(MAKE) --no-print-directory dataset-gen-watcher
 
 .PHONY: dataset-gen-status
 dataset-gen-status:
 	@outfile="$(DATASET_OUT)"; \
 	pidfile="$(DATASET_PID)"; \
-	count=$$(wc -l < "$$outfile" 2>/dev/null | tr -d ' ' || echo 0); \
+	count=$$( ( [ -f "$$outfile" ] && wc -l < "$$outfile" ) || echo 0 | tr -d ' ' ); \
 	if [ -f "$$pidfile" ] && ps -p $$(cat "$$pidfile") > /dev/null 2>&1; then \
 		status="running"; \
 	else \
@@ -368,7 +369,7 @@ dataset-gen-restart-dead:
 	@outfile="$(DATASET_OUT)"; \
 	logfile="$(DATASET_LOG)"; \
 	pidfile="$(DATASET_PID)"; \
-	existing=$$(wc -l < "$$outfile" 2>/dev/null | tr -d ' ' || echo 0); \
+	existing=$$( ( [ -f "$$outfile" ] && wc -l < "$$outfile" ) || echo 0 | tr -d ' ' ); \
 	remaining=$$(($(DATASET_COUNT) - existing)); \
 	start=$$((existing + 1)); \
 	if [ $$remaining -le 0 ]; then \
@@ -414,7 +415,7 @@ dataset-gen-watcher:
 		( \
 			while true; do \
 				outfile="$(DATASET_OUT)"; \
-				count=$$(wc -l < "$$outfile" 2>/dev/null | tr -d ' ' || echo 0); \
+				count=$$( ( [ -f "$$outfile" ] && wc -l < "$$outfile" ) || echo 0 | tr -d ' ' ); \
 				if [ $$count -ge $(DATASET_COUNT) ]; then \
 					echo "$$(date '+%Y-%m-%d %H:%M:%S') Complete! Total: $$count samples. Watcher exiting."; \
 					rm -f "$(DATASET_WATCHER_PID)"; \

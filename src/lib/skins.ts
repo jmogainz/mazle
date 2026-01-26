@@ -76,7 +76,7 @@ const SKINS: readonly SkinCatalogEntry[] = [
   // Premium/luxury vibes
   { id: 'champagne', name: 'Champagne', face: '#f7e7ce', edge: '#d4af37', minTier: 'account', hidden: true },
   { id: 'rosegold', name: 'Rose Gold', face: '#e8b4b8', edge: '#b76e79', minTier: 'account', hidden: true },
-  { id: 'obsidian', name: 'Obsidian', face: '#1a1a1a', edge: '#4a0080', minTier: 'account', hidden: true },
+  { id: 'obsidian', name: 'Obsidian', face: '#1a1a1a', edge: '#4a0080', minTier: 'account' },
   { id: 'amethyst', name: 'Amethyst', face: '#9966cc', edge: '#5b3a8c', minTier: 'account', hidden: true },
   { id: 'sapphire', name: 'Sapphire', face: '#0f52ba', edge: '#082567', minTier: 'account', hidden: true },
   { id: 'ruby', name: 'Ruby', face: '#e0115f', edge: '#8b0000', minTier: 'account', hidden: true },

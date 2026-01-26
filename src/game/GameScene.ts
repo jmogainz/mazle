@@ -207,6 +207,11 @@ export class GameScene extends Phaser.Scene {
     super({ key: 'GameScene' });
   }
 
+  preload() {
+    // Preload SVG assets
+    this.load.svg('obsidian_char', '/assets/images/obsidian.svg', { width: 32, height: 32 });
+  }
+
   init(data: { puzzle: PuzzleData; cosmetics?: { characterId?: string | null; skinId?: string | null } }) {
     this.puzzle = data.puzzle;
     this.applyCosmetics({
@@ -637,7 +642,27 @@ export class GameScene extends Phaser.Scene {
     opts: { s: number; faceColor: number; edgeColor: number; shape: 'cube' | 'cylinder' | 'pyramid'; dead: boolean }
   ) {
     const { s, faceColor, edgeColor, shape, dead } = opts;
+    
+    // Clear any existing graphics
     g.clear();
+    
+    // Remove any existing SVG sprite if we are switching back to procedural or refreshing
+    const existingSprite = this.player.getByName('obsidian_sprite');
+    if (existingSprite) {
+      existingSprite.destroy();
+    }
+
+    if (this.cosmetics.skinId === 'obsidian') {
+      const sprite = this.add.image(0, 0, 'obsidian_char');
+      sprite.setName('obsidian_sprite');
+      sprite.setScale(s);
+      this.player.add(sprite);
+      
+      g.fillStyle(0x000000, 0.25);
+      g.fillEllipse(0, 8 * s, 16 * s, 6 * s);
+      
+      return;
+    }
 
     // Shadow
     g.fillStyle(0x000000, 0.25);

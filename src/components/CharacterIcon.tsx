@@ -28,6 +28,25 @@ function colorsFor(characterId: string, skinId: string): { face: string; edge: s
 export default function CharacterIcon({ characterId, skinId, size = 34, title }: CharacterIconProps) {
   const cId = (characterId ?? 'default') || 'default';
   const sId = (skinId ?? 'default') || 'default';
+
+  if (sId === 'obsidian') {
+    return (
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 32 32"
+        role={title ? 'img' : 'presentation'}
+        aria-label={title}
+        focusable="false"
+        style={{ display: 'block' }}
+      >
+        {title && <title>{title}</title>}
+        <ellipse cx="16" cy="27" rx="9" ry="3" fill="black" fillOpacity="0.25" />
+        <image href="/assets/images/obsidian.svg" x="-0.5" y="-0.5" width="33" height="33" />
+      </svg>
+    );
+  }
+
   const colors = useMemo(() => colorsFor(cId, sId), [cId, sId]);
 
   const shape = cId.toLowerCase();

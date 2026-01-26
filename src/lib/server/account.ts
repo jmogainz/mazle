@@ -1,6 +1,7 @@
 import { addDays } from '@/lib/date';
 import { getNewYorkDateString, LAUNCH_DATE_NY } from '@/game/puzzleGenerator';
 import { ensureDbSchema, getDbPool } from './db';
+import { isDevMode } from './env';
 import { getGuestProfile } from './guestStore';
 
 export type ThemePreference = 'system' | 'light' | 'dark';
@@ -40,6 +41,91 @@ const MAX_ATTEMPTS = 3;
 const MAX_PATH = 512;
 
 const ENTITLEMENT_SKIN_ROYAL = 'skin_royal';
+const ENTITLEMENT_SKIN_OBSIDIAN = 'skin_obsidian';
+const ENTITLEMENT_SKIN_PENGUIN = 'skin_penguin';
+
+async function maybeSeedDevWinStreak(userId: string, pool: ReturnType<typeof getDbPool>): Promise<void> {
+  if (!isDevMode()) return;
+
+  const target = 50;
+  const today = getNewYorkDateString();
+  const rows: Array<{ date: string; completed: boolean; time_ms: number; attempts_used: number }> = [];
+
+  for (let i = 0; i < target; i += 1) {
+    const date = addDays(today, -i);
+    if (date < LAUNCH_DATE_NY) break;
+    rows.push({
+      date,
+      completed: true,
+      time_ms: 60_000 + i * 1000,
+      attempts_used: 1,
+    });
+  }
+
+  if (rows.length === 0) return;
+
+  const payload = JSON.stringify(rows);
+  await pool.query(
+    `insert into daily_results (user_id, date, completed, time_ms, attempts_used)
+     select $1::uuid, r.date::date, r.completed, r.time_ms, r.attempts_used
+     from jsonb_to_recordset($2::jsonb) as r(
+       date text,
+       completed boolean,
+       time_ms integer,
+       attempts_used integer
+     )
+     on conflict (user_id, date) do update
+       set completed = (daily_results.completed or excluded.completed),
+           time_ms = coalesce(daily_results.time_ms, excluded.time_ms),
+           attempts_used = coalesce(daily_results.attempts_used, excluded.attempts_used)`,
+    [userId, payload]
+  );
+}
+
+async function maybeSeedDevPodiums(userId: string, pool: ReturnType<typeof getDbPool>): Promise<void> {
+  if (!isDevMode()) return;
+
+  const countRes = await pool.query<{ count: string }>(
+    'select count(*)::text as count from leaderboard_podium where user_id=$1',
+    [userId]
+  );
+  const existing = Number(countRes.rows[0]?.count ?? '0');
+  const missing = 10 - existing;
+  if (missing <= 0) return;
+
+  const metaRes = await pool.query<{ display_name: string | null; character_id: string | null; skin_id: string | null }>(
+    `select u.display_name, p.character_id, p.skin_id
+     from users u
+     left join user_profiles p on p.user_id = u.id
+     where u.id=$1`,
+    [userId]
+  );
+  const row = metaRes.rows[0];
+  const displayName = row?.display_name ?? 'Player';
+  const characterId = row?.character_id ?? 'default';
+  const skinId = row?.skin_id ?? 'default';
+
+  const seedDaysRaw = Number(process.env.DEV_SEED_DAYS ?? 30);
+  const seedDays = Number.isFinite(seedDaysRaw) ? Math.max(1, Math.min(365, Math.floor(seedDaysRaw))) : 30;
+  const today = getNewYorkDateString();
+  const startOffset = seedDays + 10;
+
+  let inserted = 0;
+  const maxAttempts = Math.max(200, missing * 40);
+  for (let i = 0; i < maxAttempts && inserted < missing; i += 1) {
+    const date = addDays(today, -(startOffset + i));
+    const timeMs = 45_000 + (i % 120) * 1000;
+    const attemptsUsed = 1 + (i % 3);
+    const res = await pool.query(
+      `insert into leaderboard_podium
+         (date, rank, user_id, time_ms, attempts_used, display_name_at_time, character_id_at_time, skin_id_at_time)
+       values ($1::date, 1, $2::uuid, $3, $4, $5, $6, $7)
+       on conflict do nothing`,
+      [date, userId, timeMs, attemptsUsed, displayName, characterId, skinId]
+    );
+    if ((res.rowCount ?? 0) > 0) inserted += 1;
+  }
+}
 
 export async function maybeGrantRoyalSkin(userId: string, playedStreak: number): Promise<void> {
   if (playedStreak < 20) return;
@@ -56,6 +142,42 @@ export async function maybeGrantRoyalSkin(userId: string, playedStreak: number):
      values ($1, $2, $3)
      on conflict do nothing`,
     [userId, ENTITLEMENT_SKIN_ROYAL, 'streak_20_play']
+  );
+}
+
+export async function maybeGrantObsidianSkin(userId: string, totalPodiums: number): Promise<void> {
+  if (totalPodiums < 10) return;
+
+  await ensureDbSchema();
+  const pool = getDbPool();
+
+  // Already unlocked? (fast path)
+  const existing = await pool.query('select 1 from entitlements where user_id=$1 and key=$2 limit 1', [userId, ENTITLEMENT_SKIN_OBSIDIAN]);
+  if ((existing.rowCount ?? 0) > 0) return;
+
+  await pool.query(
+    `insert into entitlements (user_id, key, source)
+     values ($1, $2, $3)
+     on conflict do nothing`,
+    [userId, ENTITLEMENT_SKIN_OBSIDIAN, 'podium_10']
+  );
+}
+
+export async function maybeGrantPenguinSkin(userId: string, winStreak: number): Promise<void> {
+  if (winStreak < 50) return;
+
+  await ensureDbSchema();
+  const pool = getDbPool();
+
+  // Already unlocked? (fast path)
+  const existing = await pool.query('select 1 from entitlements where user_id=$1 and key=$2 limit 1', [userId, ENTITLEMENT_SKIN_PENGUIN]);
+  if ((existing.rowCount ?? 0) > 0) return;
+
+  await pool.query(
+    `insert into entitlements (user_id, key, source)
+     values ($1, $2, $3)
+     on conflict do nothing`,
+    [userId, ENTITLEMENT_SKIN_PENGUIN, 'win_streak_50']
   );
 }
 
@@ -399,6 +521,10 @@ export async function computeUserStats(userId: string): Promise<UserStats> {
   await ensureDbSchema();
   const pool = getDbPool();
 
+  if (isDevMode()) {
+    await maybeSeedDevWinStreak(userId, pool).catch(() => null);
+  }
+
   const totalsRes = await pool.query<{
     total_played: string;
     total_wins: string;
@@ -432,6 +558,10 @@ export async function computeUserStats(userId: string): Promise<UserStats> {
   const winStreak = computeWinStreak(rows.map((r) => ({ date: r.date, completed: r.completed })));
   const maxPlayedStreak = computeMaxPlayedStreak(datesDesc);
 
+  if (isDevMode()) {
+    await maybeSeedDevPodiums(userId, pool).catch(() => null);
+  }
+
   // Query podium counts from hall of fame snapshot (final positions, not submission-time ranks)
   const podiumRes = await pool.query<{
     gold_count: string;
@@ -450,8 +580,11 @@ export async function computeUserStats(userId: string): Promise<UserStats> {
   const goldCount = Number(podiumRes.rows[0]?.gold_count ?? '0');
   const silverCount = Number(podiumRes.rows[0]?.silver_count ?? '0');
   const bronzeCount = Number(podiumRes.rows[0]?.bronze_count ?? '0');
+  const totalPodiums = goldCount + silverCount + bronzeCount;
 
   maybeGrantRoyalSkin(userId, playedStreak).catch(() => null);
+  maybeGrantObsidianSkin(userId, totalPodiums).catch(() => null);
+  maybeGrantPenguinSkin(userId, winStreak).catch(() => null);
 
   return { playedStreak, winStreak, maxPlayedStreak, totalPlayed, totalWins, avgSolveTimeMs, goldCount, silverCount, bronzeCount };
 }

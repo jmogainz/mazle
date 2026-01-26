@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { getSkinById } from '@/lib/skins';
+import { getSkinById, isSkinDisabled } from '@/lib/skins';
 import styles from './CharacterIcon.module.css';
 
 type CharacterIconProps = {
@@ -9,7 +9,10 @@ type CharacterIconProps = {
   skinId?: string | null;
   size?: number | string;
   title?: string;
+  locked?: boolean;
 };
+
+const LOCKED_COLORS = { face: '#9ca3af', edge: '#6b7280' };
 
 function colorsFor(characterId: string, skinId: string): { face: string; edge: string } {
   const skin = getSkinById(skinId);
@@ -25,11 +28,12 @@ function colorsFor(characterId: string, skinId: string): { face: string; edge: s
   return { face: `hsl(${hue} 85% 60%)`, edge: `hsl(${hue} 85% 40%)` };
 }
 
-export default function CharacterIcon({ characterId, skinId, size = 34, title }: CharacterIconProps) {
+export default function CharacterIcon({ characterId, skinId, size = 34, title, locked = false }: CharacterIconProps) {
   const cId = (characterId ?? 'default') || 'default';
-  const sId = (skinId ?? 'default') || 'default';
+  const rawSkinId = (skinId ?? 'default') || 'default';
+  const sId = isSkinDisabled(rawSkinId) ? 'default' : rawSkinId;
 
-  if (sId === 'obsidian') {
+  if (sId === 'obsidian' && !locked) {
     return (
       <svg
         width={size}
@@ -38,16 +42,43 @@ export default function CharacterIcon({ characterId, skinId, size = 34, title }:
         role={title ? 'img' : 'presentation'}
         aria-label={title}
         focusable="false"
-        style={{ display: 'block' }}
+        style={{ display: 'block', overflow: 'visible' }}
       >
         {title && <title>{title}</title>}
-        <ellipse cx="16" cy="27" rx="9" ry="3" fill="black" fillOpacity="0.25" />
-        <image href="/assets/images/obsidian.svg" x="-0.5" y="-0.5" width="33" height="33" />
+        <ellipse cx="16" cy="27" rx="9" ry="3" className={styles.shadow} />
+        <image href="/assets/images/obsidian.svg" x="-0.5" y="-0.5" width="33" height="33" shapeRendering="geometricPrecision" />
       </svg>
     );
   }
 
-  const colors = useMemo(() => colorsFor(cId, sId), [cId, sId]);
+  if (sId === 'penguin' && !locked) {
+    const PENGUIN_ICON_SIZE = 20;
+    const PENGUIN_ICON_OFFSET = (32 - PENGUIN_ICON_SIZE) / 2;
+    return (
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 32 32"
+        role={title ? 'img' : 'presentation'}
+        aria-label={title}
+        focusable="false"
+        style={{ display: 'block', overflow: 'visible' }}
+      >
+        {title && <title>{title}</title>}
+        <ellipse cx="16" cy="27" rx="9" ry="3" className={styles.shadow} />
+        <image
+          href="/assets/images/penguin.svg"
+          x={PENGUIN_ICON_OFFSET}
+          y={PENGUIN_ICON_OFFSET}
+          width={PENGUIN_ICON_SIZE}
+          height={PENGUIN_ICON_SIZE}
+          shapeRendering="geometricPrecision"
+        />
+      </svg>
+    );
+  }
+
+  const colors = useMemo(() => locked ? LOCKED_COLORS : colorsFor(cId, sId), [cId, sId, locked]);
 
   const shape = cId.toLowerCase();
 

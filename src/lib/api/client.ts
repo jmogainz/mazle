@@ -22,6 +22,10 @@ import type {
   ResultsHistoryResponse,
   ResultsImportRequest,
   ResultsImportResponse,
+  AnalyticsStartRequest,
+  AnalyticsStartResponse,
+  AnalyticsShareRequest,
+  AnalyticsShareResponse,
   ResultsRecordRequest,
   ResultsRecordResponse,
   SettingsUpdateRequest,
@@ -79,6 +83,20 @@ export const api = {
 
   resultsRecord: async (body: ResultsRecordRequest): Promise<ResultsRecordResponse> =>
     fetchJson('/api/results/record', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+
+  analyticsStart: async (body: AnalyticsStartRequest): Promise<AnalyticsStartResponse> =>
+    fetchJson('/api/analytics/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+
+  analyticsShare: async (body: AnalyticsShareRequest): Promise<AnalyticsShareResponse> =>
+    fetchJson('/api/analytics/share', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),

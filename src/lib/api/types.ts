@@ -158,6 +158,25 @@ export type ResultsRecordResponse = {
   };
 };
 
+export type AnalyticsStartRequest = {
+  date: string;
+};
+
+export type AnalyticsStartResponse = {
+  ok: true;
+  stored: boolean;
+};
+
+export type AnalyticsShareRequest = {
+  date: string;
+  kind: 'copy' | 'native';
+};
+
+export type AnalyticsShareResponse = {
+  ok: true;
+  stored: boolean;
+};
+
 export type ResultsDayResponse = {
   ok: true;
   result: {

@@ -29,6 +29,7 @@ const SkinWheelItem = memo(({ skin, isCentered = false, style, characterId, onCl
                     characterId={characterId}
                     skinId={skin.id}
                     size="100%"
+                    locked={isLocked}
                 />
             </div>
             {isLocked && !isComingSoon && (

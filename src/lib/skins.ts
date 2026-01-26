@@ -13,6 +13,12 @@ export type SkinCatalogEntry = {
 
 export type SkinDefinition = SkinCatalogEntry & { locked: boolean };
 
+const DISABLED_SKIN_IDS = new Set(['obsidian', 'penguin']);
+
+export function isSkinDisabled(id: string | null | undefined): boolean {
+  return typeof id === 'string' && DISABLED_SKIN_IDS.has(id);
+}
+
 const SKINS: readonly SkinCatalogEntry[] = [
   // Guest (default only)
   { id: 'default', name: 'Classic', face: '#ff4d4d', edge: '#cc0000', minTier: 'guest' },
@@ -20,8 +26,9 @@ const SKINS: readonly SkinCatalogEntry[] = [
   // Signed-in free (account tier)
   { id: 'mustard', name: 'Mustard', face: '#ffdb58', edge: '#daa520', minTier: 'account' },
   { id: 'teal', name: 'Lagoon', face: '#008080', edge: '#004d4d', minTier: 'account' },
-  // Streak unlock
+  // Streak unlocks
   { id: 'royal', name: 'Royal', face: '#4f2db3', edge: '#a78bfa', minTier: 'account', requiresUnlock: true },
+  { id: 'penguin', name: 'Penguin', face: '#1a1a2e', edge: '#ffffff', minTier: 'account', requiresUnlock: true },
 
   // Mazle+ placeholders (hidden from carousel)
   { id: 'mystery_plus_1', name: '???', face: '#c8d4dd', edge: '#8b98a5', minTier: 'guest', comingSoon: true, hidden: true },
@@ -76,7 +83,7 @@ const SKINS: readonly SkinCatalogEntry[] = [
   // Premium/luxury vibes
   { id: 'champagne', name: 'Champagne', face: '#f7e7ce', edge: '#d4af37', minTier: 'account', hidden: true },
   { id: 'rosegold', name: 'Rose Gold', face: '#e8b4b8', edge: '#b76e79', minTier: 'account', hidden: true },
-  { id: 'obsidian', name: 'Obsidian', face: '#1a1a1a', edge: '#4a0080', minTier: 'account', hidden: true },
+  { id: 'obsidian', name: 'Obsidian', face: '#1a1a1a', edge: '#4a0080', minTier: 'account', requiresUnlock: true },
   { id: 'amethyst', name: 'Amethyst', face: '#9966cc', edge: '#5b3a8c', minTier: 'account', hidden: true },
   { id: 'sapphire', name: 'Sapphire', face: '#0f52ba', edge: '#082567', minTier: 'account', hidden: true },
   { id: 'ruby', name: 'Ruby', face: '#e0115f', edge: '#8b0000', minTier: 'account', hidden: true },
@@ -108,6 +115,7 @@ export type SkinViewer = { tier: SkinTier; unlockedSkins: string[] };
 
 export function isSkinUnlockedForViewer(skinId: string | null | undefined, viewer: SkinViewer): boolean {
   if (!skinId) return false;
+  if (isSkinDisabled(skinId)) return false;
   const skin = getSkinById(skinId);
   if (!skin) return false;
   if (skin.comingSoon) return false;
@@ -124,7 +132,7 @@ export function getAllSkins(): SkinCatalogEntry[] {
 
 export function getAllSkinsForViewer(viewer: SkinViewer): SkinDefinition[] {
   const rank = tierRank(viewer.tier);
-  return SKINS.filter((s) => !s.hidden).map((s) => ({
+  return SKINS.filter((s) => !s.hidden && !isSkinDisabled(s.id)).map((s) => ({
     ...s,
     locked:
       !!s.comingSoon ||

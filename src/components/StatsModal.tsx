@@ -85,6 +85,7 @@ function StatsModal({ stats, onClose }: StatsModalProps) {
   const displayMaxStreak = isAccount
     ? (accountStats?.maxPlayedStreak ?? accountStats?.playedStreak ?? 0)
     : stats.maxStreak;
+  const displayWinStreak = isAccount ? (accountStats?.winStreak ?? 0) : 0;
 
   const localHistory = useMemo<HistoryEntry[]>(
     () =>
@@ -173,6 +174,12 @@ function StatsModal({ stats, onClose }: StatsModalProps) {
                 <span className={styles.statValue}>{displayMaxStreak}</span>
                 <span className={styles.statLabel}>Max</span>
               </div>
+              {isAccount && (
+                <div className={styles.statChip}>
+                  <span className={styles.statValue}>{displayWinStreak}</span>
+                  <span className={styles.statLabel}>Win Streak</span>
+                </div>
+              )}
               <div className={styles.statChip}>
                 <span className={styles.statValue}>{avgTimeMs > 0 ? formatTime(avgTimeMs) : '—'}</span>
                 <span className={styles.statLabel}>Avg Time</span>

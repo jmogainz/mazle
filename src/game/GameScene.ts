@@ -673,7 +673,7 @@ export class GameScene extends Phaser.Scene {
     if (this.cosmetics.skinId === 'penguin') {
       const sprite = this.add.image(0, 0, 'penguin_char');
       sprite.setName('penguin_sprite');
-      sprite.setScale(s * 0.85);
+      sprite.setScale(s * 0.816);
       this.player.add(sprite);
       
       g.fillStyle(0x000000, 0.25);

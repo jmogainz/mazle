@@ -32,7 +32,8 @@ export default function CharacterIcon({ characterId, skinId, size = 34, title, l
   const cId = (characterId ?? 'default') || 'default';
   const rawSkinId = (skinId ?? 'default') || 'default';
   const sId = isSkinDisabled(rawSkinId) ? 'default' : rawSkinId;
-  const colors = useMemo(() => (locked ? LOCKED_COLORS : colorsFor(cId, sId)), [cId, sId, locked]);
+
+  const colors = useMemo(() => locked ? LOCKED_COLORS : colorsFor(cId, sId), [cId, sId, locked]);
 
   if (sId === 'obsidian' && !locked) {
     return (
@@ -53,8 +54,9 @@ export default function CharacterIcon({ characterId, skinId, size = 34, title, l
   }
 
   if (sId === 'penguin' && !locked) {
-    const PENGUIN_ICON_SIZE = 20;
+    const PENGUIN_ICON_SIZE = 26.9;
     const PENGUIN_ICON_OFFSET = (32 - PENGUIN_ICON_SIZE) / 2;
+    const PENGUIN_ICON_OFFSET_Y = PENGUIN_ICON_OFFSET - 0.5;
     return (
       <svg
         width={size}
@@ -70,7 +72,7 @@ export default function CharacterIcon({ characterId, skinId, size = 34, title, l
         <image
           href="/assets/images/penguin.svg"
           x={PENGUIN_ICON_OFFSET}
-          y={PENGUIN_ICON_OFFSET}
+          y={PENGUIN_ICON_OFFSET_Y}
           width={PENGUIN_ICON_SIZE}
           height={PENGUIN_ICON_SIZE}
           shapeRendering="geometricPrecision"

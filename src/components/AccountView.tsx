@@ -313,8 +313,8 @@ function AccountView() {
   const obsidianHintLines = ['Unlock Reward', `${podiumProgress}/10 Podiums`];
 
   const winStreak = me?.stats?.winStreak ?? 0;
-  const winStreakProgress = Math.min(winStreak, 50);
-  const penguinHintLines = ['Unlock Reward', `${winStreakProgress}/50 Win Streak`];
+  const winStreakProgress = Math.min(winStreak, 20);
+  const penguinHintLines = ['Unlock Reward', `${winStreakProgress}/20 Win Streak`];
 
   const centeredUnlockHintLines =
     centeredSkin?.comingSoon
@@ -324,7 +324,7 @@ function AccountView() {
         : centeredSkin?.id === 'obsidian' && centeredSkin?.locked
           ? (isSignedIn ? obsidianHintLines : ['10 Podium Finishes Unlock', 'Sign in to Earn'])
           : centeredSkin?.id === 'penguin' && centeredSkin?.locked
-            ? (isSignedIn ? penguinHintLines : ['50 Win Streak Unlock', 'Sign in to Earn'])
+            ? (isSignedIn ? penguinHintLines : ['20 Win Streak Unlock', 'Sign in to Earn'])
             : !isSignedIn && centeredSkin?.locked
               ? ['Sign in to unlock']
               : undefined;

@@ -290,8 +290,8 @@ async function migrateTodayLeaderboardIfPresent(identity: { userId: string; gues
   const score = await redis.zscore(zkey, guestMember);
   if (score == null) return;
 
-  const submittedAtPrefix = guestMember.split(':', 1)[0] ?? '';
-  const nextMember = `${submittedAtPrefix}:${userKey}`;
+  // New member format uses just the subjectKey (no timestamp prefix)
+  const nextMember = userKey;
 
   await redis.multi()
     .zadd(zkey, { score, member: nextMember })

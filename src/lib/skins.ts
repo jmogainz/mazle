@@ -13,7 +13,7 @@ export type SkinCatalogEntry = {
 
 export type SkinDefinition = SkinCatalogEntry & { locked: boolean };
 
-const DISABLED_SKIN_IDS = new Set(['obsidian', 'penguin']);
+const DISABLED_SKIN_IDS = new Set(['obsidian']);
 
 export function isSkinDisabled(id: string | null | undefined): boolean {
   return typeof id === 'string' && DISABLED_SKIN_IDS.has(id);

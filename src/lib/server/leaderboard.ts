@@ -18,18 +18,34 @@ export function decodeLeaderboardScore(score: number): { timeMs: number; attempt
   return { timeMs, attemptsUsed };
 }
 
-export function makeLeaderboardMember(submittedAtMs: number, subjectKey: string): string {
-  const ts = submittedAtMs.toString().padStart(13, '0');
-  return `${ts}:${subjectKey}`;
+export function makeLeaderboardMember(_submittedAtMs: number, subjectKey: string): string {
+  // Use just subjectKey as member - prevents race condition duplicates
+  // (timestamp was causing duplicate entries when concurrent requests
+  // created different member strings for the same user)
+  return subjectKey;
 }
 
 export function parseLeaderboardMember(member: string): { submittedAtMs: number | null; subjectKey: string | null } {
   const parts = member.split(':');
-  if (parts.length < 3) return { submittedAtMs: null, subjectKey: null };
-  const submittedAtMs = Number(parts[0]);
-  const subjectType = parts[1];
-  const subjectId = parts[2];
-  if (!Number.isFinite(submittedAtMs)) return { submittedAtMs: null, subjectKey: null };
-  return { submittedAtMs, subjectKey: `${subjectType}:${subjectId}` };
+
+  // New format: "type:id" (e.g., "user:abc123" or "guest:xyz789")
+  if (parts.length === 2) {
+    const [subjectType, subjectId] = parts;
+    if (subjectType === 'user' || subjectType === 'guest') {
+      return { submittedAtMs: null, subjectKey: member };
+    }
+  }
+
+  // Old format: "timestamp:type:id" (e.g., "1706290000000:user:abc123")
+  if (parts.length >= 3) {
+    const submittedAtMs = Number(parts[0]);
+    const subjectType = parts[1];
+    const subjectId = parts[2];
+    if (Number.isFinite(submittedAtMs) && (subjectType === 'user' || subjectType === 'guest')) {
+      return { submittedAtMs, subjectKey: `${subjectType}:${subjectId}` };
+    }
+  }
+
+  return { submittedAtMs: null, subjectKey: null };
 }
 

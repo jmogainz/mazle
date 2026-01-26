@@ -167,12 +167,16 @@ function StatsModal({ stats, onClose }: StatsModalProps) {
                 <span className={styles.statLabel}>Win Rate</span>
               </div>
               <div className={styles.statChip}>
+                <span className={styles.statValue}>{avgTimeMs > 0 ? formatTime(avgTimeMs) : '—'}</span>
+                <span className={styles.statLabel}>Avg Time</span>
+              </div>
+              <div className={styles.statChip}>
                 <span className={styles.statValue}>{displayStreak}</span>
                 <span className={styles.statLabel}>Streak</span>
               </div>
               <div className={styles.statChip}>
                 <span className={styles.statValue}>{displayMaxStreak}</span>
-                <span className={styles.statLabel}>Max</span>
+                <span className={styles.statLabel}>Max Streak</span>
               </div>
               {isAccount && (
                 <div className={styles.statChip}>
@@ -180,10 +184,6 @@ function StatsModal({ stats, onClose }: StatsModalProps) {
                   <span className={styles.statLabel}>Win Streak</span>
                 </div>
               )}
-              <div className={styles.statChip}>
-                <span className={styles.statValue}>{avgTimeMs > 0 ? formatTime(avgTimeMs) : '—'}</span>
-                <span className={styles.statLabel}>Avg Time</span>
-              </div>
             </div>
           </div>
 

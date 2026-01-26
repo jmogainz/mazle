@@ -32,6 +32,7 @@ export default function CharacterIcon({ characterId, skinId, size = 34, title, l
   const cId = (characterId ?? 'default') || 'default';
   const rawSkinId = (skinId ?? 'default') || 'default';
   const sId = isSkinDisabled(rawSkinId) ? 'default' : rawSkinId;
+  const colors = useMemo(() => (locked ? LOCKED_COLORS : colorsFor(cId, sId)), [cId, sId, locked]);
 
   if (sId === 'obsidian' && !locked) {
     return (
@@ -77,8 +78,6 @@ export default function CharacterIcon({ characterId, skinId, size = 34, title, l
       </svg>
     );
   }
-
-  const colors = useMemo(() => locked ? LOCKED_COLORS : colorsFor(cId, sId), [cId, sId, locked]);
 
   const shape = cId.toLowerCase();
 

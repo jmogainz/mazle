@@ -3,6 +3,7 @@ import { resolveMeIdentity } from '@/lib/server/identity';
 import { setGuestIdCookie } from '@/lib/server/cookies';
 import { jsonError, readJsonBody } from '@/lib/server/responses';
 import { isTodayOrYesterdayNyDate, recordDailyResult, recordGuestDailyResult } from '@/lib/server/account';
+import { recordAnalyticsFinish } from '@/lib/server/analytics';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -149,6 +150,13 @@ export async function POST(request: Request) {
     const recorded = me.userId
       ? await recordDailyResult(me.userId, { date: body.date, completed, timeMs, attemptsUsed, attemptScores, attempts })
       : await recordGuestDailyResult(me.guestId, { date: body.date, completed, timeMs, attemptsUsed, attemptScores, attempts });
+
+    // Best-effort analytics: should never block gameplay or recording.
+    recordAnalyticsFinish(
+      { date: body.date, playerId: me.guestId, userId: me.userId },
+      { completed, timeMs, attemptsUsed }
+    ).catch(() => null);
+
     const res = NextResponse.json(
       {
         ok: true,

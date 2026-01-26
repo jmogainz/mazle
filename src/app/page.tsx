@@ -331,6 +331,7 @@ export default function Home() {
   const isPlayingRef = useRef(isPlaying);
   const wakeLockRequestInFlightRef = useRef(false);
   const wakeLockReleaseHandlerRef = useRef<((ev: Event) => void) | null>(null);
+  const analyticsStartSentRef = useRef(false);
   const [liveAttempts, setLiveAttempts] = useState<GameState['attempts']>([]);
   const [reviewAttemptIndex, setReviewAttemptIndex] = useState<number | null>(null);
   const [showReplayButton, setShowReplayButton] = useState(false);
@@ -366,6 +367,11 @@ export default function Home() {
     const id = window.setTimeout(runPrefetch, 800);
     return () => window.clearTimeout(id);
   }, [todayNy]);
+
+  // Reset first-move analytics when the active puzzle changes.
+  useEffect(() => {
+    analyticsStartSentRef.current = false;
+  }, [activeSeed]);
 
   const applyStoredResult = useCallback((result: DailyStats | null) => {
     if (isPlayingRef.current) return;
@@ -1054,6 +1060,16 @@ export default function Home() {
 
       const serializableState = gameControlsRef.current?.getSerializableState();
       if (serializableState && activeSeed) {
+        // "Game played" metric: first accepted move of the day (best-effort, deduped server-side).
+        if (
+          serializableState.isPlaying &&
+          serializableState.moveCount > 0 &&
+          !analyticsStartSentRef.current
+        ) {
+          analyticsStartSentRef.current = true;
+          api.analyticsStart({ date: todayNy }).catch(() => null);
+        }
+
         if (serializableState.isComplete) {
           // Game just completed - save result immediately (before animation)
           clearInProgressState();
@@ -1990,6 +2006,7 @@ export default function Home() {
           <ShareCard
             puzzleNumber={puzzleNumber}
             puzzleLabel={puzzleLabel ?? undefined}
+            analyticsDate={todayNy}
             timeMs={gameResult.timeMs}
             optimalMoves={puzzle.optimalMoves}
             failed={gameResult.failed}

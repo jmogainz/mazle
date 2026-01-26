@@ -4,11 +4,13 @@ import { useState } from 'react';
 import Image from 'next/image';
 import { MapType } from '@/game/types';
 import { formatTime } from '@/utils/storage';
+import { api } from '@/lib/api';
 import styles from './ShareCard.module.css';
 
 interface ShareCardProps {
   puzzleNumber: number;
   puzzleLabel?: string;
+  analyticsDate?: string; // NY date for daily analytics (omit for non-daily shares)
   timeMs: number;
   optimalMoves: number;
   failed?: boolean;
@@ -73,6 +75,7 @@ function fallbackCopyToClipboard(text: string): boolean {
 export default function ShareCard({
   puzzleNumber,
   puzzleLabel,
+  analyticsDate,
   timeMs,
   optimalMoves,
   failed = false,
@@ -284,6 +287,9 @@ export default function ShareCard({
           title: shareTitle,
           text: shareText,
         });
+        if (analyticsDate) {
+          api.analyticsShare({ date: analyticsDate, kind: 'native' }).catch(() => null);
+        }
         setShareState('idle');
         return; // Native share succeeded, no need to show copied state
       } catch (err) {
@@ -298,6 +304,9 @@ export default function ShareCard({
     // Fall back to clipboard copy (for desktop or if native share fails)
     const success = await handleCopy();
     if (success) {
+      if (analyticsDate) {
+        api.analyticsShare({ date: analyticsDate, kind: 'copy' }).catch(() => null);
+      }
       setShareState('copied');
       setTimeout(() => setShareState('idle'), 2500);
     } else {

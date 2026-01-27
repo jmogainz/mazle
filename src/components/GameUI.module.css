@@ -112,6 +112,11 @@
   animation: pulse 1s infinite;
 }
 
+.statValue.pop {
+  animation: pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), pulse 1s infinite;
+  color: var(--color-error);
+}
+
 /* Safari/WebKit can sometimes clip the left edge of text glyphs; this nudges text onto a stable layer. */
 @supports (-webkit-touch-callout: none) {
 
@@ -408,6 +413,11 @@
   animation: pulse 1s infinite;
 }
 
+.movesValue.pop {
+  animation: pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), pulse 1s infinite;
+  color: var(--color-error);
+}
+
 .movesLabel {
   font-size: calc(0.8rem * var(--ui-scale));
   font-weight: 700;
@@ -445,6 +455,18 @@
 
   50% {
     color: var(--color-error);
+  }
+}
+
+@keyframes pop {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.5);
+  }
+  100% {
+    transform: scale(1);
   }
 }
 

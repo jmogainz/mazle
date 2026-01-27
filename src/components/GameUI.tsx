@@ -142,6 +142,9 @@ export default function GameUI({
     if (frozen && !loading && !hasTriggeredLivesTooltipRef.current) {
       if (typeof window === 'undefined') return;
 
+      // Only show if at least one life was lost
+      if (lives >= maxLives) return;
+
       const seen = localStorage.getItem(STORAGE_KEYS.LIVES_TOOLTIP_SEEN);
       if (seen) return;
 
@@ -185,6 +188,14 @@ export default function GameUI({
       };
     }
   }, [frozen, analysisAnimationComplete, loading, isResultModalActive, lives]);
+
+  // Clear tooltip when leaving a completed state or switching puzzles
+  useEffect(() => {
+    if (!frozen || loading) {
+      setShowLivesTooltip(false);
+      setIsTooltipFadingOut(false);
+    }
+  }, [frozen, loading, puzzleNumber]);
 
 
   useEffect(() => {
@@ -352,7 +363,14 @@ export default function GameUI({
     return (
       <div className={styles.footerContainer}>
         <div className={styles.movesRemainingContainer}>
-          <span className={`${styles.movesValue} ${movesRemaining <= 5 ? styles.danger : ''}`}>
+          <span
+            key={movesRemaining}
+            className={`
+              ${styles.movesValue}
+              ${movesRemaining <= 5 ? styles.danger : ''}
+              ${!loading && [1, 2, 3].includes(movesRemaining) ? styles.pop : ''}
+            `}
+          >
             {Math.max(0, movesRemaining)}
           </span>
           <span className={styles.movesLabel}>MOVES REMAINING</span>
@@ -454,7 +472,15 @@ export default function GameUI({
 
         {/* Moves */}
         <div className={styles.statGroup}>
-          <span className={`${styles.statValue} ${loading ? styles.skeleton : ''} ${!loading && movesRemaining <= 3 ? styles.danger : ''}`}>
+          <span
+            key={movesRemaining}
+            className={`
+              ${styles.statValue}
+              ${loading ? styles.skeleton : ''}
+              ${!loading && movesRemaining <= 5 ? styles.danger : ''}
+              ${!loading && [1, 2, 3].includes(movesRemaining) ? styles.pop : ''}
+            `}
+          >
             {loading ? '00' : Math.max(0, movesRemaining)}
           </span>
           <span className={styles.statLabel}>MOVES LEFT</span>

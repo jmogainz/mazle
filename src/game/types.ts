@@ -95,6 +95,7 @@ export interface DailyStats {
   moveCount: number;
   timeMs: number;
   puzzleNumber: number;
+  optimalMoves?: number;  // Optimal path length for this puzzle
   failed?: boolean;  // Track if player ran out of lives
   attemptsUsed?: number;  // 1-5, how many attempts used (including final)
   leaderboardRank?: number; // 1 = best (only present if submitted)

@@ -65,7 +65,6 @@ import {
   cachePuzzle,
   saveInProgressState,
   getInProgressState,
-  getAnyInProgressState,
   clearInProgressState,
   markRecentPuzzlePlayed,
   recordLeaderboardRank,
@@ -335,7 +334,6 @@ export default function Home() {
   const devToolsTapTargetRef = useRef<HTMLDivElement | null>(null);
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
   const pendingRestoreRef = useRef<Parameters<GameControls['restoreState']>[0] | null>(null);
-  const pendingRecentLoadRef = useRef<string | null>(null);
   const puzzleModeRef = useRef<'daily' | 'recent'>('daily');
   const recentDateRef = useRef<string | null>(null);
   const hintsEnabledRef = useRef(hintsEnabled);
@@ -465,12 +463,6 @@ export default function Home() {
         setStats(getPlayerStats(scope, me?.provider));
         const localResult = getTodaysResult(scope);
 
-        // Check if we have a pending recent puzzle (already set by mount effect)
-        if (pendingRecentLoadRef.current) {
-          setIsIdentityChecked(true);
-          return;
-        }
-
         applyStoredResult(localResult);
 
         // If no completed result, check for in-progress state to restore
@@ -496,12 +488,6 @@ export default function Home() {
       const userScope = `user:${userId}`;
       const guestScope = 'guest';
       const canAdopt = canAdoptGuestHistory(userId);
-
-      // Check if we have a pending recent puzzle (already set by mount effect)
-      if (pendingRecentLoadRef.current) {
-        setIsIdentityChecked(true);
-        return;
-      }
 
       if (canAdopt) {
         const userStats = getPlayerStats(userScope, me?.provider);
@@ -1020,26 +1006,11 @@ export default function Home() {
   // Track if we've already initiated loading (prevent React Strict Mode double-call)
   const loadInitiatedRef = useRef(false);
 
-  // Initialize puzzle - check localStorage immediately to see if we need to restore recent puzzle
-  // This runs on mount without waiting for identity check (which involves API calls)
+  // Initialize puzzle on mount without waiting for identity check (which involves API calls)
   useEffect(() => {
     // Prevent duplicate calls from React Strict Mode
     if (loadInitiatedRef.current) return;
     loadInitiatedRef.current = true;
-
-    // Quick localStorage check for in-progress recent puzzle (no async)
-    // Check both possible scopes since we don't know the user yet
-    const guestInProgress = getAnyInProgressState('guest');
-    const userScope = getStorageScope();
-    const userInProgress = userScope !== 'guest' ? getAnyInProgressState(userScope) : null;
-    const anyInProgress = guestInProgress ?? userInProgress;
-
-    if (anyInProgress?.isRecent && anyInProgress.seed) {
-      // Found in-progress recent puzzle - wait for identity check to load it
-      pendingRecentLoadRef.current = anyInProgress.seed;
-      // Don't load daily - the identity check effect will trigger recent puzzle load
-      return;
-    }
 
     // No recent puzzle to restore - load daily puzzle immediately
     // Preload WASM early for faster fallback if needed
@@ -1673,16 +1644,6 @@ export default function Home() {
     },
     [selectedBackend, closenessThreshold],
   );
-
-  // Load pending recent puzzle after identity check completes
-  useEffect(() => {
-    if (!isIdentityChecked) return;
-    const pendingSeed = pendingRecentLoadRef.current;
-    if (pendingSeed) {
-      pendingRecentLoadRef.current = null;
-      loadRecentPuzzle(pendingSeed);
-    }
-  }, [isIdentityChecked, loadRecentPuzzle]);
 
   const returnToDaily = useCallback(() => {
     debugModeRef.current = false;

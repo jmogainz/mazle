@@ -1,7 +1,7 @@
 import { PlayerStats, DailyStats, PuzzleData, TileType, Position } from '@/game/types';
 import { addDays } from '@/lib/date';
-import { getPuzzleNumberFromNyDateString } from '@/game/puzzleGenerator';
-import { DEFAULT_LIVES } from '@/constants/game';
+import { getPuzzleNumberFromNyDateString, LAUNCH_DATE_NY } from '@/game/puzzleGenerator';
+import { DEFAULT_LIVES, RECENT_PUZZLE_DAYS } from '@/constants/game';
 
 const STATS_KEY = 'mazle_stats';
 const DAILY_KEY = 'mazle_daily';
@@ -308,6 +308,15 @@ export function savePlayerStats(stats: PlayerStats, scope?: StorageScope): void 
 // This ensures daily puzzle tracking matches the puzzle rollover time
 function getTodayString(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+}
+
+function isRecentPuzzleDateValid(date: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  if (date < LAUNCH_DATE_NY) return false;
+  const today = getTodayString();
+  if (date >= today) return false;
+  const recentStart = addDays(today, -RECENT_PUZZLE_DAYS);
+  return date >= recentStart;
 }
 
 function sortByDateAsc<T extends { date: string }>(rows: T[]): T[] {
@@ -744,11 +753,12 @@ export function saveInProgressState(
   if (typeof window === 'undefined') return;
 
   try {
+    const isRecent = !!recentDate && isRecentPuzzleDateValid(recentDate);
     const fullState: InProgressState = {
       ...state,
       date: recentDate ?? getTodayString(),
       seed,
-      isRecent: !!recentDate,
+      isRecent,
     };
     writeScopedJson(IN_PROGRESS_KEY, fullState, scope);
   } catch (error) {
@@ -767,6 +777,11 @@ export function getInProgressState(seed: string, scope?: StorageScope): InProgre
     // For daily puzzles, validate it's for today
     if (!state.isRecent && state.date !== getTodayString()) {
       // Stale daily state, clear it
+      removeScoped(IN_PROGRESS_KEY, scope);
+      return null;
+    }
+
+    if (state.isRecent && !isRecentPuzzleDateValid(state.date)) {
       removeScoped(IN_PROGRESS_KEY, scope);
       return null;
     }
@@ -803,6 +818,11 @@ export function getAnyInProgressState(scope?: StorageScope): InProgressState | n
 
     // For daily puzzles, validate it's for today
     if (!state.isRecent && state.date !== getTodayString()) {
+      removeScoped(IN_PROGRESS_KEY, scope);
+      return null;
+    }
+
+    if (state.isRecent && !isRecentPuzzleDateValid(state.date)) {
       removeScoped(IN_PROGRESS_KEY, scope);
       return null;
     }

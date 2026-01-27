@@ -6,8 +6,8 @@
   <!-- Body (Main position) -->
   <rect x="4" y="1" width="22" height="19" rx="4" fill="#ff4d4d" />
   <!-- Eyes -->
-  <circle cx="11" cy="10" r="2.5" fill="white" stroke="black" stroke-opacity="0.1" stroke-width="0.5" />
-  <circle cx="19" cy="10" r="2.5" fill="white" stroke="black" stroke-opacity="0.1" stroke-width="0.5" />
+  <circle cx="11" cy="9" r="2.5" fill="white" stroke="black" stroke-opacity="0.1" stroke-width="0.5" />
+  <circle cx="19" cy="9" r="2.5" fill="white" stroke="black" stroke-opacity="0.1" stroke-width="0.5" />
 
   <!-- Top Right: Floor (Flat) -->
   <rect x="30.5" y="1.5" width="21" height="21" rx="4" fill="#f3f3f3" stroke="#000000" stroke-opacity="0.2" stroke-width="1" />

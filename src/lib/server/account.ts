@@ -1,7 +1,6 @@
 import { addDays } from '@/lib/date';
 import { getNewYorkDateString, LAUNCH_DATE_NY } from '@/game/puzzleGenerator';
 import { ensureDbSchema, getDbPool } from './db';
-import { isDevMode } from './env';
 import { getGuestProfile } from './guestStore';
 
 export type ThemePreference = 'system' | 'light' | 'dark';
@@ -44,15 +43,37 @@ const ENTITLEMENT_SKIN_ROYAL = 'skin_royal';
 const ENTITLEMENT_SKIN_OBSIDIAN = 'skin_obsidian';
 const ENTITLEMENT_SKIN_PENGUIN = 'skin_penguin';
 
-async function maybeSeedDevWinStreak(userId: string, pool: ReturnType<typeof getDbPool>): Promise<void> {
-  if (!isDevMode()) return;
+const DEV_SEED_WIN_STREAK = 20;
 
-  const target = 50;
+function isDevSeedEnv(): boolean {
+  const env = process.env.NEXT_PUBLIC_ENV;
+  return !!env && env !== 'prod';
+}
+
+function shouldSeedDevForProvider(provider?: string | null): boolean {
+  return isDevSeedEnv() && provider === 'apple';
+}
+
+async function maybeSeedDevWinStreak(
+  userId: string,
+  pool: ReturnType<typeof getDbPool>,
+  provider?: string | null
+): Promise<void> {
+  if (!shouldSeedDevForProvider(provider)) return;
+
+  // Check if already seeded (at least 10 results exist)
+  const checkRes = await pool.query<{ count: string }>(
+    'select count(*)::text as count from daily_results where user_id=$1',
+    [userId]
+  );
+  if (Number(checkRes.rows[0]?.count ?? '0') >= 10) return;
+
+  const target = DEV_SEED_WIN_STREAK;
   const today = getNewYorkDateString();
   const rows: Array<{ date: string; completed: boolean; time_ms: number; attempts_used: number }> = [];
 
   for (let i = 0; i < target; i += 1) {
-    const date = addDays(today, -i);
+    const date = addDays(today, -(i + 1));
     if (date < LAUNCH_DATE_NY) break;
     rows.push({
       date,
@@ -82,8 +103,12 @@ async function maybeSeedDevWinStreak(userId: string, pool: ReturnType<typeof get
   );
 }
 
-async function maybeSeedDevPodiums(userId: string, pool: ReturnType<typeof getDbPool>): Promise<void> {
-  if (!isDevMode()) return;
+async function maybeSeedDevPodiums(
+  userId: string,
+  pool: ReturnType<typeof getDbPool>,
+  provider?: string | null
+): Promise<void> {
+  if (!shouldSeedDevForProvider(provider)) return;
 
   const countRes = await pool.query<{ count: string }>(
     'select count(*)::text as count from leaderboard_podium where user_id=$1',
@@ -115,7 +140,7 @@ async function maybeSeedDevPodiums(userId: string, pool: ReturnType<typeof getDb
   for (let i = 0; i < maxAttempts && inserted < missing; i += 1) {
     const date = addDays(today, -(startOffset + i));
     const timeMs = 45_000 + (i % 120) * 1000;
-    const attemptsUsed = 1 + (i % 3);
+    const attemptsUsed = 1 + (i % 5);
     const res = await pool.query(
       `insert into leaderboard_podium
          (date, rank, user_id, time_ms, attempts_used, display_name_at_time, character_id_at_time, skin_id_at_time)
@@ -164,7 +189,7 @@ export async function maybeGrantObsidianSkin(userId: string, totalPodiums: numbe
 }
 
 export async function maybeGrantPenguinSkin(userId: string, winStreak: number): Promise<void> {
-  if (winStreak < 50) return;
+  if (winStreak < 20) return;
 
   await ensureDbSchema();
   const pool = getDbPool();
@@ -177,7 +202,7 @@ export async function maybeGrantPenguinSkin(userId: string, winStreak: number): 
     `insert into entitlements (user_id, key, source)
      values ($1, $2, $3)
      on conflict do nothing`,
-    [userId, ENTITLEMENT_SKIN_PENGUIN, 'win_streak_50']
+      [userId, ENTITLEMENT_SKIN_PENGUIN, 'win_streak_20']
   );
 }
 
@@ -475,7 +500,7 @@ export async function importDailyResults(
       completed: !!h.completed,
       timeMs: typeof h.timeMs === 'number' && Number.isFinite(h.timeMs) && h.timeMs > 0 ? h.timeMs : null,
       attemptsUsed:
-        typeof h.attemptsUsed === 'number' && Number.isFinite(h.attemptsUsed) && h.attemptsUsed >= 1 && h.attemptsUsed <= 3
+        typeof h.attemptsUsed === 'number' && Number.isFinite(h.attemptsUsed) && h.attemptsUsed >= 1 && h.attemptsUsed <= 5
           ? h.attemptsUsed
           : null,
       attemptScores: coerceAttemptScores(h.attemptScores),
@@ -517,12 +542,12 @@ export async function importDailyResults(
   return { imported, skipped };
 }
 
-export async function computeUserStats(userId: string): Promise<UserStats> {
+export async function computeUserStats(userId: string, provider?: string | null): Promise<UserStats> {
   await ensureDbSchema();
   const pool = getDbPool();
 
-  if (isDevMode()) {
-    await maybeSeedDevWinStreak(userId, pool).catch(() => null);
+  if (shouldSeedDevForProvider(provider)) {
+    await maybeSeedDevWinStreak(userId, pool, provider).catch(() => null);
   }
 
   const totalsRes = await pool.query<{
@@ -558,8 +583,8 @@ export async function computeUserStats(userId: string): Promise<UserStats> {
   const winStreak = computeWinStreak(rows.map((r) => ({ date: r.date, completed: r.completed })));
   const maxPlayedStreak = computeMaxPlayedStreak(datesDesc);
 
-  if (isDevMode()) {
-    await maybeSeedDevPodiums(userId, pool).catch(() => null);
+  if (shouldSeedDevForProvider(provider)) {
+    await maybeSeedDevPodiums(userId, pool, provider).catch(() => null);
   }
 
   // Query podium counts from hall of fame snapshot (final positions, not submission-time ranks)

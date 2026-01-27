@@ -759,6 +759,36 @@
   overflow: visible;
 }
 
+/* Back to Daily button - styled like share button but secondary color */
+.backToDailyButton {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 2px solid var(--color-border);
+  border-radius: 10px;
+  padding: calc(0.65rem * var(--ui-scale)) calc(1.25rem * var(--ui-scale));
+  font-size: calc(0.9rem * var(--ui-scale));
+  font-weight: 700;
+  font-family: var(--font-main);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.2s, padding 0.15s ease-out, font-size 0.15s ease-out;
+  touch-action: manipulation;
+  white-space: nowrap;
+}
+
+@media (hover: hover) {
+  .backToDailyButton:hover {
+    background: var(--color-surface-elevated);
+    border-color: var(--color-secondary);
+    transform: translateY(-2px);
+  }
+}
+
+.backToDailyButton:active {
+  transform: translateY(0);
+}
+
 /* GameUI wrapper for visibility transitions */
 .gameUiWrapper {
   width: 100%;

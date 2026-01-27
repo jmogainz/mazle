@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { MapType } from '@/game/types';
 import { formatTime } from '@/utils/storage';
 import { api } from '@/lib/api';
+import { DEFAULT_LIVES } from '@/constants/game';
 import styles from './ShareCard.module.css';
 
 interface ShareCardProps {
@@ -80,7 +81,7 @@ export default function ShareCard({
   optimalMoves,
   failed = false,
   attempts = [],
-  maxLives = 3,
+  maxLives = DEFAULT_LIVES,
   solutionPath,
   mapType,
   onClose,

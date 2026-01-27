@@ -20,6 +20,7 @@ import {
   saveGuestProfile,
 } from './guestStore';
 import { randomDisplayNameCandidate } from './displayNames';
+import { getProviderForUser } from './users';
 import { isInappropriateDisplayName, isValidDisplayName, normalizeDisplayName } from './displayNameValidation';
 
 export type MeIdentity = {
@@ -33,6 +34,7 @@ export type MeIdentity = {
   userId: string | null;
   guestId: string;
   setGuestCookie: boolean;
+  provider: string | null;
 };
 
 export const GUEST_COOKIE = 'mazle_guest_id';
@@ -116,12 +118,21 @@ async function tryReservePreferredGuestName(preferredName: string | null, guestI
   return preferredName;
 }
 
-export async function getSessionUserId(request: Request): Promise<string | null> {
+async function getSessionIdentity(request: Request): Promise<{ userId: string | null; provider: string | null }> {
   const secret = env('AUTH_SECRET') || env('NEXTAUTH_SECRET');
-  if (!secret) return null;
+  if (!secret) return { userId: null, provider: null };
   const token = await getToken({ req: request as any, secret }).catch(() => null);
   const userId = (token as any)?.userId;
-  return typeof userId === 'string' && userId.length > 0 ? userId : null;
+  const provider = (token as any)?.provider;
+  return {
+    userId: typeof userId === 'string' && userId.length > 0 ? userId : null,
+    provider: typeof provider === 'string' && provider.length > 0 ? provider : null,
+  };
+}
+
+export async function getSessionUserId(request: Request): Promise<string | null> {
+  const { userId } = await getSessionIdentity(request);
+  return userId;
 }
 
 export function subjectKeyFor(identity: { userId: string | null; guestId: string }): string {
@@ -234,7 +245,8 @@ export async function resolveMeIdentity(request: Request): Promise<MeIdentity> {
   const guest = await getOrCreateGuest(guestCookie ?? null, preferredGuestName);
   console.log(`[RESOLVE] Guest ID: ${guest.guestId}, setCookie: ${guest.setCookie}`);
 
-  const userId = await getSessionUserId(request);
+  const session = await getSessionIdentity(request);
+  const userId = session.userId;
   if (!userId) {
     return {
       mode: 'guest',
@@ -243,6 +255,7 @@ export async function resolveMeIdentity(request: Request): Promise<MeIdentity> {
       userId: null,
       guestId: guest.guestId,
       setGuestCookie: guest.setCookie,
+      provider: null,
     };
   }
 
@@ -250,6 +263,7 @@ export async function resolveMeIdentity(request: Request): Promise<MeIdentity> {
   await linkGuestToUser(userId, guest.guestId);
   const displayName = await ensureUserDisplayName(userId, null);
   const entitlements = await getEntitlementsForUser(userId);
+  const provider = session.provider ?? (await getProviderForUser(userId));
 
   return {
     mode: 'user',
@@ -258,6 +272,7 @@ export async function resolveMeIdentity(request: Request): Promise<MeIdentity> {
     userId,
     guestId: guest.guestId,
     setGuestCookie: guest.setCookie,
+    provider,
   };
 }
 

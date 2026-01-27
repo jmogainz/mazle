@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import { GenerationProgress, GeneratorBackend, isRustBackendConfigured, getRustBackendUrl } from '@/game';
 import { PuzzleData } from '@/game';
+import { DEFAULT_LIVES } from '@/constants/game';
 import styles from '../app/page.module.css';
 
 interface CachedSeed {

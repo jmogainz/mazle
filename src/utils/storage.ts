@@ -1,6 +1,7 @@
 import { PlayerStats, DailyStats, PuzzleData, TileType, Position } from '@/game/types';
 import { addDays } from '@/lib/date';
 import { getPuzzleNumberFromNyDateString } from '@/game/puzzleGenerator';
+import { DEFAULT_LIVES } from '@/constants/game';
 
 const STATS_KEY = 'mazle_stats';
 const DAILY_KEY = 'mazle_daily';
@@ -10,6 +11,7 @@ const DEV_STATS_SEEDED_KEY = 'mazle_dev_seeded_stats_v1';
 const GUEST_NAME_KEY = 'mazle_guest_display_name_v1';
 const STORAGE_SCOPE_KEY = 'mazle_storage_scope_v1';
 const STORAGE_SCOPE_CHANGED_EVENT = 'mazle_storage_scope_changed_v1';
+const RECENT_PUZZLES_KEY = 'mazle_recent_puzzles_v1';
 const DEFAULT_SCOPE = 'guest';
 
 export type StorageScope = string;
@@ -146,9 +148,43 @@ export function onStorageScopeChanged(handler: () => void): () => void {
   return () => window.removeEventListener(STORAGE_SCOPE_CHANGED_EVENT, handler);
 }
 
+function isValidNyDateString(value: string | null): value is string {
+  if (!value) return false;
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+export function getRecentPuzzlePlays(scope?: StorageScope): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const parsed = readScopedJson<string[]>(RECENT_PUZZLES_KEY, scope);
+    if (!Array.isArray(parsed)) return [];
+    const cleaned = parsed.filter((date) => typeof date === 'string' && isValidNyDateString(date));
+    const unique = Array.from(new Set(cleaned));
+    if (unique.length !== parsed.length) {
+      writeScopedJson(RECENT_PUZZLES_KEY, unique, scope);
+    }
+    return unique;
+  } catch {
+    return [];
+  }
+}
+
+export function markRecentPuzzlePlayed(date: string, scope?: StorageScope): void {
+  if (typeof window === 'undefined') return;
+  if (!isValidNyDateString(date)) return;
+  try {
+    const existing = getRecentPuzzlePlays(scope);
+    if (existing.includes(date)) return;
+    const next = [...existing, date].slice(-2000);
+    writeScopedJson(RECENT_PUZZLES_KEY, next, scope);
+  } catch {
+    // ignore
+  }
+}
+
 // In-progress game state for resume after refresh
 export interface InProgressState {
-  date: string;                    // For validating same-day
+  date: string;                    // For validating same-day (or recent puzzle date)
   seed: string;                    // For validating same puzzle
   playerPos: Position;
   lives: number;
@@ -173,6 +209,8 @@ export interface InProgressState {
   // Per-life hint progress (used to merge into unlockedHint* on life loss)
   unlockedThisLifeTiles?: string[];
   unlockedThisLifeEdges?: string[];
+  // Recent puzzle support
+  isRecent?: boolean;              // True if this is a recent puzzle (not today's daily)
 }
 
 
@@ -201,76 +239,17 @@ function devRandomInt(min: number, max: number): number {
   return clampInt(min + Math.random() * (max - min + 1), min, max);
 }
 
-function seedDevStatsIfNeeded(scope?: StorageScope): void {
-  if (typeof window === 'undefined') return;
-  if (!isUiDevEnv()) return;
-
-  try {
-    if (readRaw(scopedKey(DEV_STATS_SEEDED_KEY, scope)) === '1') return;
-
-    const parsed = readScopedJson<PlayerStats>(STATS_KEY, scope);
-    if (parsed && typeof parsed === 'object' && Array.isArray(parsed.history) && parsed.history.length >= 20) {
-      writeRaw(scopedKey(DEV_STATS_SEEDED_KEY, scope), '1');
-      return;
-    }
-  } catch {
-    // Ignore seed pre-check failures
-  }
-
-  const today = getTodayString();
-  const yesterday = addDays(today, -1);
-
-  const history: DailyStats[] = [];
-  for (let i = 0; i < 20; i += 1) {
-    const date = addDays(yesterday, -i);
-    const puzzleNumber = getPuzzleNumberFromNyDateString(date);
-
-    const isStreakDay = i < 5;
-    const completed = isStreakDay ? true : Math.random() < 0.72;
-    const attemptsUsed = completed ? devRandomInt(1, 3) : undefined;
-    const timeMs = completed ? devRandomInt(32_000, 210_000) : devRandomInt(18_000, 260_000);
-    const moveCount = completed ? devRandomInt(8, 18) : devRandomInt(8, 26);
-    const failed = !completed;
-
-    const leaderboardRank = completed && Math.random() < 0.35 ? devRandomInt(1, 120) : undefined;
-
-    history.push({
-      date,
-      completed,
-      failed,
-      attemptsUsed: completed ? attemptsUsed : undefined,
-      timeMs,
-      moveCount,
-      puzzleNumber,
-      leaderboardRank,
-    });
-  }
-
-  history.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-
-  const totalGamesPlayed = history.length;
-  const totalGamesWon = history.filter((h) => h.completed).length;
-  const currentStreak = 5;
-  const maxStreak = Math.max(currentStreak, devRandomInt(6, 12));
-
-  const seeded: PlayerStats = {
-    currentStreak,
-    maxStreak,
-    totalGamesPlayed,
-    totalGamesWon,
-    lastPlayedDate: yesterday,
-    history,
-  };
-
-  writeScopedJson(STATS_KEY, seeded, scope);
-  writeRaw(scopedKey(DEV_STATS_SEEDED_KEY, scope), '1');
+function seedDevStatsIfNeeded(scope?: StorageScope, provider?: string | null): void {
+  // Dev stats seeding is disabled; use server-side dev seeding for Apple accounts instead.
+  void scope;
+  void provider;
 }
 
 // Get player stats from localStorage
-export function getPlayerStats(scope?: StorageScope): PlayerStats {
+export function getPlayerStats(scope?: StorageScope, provider?: string | null): PlayerStats {
   if (typeof window === 'undefined') return getDefaultStats();
 
-  seedDevStatsIfNeeded(scope);
+  seedDevStatsIfNeeded(scope, provider);
 
   try {
     const parsed = readScopedJson<PlayerStats>(STATS_KEY, scope);
@@ -292,7 +271,7 @@ export function getPlayerStats(scope?: StorageScope): PlayerStats {
         const { attempts, ...rest } = entry as any;
         // Compute attemptsUsed from attempts array if not already set
         if (rest.attemptsUsed === undefined && Array.isArray(attempts)) {
-          rest.attemptsUsed = Math.min(3, Math.max(1, attempts.length + 1));
+          rest.attemptsUsed = Math.min(DEFAULT_LIVES, Math.max(1, attempts.length + 1));
           changed = true;
         }
         if (attempts != null) changed = true;
@@ -512,6 +491,42 @@ export function saveTodaysResult(result: DailyStats, scope?: StorageScope): void
   }
 }
 
+// Save a historical result (for recent puzzles played retroactively)
+// Does NOT affect streak or today's result - only adds to history and updates totals
+export function saveHistoricalResult(result: DailyStats, scope?: StorageScope): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const stats = getPlayerStats(scope);
+    
+    // Check if already recorded for this date
+    const alreadyRecorded = stats.history.some((h) => h.date === result.date);
+    if (alreadyRecorded) {
+      return;
+    }
+
+    stats.totalGamesPlayed++;
+    if (result.completed) {
+      stats.totalGamesWon++;
+    }
+
+    // Add to history (without attempts to save space)
+    const { attempts, ...rest } = result as any;
+    stats.history.push(rest as DailyStats);
+
+    // Sort history by date to keep it ordered
+    stats.history.sort((a, b) => a.date.localeCompare(b.date));
+
+    if (stats.history.length > 2000) {
+      stats.history = stats.history.slice(-2000);
+    }
+
+    savePlayerStats(stats, scope);
+  } catch {
+    console.error('Failed to save historical result');
+  }
+}
+
 export function upsertTodaysResult(result: DailyStats, scope?: StorageScope): void {
   if (typeof window === 'undefined') return;
 
@@ -598,7 +613,7 @@ export function getGuestHistoryForAccountImport(): Array<{
     const attemptsUsed = (() => {
       if (!Array.isArray(rawAttempts)) return null;
       const failedAttempts = rawAttempts.length ?? 0;
-      return Math.min(3, Math.max(1, failedAttempts + 1));
+      return Math.min(DEFAULT_LIVES, Math.max(1, failedAttempts + 1));
     })();
     const attemptScores = Array.isArray(rawAttempts)
       ? rawAttempts.map((attempt) => {
@@ -720,14 +735,20 @@ export function cachePuzzle(seed: string, puzzle: PuzzleData): void {
 }
 
 // Save in-progress game state for resume after refresh
-export function saveInProgressState(seed: string, state: Omit<InProgressState, 'date' | 'seed'>, scope?: StorageScope): void {
+export function saveInProgressState(
+  seed: string,
+  state: Omit<InProgressState, 'date' | 'seed'>,
+  scope?: StorageScope,
+  recentDate?: string
+): void {
   if (typeof window === 'undefined') return;
 
   try {
     const fullState: InProgressState = {
       ...state,
-      date: getTodayString(),
+      date: recentDate ?? getTodayString(),
       seed,
+      isRecent: !!recentDate,
     };
     writeScopedJson(IN_PROGRESS_KEY, fullState, scope);
   } catch (error) {
@@ -735,7 +756,7 @@ export function saveInProgressState(seed: string, state: Omit<InProgressState, '
   }
 }
 
-// Get in-progress game state if it matches today's date and seed
+// Get in-progress game state if it matches today's date and seed (or recent puzzle seed)
 export function getInProgressState(seed: string, scope?: StorageScope): InProgressState | null {
   if (typeof window === 'undefined') return null;
 
@@ -743,9 +764,45 @@ export function getInProgressState(seed: string, scope?: StorageScope): InProgre
     const state = readScopedJson<InProgressState>(IN_PROGRESS_KEY, scope);
     if (!state) return null;
 
-    // Validate it's for today and the same puzzle
-    if (state.date !== getTodayString() || state.seed !== seed) {
-      // Stale state, clear it
+    // For daily puzzles, validate it's for today
+    if (!state.isRecent && state.date !== getTodayString()) {
+      // Stale daily state, clear it
+      removeScoped(IN_PROGRESS_KEY, scope);
+      return null;
+    }
+
+    // Validate the seed matches
+    if (state.seed !== seed) {
+      // Different puzzle - for daily this means stale, for recent it's just different
+      if (!state.isRecent) {
+        removeScoped(IN_PROGRESS_KEY, scope);
+      }
+      return null;
+    }
+
+    // Basic validation
+    if (typeof state.playerPos?.x !== 'number' || typeof state.playerPos?.y !== 'number') {
+      removeScoped(IN_PROGRESS_KEY, scope);
+      return null;
+    }
+
+    return state;
+  } catch (error) {
+    console.error('Failed to get in-progress state', error);
+    return null;
+  }
+}
+
+// Get any in-progress state (for checking on page load which puzzle to restore)
+export function getAnyInProgressState(scope?: StorageScope): InProgressState | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const state = readScopedJson<InProgressState>(IN_PROGRESS_KEY, scope);
+    if (!state) return null;
+
+    // For daily puzzles, validate it's for today
+    if (!state.isRecent && state.date !== getTodayString()) {
       removeScoped(IN_PROGRESS_KEY, scope);
       return null;
     }

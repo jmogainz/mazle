@@ -15,6 +15,7 @@ import { api } from '@/lib/api';
 import { cachedApi, prefetchAccount, prefetchLeaderboard, readCachedMe } from '@/lib/api/cached';
 import { getPlayerStats, getStorageScope, setStorageScope } from '@/utils/storage';
 import { useGlobalSwipeMoves } from '@/game/useGlobalSwipeMoves';
+import { DEFAULT_LIVES } from '@/constants/game';
 import baseStyles from '@/app/page.module.css';
 import styles from './play-client.module.css';
 
@@ -186,7 +187,7 @@ export default function ArchivePlayClient({ date }: { date: string }) {
       emitGameEvent('leaderboardRefresh', {});
 
       const failedAttempts = result.attempts?.length ?? 0;
-      const livesRemaining = result.failed ? 0 : 3 - failedAttempts;
+      const livesRemaining = result.failed ? 0 : DEFAULT_LIVES - failedAttempts;
       setInitialStats({
         lives: livesRemaining,
         currentAttemptMoves: result.optimalMoves,

@@ -3,7 +3,9 @@ import { Redis } from '@upstash/redis';
 
 // This route uses Redis - must be dynamic
 export const dynamic = 'force-dynamic';
-import { getNewYorkDateString, getDailySeed } from '@/game/puzzleGenerator';
+import { getNewYorkDateString, getDailySeed, LAUNCH_DATE_NY } from '@/game/puzzleGenerator';
+import { RECENT_PUZZLE_DAYS } from '@/constants';
+import { addDays } from '@/lib/date';
 
 // Initialize Redis client (optional - gracefully disabled if not configured)
 // Vercel's Upstash integration uses KV_REST_API_* variable names
@@ -26,14 +28,15 @@ import { TileType } from '@/game/types';
  * 
  * Request body:
  * {
- *   seed: string,    // Must match today's seed
- *   puzzle: PuzzleData
+ *   seed: string,       // Must match today's seed OR a recent puzzle date
+ *   puzzle: PuzzleData,
+ *   date?: string       // Optional: NY date string for recent puzzles (YYYY-MM-DD)
  * }
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { seed, puzzle } = body;
+    const { seed, puzzle, date } = body;
     
     if (!seed || !puzzle) {
       return NextResponse.json(
@@ -42,15 +45,50 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Verify the seed matches today's seed (prevent caching arbitrary puzzles)
     const today = new Date();
+    const todayNy = getNewYorkDateString(today);
     const todaySeed = getDailySeed(today);
     
-    if (seed !== todaySeed) {
-      return NextResponse.json(
-        { error: 'Seed does not match today\'s daily puzzle' },
-        { status: 400 }
-      );
+    // Determine target date: either explicit date param or today
+    let targetDate = todayNy;
+    let isRecentPuzzle = false;
+    
+    if (date && typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      // Validate date is within recent puzzle window
+      const recentStart = addDays(todayNy, -RECENT_PUZZLE_DAYS);
+      
+      if (date >= LAUNCH_DATE_NY && date < todayNy && date >= recentStart) {
+        // Valid recent puzzle date - verify seed matches date
+        if (seed !== date) {
+          return NextResponse.json(
+            { error: 'Seed does not match requested date' },
+            { status: 400 }
+          );
+        }
+        targetDate = date;
+        isRecentPuzzle = true;
+      } else if (date === todayNy) {
+        // Today's date explicitly passed - verify seed
+        if (seed !== todaySeed) {
+          return NextResponse.json(
+            { error: 'Seed does not match today\'s daily puzzle' },
+            { status: 400 }
+          );
+        }
+      } else {
+        return NextResponse.json(
+          { error: 'Date is outside cacheable range' },
+          { status: 400 }
+        );
+      }
+    } else {
+      // No date param - must be today's seed
+      if (seed !== todaySeed) {
+        return NextResponse.json(
+          { error: 'Seed does not match today\'s daily puzzle' },
+          { status: 400 }
+        );
+      }
     }
     
     // Basic puzzle validation
@@ -63,8 +101,7 @@ export async function POST(request: NextRequest) {
     
     // Store in KV with NX (only if not exists)
     // This ensures thread safety - first valid submission wins
-    const dateStr = getNewYorkDateString(today);
-    const kvKey = `puzzle:${dateStr}`;
+    const kvKey = `puzzle:${targetDate}`;
     
     if (!redis) {
       console.warn('[/api/daily/cache] Redis not configured (KV_REST_API_URL/TOKEN missing) - skipping cache');
@@ -75,12 +112,16 @@ export async function POST(request: NextRequest) {
       });
     }
     
-    const wasSet = await redis.set(kvKey, puzzle, {
-      nx: true,              // Only set if key doesn't exist
-    });
+    // For recent puzzles, set TTL of 30 days
+    let wasSet: PuzzleData | 'OK' | null;
+    if (isRecentPuzzle) {
+      wasSet = await redis.set(kvKey, puzzle, { nx: true, ex: 30 * 24 * 60 * 60 });
+    } else {
+      wasSet = await redis.set(kvKey, puzzle, { nx: true });
+    }
     
     if (wasSet) {
-      console.log(`[/api/daily/cache] Client backfilled puzzle for ${dateStr}`);
+      console.log(`[/api/daily/cache] Client backfilled puzzle for ${targetDate}${isRecentPuzzle ? ' (recent)' : ''}`);
       return NextResponse.json({ 
         success: true, 
         cached: true,
@@ -88,7 +129,7 @@ export async function POST(request: NextRequest) {
       });
     } else {
       // Already cached (by another request or cron)
-      console.log(`[/api/daily/cache] Puzzle for ${dateStr} already cached`);
+      console.log(`[/api/daily/cache] Puzzle for ${targetDate} already cached`);
       return NextResponse.json({ 
         success: true, 
         cached: false,

@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { getNewYorkDateString, getPuzzleNumberFromNyDateString } from '@/game/puzzleGenerator';
 import { getPlayerStats, getTodaysResult, recordLeaderboardRank } from '@/utils/storage';
+import { DEFAULT_LIVES } from '@/constants/game';
 import styles from './UiDevModal.module.css';
 
 type UiDevModalProps = {
@@ -69,7 +70,7 @@ export default function UiDevModal({
     }
 
     const failedAttempts = result.attempts?.length ?? 0;
-    const attemptsUsed = Math.min(3, Math.max(1, failedAttempts + 1));
+    const attemptsUsed = Math.min(DEFAULT_LIVES, Math.max(1, failedAttempts + 1));
 
     setBusy('submitting');
     try {

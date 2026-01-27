@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { GameState } from '@/game/types';
 import { onGameEvent } from '@/game/events';
 import { formatTime } from '@/utils/storage';
-import { STORAGE_KEYS } from '@/constants/game';
+import { STORAGE_KEYS, DEFAULT_LIVES } from '@/constants/game';
 import styles from './GameUI.module.css';
 
 interface InitialGameState {
@@ -23,7 +23,7 @@ interface GameUIProps {
   hidePuzzleNumber?: boolean;
   initialState?: InitialGameState;
   frozen?: boolean; // When true, ignore game events (for completed game display)
-  maxLives?: number; // Override default 3 lives (for dev tools)
+  maxLives?: number; // Override default lives (for dev tools)
   hintsEnabled?: boolean;
   onReviewAttempt?: (index: number | null) => void;
   reviewAttemptIndex?: number | null;
@@ -49,7 +49,7 @@ export default function GameUI({
   isResultModalActive = false,
 }: GameUIProps) {
   const [currentAttemptMoves, setCurrentAttemptMoves] = useState(initialState?.currentAttemptMoves ?? 0);
-  const [maxLives, setMaxLives] = useState(propMaxLives ?? initialState?.maxLives ?? 3);
+  const [maxLives, setMaxLives] = useState(propMaxLives ?? initialState?.maxLives ?? DEFAULT_LIVES);
   const [lives, setLives] = useState(initialState?.lives ?? maxLives);
   const [elapsedTime, setElapsedTime] = useState(initialState?.elapsedTimeMs ?? 0);
   const [startTime, setStartTime] = useState<number | null>(null);
@@ -391,120 +391,122 @@ export default function GameUI({
           )}
           <div className={styles.livesContainer}>
             {loading ? (
-              // Skeleton lives
-              Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className={`${styles.lifeNode} ${styles.skeletonLife}`} />
-              ))
+              // Skeleton lives - 2 rows
+              <>
+                <div className={styles.livesRow}>
+                  {Array.from({ length: 2 }).map((_, i) => (
+                    <div key={i} className={`${styles.lifeNode} ${styles.skeletonLife}`} />
+                  ))}
+                </div>
+                <div className={styles.livesRow}>
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i + 2} className={`${styles.lifeNode} ${styles.skeletonLife}`} />
+                  ))}
+                </div>
+              </>
             ) : (
-              // Real lives
-              Array.from({ length: maxLives }).map((_, i) => {
-                /*
-                UI overhaul notes (preserved):
+              // Real lives - 2 rows (2 top, 3 bottom)
+              <>
+                <div className={styles.livesRow}>
+                  {Array.from({ length: 2 }).map((_, i) => {
+                    const isLost = i >= lives;
+                    const isActive = i < lives;
+                    const attemptIndex = (maxLives - 1) - i;
+                    const canSelect = (!hintsEnabled || (frozen && analysisAnimationComplete)) && onReviewAttempt;
+                    const isSelected = reviewAttemptIndex === attemptIndex;
+                    const isHintTarget = reviewHintTarget === i;
 
-                // Logic:
-                // i < lives: Active/Remaining lives (usually just one "current" unless we change logic, but let's assume lives=count)
-                // i >= lives: Lost lives (history)
-                //
-                // Actually, standard logic:
-                // lives = 3. i=0,1,2.
-                // If lives=3 (start), all active.
-                // If lives=2, index 0,1 active? Or index 2 lost?
-                // Usually: 3 lives means we have 3 attempts.
-                // If lives=2, we have used 1.
-                // The visual is typically: "Remaining Lives".
-                // So if lives=3: [X] [X] [X]
-                // If lives=2: [X] [X] [ ]
-                // So index < lives are active. index >= lives are lost.
-                //
-                // Mapping attempt index to life node:
-                // Attempt 0 corresponds to the *first* lost life node?
-                // Let's say maxLives=3.
-                // Attempt 1 fails. lives -> 2. We have 1 attempt in history (index 0).
-                // Which node represents attempt 0?
-                // Standard approach: Right-to-left or Left-to-right loss?
-                // Current CSS: i < lives ? lifeActive : lifeLost.
-                // This implies "Active" ones are on the left (0..lives-1).
-                // "Lost" ones are on the right (lives..maxLives-1).
-                // Example: Start (lives=3): [0:Active] [1:Active] [2:Active]
-                // Lose 1 (lives=2): [0:Active] [1:Active] [2:Lost] -> Attempt 0 stored.
-                // So "Lost" node at index 2 corresponds to Attempt 0?
-                // Lose another (lives=1): [0:Active] [1:Lost] [2:Lost] -> Attempt 1 stored.
-                // So "Lost" node at index 1 corresponds to Attempt 1.
-                // This reverse mapping is confusing for selection.
-                //
-                // Better Mapping:
-                // Let's say attempts are pushed to an array: [Attempt0, Attempt1].
-                // We have `maxLives` slots.
-                // Slot 0: Attempt 0 (if lost) OR Current Life (if active).
-                // Slot 1: Attempt 1 (if lost) OR Current Life (if active).
-                // This suggests we should render slots based on *attempts made*.
-                // But the current UI is "Lives Remaining".
-                // Let's stick to the visual: "Lost lives are clickable".
-                // If I have 3 lives, and I lose one, I have 2 left.
-                // The "Lost" indicator is distinct.
-                // Let's make *any* lost life clickable to see the attempt that *caused* that loss.
-                //
-                // Calculating the attempt index for a lost life node:
-                // If we fill from right-to-left (standard for hearts/lives):
-                // lives=3: [ ][ ][ ]
-                // lives=2: [ ][ ][X] (X is index 2. Attempt #0).
-                // lives=1: [ ][X][X] (Index 1 is Attempt #1. Index 2 is Attempt #0).
-                // lives=0: [X][X][X] (Index 0 is Attempt #2).
-                // Formula: attemptIndex = (maxLives - 1) - i
-                // Check:
-                // i=2, max=3 -> 2-2 = 0. Correct.
-                // i=1, max=3 -> 2-1 = 1. Correct.
-                // i=0, max=3 -> 2-0 = 2. Correct.
-                */
-                const isLost = i >= lives;
-                const isActive = i < lives;
-                const attemptIndex = (maxLives - 1) - i;
-                // Allow reviewing attempts when:
-                // 1. Hints are disabled (during gameplay), OR
-                // 2. Post-game (frozen) AND solution animation has completed
-                const canSelect = (!hintsEnabled || (frozen && analysisAnimationComplete)) && onReviewAttempt;
-                const isSelected = reviewAttemptIndex === attemptIndex;
-                const isHintTarget = reviewHintTarget === i;
+                    const handleClick = () => {
+                      if (!canSelect) return;
+                      if (isLost) {
+                        if (isSelected) {
+                          onReviewAttempt(null);
+                        } else {
+                          onReviewAttempt(attemptIndex);
+                          if (isHintTarget) setReviewHintTarget(null);
+                        }
+                      } else {
+                        onReviewAttempt(null);
+                      }
+                    };
 
-                const handleClick = () => {
-                  if (!canSelect) return;
-                  if (isLost) {
-                    if (isSelected) {
-                      onReviewAttempt(null);
-                    } else {
-                      onReviewAttempt(attemptIndex);
-                      if (isHintTarget) setReviewHintTarget(null);
-                    }
-                  } else {
-                    onReviewAttempt(null);
-                  }
-                };
+                    const selectionClass = canSelect
+                      ? (isSelected ? styles.lifeReviewing : (isLost ? styles.lifeSelectable : styles.lifeReturn))
+                      : '';
+                    const hintClass = isHintTarget ? styles.lifeReviewHint : '';
 
-                const selectionClass = canSelect
-                  ? (isSelected ? styles.lifeReviewing : (isLost ? styles.lifeSelectable : styles.lifeReturn))
-                  : '';
-                const hintClass = isHintTarget ? styles.lifeReviewHint : '';
+                    return (
+                      <div
+                        key={i}
+                        className={`
+                          ${styles.lifeNode}
+                          ${isActive ? styles.lifeActive : styles.lifeLost}
+                          ${selectionClass}
+                          ${hintClass}
+                        `}
+                        onClick={handleClick}
+                        role={canSelect ? "button" : undefined}
+                        aria-label={isLost ? `Review attempt ${attemptIndex + 1}` : "Current life"}
+                        tabIndex={canSelect ? 0 : undefined}
+                      >
+                        {isHintTarget && (
+                          <span className={styles.selectTooltip}>SELECT</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className={styles.livesRow}>
+                  {Array.from({ length: 3 }).map((_, i) => {
+                    const lifeIndex = i + 2; // 2, 3, 4
+                    const isLost = lifeIndex >= lives;
+                    const isActive = lifeIndex < lives;
+                    const attemptIndex = (maxLives - 1) - lifeIndex;
+                    const canSelect = (!hintsEnabled || (frozen && analysisAnimationComplete)) && onReviewAttempt;
+                    const isSelected = reviewAttemptIndex === attemptIndex;
+                    const isHintTarget = reviewHintTarget === lifeIndex;
 
-                return (
-                  <div
-                    key={i}
-                    className={`
-                      ${styles.lifeNode}
-                      ${isActive ? styles.lifeActive : styles.lifeLost}
-                      ${selectionClass}
-                      ${hintClass}
-                    `}
-                    onClick={handleClick}
-                    role={canSelect ? "button" : undefined}
-                    aria-label={isLost ? `Review attempt ${attemptIndex + 1}` : "Current life"}
-                    tabIndex={canSelect ? 0 : undefined}
-                  >
-                    {isHintTarget && (
-                      <span className={styles.selectTooltip}>SELECT</span>
-                    )}
-                  </div>
-                );
-              })
+                    const handleClick = () => {
+                      if (!canSelect) return;
+                      if (isLost) {
+                        if (isSelected) {
+                          onReviewAttempt(null);
+                        } else {
+                          onReviewAttempt(attemptIndex);
+                          if (isHintTarget) setReviewHintTarget(null);
+                        }
+                      } else {
+                        onReviewAttempt(null);
+                      }
+                    };
+
+                    const selectionClass = canSelect
+                      ? (isSelected ? styles.lifeReviewing : (isLost ? styles.lifeSelectable : styles.lifeReturn))
+                      : '';
+                    const hintClass = isHintTarget ? styles.lifeReviewHint : '';
+
+                    return (
+                      <div
+                        key={lifeIndex}
+                        className={`
+                          ${styles.lifeNode}
+                          ${isActive ? styles.lifeActive : styles.lifeLost}
+                          ${selectionClass}
+                          ${hintClass}
+                        `}
+                        onClick={handleClick}
+                        role={canSelect ? "button" : undefined}
+                        aria-label={isLost ? `Review attempt ${attemptIndex + 1}` : "Current life"}
+                        tabIndex={canSelect ? 0 : undefined}
+                      >
+                        {isHintTarget && (
+                          <span className={styles.selectTooltip}>SELECT</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
             )}
           </div>
           <span className={styles.statLabel}>LIVES</span>

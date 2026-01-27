@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { usePathname, useRouter } from 'next/navigation';
-import { Header, GameUI, ShareCard, StatsModal, HelpModal, ErrorBoundary, Loader, DevTools, AdSlot } from '@/components';
+import { Header, GameUI, ShareCard, StatsModal, HelpModal, ErrorBoundary, Loader, DevTools, AdSlot, RecentPuzzlesModal } from '@/components';
 import LeaderboardFallback from '@/components/LeaderboardFallback';
 import UiDevModal from '@/components/UiDevModal';
 import { HELP_MENU_HASH } from '@/components/helpMenuHash';
@@ -32,6 +32,8 @@ import {
   isCheatCode,
   CLOSENESS_THRESHOLD_DEV,
   CLOSENESS_THRESHOLD_PROD,
+  RECENT_PUZZLE_DAYS,
+  DEFAULT_LIVES,
 } from '@/constants';
 import {
   getPuzzleNumber,
@@ -55,6 +57,7 @@ import {
   mergePlayerStats,
   savePlayerStats,
   saveTodaysResult,
+  saveHistoricalResult,
   upsertTodaysResult,
   getTodaysResult,
   getStorageScope,
@@ -62,7 +65,9 @@ import {
   cachePuzzle,
   saveInProgressState,
   getInProgressState,
+  getAnyInProgressState,
   clearInProgressState,
+  markRecentPuzzlePlayed,
   recordLeaderboardRank,
   setTodaysResultForDev,
   setStorageScope,
@@ -140,10 +145,10 @@ function ensureGuestOwner(userId: string): void {
 function resolveAttemptsUsed(result: DailyStats): number | null {
   if (!result) return null;
   if (typeof result.attemptsUsed === 'number' && Number.isFinite(result.attemptsUsed)) {
-    return Math.min(3, Math.max(1, Math.floor(result.attemptsUsed)));
+    return Math.min(DEFAULT_LIVES, Math.max(1, Math.floor(result.attemptsUsed)));
   }
   const failedAttempts = result.attempts?.length ?? 0;
-  return Math.min(3, Math.max(1, failedAttempts + 1));
+  return Math.min(DEFAULT_LIVES, Math.max(1, failedAttempts + 1));
 }
 
 function buildPlaceholderAttempts(attemptsUsed: number | null | undefined): Array<{ moveCount: number; path: Position[] }> {
@@ -260,6 +265,8 @@ export default function Home() {
   const [puzzle, setPuzzle] = useState<PuzzleData | null>(null);
   const [puzzleNumber, setPuzzleNumber] = useState(0);
   const [puzzleLabel, setPuzzleLabel] = useState<string | null>(null);
+  const [puzzleMode, setPuzzleMode] = useState<'daily' | 'recent'>('daily');
+  const [recentDate, setRecentDate] = useState<string | null>(null);
   const [activeSeed, setActiveSeed] = useState('');
   const [seedInput, setSeedInput] = useState('');
   const [renderKey, setRenderKey] = useState(0);
@@ -274,6 +281,8 @@ export default function Home() {
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showHallOfFame, setShowHallOfFame] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
+  const [showRecentPuzzles, setShowRecentPuzzles] = useState(false);
+  const [recentShareResult, setRecentShareResult] = useState<DailyStats | null>(null);
   const [selectedBackend, setSelectedBackend] = useState<GeneratorBackend>('auto');
   const [lastUsedBackend, setLastUsedBackend] = useState<'rust-backend' | 'wasm' | null>(null);
   const [gameResult, setGameResult] = useState<{ moveCount: number; timeMs: number; failed?: boolean; attempts?: any[] } | null>(null);
@@ -288,7 +297,7 @@ export default function Home() {
   const [showInlineResult, setShowInlineResult] = useState(false);
   const [isFreshCompletion, setIsFreshCompletion] = useState(false); // True when game completed this session (not loaded from storage)
   const [hintsEnabled, setHintsEnabled] = useState(true);
-  const [devMaxLives, setDevMaxLives] = useState(3);
+  const [devMaxLives, setDevMaxLives] = useState(DEFAULT_LIVES);
   const [lifeFlash, setLifeFlash] = useState(false);
   const [nextPuzzleCountdown, setNextPuzzleCountdown] = useState(() => getTimeUntilMidnightET());
   const [hasPendingRestore, setHasPendingRestore] = useState(false);
@@ -326,6 +335,9 @@ export default function Home() {
   const devToolsTapTargetRef = useRef<HTMLDivElement | null>(null);
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
   const pendingRestoreRef = useRef<Parameters<GameControls['restoreState']>[0] | null>(null);
+  const pendingRecentLoadRef = useRef<string | null>(null);
+  const puzzleModeRef = useRef<'daily' | 'recent'>('daily');
+  const recentDateRef = useRef<string | null>(null);
   const hintsEnabledRef = useRef(hintsEnabled);
   const devMaxLivesRef = useRef(devMaxLives);
   const isPlayingRef = useRef(isPlaying);
@@ -343,6 +355,14 @@ export default function Home() {
   useEffect(() => {
     devMaxLivesRef.current = devMaxLives;
   }, [devMaxLives]);
+
+  useEffect(() => {
+    puzzleModeRef.current = puzzleMode;
+  }, [puzzleMode]);
+
+  useEffect(() => {
+    recentDateRef.current = recentDate;
+  }, [recentDate]);
 
   useEffect(() => {
     const runPrefetch = () => {
@@ -401,25 +421,14 @@ export default function Home() {
     setHasPendingRestore(false);
     clearInProgressState();
 
-    // Set initialStats synchronously to avoid HUD flash when transitioning identities
-    if (puzzle) {
-      const failed = result.failed ?? !result.completed;
-      const failedAttempts = result.attempts?.length ?? 0;
-      const livesRemaining = failed ? 0 : 3 - failedAttempts;
-      setInitialStats({
-        lives: livesRemaining,
-        currentAttemptMoves: puzzle.optimalMoves,
-        elapsedTimeMs: result.timeMs,
-        penaltyTimeMs: 0,
-      });
-    }
-  }, [todayNy, clearInProgressState, puzzle]);
+    // initialStats will be set by the effect below when puzzle becomes available
+  }, [todayNy, clearInProgressState]);
 
   useEffect(() => {
     if (!previousResult || !puzzle) return;
     const failed = previousResult.failed ?? !previousResult.completed;
     const failedAttempts = previousResult.attempts?.length ?? 0;
-    const livesRemaining = failed ? 0 : 3 - failedAttempts;
+    const livesRemaining = failed ? 0 : DEFAULT_LIVES - failedAttempts;
     setInitialStats({
       lives: livesRemaining,
       currentAttemptMoves: puzzle.optimalMoves,
@@ -453,8 +462,15 @@ export default function Home() {
       setStorageScope(scope);
 
       if (!userId) {
-        setStats(getPlayerStats(scope));
+        setStats(getPlayerStats(scope, me?.provider));
         const localResult = getTodaysResult(scope);
+
+        // Check if we have a pending recent puzzle (already set by mount effect)
+        if (pendingRecentLoadRef.current) {
+          setIsIdentityChecked(true);
+          return;
+        }
+
         applyStoredResult(localResult);
 
         // If no completed result, check for in-progress state to restore
@@ -481,9 +497,15 @@ export default function Home() {
       const guestScope = 'guest';
       const canAdopt = canAdoptGuestHistory(userId);
 
+      // Check if we have a pending recent puzzle (already set by mount effect)
+      if (pendingRecentLoadRef.current) {
+        setIsIdentityChecked(true);
+        return;
+      }
+
       if (canAdopt) {
-        const userStats = getPlayerStats(userScope);
-        const guestStats = getPlayerStats(guestScope);
+        const userStats = getPlayerStats(userScope, me?.provider);
+        const guestStats = getPlayerStats(guestScope, me?.provider);
         if (guestStats.history.length > 0) {
           const merged = mergePlayerStats(userStats, guestStats);
           if (
@@ -513,7 +535,7 @@ export default function Home() {
       if (serverResult) {
         const merged = mergeServerResultIntoLocal(serverResult, localUserResult ?? localGuestResult);
         upsertTodaysResult(merged, userScope);
-        setStats(getPlayerStats(userScope));
+        setStats(getPlayerStats(userScope, me?.provider));
         applyStoredResult(merged);
         setIsIdentityChecked(true);
         return;
@@ -563,13 +585,13 @@ export default function Home() {
           // ignore record failures; local state is still valid
         }
 
-        setStats(getPlayerStats(userScope));
+        setStats(getPlayerStats(userScope, me?.provider));
         applyStoredResult(candidate);
         setIsIdentityChecked(true);
         return;
       }
 
-      setStats(getPlayerStats(userScope));
+      setStats(getPlayerStats(userScope, me?.provider));
       applyStoredResult(null);
 
       // No completed result - check for in-progress state to restore
@@ -716,7 +738,8 @@ export default function Home() {
     showMenu ||
     showLeaderboard ||
     showHallOfFame ||
-    showAccount;
+    showAccount ||
+    showRecentPuzzles;
   const shouldPause = isRouteOverlayOpen || isModalOpen;
 
   useEffect(() => {
@@ -858,7 +881,7 @@ export default function Home() {
     });
 
     setInitialStats({
-      lives: failed ? 0 : 3,
+      lives: failed ? 0 : DEFAULT_LIVES,
       currentAttemptMoves: optimalMoves,
       elapsedTimeMs: timeMs,
       penaltyTimeMs: 0,
@@ -997,12 +1020,28 @@ export default function Home() {
   // Track if we've already initiated loading (prevent React Strict Mode double-call)
   const loadInitiatedRef = useRef(false);
 
-  // Initialize puzzle and stats - use requestAnimationFrame to ensure first paint
+  // Initialize puzzle - check localStorage immediately to see if we need to restore recent puzzle
+  // This runs on mount without waiting for identity check (which involves API calls)
   useEffect(() => {
     // Prevent duplicate calls from React Strict Mode
     if (loadInitiatedRef.current) return;
     loadInitiatedRef.current = true;
 
+    // Quick localStorage check for in-progress recent puzzle (no async)
+    // Check both possible scopes since we don't know the user yet
+    const guestInProgress = getAnyInProgressState('guest');
+    const userScope = getStorageScope();
+    const userInProgress = userScope !== 'guest' ? getAnyInProgressState(userScope) : null;
+    const anyInProgress = guestInProgress ?? userInProgress;
+
+    if (anyInProgress?.isRecent && anyInProgress.seed) {
+      // Found in-progress recent puzzle - wait for identity check to load it
+      pendingRecentLoadRef.current = anyInProgress.seed;
+      // Don't load daily - the identity check effect will trigger recent puzzle load
+      return;
+    }
+
+    // No recent puzzle to restore - load daily puzzle immediately
     // Preload WASM early for faster fallback if needed
     preloadWasm();
 
@@ -1019,17 +1058,25 @@ export default function Home() {
     const unsubscribeComplete = onGameEvent('gameComplete', (data) => {
       const result = data as { moveCount: number; timeMs: number; optimalMoves: number; failed?: boolean; attempts?: any[] };
       setGameResult(result);
-      prefetchLeaderboard(todayNy, 20);
-      prefetchLeaderboard(todayNy, LEADERBOARD_LIMIT);
-      // Notify LeaderboardView to refresh with latest data
-      emitGameEvent('leaderboardRefresh', {});
+      const isRecent = puzzleModeRef.current === 'recent';
+      if (isRecent) {
+        const playedDate = recentDateRef.current;
+        if (playedDate) {
+          markRecentPuzzlePlayed(playedDate, getStorageScope());
+        }
+      } else {
+        prefetchLeaderboard(todayNy, 20);
+        prefetchLeaderboard(todayNy, LEADERBOARD_LIMIT);
+        // Notify LeaderboardView to refresh with latest data
+        emitGameEvent('leaderboardRefresh', {});
+      }
       setShowShareCard(true);
       setIsPlaying(false); // Ensure game is marked as not playing to show blocked state
       setIsFreshCompletion(true); // Mark as fresh completion (not loaded from storage)
 
       // Set initialStats so scoreboard stays frozen at completion state
       const failedAttempts = result.attempts?.length ?? 0;
-      const livesRemaining = result.failed ? 0 : 3 - failedAttempts;
+      const livesRemaining = result.failed ? 0 : DEFAULT_LIVES - failedAttempts;
       setInitialStats({
         lives: livesRemaining,
         currentAttemptMoves: result.optimalMoves, // 0 moves remaining
@@ -1055,13 +1102,20 @@ export default function Home() {
       const state = data as GameState;
       setLiveAttempts(state.attempts);
 
-      // Only save if we're in the daily puzzle (not debug mode) and game hasn't completed
-      if (debugModeRef.current || previousResult) return;
+      const isRecent = puzzleModeRef.current === 'recent';
+      const isDaily = puzzleModeRef.current === 'daily';
+      
+      // Skip for dev seeds (not daily or recent)
+      if (!isDaily && !isRecent) return;
+      // Skip if daily already completed
+      if (isDaily && previousResult) return;
 
       const serializableState = gameControlsRef.current?.getSerializableState();
       if (serializableState && activeSeed) {
         // "Game played" metric: first accepted move of the day (best-effort, deduped server-side).
+        // Only for daily puzzles
         if (
+          isDaily &&
           serializableState.isPlaying &&
           serializableState.moveCount > 0 &&
           !analyticsStartSentRef.current
@@ -1076,71 +1130,96 @@ export default function Home() {
 
           const failed = serializableState.lives === 0;
           const timeMs = serializableState.elapsedTimeMs + serializableState.penaltyTimeMs;
-          const todayDateStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-
           const failedAttempts = serializableState.attempts?.length ?? 0;
-          const attemptsUsed = Math.min(3, Math.max(1, failedAttempts + 1));
+          const attemptsUsed = Math.min(DEFAULT_LIVES, Math.max(1, failedAttempts + 1));
           const attemptScores = getAttemptScores(serializableState.attempts);
           const attemptsPayload = serializableState.attempts;
 
-          const dailyResult: DailyStats = {
-            date: todayDateStr,
-            completed: !failed,
-            moveCount: serializableState.moveCount,
-            timeMs,
-            puzzleNumber,
-            attempts: serializableState.attempts,
-            attemptsUsed,
-            failed,
-          };
+          if (isRecent) {
+            // Recent puzzle - save to history only (no server record, no leaderboard)
+            const recentDate = recentDateRef.current;
+            if (recentDate) {
+              const recentResult: DailyStats = {
+                date: recentDate,
+                completed: !failed,
+                moveCount: serializableState.moveCount,
+                timeMs,
+                puzzleNumber,
+                attempts: serializableState.attempts,
+                attemptsUsed,
+                failed,
+              };
+              saveHistoricalResult(recentResult);
+              setStats(getPlayerStats());
+              setPreviousResult(recentResult);
+              console.log('[SAVE] Recent puzzle result saved to history');
+            }
+          } else {
+            // Daily puzzle - full save with server record
+            const todayDateStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 
-          saveTodaysResult(dailyResult);
-          setStats(getPlayerStats());
-          setPreviousResult(dailyResult);
-          console.log('[SAVE] Result saved immediately on completion');
+            const dailyResult: DailyStats = {
+              date: todayDateStr,
+              completed: !failed,
+              moveCount: serializableState.moveCount,
+              timeMs,
+              puzzleNumber,
+              attempts: serializableState.attempts,
+              attemptsUsed,
+              failed,
+            };
 
-          const recordPromise = api
-            .resultsRecord(
-              failed
-                ? {
-                  date: todayDateStr,
-                  completed: false,
-                  timeMs,
-                  attemptsUsed,
-                  attemptScores: attemptScores ?? undefined,
-                  attempts: attemptsPayload ?? undefined,
-                }
-                : {
-                  date: todayDateStr,
-                  completed: true,
-                  timeMs,
-                  attemptsUsed,
-                  attemptScores: attemptScores ?? undefined,
-                  attempts: attemptsPayload ?? undefined,
-                }
-            )
-            .then((res) => {
-              invalidateMeCache();
-              fetchMeFresh().then(setAccountMe).catch(() => null);
-              return res;
-            })
-            .catch(() => null);
+            saveTodaysResult(dailyResult);
+            setStats(getPlayerStats());
+            setPreviousResult(dailyResult);
+            console.log('[SAVE] Result saved immediately on completion');
 
-          if (!failed && getPrefs().leaderboardAutoSubmitWins) {
-            recordPromise
-              .then(() => api.leaderboardSubmit({ date: todayDateStr }))
+            const recordPromise = api
+              .resultsRecord(
+                failed
+                  ? {
+                    date: todayDateStr,
+                    completed: false,
+                    timeMs,
+                    attemptsUsed,
+                    attemptScores: attemptScores ?? undefined,
+                    attempts: attemptsPayload ?? undefined,
+                  }
+                  : {
+                    date: todayDateStr,
+                    completed: true,
+                    timeMs,
+                    attemptsUsed,
+                    attemptScores: attemptScores ?? undefined,
+                    attempts: attemptsPayload ?? undefined,
+                  }
+              )
               .then((res) => {
-                if (res.rank != null) {
-                  recordLeaderboardRank(todayDateStr, res.rank);
-                  setStats(getPlayerStats());
-                }
+                invalidateMeCache();
+                fetchMeFresh().then(setAccountMe).catch(() => null);
+                return res;
               })
-              .catch(() => {
-                // Ignore: manual submit remains available via the leaderboard overlay.
-              });
+              .catch(() => null);
+
+            if (!failed && getPrefs().leaderboardAutoSubmitWins) {
+              recordPromise
+                .then(() => api.leaderboardSubmit({ date: todayDateStr }))
+                .then((res) => {
+                  if (res.rank != null) {
+                    recordLeaderboardRank(todayDateStr, res.rank);
+                    setStats(getPlayerStats());
+                  }
+                })
+                .catch(() => {
+                  // Ignore: manual submit remains available via the leaderboard overlay.
+                });
+            }
           }
         } else if (serializableState.isPlaying) {
-          saveInProgressState(activeSeed, serializableState);
+          // Save for daily or recent puzzles (not dev seeds)
+          const isRecent = puzzleModeRef.current === 'recent';
+          const recentDate = isRecent ? recentDateRef.current : undefined;
+          saveInProgressState(activeSeed, serializableState, undefined, recentDate ?? undefined);
         }
       }
     };
@@ -1150,23 +1229,32 @@ export default function Home() {
     const intervalId = window.setInterval(() => {
       // We can't access state directly here easily without ref, but getSerializableState works
       const state = gameControlsRef.current?.getSerializableState();
-      if (state && state.isPlaying && activeSeed && !debugModeRef.current && !previousResult) {
-        saveInProgressState(activeSeed, state);
+      const isRecent = puzzleModeRef.current === 'recent';
+      const canSave = puzzleModeRef.current === 'daily' || isRecent;
+      if (state && state.isPlaying && activeSeed && canSave && !previousResult) {
+        const recentDate = isRecent ? recentDateRef.current : undefined;
+        saveInProgressState(activeSeed, state, undefined, recentDate ?? undefined);
       }
     }, 5000);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
         const state = gameControlsRef.current?.getSerializableState();
-        if (state && state.isPlaying && activeSeed && !debugModeRef.current && !previousResult) {
-          saveInProgressState(activeSeed, state);
+        const isRecent = puzzleModeRef.current === 'recent';
+        const canSave = puzzleModeRef.current === 'daily' || isRecent;
+        if (state && state.isPlaying && activeSeed && canSave && !previousResult) {
+          const recentDate = isRecent ? recentDateRef.current : undefined;
+          saveInProgressState(activeSeed, state, undefined, recentDate ?? undefined);
         }
       }
     };
     const handlePageHide = () => {
       const state = gameControlsRef.current?.getSerializableState();
-      if (state && state.isPlaying && activeSeed && !debugModeRef.current && !previousResult) {
-        saveInProgressState(activeSeed, state);
+      const isRecent = puzzleModeRef.current === 'recent';
+      const canSave = puzzleModeRef.current === 'daily' || isRecent;
+      if (state && state.isPlaying && activeSeed && canSave && !previousResult) {
+        const recentDate = isRecent ? recentDateRef.current : undefined;
+        saveInProgressState(activeSeed, state, undefined, recentDate ?? undefined);
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -1451,6 +1539,193 @@ export default function Home() {
     applyStoredResult(getTodaysResult());
   }, [loadDailyPuzzle, applyStoredResult]);
 
+  const loadRecentPuzzle = useCallback(
+    async (date: string) => {
+      const trimmed = date.trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return;
+
+      // Abort any previous in-flight generation to avoid duplicate work
+      if (generationAbortRef.current && !generationAbortRef.current.signal.aborted) {
+        generationAbortRef.current.abort();
+      }
+      const abortController = new AbortController();
+      generationAbortRef.current = abortController;
+      inFlightSeedRef.current = trimmed;
+
+      debugModeRef.current = true;
+      setPuzzleMode('recent');
+      setRecentDate(trimmed);
+
+      const puzzleNumberForDate = getPuzzleNumberFromNyDateString(trimmed);
+      setPuzzleNumber(puzzleNumberForDate);
+      setPuzzleLabel(null); // Use default puzzle number display
+      setActiveSeed(trimmed);
+      setSeedInput('');
+      setShowShareCard(false);
+      setShowInlineResult(false);
+      setIsFreshCompletion(false);
+      setGameResult(null);
+      setPreviousResult(null);
+      setIsPlaying(false);
+      setReviewAttemptIndex(null);
+      setShowReplayButton(false);
+      setAnalysisAnimationComplete(false);
+      setPuzzle(null);
+      setIsGameReady(false);
+      setIsGenerating(true);
+      setGenerationProgress(null);
+
+      // Check for in-progress state for this recent puzzle
+      const scope = getStorageScope();
+      const inProgressState = getInProgressState(trimmed, scope);
+      if (inProgressState) {
+        console.log('[RESUME] Found in-progress recent puzzle state, will restore after game ready');
+        pendingRestoreRef.current = inProgressState;
+        setHasPendingRestore(true);
+        setInitialStats({
+          lives: inProgressState.lives,
+          currentAttemptMoves: inProgressState.currentAttemptMoves,
+          elapsedTimeMs: inProgressState.elapsedTimeMs,
+          penaltyTimeMs: inProgressState.penaltyTimeMs,
+        });
+      } else {
+        pendingRestoreRef.current = null;
+        setHasPendingRestore(false);
+        setInitialStats(null);
+      }
+
+      const cachedPuzzle = getCachedPuzzle(trimmed);
+      if (cachedPuzzle) {
+        setPuzzle(cachedPuzzle);
+        setRenderKey((prev) => prev + 1);
+        setIsGenerating(false);
+        setGenerationProgress(null);
+        generationAbortRef.current = null;
+        inFlightSeedRef.current = null;
+        return;
+      }
+
+      const progressHandler = (progress: GenerationProgress) => {
+        setGenerationProgress(progress);
+        setLastUsedBackend(progress.phase === 'kv' ? null : progress.phase);
+      };
+
+      try {
+        let recentPuzzle: PuzzleData | null = null;
+
+        try {
+          const response = await fetch(`/api/recent/${encodeURIComponent(trimmed)}`, {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+            signal: AbortSignal.timeout(10000),
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data?.puzzle && data.seed === trimmed) {
+              recentPuzzle = data.puzzle as PuzzleData;
+              setLastUsedBackend(null);
+            }
+          }
+        } catch {
+          // Cache check failed; fall back to generation
+        }
+
+        if (!recentPuzzle) {
+          recentPuzzle = await generatePuzzleParallel(
+            trimmed,
+            progressHandler,
+            selectedBackend,
+            undefined,
+            abortController,
+            closenessThreshold
+          );
+
+          // Backfill KV cache with client-generated puzzle (fire and forget)
+          if (recentPuzzle && !abortController.signal.aborted) {
+            fetch('/api/daily/cache', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ seed: trimmed, puzzle: recentPuzzle, date: trimmed }),
+            }).catch(() => {
+              // Ignore backfill failures - puzzle is already usable
+            });
+          }
+        }
+
+        if (abortController.signal.aborted) return;
+        setPuzzle(recentPuzzle);
+        setRenderKey((prev) => prev + 1);
+        cachePuzzle(trimmed, recentPuzzle);
+      } catch (error) {
+        if (abortController.signal.aborted || (error instanceof DOMException && error.name === 'AbortError')) {
+          return;
+        }
+        throw error;
+      } finally {
+        if (generationAbortRef.current === abortController) {
+          generationAbortRef.current = null;
+          inFlightSeedRef.current = null;
+        }
+        setIsGenerating(false);
+        setGenerationProgress(null);
+      }
+    },
+    [selectedBackend, closenessThreshold],
+  );
+
+  // Load pending recent puzzle after identity check completes
+  useEffect(() => {
+    if (!isIdentityChecked) return;
+    const pendingSeed = pendingRecentLoadRef.current;
+    if (pendingSeed) {
+      pendingRecentLoadRef.current = null;
+      loadRecentPuzzle(pendingSeed);
+    }
+  }, [isIdentityChecked, loadRecentPuzzle]);
+
+  const returnToDaily = useCallback(() => {
+    debugModeRef.current = false;
+    setPuzzleMode('daily');
+    setRecentDate(null);
+    setPuzzleLabel(null);
+    setShowShareCard(false);
+    setShowInlineResult(false);
+    setIsFreshCompletion(false);
+    setGameResult(null);
+    setPreviousResult(null);
+    setInitialStats(null);
+    setIsPlaying(false);
+    setReviewAttemptIndex(null);
+    setShowReplayButton(false);
+    setAnalysisAnimationComplete(false);
+    setShowSwipeHint(false);
+    pendingRestoreRef.current = null;
+    setHasPendingRestore(false);
+    setPuzzle(null);
+    setIsGameReady(false);
+
+    loadDailyPuzzle();
+    const scope = getStorageScope();
+    const stored = getTodaysResult(scope);
+    applyStoredResult(stored);
+
+    if (!stored) {
+      const todaySeed = getDailySeed(new Date());
+      const inProgressState = getInProgressState(todaySeed, scope);
+      if (inProgressState) {
+        pendingRestoreRef.current = inProgressState;
+        setHasPendingRestore(true);
+        setInitialStats({
+          lives: inProgressState.lives,
+          currentAttemptMoves: inProgressState.currentAttemptMoves,
+          elapsedTimeMs: inProgressState.elapsedTimeMs,
+          penaltyTimeMs: inProgressState.penaltyTimeMs,
+        });
+      }
+    }
+  }, [loadDailyPuzzle, applyStoredResult]);
+
   const showAnalysis = useCallback(() => {
     const attempts = gameResult?.attempts ?? previousResult?.attempts;
     if (attempts && gameControlsRef.current) {
@@ -1477,7 +1752,7 @@ export default function Home() {
     emitGameEvent('cosmeticsUpdate', me?.mode === 'user' && me.profile ? me.profile : { characterId: 'default', skinId: 'default' });
 
     // Sync dev tools maxLives setting if not default
-    if (devMaxLivesRef.current !== 3) {
+    if (devMaxLivesRef.current !== DEFAULT_LIVES) {
       controls.setMaxLives(devMaxLivesRef.current);
     }
 
@@ -1612,10 +1887,11 @@ export default function Home() {
   const isAdVisible = (status: 'filled' | 'unfilled' | null) => canRequestAds && status === 'filled';
 
   // Derived state
+  const isRecentMode = puzzleMode === 'recent' && !!recentDate;
   const hasPuzzle = Boolean(puzzle);
   // Loading text priority: generating > no puzzle > puzzle loading/waiting
   const loadingText = isGenerating
-    ? 'Generating daily puzzle...'
+    ? (isRecentMode ? 'Loading recent puzzle...' : 'Generating daily puzzle...')
     : !hasPuzzle
       ? 'Loading Mazle...'
       : 'Loading puzzle...';
@@ -1722,7 +1998,7 @@ export default function Home() {
                 hintsEnabled={hintsEnabled}
                 onReviewAttempt={setReviewAttemptIndex}
                 reviewAttemptIndex={reviewAttemptIndex}
-                loading={!hasPuzzle || !isIdentityChecked || (!!previousResult && !initialStats)}
+                loading={(!hasPuzzle && !initialStats) || !isIdentityChecked || (!!previousResult && !initialStats)}
                 analysisAnimationComplete={analysisAnimationComplete}
                 isResultModalActive={showShareCard}
               />
@@ -1875,43 +2151,68 @@ export default function Home() {
             </div>
 
             <div className={`${styles.controlsArea} ${showMenu ? styles.blurred : ''}`}>
-              <div
-                className={`${styles.controlsRow} ${showControlsRow ? styles.controlsRowVisible : styles.controlsRowHidden}`.trim()}
-                aria-hidden={!showControlsRow}
-              >
-                <button
-                  className={styles.iconButton}
-                  onClick={() => setShowLeaderboard(true)}
-                  aria-label="Leaderboard"
-                  title="Leaderboard"
+              {/* Controls row - for daily (post-game) or recent mode (always) */}
+              {(showControlsRow || isRecentMode) && !showShareCard && (
+                <div
+                  className={`${styles.controlsRow} ${styles.controlsRowVisible}`}
                 >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M3 21V10h6V3h6v4h6v14H3zM9 10v11M15 7v14" />
-                  </svg>
-                </button>
-                <button
-                  className={styles.shareButton}
-                  onClick={handleShowShareCard}
-                >
-                  Share
-                </button>
-                <button
-                  className={styles.iconButton}
-                  onClick={() => {
-                    setStats(getPlayerStats());
-                    setShowStats(true);
-                  }}
-                  aria-label="Statistics"
-                  title="Statistics"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M3 3v18h18" />
-                    <path d="M18 17V9" />
-                    <path d="M13 17V5" />
-                    <path d="M8 17v-3" />
-                  </svg>
-                </button>
-              </div>
+                  {isRecentMode ? (
+                    <>
+                      {!isPlaying && !hasPendingRestore && (
+                        <button
+                          className={styles.backToDailyButton}
+                          onClick={returnToDaily}
+                        >
+                          ← Today
+                        </button>
+                      )}
+                      {showControlsRow && (
+                        <button
+                          className={styles.shareButton}
+                          onClick={handleShowShareCard}
+                        >
+                          Share
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        className={styles.iconButton}
+                        onClick={() => setShowLeaderboard(true)}
+                        aria-label="Leaderboard"
+                        title="Leaderboard"
+                      >
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M3 21V10h6V3h6v4h6v14H3zM9 10v11M15 7v14" />
+                        </svg>
+                      </button>
+                      <button
+                        className={styles.shareButton}
+                        onClick={handleShowShareCard}
+                      >
+                        Share
+                      </button>
+                      <button
+                        className={styles.iconButton}
+                        onClick={() => {
+                          setStats(getPlayerStats());
+                          setShowStats(true);
+                        }}
+                        aria-label="Statistics"
+                        title="Statistics"
+                      >
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M3 3v18h18" />
+                          <path d="M18 17V9" />
+                          <path d="M13 17V5" />
+                          <path d="M8 17v-3" />
+                        </svg>
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
               {showSwipeHint && (
                 <div className={styles.swipeHint} onAnimationEnd={() => setShowSwipeHint(false)}>
                   Swipe anywhere to move
@@ -1965,6 +2266,10 @@ export default function Home() {
           onOpenLeaderboard={() => setShowLeaderboard(true)}
           onOpenHallOfFame={() => setShowHallOfFame(true)}
           onOpenAccount={() => setShowAccount(true)}
+          onOpenRecentPuzzles={() => {
+            setStats(getPlayerStats());
+            setShowRecentPuzzles(true);
+          }}
           triggerButtonRef={menuButtonRef}
         />
 
@@ -2006,15 +2311,56 @@ export default function Home() {
           <ShareCard
             puzzleNumber={puzzleNumber}
             puzzleLabel={puzzleLabel ?? undefined}
-            analyticsDate={todayNy}
+            analyticsDate={isRecentMode ? undefined : todayNy}
             timeMs={gameResult.timeMs}
             optimalMoves={puzzle.optimalMoves}
             failed={gameResult.failed}
             attempts={gameResult.attempts}
             maxLives={devMaxLives}
             onClose={handleCloseShareCard}
-            countdownText={`Next puzzle in ${formatCountdown(nextPuzzleCountdown)}`}
+            countdownText={isRecentMode ? undefined : `Next puzzle in ${formatCountdown(nextPuzzleCountdown)}`}
+            secondaryActionLabel={isRecentMode ? 'Back to Today' : 'Recent Puzzles'}
+            onSecondaryAction={
+              isRecentMode
+                ? returnToDaily
+                : () => {
+                  setStats(getPlayerStats());
+                  setShowRecentPuzzles(true);
+                }
+            }
+            footerText={
+              isRecentMode
+                ? 'Today’s puzzle is waiting.'
+                : `Play the last ${RECENT_PUZZLE_DAYS} days of puzzles`
+            }
           />
+        )}
+
+        {showRecentPuzzles && stats && (
+          <RecentPuzzlesModal
+            stats={stats}
+            onClose={() => setShowRecentPuzzles(false)}
+            onPlay={loadRecentPuzzle}
+            onShare={(result) => {
+              setRecentShareResult(result);
+              // Don't close modal - ShareCard will appear on top
+            }}
+            dailyInProgress={!previousResult && (hasPendingRestore || isPlaying)}
+          />
+        )}
+
+        {recentShareResult && (
+          <div style={{ position: 'relative', zIndex: 1001 }}>
+            <ShareCard
+              puzzleNumber={recentShareResult.puzzleNumber}
+              timeMs={recentShareResult.timeMs}
+              optimalMoves={recentShareResult.moveCount}
+              failed={recentShareResult.failed}
+              attempts={recentShareResult.attempts}
+              maxLives={recentShareResult.attemptsUsed ? Math.max(DEFAULT_LIVES, recentShareResult.attemptsUsed) : DEFAULT_LIVES}
+              onClose={() => setRecentShareResult(null)}
+            />
+          </div>
         )}
 
         {IS_UI_DEV_ENV && (

@@ -17,7 +17,7 @@ import {
   MovementConfig,
   positionKey,
 } from './movement';
-import { PENALTY_MS } from '@/constants';
+import { PENALTY_MS, DEFAULT_LIVES } from '@/constants';
 import { getSkinById, isSkinDisabled } from '@/lib/skins';
 
 function cssHexToPhaserColor(value: string): number | null {
@@ -79,7 +79,7 @@ export class GameScene extends Phaser.Scene {
 
   private isPlaying = false;
   private hintsEnabled = HINTS_ENABLED;
-  private maxLives = 3; // Configurable via dev tools (3-5)
+  private maxLives = DEFAULT_LIVES; // Configurable via dev tools
 
   private analysisObjects: Phaser.GameObjects.GameObject[] = [];
   private analysisTimers: Phaser.Time.TimerEvent[] = [];

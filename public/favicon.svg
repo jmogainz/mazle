@@ -2,31 +2,31 @@
   <!-- Row 1 -->
   <!-- Top Left: Player (3D Effect) -->
   <!-- Shadow (Offset y+3) -->
-  <rect x="4" y="7" width="22" height="19" rx="4" fill="#cc0000" />
+  <rect x="4" y="4" width="22" height="19" rx="4" fill="#cc0000" />
   <!-- Body (Main position) -->
-  <rect x="4" y="4" width="22" height="19" rx="4" fill="#ff4d4d" />
+  <rect x="4" y="1" width="22" height="19" rx="4" fill="#ff4d4d" />
   <!-- Eyes -->
-  <circle cx="11" cy="13" r="2.5" fill="white" stroke="black" stroke-opacity="0.1" stroke-width="0.5" />
-  <circle cx="19" cy="13" r="2.5" fill="white" stroke="black" stroke-opacity="0.1" stroke-width="0.5" />
+  <circle cx="11" cy="10" r="2.5" fill="white" stroke="black" stroke-opacity="0.1" stroke-width="0.5" />
+  <circle cx="19" cy="10" r="2.5" fill="white" stroke="black" stroke-opacity="0.1" stroke-width="0.5" />
 
   <!-- Top Right: Floor (Flat) -->
-  <rect x="30" y="4" width="22" height="22" rx="4" fill="#f3f3f3" stroke="#000000" stroke-opacity="0.2" stroke-width="1" />
+  <rect x="30.5" y="1.5" width="21" height="21" rx="4" fill="#f3f3f3" stroke="#000000" stroke-opacity="0.2" stroke-width="1" />
   
   <!-- Row 2 -->
   <!-- Bottom Left: Floor (Flat) -->
-  <rect x="4" y="30" width="22" height="22" rx="4" fill="#f3f3f3" stroke="#000000" stroke-opacity="0.2" stroke-width="1" />
+  <rect x="4.5" y="27.5" width="21" height="21" rx="4" fill="#f3f3f3" stroke="#000000" stroke-opacity="0.2" stroke-width="1" />
   
   <!-- Bottom Right: Goal (3D Effect) -->
   <!-- Shadow (Offset y+3) -->
-  <rect x="30" y="33" width="22" height="19" rx="4" fill="#538d4e" />
+  <rect x="30" y="30" width="22" height="19" rx="4" fill="#538d4e" />
   <!-- Face (Main position) -->
-  <rect x="30" y="30" width="22" height="19" rx="4" fill="#6aaa64" />
+  <rect x="30" y="27" width="22" height="19" rx="4" fill="#6aaa64" />
   <!-- Star (Centered on Face, slightly higher) -->
   <!-- Reverting to 1.6 scale and original centering logic relative to new position -->
   <!-- Center of face is 41,41. Polygon center approx 4,3.6 -->
   <!-- Target: 41,41. Translate: (41 - 4*1.6) = 34.6. (41 - 3.6*1.6) = 35.24 -->
   <!-- Moved slightly up to respect 3D face: y=34.0? -->
-  <g transform="translate(34.6, 33.7) scale(1.6)">
+  <g transform="translate(34.6, 30.7) scale(1.6)">
     <polygon points="4,0 4.88,2.8 7.84,2.8 5.44,4.56 6.32,7.28 4,5.6 1.68,7.28 2.56,4.56 0.16,2.8 3.12,2.8" fill="#ffd700" />
   </g>
 </svg>

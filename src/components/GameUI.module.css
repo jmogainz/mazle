@@ -138,6 +138,37 @@
   transition: font-size 0.15s ease-out;
 }
 
+.statLabelRow {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: calc(0.25rem * var(--ui-scale));
+  line-height: 1;
+  font-size: calc(0.75rem * var(--ui-scale));
+}
+
+.statLabelRow .statLabel {
+  font-size: inherit;
+}
+
+.timeLabelWrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.infoWrap {
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: calc(0.2rem * var(--ui-scale));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 
 .statDivider {
   width: 1px;
@@ -471,15 +502,14 @@
 }
 
 .infoIcon {
-  position: absolute;
-  top: 0;
-  right: calc(-18px * var(--ui-scale));
-  display: flex;
+  position: relative;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: calc(16px * var(--ui-scale));
-  height: calc(16px * var(--ui-scale));
-  font-size: calc(0.65rem * var(--ui-scale));
+  width: 1em;
+  height: 1em;
+  font-size: 1em;
+  line-height: 1;
   font-weight: bold;
   color: var(--color-secondary);
   background: var(--color-surface);
@@ -489,7 +519,7 @@
   border: 1px solid var(--color-border);
   user-select: none;
   -webkit-tap-highlight-color: transparent;
-  transition: right 0.15s ease-out, width 0.15s ease-out, height 0.15s ease-out, font-size 0.15s ease-out;
+  transition: width 0.15s ease-out, height 0.15s ease-out, font-size 0.15s ease-out;
   z-index: 200;
 }
 
@@ -499,9 +529,9 @@
 
 .tooltip {
   position: absolute;
-  top: -8px;
-  right: calc(-10px * var(--ui-scale));
-  transform: translateY(-100%) translateX(50%);
+  top: calc(-6px * var(--ui-scale));
+  left: 50%;
+  transform: translate(-50%, -100%);
   padding: 8px 12px;
   background: var(--color-surface);
   color: var(--color-text);
@@ -512,6 +542,17 @@
   white-space: nowrap;
   z-index: 9999;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.timeTooltip {
+  top: calc(100% + 8px);
+  bottom: auto;
+}
+
+.timeTooltip::after {
+  top: auto;
+  bottom: 100%;
+  border-color: transparent transparent var(--color-border) transparent;
 }
 
 .domPenaltyPopup {

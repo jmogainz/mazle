@@ -470,6 +470,42 @@ export default function GameUI({
         {/* Divider */}
         <div className={styles.statDivider} />
 
+        {/* Time */}
+        <div className={styles.statGroup}>
+          <span ref={timerRef} className={`${styles.statValue} ${loading ? styles.skeleton : ''} ${!loading && penaltyFlash ? styles.penaltyFlash : ''}`}>
+            {loading ? '0:00' : formatTime(totalDisplayTime)}
+          </span>
+          <div className={styles.statLabelRow}>
+            <span className={styles.timeLabelWrap}>
+              <span className={styles.statLabel}>TIME</span>
+
+              {/* Penalty Tooltip - hidden during loading */}
+              <span className={styles.infoWrap} style={loading ? { visibility: 'hidden' } : undefined}>
+                <span
+                  className={styles.infoIcon}
+                  onMouseEnter={() => setShowTooltip(true)}
+                  onMouseLeave={() => setShowTooltip(false)}
+                  onTouchStart={(e) => {
+                    e.preventDefault();
+                    setShowTooltip(prev => !prev);
+                  }}
+                >
+                  ?
+                </span>
+              </span>
+
+              {showTooltip && (
+                <span className={`${styles.livesTooltip} ${styles.timeTooltip}`}>
+                  +30s/life penalty
+                </span>
+              )}
+            </span>
+          </div>
+        </div>
+
+        {/* Divider */}
+        <div className={styles.statDivider} />
+
         {/* Moves */}
         <div className={styles.statGroup}>
           <span
@@ -484,36 +520,6 @@ export default function GameUI({
             {loading ? '00' : Math.max(0, movesRemaining)}
           </span>
           <span className={styles.statLabel}>MOVES LEFT</span>
-        </div>
-
-        {/* Divider */}
-        <div className={styles.statDivider} />
-
-        {/* Time */}
-        <div className={styles.statGroup}>
-          <span ref={timerRef} className={`${styles.statValue} ${loading ? styles.skeleton : ''} ${!loading && penaltyFlash ? styles.penaltyFlash : ''}`}>
-            {loading ? '0:00' : formatTime(totalDisplayTime)}
-          </span>
-          <span className={styles.statLabel}>TIME</span>
-
-          {/* Penalty Tooltip - hidden during loading */}
-          <span
-            className={styles.infoIcon}
-            style={loading ? { visibility: 'hidden' } : undefined}
-            onMouseEnter={() => setShowTooltip(true)}
-            onMouseLeave={() => setShowTooltip(false)}
-            onTouchStart={(e) => {
-              e.preventDefault();
-              setShowTooltip(prev => !prev);
-            }}
-          >
-            ?
-          </span>
-          {showTooltip && (
-            <span className={styles.tooltip}>
-              +30s/life penalty
-            </span>
-          )}
         </div>
       </div>
     </div>

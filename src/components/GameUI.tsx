@@ -56,7 +56,6 @@ export default function GameUI({
   const [visualPenaltyTimeMs, setVisualPenaltyTimeMs] = useState(initialState?.penaltyTimeMs ?? 0);
   const [isComplete, setIsComplete] = useState(frozen);
   const [isPaused, setIsPaused] = useState(false);
-  const [showTooltip, setShowTooltip] = useState(false);
   const [penaltyFlash, setPenaltyFlash] = useState(false);
   const [reviewHintTarget, setReviewHintTarget] = useState<number | null>(null);
   const [showLivesTooltip, setShowLivesTooltip] = useState(false);
@@ -101,8 +100,6 @@ export default function GameUI({
 
   // Tooltip text adapts to device type (touch vs mouse)
   const tooltipText = isTouchDevice ? 'Tap to see failed attempts' : 'Click to see failed attempts';
-
-
 
   // ... existing useEffects ...
 
@@ -187,7 +184,7 @@ export default function GameUI({
         clearTimeout(cleanupTimer);
       };
     }
-  }, [frozen, analysisAnimationComplete, loading, isResultModalActive, lives]);
+  }, [frozen, analysisAnimationComplete, loading, isResultModalActive, lives, maxLives]);
 
   // Clear tooltip when leaving a completed state or switching puzzles
   useEffect(() => {
@@ -196,7 +193,6 @@ export default function GameUI({
       setIsTooltipFadingOut(false);
     }
   }, [frozen, loading, puzzleNumber]);
-
 
   useEffect(() => {
     // When frozen, don't subscribe to game events - scoreboard stays static
@@ -478,27 +474,6 @@ export default function GameUI({
           <div className={styles.statLabelRow}>
             <span className={styles.timeLabelWrap}>
               <span className={styles.statLabel}>TIME</span>
-
-              {/* Penalty Tooltip - hidden during loading */}
-              <span className={styles.infoWrap} style={loading ? { visibility: 'hidden' } : undefined}>
-                <span
-                  className={styles.infoIcon}
-                  onMouseEnter={() => setShowTooltip(true)}
-                  onMouseLeave={() => setShowTooltip(false)}
-                  onTouchStart={(e) => {
-                    e.preventDefault();
-                    setShowTooltip(prev => !prev);
-                  }}
-                >
-                  ?
-                </span>
-              </span>
-
-              {showTooltip && (
-                <span className={`${styles.livesTooltip} ${styles.timeTooltip}`}>
-                  +30s/life penalty
-                </span>
-              )}
             </span>
           </div>
         </div>
@@ -519,7 +494,11 @@ export default function GameUI({
           >
             {loading ? '00' : Math.max(0, movesRemaining)}
           </span>
-          <span className={styles.statLabel}>MOVES LEFT</span>
+          <div className={styles.statLabelRow}>
+            <span className={styles.timeLabelWrap}>
+              <span className={styles.statLabel}>MOVES LEFT</span>
+            </span>
+          </div>
         </div>
       </div>
     </div>

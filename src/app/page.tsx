@@ -600,7 +600,10 @@ export default function Home() {
       // No completed result - check for in-progress state to restore
       if (!debugModeRef.current) {
         const todaySeed = getDailySeed(new Date());
-        const inProgressState = getInProgressState(todaySeed);
+        let inProgressState = getInProgressState(todaySeed, userScope);
+        if (!inProgressState && canAdopt) {
+          inProgressState = getInProgressState(todaySeed, guestScope);
+        }
         if (inProgressState) {
           console.log('[RESUME] Found in-progress state, will restore after game ready');
           pendingRestoreRef.current = inProgressState;
@@ -1116,6 +1119,8 @@ export default function Home() {
 
       const serializableState = gameControlsRef.current?.getSerializableState();
       if (serializableState && activeSeed) {
+        setIsPlaying(serializableState.isPlaying);
+
         // "Game played" metric: first accepted move of the day (best-effort, deduped server-side).
         // Only for daily puzzles
         if (
@@ -1788,6 +1793,29 @@ export default function Home() {
       setIsPlaying(false);
     }
   }, [showAnalysis, showInlineResult, shouldPause]);
+
+  // If in-progress state is discovered after the game is ready, restore it here.
+  useEffect(() => {
+    if (!isGameReady || !hasPendingRestore) return;
+    const pending = pendingRestoreRef.current;
+    const controls = gameControlsRef.current;
+    if (!pending || !controls) return;
+
+    console.log('[RESUME] Restoring late in-progress state');
+    try {
+      controls.restoreState(pending);
+      setIsPlaying(pending.isPlaying);
+      pendingRestoreRef.current = null;
+      setHasPendingRestore(false);
+      return;
+    } catch (error) {
+      console.warn('[RESUME] Failed to restore late in-progress state, clearing it', error);
+      clearInProgressState();
+      pendingRestoreRef.current = null;
+      setHasPendingRestore(false);
+      setInitialStats(null);
+    }
+  }, [isGameReady, hasPendingRestore, clearInProgressState]);
 
   // Show help on first visit - wait for full loading to complete
   const hasShownFirstVisitHelpRef = useRef(false);

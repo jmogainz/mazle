@@ -8,7 +8,7 @@ const PREFS_CHANGED_EVENT = 'mazle_prefs_changed_v1';
 
 const DEFAULT_PREFS: MazlePrefsV1 = {
   leaderboardAutoSubmitWins: true,
-  themePreference: 'system',
+  themePreference: 'light',
 };
 
 export function getPrefs(): MazlePrefsV1 {

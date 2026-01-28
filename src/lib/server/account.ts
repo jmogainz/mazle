@@ -246,7 +246,7 @@ export async function ensureUserSettings(userId: string): Promise<UserSettings> 
     [userId]
   );
   const row = res.rows[0];
-  const theme = coerceThemePreference(row?.theme) ?? 'system';
+  const theme = coerceThemePreference(row?.theme) ?? 'light';
   return {
     theme,
     leaderboardAutoSubmit: row?.leaderboard_auto_submit ?? true,

@@ -83,6 +83,7 @@
   transition: min-width 0.15s ease-out, gap 0.15s ease-out;
 }
 
+
 .statsRow>.statGroup:first-of-type {
   justify-self: end;
 }

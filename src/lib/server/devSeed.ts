@@ -263,7 +263,7 @@ async function seedDatabase(
 
   const settingsPayload = JSON.stringify(users.map((u) => ({
     user_id: u.id,
-    theme: 'system',
+    theme: 'light',
     leaderboard_auto_submit: true,
   })));
   await pool.query(

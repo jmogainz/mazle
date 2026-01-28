@@ -190,7 +190,7 @@ jobs:
           eval "$(ssh-agent -s)"
           ssh-add ~/.ssh/id_ci
 
-          git fetch origin develop
+          git fetch origin main develop
           git checkout develop
           git merge origin/main -m "Merge main into develop [automated]"
           git push origin develop

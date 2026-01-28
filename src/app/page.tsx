@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { usePathname, useRouter } from 'next/navigation';
 import { Header, GameUI, ShareCard, StatsModal, HelpModal, ErrorBoundary, Loader, DevTools, AdSlot, RecentPuzzlesModal } from '@/components';
+import type { StatsModalMeData, StatsHistoryEntry } from '@/components/StatsModal';
 import LeaderboardFallback from '@/components/LeaderboardFallback';
 import UiDevModal from '@/components/UiDevModal';
 import { HELP_MENU_HASH } from '@/components/helpMenuHash';
@@ -274,6 +275,8 @@ export default function Home() {
   const [seedInput, setSeedInput] = useState('');
   const [renderKey, setRenderKey] = useState(0);
   const [stats, setStats] = useState<PlayerStats | null>(null);
+  const [statsMe, setStatsMe] = useState<StatsModalMeData | null>(() => readCachedMe() as StatsModalMeData | null);
+  const [statsAccountHistory, setStatsAccountHistory] = useState<StatsHistoryEntry[] | null>(null);
   const [accountMe, setAccountMe] = useState<Awaited<ReturnType<typeof cachedApi.me>> | null>(() => readCachedMe());
   const [showShareCard, setShowShareCard] = useState(false);
   const [showStats, setShowStats] = useState(false);
@@ -369,6 +372,36 @@ export default function Home() {
     recentDateRef.current = recentDate;
   }, [recentDate]);
 
+  // Prefetch stats modal data (me + history) so modal opens instantly
+  const refreshStatsData = useCallback(() => {
+    setStats(getPlayerStats());
+    fetchMeFresh()
+      .then((me) => {
+        setStatsMe(me as StatsModalMeData | null);
+        if (me?.mode === 'user' && me?.userId) {
+          api.resultsHistory()
+            .then((res) => {
+              const mapped = res.history
+                .map((row) => ({
+                  date: row.date,
+                  completed: row.completed,
+                  timeMs: row.timeMs ?? null,
+                  attemptsUsed: row.attemptsUsed ?? null,
+                  attemptScores: row.attemptScores ?? null,
+                  isRecent: row.isRecent,
+                  puzzleNumber: getPuzzleNumberFromNyDateString(row.date),
+                }))
+                .sort((a: StatsHistoryEntry, b: StatsHistoryEntry) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+              setStatsAccountHistory(mapped);
+            })
+            .catch(() => setStatsAccountHistory([]));
+        } else {
+          setStatsAccountHistory(null);
+        }
+      })
+      .catch(() => null);
+  }, []);
+
   useEffect(() => {
     const runPrefetch = () => {
       prefetchAccount();
@@ -380,6 +413,8 @@ export default function Home() {
         hofDates.push(addDays(yesterday, i));
       }
       prefetchHallOfFame(hofDates);
+      // Prefetch stats modal data
+      refreshStatsData();
     };
 
     const ric = (window as any).requestIdleCallback as ((cb: IdleRequestCallback, opts?: { timeout: number }) => number) | undefined;
@@ -392,6 +427,13 @@ export default function Home() {
     const id = window.setTimeout(runPrefetch, 800);
     return () => window.clearTimeout(id);
   }, [todayNy]);
+
+  // Refresh stats data when modal opens (catches results saved after gameComplete prefetch)
+  useEffect(() => {
+    if (showStats) {
+      refreshStatsData();
+    }
+  }, [showStats, refreshStatsData]);
 
   // Reset first-move analytics when the active puzzle changes.
   useEffect(() => {
@@ -454,10 +496,12 @@ export default function Home() {
       try {
         me = await cachedApi.me();
         setAccountMe(me);
+        setStatsMe(me as StatsModalMeData | null);
       } catch {
         meError = true;
         me = null;
         setAccountMe(null);
+        setStatsMe(null);
       }
       if (cancelled || identitySyncEpochRef.current !== epoch) return;
 
@@ -1071,7 +1115,9 @@ export default function Home() {
       if (isRecent) {
         const playedDate = recentDateRef.current;
         if (playedDate) {
-          markRecentPuzzlePlayed(playedDate, getStorageScope());
+          if (accountMe?.mode !== 'user') {
+            markRecentPuzzlePlayed(playedDate, getStorageScope());
+          }
         }
       } else {
         prefetchLeaderboard(todayNy, 20);
@@ -1095,6 +1141,9 @@ export default function Home() {
 
       // Result is already saved in stateUpdate handler when isComplete becomes true
       // This handler now only triggers UI updates after animation completes
+
+      // Refresh stats data so modal opens instantly with updated data
+      refreshStatsData();
     });
 
     const unsubscribeLifeLost = onGameEvent('lifeLost', (data) => {
@@ -1147,12 +1196,13 @@ export default function Home() {
           const attemptsPayload = serializableState.attempts;
 
           if (isRecent) {
-            // Recent puzzle - save to history only (no server record, no leaderboard)
+            // Recent puzzle - record for signed-in users (no leaderboard)
             const recentDate = recentDateRef.current;
             if (recentDate) {
               const recentResult: DailyStats = {
                 date: recentDate,
                 completed: !failed,
+                isRecent: true,
                 moveCount: serializableState.moveCount,
                 timeMs,
                 puzzleNumber,
@@ -1161,10 +1211,31 @@ export default function Home() {
                 attemptsUsed,
                 failed,
               };
-              saveHistoricalResult(recentResult);
-              setStats(getPlayerStats());
+              if (accountMe?.mode !== 'user') {
+                saveHistoricalResult(recentResult);
+                setStats(getPlayerStats());
+              }
               setPreviousResult(recentResult);
               console.log('[SAVE] Recent puzzle result saved to history');
+
+              if (accountMe?.mode === 'user') {
+                api
+                  .resultsRecord({
+                    date: recentDate,
+                    completed: !failed,
+                    timeMs,
+                    attemptsUsed,
+                    attemptScores: attemptScores ?? undefined,
+                    attempts: attemptsPayload ?? undefined,
+                    isRecent: true,
+                  })
+                  .then(() => {
+                    refreshStatsData();
+                    invalidateMeCache();
+                    fetchMeFresh().then(setAccountMe).catch(() => null);
+                  })
+                  .catch(() => null);
+              }
             }
           } else {
             // Daily puzzle - full save with server record
@@ -1281,7 +1352,7 @@ export default function Home() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('pagehide', handlePageHide);
     };
-  }, [puzzleNumber, previousResult, activeSeed, todayNy]);
+  }, [puzzleNumber, previousResult, activeSeed, todayNy, accountMe]);
 
   // Listen for analysis completion to show replay button
   useEffect(() => {
@@ -2386,6 +2457,7 @@ export default function Home() {
         {showRecentPuzzles && stats && (
           <RecentPuzzlesModal
             stats={stats}
+            accountHistory={accountMe?.mode === 'user' ? (statsAccountHistory ?? []) : null}
             onClose={() => setShowRecentPuzzles(false)}
             onPlay={loadRecentPuzzle}
             onShare={(result) => {
@@ -2436,7 +2508,7 @@ export default function Home() {
         )}
 
         {showStats && stats && (
-          <StatsModal stats={stats} onClose={() => setShowStats(false)} />
+          <StatsModal stats={stats} me={statsMe} accountHistory={statsAccountHistory} onClose={() => setShowStats(false)} />
         )}
 
         {showHelp && <HelpModal onClose={() => setShowHelp(false)} hintsEnabled={hintsEnabled} />}

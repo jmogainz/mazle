@@ -7,10 +7,12 @@ import { getPuzzleNumberFromNyDateString, getNewYorkDateString, LAUNCH_DATE_NY }
 import { RECENT_PUZZLE_DAYS } from '@/constants';
 import { addDays } from '@/lib/date';
 import { getRecentPuzzlePlays } from '@/utils/storage';
+import type { StatsHistoryEntry } from './StatsModal';
 import styles from './RecentPuzzlesModal.module.css';
 
 interface RecentPuzzlesModalProps {
   stats: PlayerStats;
+  accountHistory?: StatsHistoryEntry[] | null;
   onClose: () => void;
   onPlay?: (date: string) => void;
   onShare?: (result: DailyStats) => void;
@@ -33,24 +35,74 @@ function formatDateNice(dateStr: string): string {
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-function RecentPuzzlesModal({ stats, onClose, onPlay, onShare, dailyInProgress = false }: RecentPuzzlesModalProps) {
+function buildAttemptsFromScores(
+  attemptScores: number[] | null | undefined,
+  attemptsUsed: number | null | undefined
+): DailyStats['attempts'] {
+  if (Array.isArray(attemptScores) && attemptScores.length > 0) {
+    return attemptScores.map((score) => ({ moveCount: score, path: [] }));
+  }
+  if (!attemptsUsed || attemptsUsed <= 1) return [];
+  return Array.from({ length: Math.max(0, attemptsUsed - 1) }, () => ({ moveCount: 0, path: [] }));
+}
+
+function RecentPuzzlesModal({ stats, accountHistory, onClose, onPlay, onShare, dailyInProgress = false }: RecentPuzzlesModalProps) {
   const router = useRouter();
   const [pendingDate, setPendingDate] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const todayNy = useMemo(() => getNewYorkDateString(), []);
-  const recentPlays = useMemo(() => new Set(getRecentPuzzlePlays()), []);
+  const useServerHistory = Array.isArray(accountHistory);
+  const recentPlays = useMemo(
+    () => (useServerHistory ? new Set<string>() : new Set(getRecentPuzzlePlays())),
+    [useServerHistory]
+  );
+
+  const accountHistoryByDate = useMemo(() => {
+    if (!accountHistory || accountHistory.length === 0) return null;
+    const map = new Map<string, DailyStats>();
+    for (const entry of accountHistory) {
+      if (!entry?.date) continue;
+      const attemptsUsed = entry.attemptsUsed ?? undefined;
+      const attempts = buildAttemptsFromScores(entry.attemptScores ?? null, attemptsUsed);
+      map.set(entry.date, {
+        date: entry.date,
+        completed: !!entry.completed,
+        failed: !entry.completed,
+        moveCount: 0,
+        timeMs: entry.timeMs ?? 0,
+        puzzleNumber: Number.isFinite(entry.puzzleNumber)
+          ? entry.puzzleNumber
+          : getPuzzleNumberFromNyDateString(entry.date),
+        attemptsUsed,
+        attempts,
+      });
+    }
+    return map;
+  }, [accountHistory]);
 
   // Map date -> history entry for completed puzzles
   const historyByDate = useMemo(() => {
     const map = new Map<string, DailyStats>();
+    if (accountHistoryByDate) {
+      for (const [date, entry] of accountHistoryByDate) {
+        map.set(date, entry);
+      }
+      return map;
+    }
     for (const entry of stats.history) {
       if (entry.date) map.set(entry.date, entry);
     }
     return map;
-  }, [stats.history]);
+  }, [accountHistoryByDate, stats.history]);
 
   const completedDates = useMemo(() => {
     const set = new Set<string>();
+    if (accountHistoryByDate) {
+      for (const date of accountHistoryByDate.keys()) {
+        set.add(date);
+      }
+      return set;
+    }
     for (const entry of stats.history) {
       if (entry.date) set.add(entry.date);
     }
@@ -58,7 +110,7 @@ function RecentPuzzlesModal({ stats, onClose, onPlay, onShare, dailyInProgress =
       set.add(date);
     }
     return set;
-  }, [stats.history, recentPlays]);
+  }, [accountHistoryByDate, stats.history, recentPlays]);
 
   const recentDays = useMemo(() => {
     const days: Array<{

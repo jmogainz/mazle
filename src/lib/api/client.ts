@@ -35,10 +35,21 @@ import type {
 export const api = {
   me: async (): Promise<MeResponse> => {
     const guestName = getGuestDisplayName();
-    return fetchJson('/api/me', {
-      method: 'GET',
-      headers: guestName ? { 'x-guest-name': guestName } : undefined,
-    });
+    const params = new URLSearchParams();
+    if (guestName) params.set('guestName', guestName);
+    // Send guest prefs so new accounts inherit them on first creation
+    try {
+      const raw = localStorage.getItem('mazle_prefs_v1');
+      if (raw) {
+        const prefs = JSON.parse(raw);
+        if (prefs.themePreference) params.set('theme', prefs.themePreference);
+        if (typeof prefs.leaderboardAutoSubmitWins === 'boolean') {
+          params.set('autoSubmit', String(prefs.leaderboardAutoSubmitWins));
+        }
+      }
+    } catch { /* ignore */ }
+    const qs = params.toString();
+    return fetchJson(`/api/me${qs ? `?${qs}` : ''}`, { method: 'GET' });
   },
 
   guest: async (): Promise<GuestResponse> => {

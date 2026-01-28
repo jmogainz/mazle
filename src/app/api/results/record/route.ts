@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { resolveMeIdentity } from '@/lib/server/identity';
 import { setGuestIdCookie } from '@/lib/server/cookies';
 import { jsonError, readJsonBody } from '@/lib/server/responses';
-import { isTodayOrYesterdayNyDate, recordDailyResult, recordGuestDailyResult } from '@/lib/server/account';
+import { isRecentNyDate, isTodayOrYesterdayNyDate, recordDailyResult, recordGuestDailyResult, recordRecentResult } from '@/lib/server/account';
 import { recordAnalyticsFinish } from '@/lib/server/analytics';
 
 export const dynamic = 'force-dynamic';
@@ -15,6 +15,7 @@ type Body = {
   attemptsUsed?: number;
   attemptScores?: number[];
   attempts?: unknown;
+  isRecent?: boolean;
 };
 
 function isValidNyDateString(value: string | null): value is string {
@@ -115,8 +116,16 @@ export async function POST(request: Request) {
   if (typeof body.completed !== 'boolean') {
     return jsonError(400, 'INVALID_COMPLETED', 'completed must be a boolean.');
   }
-  if (!isTodayOrYesterdayNyDate(body.date)) {
+  const wantsRecent = body.isRecent === true;
+  const isDailyDate = isTodayOrYesterdayNyDate(body.date);
+  if (!isDailyDate && !wantsRecent) {
     return jsonError(400, 'DATE_NOT_ALLOWED', 'Only today or yesterday can be recorded.');
+  }
+  if (wantsRecent && !isDailyDate && !isRecentNyDate(body.date)) {
+    return jsonError(400, 'DATE_NOT_ALLOWED', 'Date is outside the recent puzzle window.');
+  }
+  if (wantsRecent && !me.userId) {
+    return jsonError(401, 'AUTH_REQUIRED', 'Sign in to record recent puzzles.');
   }
 
   const completed = body.completed;
@@ -148,14 +157,18 @@ export async function POST(request: Request) {
 
   try {
     const recorded = me.userId
-      ? await recordDailyResult(me.userId, { date: body.date, completed, timeMs, attemptsUsed, attemptScores, attempts })
+      ? (wantsRecent && !isDailyDate
+        ? await recordRecentResult(me.userId, { date: body.date, completed, timeMs, attemptsUsed, attemptScores, attempts })
+        : await recordDailyResult(me.userId, { date: body.date, completed, timeMs, attemptsUsed, attemptScores, attempts }))
       : await recordGuestDailyResult(me.guestId, { date: body.date, completed, timeMs, attemptsUsed, attemptScores, attempts });
 
     // Best-effort analytics: should never block gameplay or recording.
-    recordAnalyticsFinish(
-      { date: body.date, playerId: me.guestId, userId: me.userId },
-      { completed, timeMs, attemptsUsed }
-    ).catch(() => null);
+    if (!wantsRecent || isDailyDate) {
+      recordAnalyticsFinish(
+        { date: body.date, playerId: me.guestId, userId: me.userId },
+        { completed, timeMs, attemptsUsed }
+      ).catch(() => null);
+    }
 
     const res = NextResponse.json(
       {

@@ -16,6 +16,7 @@ type Body = {
     attemptsUsed?: number;
     attemptScores?: number[];
     attempts?: AttemptPayload[] | null;
+    isRecent?: boolean | null;
   }>;
 };
 
@@ -56,6 +57,7 @@ export async function POST(request: Request) {
       typeof row?.attemptsUsed === 'number' && Number.isFinite(row.attemptsUsed) ? Math.round(row.attemptsUsed) : null,
     attemptScores: row?.attemptScores,
     attempts: row?.attempts,
+    isRecent: row?.isRecent ?? null,
   }));
 
   try {

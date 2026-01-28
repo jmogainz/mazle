@@ -140,6 +140,24 @@ jobs:
           # Backend already deployed above (or skipped), skip deps
           make up ENV=prod WITH_DEPS=0 WASM_ONLY=1 ALLOW_PROD_MIGRATIONS=1
 
+      - name: Commit prod migration record
+        if: steps.changes.outputs.frontend == 'true'
+        run: |
+          if git diff --quiet -- migrations/migration_runs.txt; then
+            echo "[INFO] No prod migration record changes to commit."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          eval "$(ssh-agent -s)"
+          ssh-add ~/.ssh/id_ci
+
+          git add migrations/migration_runs.txt
+          git commit -m "Record prod migration run [automated]"
+          git push origin HEAD:main
+
   merge:
     runs-on: ubuntu-latest
     needs: deploy

@@ -125,7 +125,7 @@ export async function POST(request: Request) {
       ? Math.round(body.timeMs)
       : null;
   const attemptsUsed =
-    typeof body.attemptsUsed === 'number' && Number.isFinite(body.attemptsUsed) && body.attemptsUsed >= 1 && body.attemptsUsed <= 3
+    typeof body.attemptsUsed === 'number' && Number.isFinite(body.attemptsUsed) && body.attemptsUsed >= 1 && body.attemptsUsed <= 5
       ? Math.round(body.attemptsUsed)
       : null;
   const attempts = coerceAttempts(body.attempts);
@@ -140,10 +140,10 @@ export async function POST(request: Request) {
     return jsonError(400, 'INVALID_TIME', 'timeMs is required for completed results.');
   }
   if (completed && attemptsUsed == null) {
-    return jsonError(400, 'INVALID_ATTEMPTS', 'attemptsUsed must be 1..3 for completed results.');
+    return jsonError(400, 'INVALID_ATTEMPTS', 'attemptsUsed must be 1..5 for completed results.');
   }
   if (!completed && body.attemptsUsed != null && attemptsUsed == null) {
-    return jsonError(400, 'INVALID_ATTEMPTS', 'attemptsUsed must be 1..3 when provided.');
+    return jsonError(400, 'INVALID_ATTEMPTS', 'attemptsUsed must be 1..5 when provided.');
   }
 
   try {

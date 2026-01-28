@@ -164,7 +164,7 @@ export default function RootLayout({
         />
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var p='system';try{var raw=localStorage.getItem('mazle_prefs_v1');if(raw){var j=JSON.parse(raw);if(j.themePreference)p=j.themePreference;}}catch(e){}var t=p;if(p==='system'){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.dataset.theme=t;document.documentElement.style.colorScheme=t;}catch(e){}})();`,
+            __html: `(function(){try{var p='light';try{var raw=localStorage.getItem('mazle_prefs_v1');if(raw){var j=JSON.parse(raw);if(j.themePreference)p=j.themePreference;}}catch(e){}var t=p;if(p==='system'){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.dataset.theme=t;document.documentElement.style.colorScheme=t;}catch(e){}})();`,
           }}
         />
         <script

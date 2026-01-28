@@ -6,6 +6,7 @@ import { getPuzzleNumberFromNyDateString } from '@/game/puzzleGenerator';
 import { api } from '@/lib/api';
 import { formatTime } from '@/utils/storage';
 import { readCachedMe, fetchMeFresh } from '@/lib/api/cached';
+import { DEFAULT_LIVES } from '@/constants/game';
 import CharacterIcon from './CharacterIcon';
 import styles from './StatsModal.module.css';
 
@@ -203,7 +204,7 @@ function StatsModal({ stats, onClose }: StatsModalProps) {
                       </span>
                     </span>
                     {game.completed ? (
-                      <span className={styles.historyAttempts}>{game.attemptsUsed ?? 1}/3</span>
+                      <span className={styles.historyAttempts}>{game.attemptsUsed ?? 1}/{DEFAULT_LIVES}</span>
                     ) : (
                       <span className={styles.historyDnf}>DNF</span>
                     )}

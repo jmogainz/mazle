@@ -54,4 +54,3 @@ export async function GET(request: Request) {
     return jsonError(500, 'ARCHIVE_FAILED', message);
   }
 }
-

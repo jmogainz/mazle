@@ -8,3 +8,4 @@ export { default as ErrorBoundary } from './ErrorBoundary';
 export { default as Loader } from './Loader';
 export { default as DevTools } from './DevTools';
 export { default as AdSlot } from './AdSlot';
+export { default as RecentPuzzlesModal } from './RecentPuzzlesModal';

@@ -137,6 +137,9 @@ export const authOptions: NextAuthOptions = {
         });
         token.userId = userId;
       }
+      if (account?.provider) {
+        token.provider = account.provider;
+      }
       return token;
     },
     session: async ({ session, token }) => {

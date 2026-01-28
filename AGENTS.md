@@ -404,7 +404,7 @@ make clean && make build
 2. ✅ **ALWAYS** set `UNIQUE_RUNNER_ID=$(whoami)` before any make command
 3. ✅ **ALWAYS** test with curl + Python parsing after changes
 4. ✅ **ALWAYS** check fail rates in logs when tuning thresholds
-5. ✅ **ALWAYS** edit the existing migration file (assume not deployed yet); **NEVER** create a new migration file
+5. ✅ **Migrations:** Check `migrations/prod_migrations_applied.txt`. If the latest migration version is listed there (first token per line), **create a new migration**. If it is **not** listed, **edit the latest migration** instead of creating a new one.
 6. ❌ **NEVER** deploy to production unless explicitly requested
 7. ❌ **NEVER** run full test suites unless explicitly requested
 8. ❌ **NEVER** fix unrelated bugs or "improve" code beyond the request

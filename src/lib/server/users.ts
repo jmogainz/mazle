@@ -8,6 +8,23 @@ export type OidcAccount = {
   imageUrl?: string | null;
 };
 
+export async function getProviderForUser(userId: string): Promise<string | null> {
+  const pool = getDbPool();
+  const res = await pool.query<{ provider: string }>(
+    'select provider from oidc_accounts where user_id=$1',
+    [userId]
+  );
+  const providers = new Set(
+    res.rows
+      .map((row) => row.provider)
+      .filter((provider): provider is string => typeof provider === 'string' && provider.length > 0)
+  );
+  if (providers.size === 1) {
+    return providers.values().next().value ?? null;
+  }
+  return null;
+}
+
 export async function upsertUserForOidcAccount(account: OidcAccount): Promise<string> {
   await ensureDbSchema();
   const pool = getDbPool();
@@ -66,4 +83,3 @@ export async function upsertUserForOidcAccount(account: OidcAccount): Promise<st
     client.release();
   }
 }
-

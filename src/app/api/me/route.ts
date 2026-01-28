@@ -13,7 +13,7 @@ export async function GET(request: Request) {
 
     const profile = me.userId ? await ensureUserProfile(me.userId) : undefined;
     const settings = me.userId ? await ensureUserSettings(me.userId) : undefined;
-    const stats = me.userId ? await computeUserStats(me.userId) : undefined;
+    const stats = me.userId ? await computeUserStats(me.userId, me.provider) : undefined;
     let entitlements = me.entitlements;
     if (me.userId && stats) {
       await maybeGrantRoyalSkin(me.userId, stats.playedStreak);
@@ -29,6 +29,7 @@ export async function GET(request: Request) {
         profile,
         settings,
         stats,
+        provider: me.provider,
       },
       { headers: { 'Cache-Control': 'no-store' } }
     );

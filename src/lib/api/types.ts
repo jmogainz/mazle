@@ -39,6 +39,7 @@ export type MeResponse = {
   profile?: UserProfile;
   settings?: UserSettings;
   stats?: UserStats;
+  provider?: string | null;
 };
 
 export type GuestResponse = {

@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { MapType } from '@/game/types';
 import { formatTime } from '@/utils/storage';
 import { api } from '@/lib/api';
+import { DEFAULT_LIVES } from '@/constants/game';
 import styles from './ShareCard.module.css';
 
 interface ShareCardProps {
@@ -80,7 +81,7 @@ export default function ShareCard({
   optimalMoves,
   failed = false,
   attempts = [],
-  maxLives = 3,
+  maxLives = DEFAULT_LIVES,
   solutionPath,
   mapType,
   onClose,
@@ -170,20 +171,20 @@ export default function ShareCard({
       const rows: string[] = [];
       const hasWinRow = !failed;
 
-      for (let i = 0; i < maxLives; i++) {
-        if (i < attempts.length) {
-          const statuses = getAttemptStatuses(attempts[i]);
-          const rowStr = statuses.map((s) => {
-            if (s === 'correct') return '🟩';
-            if (s === 'present') return '🟨';
-            return '⬜';
-          }).join('');
-          rows.push(rowStr);
-        } else if (hasWinRow && i === attempts.length) {
-          rows.push('🟩'.repeat(optimalMoves) + '🏆');
-        } else {
-          rows.push('⬜'.repeat(optimalMoves));
-        }
+      // Only show rows for actual attempts
+      for (let i = 0; i < attempts.length; i++) {
+        const statuses = getAttemptStatuses(attempts[i]);
+        const rowStr = statuses.map((s) => {
+          if (s === 'correct') return '🟩';
+          if (s === 'present') return '🟨';
+          return '⬜';
+        }).join('');
+        rows.push(rowStr);
+      }
+      
+      // Add win row if successful
+      if (hasWinRow) {
+        rows.push('🟩'.repeat(optimalMoves) + '🏆');
       }
 
       return rows.join('\n');
@@ -199,10 +200,7 @@ export default function ShareCard({
         rows.push('🟥'.repeat(filledBlocks) + '❌' + '⬜'.repeat(remainingBlocks));
       }
 
-      while (rows.length < maxLives) {
-        rows.push('⬜'.repeat(optimalMoves));
-      }
-
+      // No padding with empty rows - only show actual attempts
       return rows.join('\n');
     }
 
@@ -249,11 +247,8 @@ export default function ShareCard({
       rows.push({ progress: optimalMoves, status: 'success' });
     }
 
-    while (rows.length < maxLives) {
-      rows.push({ progress: 0, status: 'empty' });
-    }
-
-    return rows.slice(0, maxLives);
+    // Only return the rows we have - no padding with empty rows
+    return rows;
   };
 
   const bars = attemptBars();
@@ -361,7 +356,7 @@ export default function ShareCard({
       case 'failed':
         return 'Failed';
       default:
-        return 'Share';
+        return 'Send Score';
     }
   };
 

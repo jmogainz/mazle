@@ -12,6 +12,12 @@ export const TAP_WINDOW_MS = 3000;
 // Game frame buffer
 export const GAME_BUFFER_PX = 0;
 
+// Recent puzzles window (days before today)
+export const RECENT_PUZZLE_DAYS = 3;
+
+// Default number of lives
+export const DEFAULT_LIVES = 5;
+
 // Penalty for losing a life
 export const PENALTY_MS = 30000;
 

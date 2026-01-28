@@ -356,7 +356,7 @@ export default function ShareCard({
       case 'failed':
         return 'Failed';
       default:
-        return 'Share';
+        return 'Send Score';
     }
   };
 

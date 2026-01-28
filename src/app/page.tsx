@@ -351,6 +351,8 @@ export default function Home() {
   const [reviewAttemptIndex, setReviewAttemptIndex] = useState<number | null>(null);
   const [showReplayButton, setShowReplayButton] = useState(false);
   const [analysisAnimationComplete, setAnalysisAnimationComplete] = useState(false);
+  const [replayHeld, setReplayHeld] = useState(false);
+  const replayHeldTimer = useRef<number>(0);
   const [isIdentityChecked, setIsIdentityChecked] = useState(false);
   const identitySyncEpochRef = useRef(0);
 
@@ -2173,8 +2175,19 @@ export default function Home() {
                     {/* Replay Solution overlay button - fades in after analysis completes */}
                     {showInlineResult && showReplayButton && !showShareCard && !showMenu && reviewAttemptIndex === null && (
                       <button
-                        className={styles.replaySolutionOverlay}
+                        className={`${styles.replaySolutionOverlay} ${replayHeld ? styles.replaySolutionHeld : ''}`}
                         onClick={handleReplayAnalysis}
+                        onPointerDown={() => {
+                          replayHeldTimer.current = window.setTimeout(() => setReplayHeld(true), 120);
+                        }}
+                        onPointerUp={() => {
+                          clearTimeout(replayHeldTimer.current);
+                          setReplayHeld(false);
+                        }}
+                        onPointerCancel={() => {
+                          clearTimeout(replayHeldTimer.current);
+                          setReplayHeld(false);
+                        }}
                       >
                         Replay Solution
                       </button>

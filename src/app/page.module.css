@@ -1006,7 +1006,7 @@
   }
 }
 
-.replaySolutionOverlay:active {
+.replaySolutionHeld {
   background: rgba(var(--color-primary-rgb), 0.85);
   border-color: var(--color-primary);
   animation: none;
@@ -1016,7 +1016,7 @@
 @keyframes replayPulse {
   0%,
   100% {
-    opacity: 0.5;
+    opacity: 0.01;
     transform: translate(-50%, -50%) scale(0.97);
   }
 

@@ -92,6 +92,7 @@ export interface GameState {
 export interface DailyStats {
   date: string;
   completed: boolean;
+  isRecent?: boolean;
   moveCount: number;
   timeMs: number;
   puzzleNumber: number;

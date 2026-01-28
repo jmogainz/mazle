@@ -1,3 +1,0 @@
-# prod_migrations_applied.txt
-# One line per prod migration run: "<version> <UTC_ISO8601>"
-000003 2026-01-27T18:54:54Z

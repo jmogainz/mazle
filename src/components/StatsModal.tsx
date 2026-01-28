@@ -2,68 +2,88 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { PlayerStats } from '@/game/types';
-import { getPuzzleNumberFromNyDateString } from '@/game/puzzleGenerator';
-import { api } from '@/lib/api';
 import { formatTime } from '@/utils/storage';
-import { readCachedMe, fetchMeFresh } from '@/lib/api/cached';
 import { DEFAULT_LIVES } from '@/constants/game';
 import CharacterIcon from './CharacterIcon';
 import styles from './StatsModal.module.css';
 
-interface StatsModalProps {
-  stats: PlayerStats;
-  onClose: () => void;
-}
+export type StatsModalMeData = {
+  mode: string;
+  userId?: string;
+  displayName?: string;
+  profile?: { characterId: string; skinId: string };
+  stats?: {
+    totalPlayed?: number;
+    totalWins?: number;
+    avgSolveTimeMs?: number;
+    goldCount?: number;
+    silverCount?: number;
+    bronzeCount?: number;
+    playedStreak?: number;
+    maxPlayedStreak?: number;
+    winStreak?: number;
+  };
+  provider?: string;
+};
 
-type HistoryEntry = {
+export type StatsHistoryEntry = {
   date: string;
   completed: boolean;
   timeMs: number | null;
   attemptsUsed: number | null;
   puzzleNumber: number;
+  attemptScores?: number[] | null;
+  isRecent?: boolean;
 };
 
-function StatsModal({ stats, onClose }: StatsModalProps) {
-  const [me, setMe] = useState(() => readCachedMe());
-  const [accountHistory, setAccountHistory] = useState<HistoryEntry[] | null>(null);
+interface StatsModalProps {
+  stats: PlayerStats;
+  me?: StatsModalMeData | null;
+  accountHistory?: StatsHistoryEntry[] | null;
+  onClose: () => void;
+}
+
+function StatsModal({ stats, me: meProp, accountHistory: accountHistoryProp, onClose }: StatsModalProps) {
+  // Fallback: fetch internally if props not provided (e.g. play-client)
+  const [internalMe, setInternalMe] = useState<StatsModalMeData | null>(null);
+  const [internalHistory, setInternalHistory] = useState<StatsHistoryEntry[] | null>(null);
+  const needsInternalFetch = meProp === undefined;
 
   useEffect(() => {
-    fetchMeFresh().then(setMe).catch(() => null);
-  }, []);
-
-  useEffect(() => {
+    if (!needsInternalFetch) return;
     let cancelled = false;
-    if (!me || me.mode !== 'user' || !me.userId) {
-      setAccountHistory(null);
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    api
-      .resultsHistory()
-      .then((res) => {
+    import('@/lib/api/cached').then(({ fetchMeFresh }) => {
+      fetchMeFresh().then((me) => {
         if (cancelled) return;
-        const mapped = res.history
-          .map((row) => ({
-            date: row.date,
-            completed: row.completed,
-            timeMs: row.timeMs ?? null,
-            attemptsUsed: row.attemptsUsed ?? null,
-            puzzleNumber: getPuzzleNumberFromNyDateString(row.date),
-          }))
-          .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-        setAccountHistory(mapped);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setAccountHistory([]);
-      });
+        setInternalMe(me as StatsModalMeData | null);
+        if (me?.mode === 'user' && me?.userId) {
+          import('@/lib/api').then(({ api }) => {
+            api.resultsHistory().then((res) => {
+              if (cancelled) return;
+              import('@/game/puzzleGenerator').then(({ getPuzzleNumberFromNyDateString }) => {
+                const mapped = res.history
+                  .map((row) => ({
+                    date: row.date,
+                    completed: row.completed,
+                    timeMs: row.timeMs ?? null,
+                    attemptsUsed: row.attemptsUsed ?? null,
+                    attemptScores: row.attemptScores ?? null,
+                    isRecent: row.isRecent,
+                    puzzleNumber: getPuzzleNumberFromNyDateString(row.date),
+                  }))
+                  .sort((a: StatsHistoryEntry, b: StatsHistoryEntry) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+                if (!cancelled) setInternalHistory(mapped);
+              });
+            }).catch(() => { if (!cancelled) setInternalHistory([]); });
+          });
+        }
+      }).catch(() => null);
+    });
+    return () => { cancelled = true; };
+  }, [needsInternalFetch]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [me?.mode, me?.userId]);
+  const me = needsInternalFetch ? internalMe : (meProp ?? null);
+  const accountHistory = needsInternalFetch ? internalHistory : (accountHistoryProp ?? null);
 
   const isAccount = me?.mode === 'user';
   const accountStats = isAccount ? me.stats ?? null : null;
@@ -88,7 +108,7 @@ function StatsModal({ stats, onClose }: StatsModalProps) {
     : stats.maxStreak;
   const displayWinStreak = isAccount ? (accountStats?.winStreak ?? 0) : 0;
 
-  const localHistory = useMemo<HistoryEntry[]>(
+  const localHistory = useMemo<StatsHistoryEntry[]>(
     () =>
       stats.history.map((entry) => ({
         date: entry.date,
@@ -189,7 +209,22 @@ function StatsModal({ stats, onClose }: StatsModalProps) {
           </div>
 
           {/* Recent Games */}
-          {recentHistory.length > 0 && (
+          {isAccount && accountHistory === null ? (
+            <div className={styles.historySection}>
+              <div className={styles.sectionTitle}>Recent Games</div>
+              <div className={styles.historyList}>
+                {Array.from({ length: 5 }, (_, i) => (
+                  <div key={i} className={styles.historyItem}>
+                    <span className={styles.historyLeft}>
+                      <span className={`${styles.historyPuzzle} ${styles.skeleton}`}>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+                      <span className={`${styles.historyTime} ${styles.skeleton}`}>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+                    </span>
+                    <span className={`${styles.historyAttempts} ${styles.skeleton}`}>&nbsp;&nbsp;&nbsp;</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : recentHistory.length > 0 && (
             <div className={styles.historySection}>
               <div className={styles.sectionTitle}>
                 Recent Games

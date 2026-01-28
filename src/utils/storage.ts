@@ -327,13 +327,14 @@ function recomputeStatsFromHistory(history: DailyStats[]): PlayerStats {
   const sorted = sortByDateAsc(history);
   const totalGamesPlayed = sorted.length;
   const totalGamesWon = sorted.filter((h) => h.completed).length;
-  const lastPlayedDate = sorted.length > 0 ? sorted[sorted.length - 1]!.date : null;
+  const daily = sorted.filter((h) => !h.isRecent);
+  const lastPlayedDate = daily.length > 0 ? daily[daily.length - 1]!.date : null;
 
   // Max streak over all time (played days).
   let maxStreak = 0;
   let currentRun = 0;
   let prevPlayedDate: string | null = null;
-  for (const entry of sorted) {
+  for (const entry of daily) {
     if (prevPlayedDate && entry.date === addDays(prevPlayedDate, 1)) {
       currentRun += 1;
     } else {
@@ -349,7 +350,7 @@ function recomputeStatsFromHistory(history: DailyStats[]): PlayerStats {
   let currentStreak = 0;
   if (lastPlayedDate === today || lastPlayedDate === yesterday) {
     // Walk backwards in date order and count consecutive plays.
-    const desc = [...sorted].reverse();
+    const desc = [...daily].reverse();
     for (let i = 0; i < desc.length; i += 1) {
       const row = desc[i]!;
       if (i === 0) {
@@ -596,6 +597,7 @@ export function getGuestHistoryForAccountImport(): Array<{
   attemptsUsed: number | null;
   attemptScores?: number[] | null;
   attempts?: DailyStats['attempts'];
+  isRecent?: boolean;
 }> {
   const stats = getPlayerStats(DEFAULT_SCOPE);
   const byDate = new Map<string, DailyStats>();
@@ -646,6 +648,7 @@ export function getGuestHistoryForAccountImport(): Array<{
       attemptsUsed,
       attemptScores: attemptScores ?? undefined,
       attempts: rawAttempts ?? undefined,
+      isRecent: r.isRecent ?? undefined,
     };
   });
 }

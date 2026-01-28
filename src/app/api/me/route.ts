@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getEntitlementsForUser, resolveMeIdentity } from '@/lib/server/identity';
 import { jsonError } from '@/lib/server/responses';
 import { setGuestIdCookie } from '@/lib/server/cookies';
-import { computeUserStats, ensureUserProfile, ensureUserSettings, maybeGrantRoyalSkin } from '@/lib/server/account';
+import { computeUserStats, ensureUserProfile, ensureUserSettings, maybeGrantRoyalSkin, type ThemePreference } from '@/lib/server/account';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -12,7 +12,15 @@ export async function GET(request: Request) {
     const me = await resolveMeIdentity(request);
 
     const profile = me.userId ? await ensureUserProfile(me.userId) : undefined;
-    const settings = me.userId ? await ensureUserSettings(me.userId) : undefined;
+    // Pass guest prefs as defaults so new accounts inherit them
+    const url = new URL(request.url);
+    const guestTheme = url.searchParams.get('theme');
+    const guestAutoSubmit = url.searchParams.get('autoSubmit');
+    const settingsDefaults = (guestTheme || guestAutoSubmit != null) ? {
+      theme: guestTheme === 'system' || guestTheme === 'light' || guestTheme === 'dark' ? guestTheme as ThemePreference : undefined,
+      leaderboardAutoSubmit: guestAutoSubmit === 'true' ? true : guestAutoSubmit === 'false' ? false : undefined,
+    } : undefined;
+    const settings = me.userId ? await ensureUserSettings(me.userId, settingsDefaults) : undefined;
     const stats = me.userId ? await computeUserStats(me.userId, me.provider) : undefined;
     let entitlements = me.entitlements;
     if (me.userId && stats) {

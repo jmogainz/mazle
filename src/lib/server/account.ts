@@ -1,5 +1,6 @@
 import { addDays } from '@/lib/date';
 import { getNewYorkDateString, LAUNCH_DATE_NY } from '@/game/puzzleGenerator';
+import { RECENT_PUZZLE_DAYS } from '@/constants';
 import { ensureDbSchema, getDbPool } from './db';
 import { getGuestProfile } from './guestStore';
 
@@ -217,6 +218,15 @@ export function isTodayOrYesterdayNyDate(dateStr: string): boolean {
   return dateStr === today || dateStr === yesterday;
 }
 
+export function isRecentNyDate(dateStr: string): boolean {
+  if (!isValidNyDateString(dateStr)) return false;
+  if (dateStr < LAUNCH_DATE_NY) return false;
+  const today = getNewYorkDateString();
+  if (dateStr >= today) return false;
+  const recentStart = addDays(today, -RECENT_PUZZLE_DAYS);
+  return dateStr >= recentStart;
+}
+
 export function coerceThemePreference(value: unknown): ThemePreference | null {
   if (value === 'system' || value === 'light' || value === 'dark') return value;
   return null;
@@ -237,10 +247,18 @@ export async function ensureUserProfile(userId: string): Promise<UserProfile> {
   };
 }
 
-export async function ensureUserSettings(userId: string): Promise<UserSettings> {
+export async function ensureUserSettings(
+  userId: string,
+  defaults?: Partial<{ theme: ThemePreference; leaderboardAutoSubmit: boolean }>
+): Promise<UserSettings> {
   await ensureDbSchema();
   const pool = getDbPool();
-  await pool.query('insert into user_settings (user_id) values ($1) on conflict do nothing', [userId]);
+  const initTheme = defaults?.theme ?? 'light';
+  const initAutoSubmit = defaults?.leaderboardAutoSubmit ?? true;
+  await pool.query(
+    'insert into user_settings (user_id, theme, leaderboard_auto_submit) values ($1, $2, $3) on conflict do nothing',
+    [userId, initTheme, initAutoSubmit]
+  );
   const res = await pool.query<{ theme: string; leaderboard_auto_submit: boolean }>(
     'select theme, leaderboard_auto_submit from user_settings where user_id=$1',
     [userId]
@@ -324,8 +342,8 @@ export async function recordDailyResult(
   const attemptScoresPayload = derivedScores ? JSON.stringify(derivedScores) : null;
   const attemptsPayload = normalizedAttempts ? JSON.stringify(normalizedAttempts) : null;
   const insertRes = await pool.query(
-    `insert into daily_results (user_id, date, completed, time_ms, attempts_used, attempt_scores, attempts_json)
-     values ($1, $2::date, $3, $4, $5, $6::jsonb, $7::jsonb)
+    `insert into daily_results (user_id, date, completed, time_ms, attempts_used, attempt_scores, attempts_json, is_recent)
+     values ($1, $2::date, $3, $4, $5, $6::jsonb, $7::jsonb, false)
      on conflict (user_id, date) do update
        set attempt_scores = coalesce(daily_results.attempt_scores, excluded.attempt_scores),
            attempts_json = coalesce(daily_results.attempts_json, excluded.attempts_json),
@@ -341,6 +359,70 @@ export async function recordDailyResult(
     computeUserStats(userId).then((s) => maybeGrantRoyalSkin(userId, s.playedStreak)).catch(() => null);
   }
 
+  const res = await pool.query<{ date: string; completed: boolean; time_ms: number | null; attempts_used: number | null; attempt_scores: unknown; attempts_json: unknown }>(
+    `select to_char(date, 'YYYY-MM-DD') as date, completed, time_ms, attempts_used, attempt_scores, attempts_json
+     from daily_results
+     where user_id=$1 and date=$2::date`,
+    [userId, input.date]
+  );
+  const row = res.rows[0];
+  if (!row) {
+    throw new Error('RESULT_NOT_FOUND');
+  }
+
+  return {
+    created,
+    result: {
+      date: row.date,
+      completed: row.completed,
+      timeMs: row.time_ms,
+      attemptsUsed: row.attempts_used,
+      attemptScores: coerceAttemptScores(row.attempt_scores),
+      attempts: coerceAttempts(row.attempts_json),
+    },
+  };
+}
+
+export async function recordRecentResult(
+  userId: string,
+  input: {
+    date: string;
+    completed: boolean;
+    timeMs: number | null;
+    attemptsUsed: number | null;
+    attemptScores?: number[] | null;
+    attempts?: AttemptPayload[] | null;
+  }
+): Promise<{
+  created: boolean;
+  result: { date: string; completed: boolean; timeMs: number | null; attemptsUsed: number | null; attemptScores: number[] | null; attempts: AttemptPayload[] | null };
+}> {
+  if (!isRecentNyDate(input.date)) {
+    throw new Error('DATE_NOT_ALLOWED');
+  }
+
+  await ensureDbSchema();
+  const pool = getDbPool();
+
+  const attemptScores = coerceAttemptScores(input.attemptScores);
+  const normalizedAttempts = coerceAttempts(input.attempts);
+  const derivedScores = attemptScores ?? (normalizedAttempts ? deriveAttemptScores(normalizedAttempts) : null);
+  const attemptScoresPayload = derivedScores ? JSON.stringify(derivedScores) : null;
+  const attemptsPayload = normalizedAttempts ? JSON.stringify(normalizedAttempts) : null;
+
+  const insertRes = await pool.query(
+    `insert into daily_results (user_id, date, completed, time_ms, attempts_used, attempt_scores, attempts_json, is_recent)
+     values ($1, $2::date, $3, $4, $5, $6::jsonb, $7::jsonb, true)
+     on conflict (user_id, date) do update
+       set is_recent = true,
+           attempt_scores = coalesce(daily_results.attempt_scores, excluded.attempt_scores),
+           attempts_json = coalesce(daily_results.attempts_json, excluded.attempts_json),
+           time_ms = coalesce(daily_results.time_ms, excluded.time_ms),
+           attempts_used = coalesce(daily_results.attempts_used, excluded.attempts_used)`,
+    [userId, input.date, input.completed, input.timeMs, input.attemptsUsed, attemptScoresPayload, attemptsPayload]
+  );
+
+  const created = (insertRes.rowCount ?? 0) > 0;
   const res = await pool.query<{ date: string; completed: boolean; time_ms: number | null; attempts_used: number | null; attempt_scores: unknown; attempts_json: unknown }>(
     `select to_char(date, 'YYYY-MM-DD') as date, completed, time_ms, attempts_used, attempt_scores, attempts_json
      from daily_results
@@ -419,7 +501,7 @@ export async function getDailyResultForUser(
   const res = await pool.query<{ date: string; completed: boolean; time_ms: number | null; attempts_used: number | null; attempt_scores: unknown; attempts_json: unknown }>(
     `select to_char(date, 'YYYY-MM-DD') as date, completed, time_ms, attempts_used, attempt_scores, attempts_json
      from daily_results
-     where user_id=$1 and date=$2::date`,
+     where user_id=$1 and date=$2::date and is_recent = false`,
     [userId, date]
   );
   const row = res.rows[0];
@@ -436,11 +518,11 @@ export async function getDailyResultForUser(
 
 export async function getAllDailyResultsForUser(
   userId: string
-): Promise<Array<{ date: string; completed: boolean; timeMs: number | null; attemptsUsed: number | null; attemptScores: number[] | null }>> {
+): Promise<Array<{ date: string; completed: boolean; timeMs: number | null; attemptsUsed: number | null; attemptScores: number[] | null; isRecent: boolean }>> {
   await ensureDbSchema();
   const pool = getDbPool();
-  const res = await pool.query<{ date: string; completed: boolean; time_ms: number | null; attempts_used: number | null; attempt_scores: unknown }>(
-    `select to_char(date, 'YYYY-MM-DD') as date, completed, time_ms, attempts_used, attempt_scores
+  const res = await pool.query<{ date: string; completed: boolean; time_ms: number | null; attempts_used: number | null; attempt_scores: unknown; is_recent: boolean }>(
+    `select to_char(date, 'YYYY-MM-DD') as date, completed, time_ms, attempts_used, attempt_scores, is_recent
      from daily_results
      where user_id=$1
      order by date asc`,
@@ -452,6 +534,7 @@ export async function getAllDailyResultsForUser(
     timeMs: row.time_ms,
     attemptsUsed: row.attempts_used,
     attemptScores: coerceAttemptScores(row.attempt_scores),
+    isRecent: !!row.is_recent,
   }));
 }
 
@@ -485,6 +568,7 @@ export async function importDailyResults(
     attemptsUsed: number | null;
     attemptScores?: number[] | null;
     attempts?: AttemptPayload[] | null;
+    isRecent?: boolean | null;
   }>
 ): Promise<{ imported: number; skipped: number }> {
   await ensureDbSchema();
@@ -505,6 +589,7 @@ export async function importDailyResults(
           : null,
       attemptScores: coerceAttemptScores(h.attemptScores),
       attempts: coerceAttempts(h.attempts),
+      isRecent: h.isRecent ?? (!isTodayOrYesterdayNyDate(h.date) && isRecentNyDate(h.date)),
     }));
 
   const payload = JSON.stringify(
@@ -515,19 +600,21 @@ export async function importDailyResults(
       attempts_used: h.attemptsUsed,
       attempt_scores: h.attemptScores,
       attempts_json: h.attempts,
+      is_recent: h.isRecent,
     }))
   );
 
   const insertRes = await pool.query(
-    `insert into daily_results (user_id, date, completed, time_ms, attempts_used, attempt_scores, attempts_json)
-     select $1::uuid, r.date, r.completed, r.time_ms, r.attempts_used, r.attempt_scores, r.attempts_json
+    `insert into daily_results (user_id, date, completed, time_ms, attempts_used, attempt_scores, attempts_json, is_recent)
+     select $1::uuid, r.date, r.completed, r.time_ms, r.attempts_used, r.attempt_scores, r.attempts_json, coalesce(r.is_recent, false)
      from jsonb_to_recordset($2::jsonb) as r(
        date date,
        completed boolean,
        time_ms integer,
        attempts_used integer,
        attempt_scores jsonb,
-       attempts_json jsonb
+       attempts_json jsonb,
+       is_recent boolean
      )
      on conflict do nothing`,
     [userId, payload]
@@ -572,7 +659,7 @@ export async function computeUserStats(userId: string, provider?: string | null)
   const recentRes = await pool.query<{ date: string; completed: boolean }>(
     `select to_char(date, 'YYYY-MM-DD') as date, completed
      from daily_results
-     where user_id=$1
+     where user_id=$1 and is_recent = false
      order by date desc`,
     [userId]
   );

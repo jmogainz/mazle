@@ -144,6 +144,7 @@ export type ResultsRecordRequest = {
   attemptsUsed?: number;
   attemptScores?: number[];
   attempts?: ResultsAttempt[];
+  isRecent?: boolean;
 };
 
 export type ResultsRecordResponse = {
@@ -196,6 +197,7 @@ export type ResultsHistoryRow = {
   timeMs: number | null;
   attemptsUsed: number | null;
   attemptScores: number[] | null;
+  isRecent: boolean;
 };
 
 export type ResultsHistoryResponse = {
@@ -210,6 +212,7 @@ export type ResultsImportRow = {
   attemptsUsed?: number | null;
   attemptScores?: number[] | null;
   attempts?: ResultsAttempt[] | null;
+  isRecent?: boolean | null;
 };
 
 export type ResultsImportRequest = {

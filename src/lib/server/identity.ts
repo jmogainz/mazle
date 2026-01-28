@@ -240,7 +240,8 @@ export async function resolveMeIdentity(request: Request): Promise<MeIdentity> {
   await ensureDbSchema();
 
   const guestCookie = (request as any).cookies?.get?.(GUEST_COOKIE)?.value as string | undefined;
-  const preferredGuestName = request.headers.get('x-guest-name');
+  const url = new URL(request.url);
+  const preferredGuestName = url.searchParams.get('guestName') ?? request.headers.get('x-guest-name');
   console.log(`[RESOLVE] Guest cookie: ${guestCookie ?? 'none'}`);
   const guest = await getOrCreateGuest(guestCookie ?? null, preferredGuestName);
   console.log(`[RESOLVE] Guest ID: ${guest.guestId}, setCookie: ${guest.setCookie}`);

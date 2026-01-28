@@ -7,6 +7,8 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - 'migrations/migration_runs.txt'
 
 jobs:
   deploy:
@@ -155,7 +157,7 @@ jobs:
           ssh-add ~/.ssh/id_ci
 
           git add migrations/migration_runs.txt
-          git commit -m "Record prod migration run [automated]"
+          git commit -m "Record prod migration run [automated] [skip ci]"
           git push origin HEAD:main
 
   merge:
@@ -188,7 +190,7 @@ jobs:
           eval "$(ssh-agent -s)"
           ssh-add ~/.ssh/id_ci
 
-          git fetch origin develop
+          git fetch origin main develop
           git checkout develop
           git merge origin/main -m "Merge main into develop [automated]"
           git push origin develop

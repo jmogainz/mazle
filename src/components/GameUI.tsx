@@ -466,21 +466,6 @@ export default function GameUI({
         {/* Divider */}
         <div className={styles.statDivider} />
 
-        {/* Time */}
-        <div className={styles.statGroup}>
-          <span ref={timerRef} className={`${styles.statValue} ${loading ? styles.skeleton : ''} ${!loading && penaltyFlash ? styles.penaltyFlash : ''}`}>
-            {loading ? '0:00' : formatTime(totalDisplayTime)}
-          </span>
-          <div className={styles.statLabelRow}>
-            <span className={styles.timeLabelWrap}>
-              <span className={styles.statLabel}>TIME</span>
-            </span>
-          </div>
-        </div>
-
-        {/* Divider */}
-        <div className={styles.statDivider} />
-
         {/* Moves */}
         <div className={styles.statGroup}>
           <span
@@ -497,6 +482,21 @@ export default function GameUI({
           <div className={styles.statLabelRow}>
             <span className={styles.timeLabelWrap}>
               <span className={styles.statLabel}>MOVES LEFT</span>
+            </span>
+          </div>
+        </div>
+
+        {/* Divider */}
+        <div className={styles.statDivider} />
+
+        {/* Time */}
+        <div className={styles.statGroup}>
+          <span ref={timerRef} className={`${styles.statValue} ${loading ? styles.skeleton : ''} ${!loading && penaltyFlash ? styles.penaltyFlash : ''}`}>
+            {loading ? '0:00' : formatTime(totalDisplayTime)}
+          </span>
+          <div className={styles.statLabelRow}>
+            <span className={styles.timeLabelWrap}>
+              <span className={styles.statLabel}>TIME</span>
             </span>
           </div>
         </div>

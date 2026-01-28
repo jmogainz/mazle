@@ -2473,7 +2473,7 @@ export default function Home() {
             <ShareCard
               puzzleNumber={recentShareResult.puzzleNumber}
               timeMs={recentShareResult.timeMs}
-              optimalMoves={recentShareResult.optimalMoves ?? recentShareResult.moveCount}
+              optimalMoves={recentShareResult.optimalMoves ?? 10}
               failed={recentShareResult.failed}
               attempts={recentShareResult.attempts}
               maxLives={recentShareResult.attemptsUsed ? Math.max(DEFAULT_LIVES, recentShareResult.attemptsUsed) : DEFAULT_LIVES}

@@ -46,18 +46,6 @@ function buildAttemptsFromScores(
   return Array.from({ length: Math.max(0, attemptsUsed - 1) }, () => ({ moveCount: 0, path: [] }));
 }
 
-function inferOptimalMovesFromScores(
-  attemptScores: number[] | null | undefined,
-  completed: boolean
-): number | undefined {
-  if (!Array.isArray(attemptScores) || attemptScores.length === 0) return undefined;
-  const validScores = attemptScores
-    .filter((score) => typeof score === 'number' && Number.isFinite(score) && score > 0)
-    .map((score) => Math.round(score));
-  if (validScores.length === 0) return undefined;
-  return completed ? validScores[validScores.length - 1] : Math.max(...validScores);
-}
-
 function RecentPuzzlesModal({ stats, accountHistory, onClose, onPlay, onShare, dailyInProgress = false }: RecentPuzzlesModalProps) {
   const router = useRouter();
   const [pendingDate, setPendingDate] = useState<string | null>(null);
@@ -76,7 +64,6 @@ function RecentPuzzlesModal({ stats, accountHistory, onClose, onPlay, onShare, d
       if (!entry?.date) continue;
       const attemptsUsed = entry.attemptsUsed ?? undefined;
       const attempts = buildAttemptsFromScores(entry.attemptScores ?? null, attemptsUsed);
-      const inferredOptimalMoves = inferOptimalMovesFromScores(entry.attemptScores ?? null, !!entry.completed);
       map.set(entry.date, {
         date: entry.date,
         completed: !!entry.completed,
@@ -86,7 +73,7 @@ function RecentPuzzlesModal({ stats, accountHistory, onClose, onPlay, onShare, d
         puzzleNumber: Number.isFinite(entry.puzzleNumber)
           ? entry.puzzleNumber
           : getPuzzleNumberFromNyDateString(entry.date),
-        optimalMoves: inferredOptimalMoves,
+        optimalMoves: 10,
         attemptsUsed,
         attempts,
       });

@@ -73,7 +73,7 @@ function resolveSafeOptimalMoves(
     }
   }
 
-  return 1;
+  return 10;
 }
 
 // Get emoji for map type

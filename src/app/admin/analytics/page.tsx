@@ -12,6 +12,8 @@ type DailyRow = {
   avgFinishTimeMs: number | null;
   avgWinTimeMs: number | null;
   avgLossTimeMs: number | null;
+  landers: number;
+  nonStarters: number;
   sharers: number;
   startsUser: number;
   startsGuest: number;
@@ -37,6 +39,8 @@ type AdminAnalyticsOk = {
       avgFinishTimeMs: number | null;
       avgWinTimeMs: number | null;
       avgLossTimeMs: number | null;
+      landers: number;
+      nonStarters: number;
       sharers: number;
       newPlayers: number;
     };
@@ -62,12 +66,29 @@ function num(value: number): string {
   return new Intl.NumberFormat('en-US').format(value);
 }
 
-type MetricId = 'starts' | 'newPlayers' | 'avgWinTime' | 'avgFinishTime' | 'avgLossTime' | 'finishRate' | 'winRate' | 'shareRate';
+type MetricId =
+  | 'starts'
+  | 'landers'
+  | 'nonStarters'
+  | 'viewToStartRate'
+  | 'newPlayers'
+  | 'avgWinTime'
+  | 'avgFinishTime'
+  | 'avgLossTime'
+  | 'finishRate'
+  | 'winRate'
+  | 'shareRate';
 
 function metricValue(row: DailyRow, metric: MetricId): number {
   switch (metric) {
     case 'starts':
       return row.starts;
+    case 'landers':
+      return row.landers;
+    case 'nonStarters':
+      return row.nonStarters;
+    case 'viewToStartRate':
+      return row.landers > 0 ? row.starts / row.landers : 0;
     case 'newPlayers':
       return row.newPlayers;
     case 'avgWinTime':
@@ -89,6 +110,12 @@ function metricLabel(metric: MetricId): string {
   switch (metric) {
     case 'starts':
       return 'Starts (DAU)';
+    case 'landers':
+      return 'Landers';
+    case 'nonStarters':
+      return 'No Start';
+    case 'viewToStartRate':
+      return 'View → Start';
     case 'newPlayers':
       return 'New Players';
     case 'avgWinTime':
@@ -107,7 +134,7 @@ function metricLabel(metric: MetricId): string {
 }
 
 function formatMetric(metric: MetricId, value: number): string {
-  if (metric === 'finishRate' || metric === 'winRate' || metric === 'shareRate') {
+  if (metric === 'finishRate' || metric === 'winRate' || metric === 'shareRate' || metric === 'viewToStartRate') {
     return pct(value, 1);
   }
   if (metric === 'avgFinishTime' || metric === 'avgLossTime' || metric === 'avgWinTime') {
@@ -245,6 +272,8 @@ export default function AdminAnalyticsPage() {
   const headline = useMemo(() => {
     if (!totals) return null;
     const startsN = totals.range.starts;
+    const landersN = totals.range.landers;
+    const nonStartersN = totals.range.nonStarters;
     const finishesN = totals.range.finishes;
     const winsN = totals.range.wins;
     const avgFinishTimeMs = totals.range.avgFinishTimeMs;
@@ -254,6 +283,9 @@ export default function AdminAnalyticsPage() {
     const newPlayersN = totals.range.newPlayers;
     return {
       range: `${totals.range.startDate} → ${totals.range.endDate} (${totals.range.days}d)`,
+      landers: landersN,
+      nonStarters: nonStartersN,
+      viewToStartRate: pct(startsN, landersN),
       starts: startsN,
       newPlayers: newPlayersN,
       finishRate: pct(finishesN, startsN),
@@ -296,7 +328,7 @@ export default function AdminAnalyticsPage() {
           <div className={styles.headerTop}>
             <div>
               <div className={styles.title}>Admin Analytics</div>
-              <div className={styles.subtitle}>Daily puzzle performance (guest-inclusive). “Starts” = first move.</div>
+              <div className={styles.subtitle}>Daily puzzle performance (guest-inclusive). “Starts” = Begin click.</div>
             </div>
             {headline && <div className={styles.mono}>{headline.range}</div>}
           </div>
@@ -347,9 +379,24 @@ export default function AdminAnalyticsPage() {
           {headline && (
             <div className={styles.cards}>
               <div className={styles.card}>
+                <div className={styles.cardLabel}>Landers</div>
+                <div className={styles.cardValue}>{num(headline.landers)}</div>
+                <div className={styles.cardNote}>Unique players/day who loaded the site</div>
+              </div>
+              <div className={styles.card}>
                 <div className={styles.cardLabel}>Starts</div>
                 <div className={styles.cardValue}>{num(headline.starts)}</div>
                 <div className={styles.cardNote}>Unique players/day summed over range</div>
+              </div>
+              <div className={styles.card}>
+                <div className={styles.cardLabel}>No Start</div>
+                <div className={styles.cardValue}>{num(headline.nonStarters)}</div>
+                <div className={styles.cardNote}>Landers who never started</div>
+              </div>
+              <div className={styles.card}>
+                <div className={styles.cardLabel}>View → Start</div>
+                <div className={styles.cardValue}>{headline.viewToStartRate}</div>
+                <div className={styles.cardNote}>Started / landed</div>
               </div>
               <div className={styles.card}>
                 <div className={styles.cardLabel}>New Players</div>
@@ -413,6 +460,9 @@ export default function AdminAnalyticsPage() {
                   <div className={styles.panelTitle}>Trend</div>
                   <select className={styles.metricSelect} value={metric} onChange={(e) => setMetric(e.target.value as MetricId)}>
                     <option value="starts">Starts</option>
+                    <option value="landers">Landers</option>
+                    <option value="nonStarters">No start</option>
+                    <option value="viewToStartRate">View → start</option>
                     <option value="newPlayers">New players</option>
                     <option value="avgWinTime">Avg win time</option>
                     <option value="avgFinishTime">Avg finish time</option>
@@ -446,7 +496,9 @@ export default function AdminAnalyticsPage() {
                 <thead>
                   <tr>
                     <th className={styles.th}>date</th>
+                    <th className={`${styles.th} ${styles.thNum}`}>landers</th>
                     <th className={`${styles.th} ${styles.thNum}`}>starts</th>
+                    <th className={`${styles.th} ${styles.thNum}`}>no start</th>
                     <th className={`${styles.th} ${styles.thNum}`}>new</th>
                     <th className={`${styles.th} ${styles.thNum}`}>returning</th>
                     <th className={`${styles.th} ${styles.thNum}`}>finishes</th>
@@ -454,6 +506,7 @@ export default function AdminAnalyticsPage() {
                     <th className={`${styles.th} ${styles.thNum}`}>avg fin</th>
                     <th className={`${styles.th} ${styles.thNum}`}>avg win</th>
                     <th className={`${styles.th} ${styles.thNum}`}>avg loss</th>
+                    <th className={`${styles.th} ${styles.thNum}`}>view%</th>
                     <th className={`${styles.th} ${styles.thNum}`}>finish%</th>
                     <th className={`${styles.th} ${styles.thNum}`}>win%</th>
                     <th className={`${styles.th} ${styles.thNum}`}>sharers</th>
@@ -468,7 +521,9 @@ export default function AdminAnalyticsPage() {
                   {daily.map((d, idx) => (
                     <tr key={d.date} className={idx % 2 === 1 ? styles.rowAlt : undefined}>
                       <td className={`${styles.td} ${styles.mono}`}>{d.date}</td>
+                      <td className={`${styles.td} ${styles.num}`}>{num(d.landers)}</td>
                       <td className={`${styles.td} ${styles.num}`}>{num(d.starts)}</td>
+                      <td className={`${styles.td} ${styles.num}`}>{num(d.nonStarters)}</td>
                       <td className={`${styles.td} ${styles.num}`}>{num(d.newPlayers)}</td>
                       <td className={`${styles.td} ${styles.num}`}>{num(d.returningPlayers)}</td>
                       <td className={`${styles.td} ${styles.num}`}>{num(d.finishes)}</td>
@@ -476,6 +531,7 @@ export default function AdminAnalyticsPage() {
                       <td className={`${styles.td} ${styles.num}`}>{d.avgFinishTimeMs != null ? formatTime(d.avgFinishTimeMs) : '-'}</td>
                       <td className={`${styles.td} ${styles.num}`}>{d.avgWinTimeMs != null ? formatTime(d.avgWinTimeMs) : '-'}</td>
                       <td className={`${styles.td} ${styles.num}`}>{d.avgLossTimeMs != null ? formatTime(d.avgLossTimeMs) : '-'}</td>
+                      <td className={`${styles.td} ${styles.num}`}>{pct(d.starts, d.landers)}</td>
                       <td className={`${styles.td} ${styles.num}`}>{pct(d.finishes, d.starts)}</td>
                       <td className={`${styles.td} ${styles.num}`}>{pct(d.wins, d.finishes)}</td>
                       <td className={`${styles.td} ${styles.num}`}>{num(d.sharers)}</td>

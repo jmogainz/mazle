@@ -352,6 +352,7 @@ export default function Home() {
   const wakeLockRequestInFlightRef = useRef(false);
   const wakeLockReleaseHandlerRef = useRef<((ev: Event) => void) | null>(null);
   const analyticsStartSentRef = useRef(false);
+  const analyticsViewSentRef = useRef<string | null>(null);
   const [liveAttempts, setLiveAttempts] = useState<GameState['attempts']>([]);
   const [reviewAttemptIndex, setReviewAttemptIndex] = useState<number | null>(null);
   const [showReplayButton, setShowReplayButton] = useState(false);
@@ -443,6 +444,12 @@ export default function Home() {
   useEffect(() => {
     analyticsStartSentRef.current = false;
   }, [activeSeed]);
+
+  useEffect(() => {
+    if (analyticsViewSentRef.current === todayNy) return;
+    analyticsViewSentRef.current = todayNy;
+    api.analyticsView({ date: todayNy }).catch(() => null);
+  }, [todayNy]);
 
   const applyStoredResult = useCallback((result: DailyStats | null) => {
     if (isPlayingRef.current) return;
@@ -1176,18 +1183,6 @@ export default function Home() {
       if (serializableState && activeSeed) {
         setIsPlaying(serializableState.isPlaying);
 
-        // "Game played" metric: first accepted move of the day (best-effort, deduped server-side).
-        // Only for daily puzzles
-        if (
-          isDaily &&
-          serializableState.isPlaying &&
-          serializableState.moveCount > 0 &&
-          !analyticsStartSentRef.current
-        ) {
-          analyticsStartSentRef.current = true;
-          api.analyticsStart({ date: todayNy }).catch(() => null);
-        }
-
         if (serializableState.isComplete) {
           // Game just completed - save result immediately (before animation)
           clearInProgressState();
@@ -1488,6 +1483,10 @@ export default function Home() {
   const [showSwipeHint, setShowSwipeHint] = useState(false);
 
   const handleBegin = useCallback(() => {
+    if (puzzleMode === 'daily' && !analyticsStartSentRef.current) {
+      analyticsStartSentRef.current = true;
+      api.analyticsStart({ date: todayNy }).catch(() => null);
+    }
     setIsPlaying(true);
     requestWakeLock();
     gameControlsRef.current?.start();
@@ -1502,7 +1501,7 @@ export default function Home() {
         setShowSwipeHint(true);
       }
     }, 500);
-  }, [requestWakeLock]);
+  }, [puzzleMode, requestWakeLock, todayNy]);
 
   const handleDevSeedGenerate = useCallback(
     async (rawSeed?: string) => {

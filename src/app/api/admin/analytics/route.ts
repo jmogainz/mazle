@@ -77,6 +77,7 @@ export async function GET(request: Request) {
       avg_finish_time_ms: number | null;
       avg_win_time_ms: number | null;
       avg_loss_time_ms: number | null;
+      landers: number;
       sharers: number;
       starts_user: number;
       starts_guest: number;
@@ -94,6 +95,7 @@ export async function GET(request: Request) {
            avg(time_ms) filter (where finished_at is not null and time_ms is not null)::float as avg_finish_time_ms,
            avg(time_ms) filter (where completed is true and time_ms is not null)::float as avg_win_time_ms,
            avg(time_ms) filter (where finished_at is not null and completed is false and time_ms is not null)::float as avg_loss_time_ms,
+           count(*) filter (where viewed_at is not null or started_at is not null)::int as landers,
            count(*) filter (where share_count > 0)::int as sharers,
            count(*) filter (where started_at is not null and user_id is not null)::int as starts_user,
            count(*) filter (where started_at is not null and user_id is null)::int as starts_guest
@@ -109,6 +111,7 @@ export async function GET(request: Request) {
          agg.avg_finish_time_ms as avg_finish_time_ms,
          agg.avg_win_time_ms as avg_win_time_ms,
          agg.avg_loss_time_ms as avg_loss_time_ms,
+         coalesce(agg.landers, 0)::int as landers,
          coalesce(agg.sharers, 0)::int as sharers,
          coalesce(agg.starts_user, 0)::int as starts_user,
          coalesce(agg.starts_guest, 0)::int as starts_guest
@@ -205,6 +208,8 @@ export async function GET(request: Request) {
         avgFinishTimeMs: row.avg_finish_time_ms != null ? Math.round(Number(row.avg_finish_time_ms)) : null,
         avgWinTimeMs: row.avg_win_time_ms != null ? Math.round(Number(row.avg_win_time_ms)) : null,
         avgLossTimeMs: row.avg_loss_time_ms != null ? Math.round(Number(row.avg_loss_time_ms)) : null,
+        landers: row.landers,
+        nonStarters: Math.max(0, row.landers - row.starts),
         sharers: row.sharers,
         startsUser: row.starts_user,
         startsGuest: row.starts_guest,
@@ -225,6 +230,8 @@ export async function GET(request: Request) {
         starts: daily.reduce((a, d) => a + d.starts, 0),
         finishes: daily.reduce((a, d) => a + d.finishes, 0),
         wins: daily.reduce((a, d) => a + d.wins, 0),
+        landers: daily.reduce((a, d) => a + d.landers, 0),
+        nonStarters: daily.reduce((a, d) => a + d.nonStarters, 0),
         avgFinishTimeMs:
           summaryRes.rows[0]?.avg_finish_time_ms != null ? Math.round(Number(summaryRes.rows[0]?.avg_finish_time_ms)) : null,
         avgWinTimeMs:

@@ -358,6 +358,8 @@ export default function Home() {
   const [analysisAnimationComplete, setAnalysisAnimationComplete] = useState(false);
   const [replayHeld, setReplayHeld] = useState(false);
   const replayHeldTimer = useRef<number>(0);
+  const [tapToPlayHeld, setTapToPlayHeld] = useState(false);
+  const tapToPlayHeldTimer = useRef<number>(0);
   const [isIdentityChecked, setIsIdentityChecked] = useState(false);
   const identitySyncEpochRef = useRef(0);
 
@@ -2239,8 +2241,22 @@ export default function Home() {
                             </p>
                           </div>
                         ) : (
-                          <button className={styles.startButton} onClick={handleBegin}>
-                            Begin
+                          <button
+                            className={`${styles.tapToPlayOverlay} ${tapToPlayHeld ? styles.tapToPlayHeld : ''}`}
+                            onClick={handleBegin}
+                            onPointerDown={() => {
+                              tapToPlayHeldTimer.current = window.setTimeout(() => setTapToPlayHeld(true), 120);
+                            }}
+                            onPointerUp={() => {
+                              clearTimeout(tapToPlayHeldTimer.current);
+                              setTapToPlayHeld(false);
+                            }}
+                            onPointerCancel={() => {
+                              clearTimeout(tapToPlayHeldTimer.current);
+                              setTapToPlayHeld(false);
+                            }}
+                          >
+                            Tap to Play
                           </button>
                         )}
                       </div>

@@ -52,6 +52,8 @@ export default function ArchivePlayClient({ date }: { date: string }) {
   const [isGameReady, setIsGameReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [showInlineResult, setShowInlineResult] = useState(false);
+  const [tapToPlayHeld, setTapToPlayHeld] = useState(false);
+  const tapToPlayHeldTimer = useRef<number>(0);
   const [initialStats, setInitialStats] = useState<{
     lives?: number;
     currentAttemptMoves?: number;
@@ -480,8 +482,22 @@ export default function ArchivePlayClient({ date }: { date: string }) {
                       </button>
                     </div>
                   ) : (
-                    <button className={baseStyles.startButton} onClick={handleBegin}>
-                      Begin
+                    <button
+                      className={`${baseStyles.tapToPlayOverlay} ${tapToPlayHeld ? baseStyles.tapToPlayHeld : ''}`}
+                      onClick={handleBegin}
+                      onPointerDown={() => {
+                        tapToPlayHeldTimer.current = window.setTimeout(() => setTapToPlayHeld(true), 120);
+                      }}
+                      onPointerUp={() => {
+                        clearTimeout(tapToPlayHeldTimer.current);
+                        setTapToPlayHeld(false);
+                      }}
+                      onPointerCancel={() => {
+                        clearTimeout(tapToPlayHeldTimer.current);
+                        setTapToPlayHeld(false);
+                      }}
+                    >
+                      Tap to Play
                     </button>
                   )}
                 </div>

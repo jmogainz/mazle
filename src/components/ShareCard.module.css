@@ -266,6 +266,16 @@
   touch-action: manipulation;
   -webkit-appearance: none;
   appearance: none;
+  white-space: nowrap;
+}
+
+/* Scale down buttons on small screens to keep text on one line */
+@media (max-width: 380px) {
+  .shareButton,
+  .secondaryActionButton {
+    font-size: 0.8rem;
+    padding: 0.65rem 0.5rem;
+  }
 }
 
 .shareButton {

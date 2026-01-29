@@ -26,6 +26,8 @@ import type {
   AnalyticsStartResponse,
   AnalyticsShareRequest,
   AnalyticsShareResponse,
+  AnalyticsViewRequest,
+  AnalyticsViewResponse,
   ResultsRecordRequest,
   ResultsRecordResponse,
   SettingsUpdateRequest,
@@ -108,6 +110,13 @@ export const api = {
 
   analyticsShare: async (body: AnalyticsShareRequest): Promise<AnalyticsShareResponse> =>
     fetchJson('/api/analytics/share', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+
+  analyticsView: async (body: AnalyticsViewRequest): Promise<AnalyticsViewResponse> =>
+    fetchJson('/api/analytics/view', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),

@@ -179,6 +179,15 @@ export type AnalyticsShareResponse = {
   stored: boolean;
 };
 
+export type AnalyticsViewRequest = {
+  date: string;
+};
+
+export type AnalyticsViewResponse = {
+  ok: true;
+  stored: boolean;
+};
+
 export type ResultsDayResponse = {
   ok: true;
   result: {

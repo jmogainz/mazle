@@ -12,10 +12,11 @@ export async function recordAnalyticsStart(subject: AnalyticsSubject): Promise<b
   await ensureDbSchema();
   const pool = getDbPool();
   await pool.query(
-    `insert into analytics_daily_plays (date, player_id, user_id, started_at, updated_at)
-     values ($1::date, $2::uuid, $3::uuid, now(), now())
+    `insert into analytics_daily_plays (date, player_id, user_id, started_at, viewed_at, updated_at)
+     values ($1::date, $2::uuid, $3::uuid, now(), now(), now())
      on conflict (date, player_id) do update
        set started_at = coalesce(analytics_daily_plays.started_at, excluded.started_at),
+           viewed_at = coalesce(analytics_daily_plays.viewed_at, excluded.viewed_at),
            user_id = coalesce(analytics_daily_plays.user_id, excluded.user_id),
            updated_at = now()`,
     [subject.date, subject.playerId, subject.userId]
@@ -31,14 +32,15 @@ export async function recordAnalyticsFinish(
   await ensureDbSchema();
   const pool = getDbPool();
   await pool.query(
-    `insert into analytics_daily_plays (date, player_id, user_id, started_at, finished_at, completed, time_ms, attempts_used, updated_at)
-     values ($1::date, $2::uuid, $3::uuid, now(), now(), $4, $5, $6, now())
+    `insert into analytics_daily_plays (date, player_id, user_id, started_at, finished_at, completed, time_ms, attempts_used, viewed_at, updated_at)
+     values ($1::date, $2::uuid, $3::uuid, now(), now(), $4, $5, $6, now(), now())
      on conflict (date, player_id) do update
        set started_at = coalesce(analytics_daily_plays.started_at, excluded.started_at),
            finished_at = coalesce(analytics_daily_plays.finished_at, excluded.finished_at),
            completed = coalesce(analytics_daily_plays.completed, excluded.completed),
            time_ms = coalesce(analytics_daily_plays.time_ms, excluded.time_ms),
            attempts_used = coalesce(analytics_daily_plays.attempts_used, excluded.attempts_used),
+           viewed_at = coalesce(analytics_daily_plays.viewed_at, excluded.viewed_at),
            user_id = coalesce(analytics_daily_plays.user_id, excluded.user_id),
            updated_at = now()`,
     [subject.date, subject.playerId, subject.userId, input.completed, input.timeMs, input.attemptsUsed]
@@ -55,12 +57,13 @@ export async function recordAnalyticsShare(
   await ensureDbSchema();
   const pool = getDbPool();
   await pool.query(
-    `insert into analytics_daily_plays (date, player_id, user_id, started_at, share_count, shared_at, updated_at)
-     values ($1::date, $2::uuid, $3::uuid, now(), 1, now(), now())
+    `insert into analytics_daily_plays (date, player_id, user_id, started_at, share_count, shared_at, viewed_at, updated_at)
+     values ($1::date, $2::uuid, $3::uuid, now(), 1, now(), now(), now())
      on conflict (date, player_id) do update
        set started_at = coalesce(analytics_daily_plays.started_at, excluded.started_at),
            share_count = analytics_daily_plays.share_count + 1,
            shared_at = coalesce(analytics_daily_plays.shared_at, excluded.shared_at),
+           viewed_at = coalesce(analytics_daily_plays.viewed_at, excluded.viewed_at),
            user_id = coalesce(analytics_daily_plays.user_id, excluded.user_id),
            updated_at = now()`,
     [subject.date, subject.playerId, subject.userId]
@@ -68,3 +71,18 @@ export async function recordAnalyticsShare(
   return true;
 }
 
+export async function recordAnalyticsView(subject: AnalyticsSubject): Promise<boolean> {
+  if (!env('DB_URL')) return false;
+  await ensureDbSchema();
+  const pool = getDbPool();
+  await pool.query(
+    `insert into analytics_daily_plays (date, player_id, user_id, viewed_at, updated_at)
+     values ($1::date, $2::uuid, $3::uuid, now(), now())
+     on conflict (date, player_id) do update
+       set viewed_at = coalesce(analytics_daily_plays.viewed_at, excluded.viewed_at),
+           user_id = coalesce(analytics_daily_plays.user_id, excluded.user_id),
+           updated_at = now()`,
+    [subject.date, subject.playerId, subject.userId]
+  );
+  return true;
+}

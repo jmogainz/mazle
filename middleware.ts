@@ -17,10 +17,17 @@ export function middleware(request: NextRequest) {
   const needsAdminAuth = pathname.startsWith('/admin') || pathname.startsWith('/api/admin');
   if (needsAdminAuth) {
     const secret = process.env.ADMIN_SECRET;
-    const isProd = process.env.NODE_ENV === 'production' || process.env.NEXT_PUBLIC_ENV === 'prod';
-    // Dev convenience: allow unauthenticated access when ADMIN_SECRET is unset in non-prod.
-    if ((!secret || secret.trim().length === 0) && !isProd) {
-      // Continue.
+    const vercelEnv = process.env.VERCEL_ENV; // "production" | "preview" | "development" (on Vercel)
+    const isVercel = process.env.VERCEL === '1' || !!vercelEnv;
+    const isProd =
+      vercelEnv === 'production' ||
+      process.env.NODE_ENV === 'production' ||
+      process.env.NEXT_PUBLIC_ENV === 'prod';
+
+    // Dev convenience: allow unauthenticated access only when running locally.
+    // On Vercel (preview/prod), missing ADMIN_SECRET should hard-fail so we don't accidentally expose admin pages.
+    if ((!secret || secret.trim().length === 0) && !isVercel && !isProd) {
+      // Continue (local dev only).
     } else if (!secret || secret.trim().length === 0) {
       const res = new NextResponse('Admin auth is not configured (missing ADMIN_SECRET).', { status: 401 });
       res.headers.set('WWW-Authenticate', 'Basic realm="Mazle Admin"');

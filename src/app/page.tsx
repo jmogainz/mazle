@@ -258,8 +258,10 @@ const IS_UI_DEV_ENV = process.env.NEXT_PUBLIC_ENV === 'dev' || process.env.NEXT_
 
 const IS_PROD = process.env.NEXT_PUBLIC_ENV === 'prod';
 const HELP_SEEN_KEY = `mazle_seen_help_${HELP_MENU_HASH}`;
-const ADSENSE_TOP_SLOT = process.env.NEXT_PUBLIC_ADSENSE_SLOT_MOBILE_TOP ?? (!IS_PROD ? 'DEV_TOP' : '');
-const ADSENSE_BOTTOM_SLOT = process.env.NEXT_PUBLIC_ADSENSE_SLOT_BOTTOM ?? (!IS_PROD ? 'DEV_BOTTOM' : '');
+// Ads disabled temporarily - flip to true and restore env var logic to re-enable
+const ADS_ENABLED = false;
+const ADSENSE_TOP_SLOT = ADS_ENABLED ? (process.env.NEXT_PUBLIC_ADSENSE_SLOT_MOBILE_TOP ?? '') : '';
+const ADSENSE_BOTTOM_SLOT = ADS_ENABLED ? (process.env.NEXT_PUBLIC_ADSENSE_SLOT_BOTTOM ?? '') : '';
 const AD_BANNER_HEIGHT = 50;
 
 export default function Home() {
@@ -350,12 +352,15 @@ export default function Home() {
   const wakeLockRequestInFlightRef = useRef(false);
   const wakeLockReleaseHandlerRef = useRef<((ev: Event) => void) | null>(null);
   const analyticsStartSentRef = useRef(false);
+  const analyticsViewSentRef = useRef<string | null>(null);
   const [liveAttempts, setLiveAttempts] = useState<GameState['attempts']>([]);
   const [reviewAttemptIndex, setReviewAttemptIndex] = useState<number | null>(null);
   const [showReplayButton, setShowReplayButton] = useState(false);
   const [analysisAnimationComplete, setAnalysisAnimationComplete] = useState(false);
   const [replayHeld, setReplayHeld] = useState(false);
   const replayHeldTimer = useRef<number>(0);
+  const [tapToPlayHeld, setTapToPlayHeld] = useState(false);
+  const tapToPlayHeldTimer = useRef<number>(0);
   const [isIdentityChecked, setIsIdentityChecked] = useState(false);
   const identitySyncEpochRef = useRef(0);
 
@@ -439,6 +444,12 @@ export default function Home() {
   useEffect(() => {
     analyticsStartSentRef.current = false;
   }, [activeSeed]);
+
+  useEffect(() => {
+    if (analyticsViewSentRef.current === todayNy) return;
+    analyticsViewSentRef.current = todayNy;
+    api.analyticsView({ date: todayNy }).catch(() => null);
+  }, [todayNy]);
 
   const applyStoredResult = useCallback((result: DailyStats | null) => {
     if (isPlayingRef.current) return;
@@ -1170,18 +1181,10 @@ export default function Home() {
 
       const serializableState = gameControlsRef.current?.getSerializableState();
       if (serializableState && activeSeed) {
-        setIsPlaying(serializableState.isPlaying);
-
-        // "Game played" metric: first accepted move of the day (best-effort, deduped server-side).
-        // Only for daily puzzles
-        if (
-          isDaily &&
-          serializableState.isPlaying &&
-          serializableState.moveCount > 0 &&
-          !analyticsStartSentRef.current
-        ) {
-          analyticsStartSentRef.current = true;
-          api.analyticsStart({ date: todayNy }).catch(() => null);
+        // Don't update isPlaying when game completes - let gameComplete handler do it
+        // after the solution animation finishes
+        if (!serializableState.isComplete) {
+          setIsPlaying(serializableState.isPlaying);
         }
 
         if (serializableState.isComplete) {
@@ -1484,6 +1487,10 @@ export default function Home() {
   const [showSwipeHint, setShowSwipeHint] = useState(false);
 
   const handleBegin = useCallback(() => {
+    if (puzzleMode === 'daily' && !analyticsStartSentRef.current) {
+      analyticsStartSentRef.current = true;
+      api.analyticsStart({ date: todayNy }).catch(() => null);
+    }
     setIsPlaying(true);
     requestWakeLock();
     gameControlsRef.current?.start();
@@ -1498,7 +1505,7 @@ export default function Home() {
         setShowSwipeHint(true);
       }
     }, 500);
-  }, [requestWakeLock]);
+  }, [puzzleMode, requestWakeLock, todayNy]);
 
   const handleDevSeedGenerate = useCallback(
     async (rawSeed?: string) => {
@@ -2237,8 +2244,22 @@ export default function Home() {
                             </p>
                           </div>
                         ) : (
-                          <button className={styles.startButton} onClick={handleBegin}>
-                            Begin
+                          <button
+                            className={`${styles.tapToPlayOverlay} ${tapToPlayHeld ? styles.tapToPlayHeld : ''}`}
+                            onClick={handleBegin}
+                            onPointerDown={() => {
+                              tapToPlayHeldTimer.current = window.setTimeout(() => setTapToPlayHeld(true), 120);
+                            }}
+                            onPointerUp={() => {
+                              clearTimeout(tapToPlayHeldTimer.current);
+                              setTapToPlayHeld(false);
+                            }}
+                            onPointerCancel={() => {
+                              clearTimeout(tapToPlayHeldTimer.current);
+                              setTapToPlayHeld(false);
+                            }}
+                          >
+                            Tap to Play
                           </button>
                         )}
                       </div>

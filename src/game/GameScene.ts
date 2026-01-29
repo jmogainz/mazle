@@ -56,6 +56,151 @@ function hslToPhaserColor(h: number, s: number, l: number): number {
   return (r << 16) | (g << 8) | b;
 }
 
+/**
+ * Arrow style for ledge tiles. Change this to experiment with different shapes.
+ * Options: 'triangle' | 'chevron' | 'arrow' | 'doubleChevron'
+ */
+const LEDGE_ARROW_STYLE: 'triangle' | 'chevron' | 'arrow' | 'doubleChevron' = 'chevron';
+
+/**
+ * Draws a ledge arrow on the given graphics object.
+ * @param g - Phaser Graphics object
+ * @param cx - Center X position
+ * @param cy - Center Y position
+ * @param dir - Direction the arrow points ('up' | 'down' | 'left' | 'right')
+ * @param size - Tile size
+ * @param depth - 3D depth offset
+ * @param scale - Scale factor (for different render contexts)
+ */
+function drawLedgeArrow(
+  g: Phaser.GameObjects.Graphics,
+  cx: number,
+  cy: number,
+  dir: 'up' | 'down' | 'left' | 'right',
+  size: number,
+  depth: number,
+  scale: number = 1
+) {
+  const s = scale;
+  const lift = depth * 0.6;
+
+  // Rotate a point based on direction (base shape points "up")
+  const rotate = (p: { x: number; y: number }) => {
+    switch (dir) {
+      case 'up': return { x: p.x, y: p.y };
+      case 'down': return { x: -p.x, y: -p.y };
+      case 'right': return { x: -p.y, y: p.x };
+      case 'left': return { x: p.y, y: -p.x };
+    }
+  };
+
+  g.fillStyle(COLORS.LEDGE_ARROW);
+
+  switch (LEDGE_ARROW_STYLE) {
+    case 'triangle': {
+      // Original simple filled triangle
+      const baseWidth = size * 0.32;
+      const baseHeight = size * 0.20;
+      const shrink = 1 * s;
+      const halfW = baseWidth / 2;
+      const halfH = Math.max(baseHeight / 2 - shrink, 1);
+
+      const A = rotate({ x: 0, y: -halfH - lift });
+      const B = rotate({ x: -halfW, y: halfH });
+      const C = rotate({ x: halfW, y: halfH });
+      g.fillTriangle(cx + A.x, cy + A.y, cx + B.x, cy + B.y, cx + C.x, cy + C.y);
+      break;
+    }
+
+    case 'chevron': {
+      // Solid filled V-shape chevron
+      const armLength = size * 0.205; // ~15% smaller
+      const tipY = -armLength * 0.6 - lift;
+      const baseY = armLength * 0.5;
+      const wingX = armLength * 0.75;
+
+      // Nudge up-pointing arrow (LEDGE_DOWN) down a bit
+      const offsetY = dir === 'up' ? size * 0.03 : 0;
+
+      // Simple filled triangle (V pointing in direction)
+      const A = rotate({ x: 0, y: tipY }); // tip
+      const B = rotate({ x: -wingX, y: baseY }); // left wing
+      const C = rotate({ x: wingX, y: baseY }); // right wing
+      g.fillTriangle(cx + A.x, cy + A.y + offsetY, cx + B.x, cy + B.y + offsetY, cx + C.x, cy + C.y + offsetY);
+      break;
+    }
+
+    case 'arrow': {
+      // Classic arrow with stem
+      const headWidth = size * 0.28;
+      const headHeight = size * 0.14;
+      const stemWidth = size * 0.08;
+      const stemHeight = size * 0.12;
+      const halfHead = headWidth / 2;
+      const halfStem = stemWidth / 2;
+
+      // Arrow pointing up
+      const tipY = -headHeight - lift;
+      const headBaseY = 0 - lift;
+      const stemBottomY = stemHeight - lift;
+
+      const points = [
+        rotate({ x: 0, y: tipY }), // tip
+        rotate({ x: halfHead, y: headBaseY }), // right head
+        rotate({ x: halfStem, y: headBaseY }), // right stem top
+        rotate({ x: halfStem, y: stemBottomY }), // right stem bottom
+        rotate({ x: -halfStem, y: stemBottomY }), // left stem bottom
+        rotate({ x: -halfStem, y: headBaseY }), // left stem top
+        rotate({ x: -halfHead, y: headBaseY }), // left head
+      ];
+
+      g.beginPath();
+      g.moveTo(cx + points[0].x, cy + points[0].y);
+      for (let i = 1; i < points.length; i++) {
+        g.lineTo(cx + points[i].x, cy + points[i].y);
+      }
+      g.closePath();
+      g.fillPath();
+      break;
+    }
+
+    case 'doubleChevron': {
+      // Two stacked chevrons (>>)
+      const armLength = size * 0.15;
+      const thickness = size * 0.06;
+      const halfThick = thickness / 2;
+      const spacing = size * 0.10;
+
+      const drawChevron = (offsetY: number) => {
+        const tipY = -armLength * 0.5 - lift + offsetY;
+        const baseY = armLength * 0.4 + offsetY;
+        const wingX = armLength * 0.6;
+
+        const points = [
+          rotate({ x: 0, y: tipY }),
+          rotate({ x: wingX, y: baseY }),
+          rotate({ x: wingX - halfThick * 1.5, y: baseY }),
+          rotate({ x: 0, y: tipY + thickness * 1.8 }),
+          rotate({ x: -wingX + halfThick * 1.5, y: baseY }),
+          rotate({ x: -wingX, y: baseY }),
+        ];
+
+        g.beginPath();
+        g.moveTo(cx + points[0].x, cy + points[0].y);
+        for (let i = 1; i < points.length; i++) {
+          g.lineTo(cx + points[i].x, cy + points[i].y);
+        }
+        g.closePath();
+        g.fillPath();
+      };
+
+      drawChevron(-spacing);
+      drawChevron(spacing);
+      break;
+    }
+  }
+}
+
 export class GameScene extends Phaser.Scene {
   private puzzle!: PuzzleData;
   private gameState!: GameState;
@@ -486,46 +631,15 @@ export class GameScene extends Phaser.Scene {
       case TileType.LEDGE_LEFT:
       case TileType.LEDGE_RIGHT:
         draw3DTile(COLORS.LEDGE_FACE, COLORS.LEDGE_EDGE);
-
-        // Simple filled triangle centered on the tile face
-        const cx = px + size / 2;
-        const cy = py + size / 2 - depth / 2;
-        const baseWidth = size * 0.32;
-        const baseHeight = size * 0.20;
-        const shrink = 1 * s;               // trim top/bottom by 1px
-        const lift = depth * 0.6;       // subtle perspective lift toward the pointing direction
-        const halfW = baseWidth / 2;
-        const halfH = Math.max(baseHeight / 2 - shrink, 1);
-
-        g.fillStyle(COLORS.LEDGE_ARROW);
-        // Base "up" triangle points relative to center
-        const upA = { x: 0, y: -halfH - lift };
-        const upB = { x: -halfW, y: halfH };
-        const upC = { x: halfW, y: halfH };
-
-        const rotate = (p: { x: number; y: number }, dir: 'up' | 'down' | 'left' | 'right') => {
-          switch (dir) {
-            case 'up':
-              return { x: p.x, y: p.y };
-            case 'down':
-              return { x: p.x, y: -p.y };
-            case 'right':
-              return { x: -p.y, y: p.x };
-            case 'left':
-              return { x: p.y, y: -p.x };
-          }
-        };
-
-        const dir =
-          tile === TileType.LEDGE_UP ? 'down' : // enter from above, exit downward
-            tile === TileType.LEDGE_DOWN ? 'up' : // enter from below, exit upward
-              tile === TileType.LEDGE_RIGHT ? 'right' : 'left';
-
-        const A = rotate(upA, dir);
-        const B = rotate(upB, dir);
-        const C = rotate(upC, dir);
-
-        g.fillTriangle(cx + A.x, cy + A.y, cx + B.x, cy + B.y, cx + C.x, cy + C.y);
+        {
+          const arrowCx = px + size / 2;
+          const arrowCy = py + size / 2 - depth / 2;
+          const arrowDir =
+            tile === TileType.LEDGE_UP ? 'down' :
+              tile === TileType.LEDGE_DOWN ? 'up' :
+                tile === TileType.LEDGE_RIGHT ? 'right' : 'left';
+          drawLedgeArrow(g, arrowCx, arrowCy, arrowDir, size, depth, s);
+        }
         break;
 
       case TileType.BOULDER:
@@ -1296,40 +1410,11 @@ export class GameScene extends Phaser.Scene {
     // Ledge arrows
     if (tile === TileType.LEDGE_UP || tile === TileType.LEDGE_DOWN ||
       tile === TileType.LEDGE_LEFT || tile === TileType.LEDGE_RIGHT) {
-      const cx = 0;
-      const cy = -depth / 2;
-      const baseWidth = size * 0.32;
-      const baseHeight = size * 0.20;
-      const shrink = 1 * s;
-      const lift = depth * 0.6;
-      const halfW = baseWidth / 2;
-      const halfH = Math.max(baseHeight / 2 - shrink, 1);
-
-      g.fillStyle(COLORS.LEDGE_ARROW);
-
-      const upA = { x: 0, y: -halfH - lift };
-      const upB = { x: -halfW, y: halfH };
-      const upC = { x: halfW, y: halfH };
-
-      const rotate = (p: { x: number; y: number }, dir: 'up' | 'down' | 'left' | 'right') => {
-        switch (dir) {
-          case 'up': return { x: p.x, y: p.y };
-          case 'down': return { x: p.x, y: -p.y };
-          case 'right': return { x: -p.y, y: p.x };
-          case 'left': return { x: p.y, y: -p.x };
-        }
-      };
-
-      const dir =
+      const arrowDir =
         tile === TileType.LEDGE_UP ? 'down' :
           tile === TileType.LEDGE_DOWN ? 'up' :
             tile === TileType.LEDGE_RIGHT ? 'right' : 'left';
-
-      const A = rotate(upA, dir);
-      const B = rotate(upB, dir);
-      const C = rotate(upC, dir);
-
-      g.fillTriangle(cx + A.x, cy + A.y, cx + B.x, cy + B.y, cx + C.x, cy + C.y);
+      drawLedgeArrow(g, 0, -depth / 2, arrowDir, size, depth, s);
     }
   }
 
@@ -2056,40 +2141,11 @@ export class GameScene extends Phaser.Scene {
     // Ledge arrows
     if (tile === TileType.LEDGE_UP || tile === TileType.LEDGE_DOWN ||
       tile === TileType.LEDGE_LEFT || tile === TileType.LEDGE_RIGHT) {
-      const cx = 0;
-      const cy = -depth / 2;
-      const baseWidth = size * 0.32;
-      const baseHeight = size * 0.20;
-      const shrink = 1 * s;
-      const lift = depth * 0.6;
-      const halfW = baseWidth / 2;
-      const halfH = Math.max(baseHeight / 2 - shrink, 1);
-
-      g.fillStyle(COLORS.LEDGE_ARROW);
-
-      const upA = { x: 0, y: -halfH - lift };
-      const upB = { x: -halfW, y: halfH };
-      const upC = { x: halfW, y: halfH };
-
-      const rotate = (p: { x: number; y: number }, dir: 'up' | 'down' | 'left' | 'right') => {
-        switch (dir) {
-          case 'up': return { x: p.x, y: p.y };
-          case 'down': return { x: p.x, y: -p.y };
-          case 'right': return { x: -p.y, y: p.x };
-          case 'left': return { x: p.y, y: -p.x };
-        }
-      };
-
-      const dir =
+      const arrowDir =
         tile === TileType.LEDGE_UP ? 'down' :
           tile === TileType.LEDGE_DOWN ? 'up' :
             tile === TileType.LEDGE_RIGHT ? 'right' : 'left';
-
-      const A = rotate(upA, dir);
-      const B = rotate(upB, dir);
-      const C = rotate(upC, dir);
-
-      g.fillTriangle(cx + A.x, cy + A.y, cx + B.x, cy + B.y, cx + C.x, cy + C.y);
+      drawLedgeArrow(g, 0, -depth / 2, arrowDir, size, depth, s);
     }
   }
 
@@ -2306,40 +2362,11 @@ export class GameScene extends Phaser.Scene {
     // Ledge arrows
     if (tile === TileType.LEDGE_UP || tile === TileType.LEDGE_DOWN ||
       tile === TileType.LEDGE_LEFT || tile === TileType.LEDGE_RIGHT) {
-      const cx = 0;
-      const cy = -depth / 2;
-      const baseWidth = size * 0.32;
-      const baseHeight = size * 0.20;
-      const shrink = 1 * s;
-      const lift = depth * 0.6;
-      const halfW = baseWidth / 2;
-      const halfH = Math.max(baseHeight / 2 - shrink, 1);
-
-      g.fillStyle(COLORS.LEDGE_ARROW);
-
-      const upA = { x: 0, y: -halfH - lift };
-      const upB = { x: -halfW, y: halfH };
-      const upC = { x: halfW, y: halfH };
-
-      const rotate = (p: { x: number; y: number }, dir: 'up' | 'down' | 'left' | 'right') => {
-        switch (dir) {
-          case 'up': return { x: p.x, y: p.y };
-          case 'down': return { x: p.x, y: -p.y };
-          case 'right': return { x: -p.y, y: p.x };
-          case 'left': return { x: p.y, y: -p.x };
-        }
-      };
-
-      const dir =
+      const arrowDir =
         tile === TileType.LEDGE_UP ? 'down' :
           tile === TileType.LEDGE_DOWN ? 'up' :
             tile === TileType.LEDGE_RIGHT ? 'right' : 'left';
-
-      const A = rotate(upA, dir);
-      const B = rotate(upB, dir);
-      const C = rotate(upC, dir);
-
-      g.fillTriangle(cx + A.x, cy + A.y, cx + B.x, cy + B.y, cx + C.x, cy + C.y);
+      drawLedgeArrow(g, 0, -depth / 2, arrowDir, size, depth, s);
     }
   }
 

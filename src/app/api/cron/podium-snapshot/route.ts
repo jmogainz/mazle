@@ -19,10 +19,13 @@ function isUuid(value: string): boolean {
 
 export async function GET(request: NextRequest) {
   try {
+    console.log(`[cron/podium-snapshot] start ${new Date().toISOString()}`);
+
     const authHeader = request.headers.get('authorization');
     const cronSecret = process.env.CRON_SECRET;
 
     if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+      console.warn('[cron/podium-snapshot] unauthorized request - invalid or missing Authorization header');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -32,16 +35,21 @@ export async function GET(request: NextRequest) {
     const fallbackDate = addDays(getNewYorkDateString(), -1);
     const dateParam = requestedDate && requestedDate.trim().length > 0 ? requestedDate : fallbackDate;
     if (!isValidNyDateString(dateParam)) {
+      console.warn(`[cron/podium-snapshot] invalid date param: ${dateParam}`);
       return NextResponse.json({ error: 'Missing or invalid date.' }, { status: 400 });
     }
 
+    console.log(`[cron/podium-snapshot] date=${dateParam} requested=${requestedDate ?? ''} fallback=${fallbackDate}`);
+
     const redis = getLeaderboardRedis();
     if (!redis) {
+      console.error('[cron/podium-snapshot] leaderboard redis not configured');
       return NextResponse.json({ error: 'Leaderboard Redis is not configured.' }, { status: 500 });
     }
 
     const zkey = leaderboardZsetKey(dateParam);
     const raw = await redis.zrange<(string | number)[]>(zkey, 0, 2, { withScores: true });
+    console.log(`[cron/podium-snapshot] zrange ${zkey} returned ${raw.length} items`);
 
     const members: string[] = [];
     const scores: number[] = [];
@@ -69,11 +77,13 @@ export async function GET(request: NextRequest) {
       .filter((row): row is NonNullable<typeof row> => row != null);
 
     if (podium.length === 0) {
+      console.log(`[cron/podium-snapshot] no podium entries found for ${dateParam}`);
       return NextResponse.json({ ok: true, date: dateParam, snapped: 0 });
     }
 
     await ensureDbSchema();
     const pool = getDbPool();
+    console.log(`[cron/podium-snapshot] snapping ${podium.length} entries`);
 
     const userIds = Array.from(new Set(podium.map((p) => p.userId)));
 
@@ -155,9 +165,11 @@ export async function GET(request: NextRequest) {
     );
 
     const inserted = insertRes.rowCount ?? 0;
+    console.log(`[cron/podium-snapshot] inserted ${inserted} rows for ${dateParam}`);
     return NextResponse.json({ ok: true, date: dateParam, snapped: inserted }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[cron/podium-snapshot] error:', error);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

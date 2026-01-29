@@ -1181,7 +1181,11 @@ export default function Home() {
 
       const serializableState = gameControlsRef.current?.getSerializableState();
       if (serializableState && activeSeed) {
-        setIsPlaying(serializableState.isPlaying);
+        // Don't update isPlaying when game completes - let gameComplete handler do it
+        // after the solution animation finishes
+        if (!serializableState.isComplete) {
+          setIsPlaying(serializableState.isPlaying);
+        }
 
         if (serializableState.isComplete) {
           // Game just completed - save result immediately (before animation)

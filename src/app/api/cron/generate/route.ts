@@ -3,6 +3,7 @@ import { Redis } from '@upstash/redis';
 
 // This route uses request.headers, Redis, and external API calls - must be dynamic
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 import { getNewYorkDateString, getDailySeed, getPuzzleNumber } from '@/game/puzzleGenerator';
 
 // Initialize Redis client (required for cron - should error if not configured in prod)

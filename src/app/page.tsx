@@ -258,8 +258,10 @@ const IS_UI_DEV_ENV = process.env.NEXT_PUBLIC_ENV === 'dev' || process.env.NEXT_
 
 const IS_PROD = process.env.NEXT_PUBLIC_ENV === 'prod';
 const HELP_SEEN_KEY = `mazle_seen_help_${HELP_MENU_HASH}`;
-const ADSENSE_TOP_SLOT = process.env.NEXT_PUBLIC_ADSENSE_SLOT_MOBILE_TOP ?? (!IS_PROD ? 'DEV_TOP' : '');
-const ADSENSE_BOTTOM_SLOT = process.env.NEXT_PUBLIC_ADSENSE_SLOT_BOTTOM ?? (!IS_PROD ? 'DEV_BOTTOM' : '');
+// Ads disabled temporarily - flip to true and restore env var logic to re-enable
+const ADS_ENABLED = false;
+const ADSENSE_TOP_SLOT = ADS_ENABLED ? (process.env.NEXT_PUBLIC_ADSENSE_SLOT_MOBILE_TOP ?? '') : '';
+const ADSENSE_BOTTOM_SLOT = ADS_ENABLED ? (process.env.NEXT_PUBLIC_ADSENSE_SLOT_BOTTOM ?? '') : '';
 const AD_BANNER_HEIGHT = 50;
 
 export default function Home() {

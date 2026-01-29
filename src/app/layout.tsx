@@ -7,8 +7,10 @@ import './globals.css';
 
 const CMP_SCRIPT_SRC = process.env.NEXT_PUBLIC_CMP_SCRIPT_SRC || '';
 const IS_PROD = process.env.NEXT_PUBLIC_ENV === 'prod';
-const ADSENSE_TOP_SLOT = process.env.NEXT_PUBLIC_ADSENSE_SLOT_MOBILE_TOP ?? (!IS_PROD ? 'DEV_TOP' : '');
-const ADSENSE_BOTTOM_SLOT = process.env.NEXT_PUBLIC_ADSENSE_SLOT_BOTTOM ?? (!IS_PROD ? 'DEV_BOTTOM' : '');
+// Ads disabled temporarily - flip to true and restore env var logic to re-enable
+const ADS_ENABLED = false;
+const ADSENSE_TOP_SLOT = ADS_ENABLED ? (process.env.NEXT_PUBLIC_ADSENSE_SLOT_MOBILE_TOP ?? '') : '';
+const ADSENSE_BOTTOM_SLOT = ADS_ENABLED ? (process.env.NEXT_PUBLIC_ADSENSE_SLOT_BOTTOM ?? '') : '';
 const AD_BANNER_HEIGHT = 50;
 
 const pixelFont = Press_Start_2P({

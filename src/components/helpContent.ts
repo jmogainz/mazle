@@ -3,7 +3,7 @@ const HELP_CONTENT = {
   goal: {
     primary: 'Reach the star in 10 moves.',
     secondary: [
-      '3 Lives. Losing a life adds a time penalty!',
+      '5 Lives. Losing a life adds a time penalty!',
       'Solve as fast as you can!',
     ],
   },

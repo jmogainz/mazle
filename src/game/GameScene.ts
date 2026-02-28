@@ -755,7 +755,8 @@ export class GameScene extends Phaser.Scene {
 
   private drawCharacterGraphic(
     g: Phaser.GameObjects.Graphics,
-    opts: { s: number; faceColor: number; edgeColor: number; shape: 'cube' | 'cylinder' | 'pyramid'; dead: boolean }
+    opts: { s: number; faceColor: number; edgeColor: number; shape: 'cube' | 'cylinder' | 'pyramid'; dead: boolean },
+    targetContainer: Phaser.GameObjects.Container = this.player
   ) {
     const { s, faceColor, edgeColor, shape, dead } = opts;
     
@@ -763,11 +764,11 @@ export class GameScene extends Phaser.Scene {
     g.clear();
     
     // Remove any existing SVG sprite if we are switching back to procedural or refreshing
-    const existingSprite = this.player.getByName('obsidian_sprite');
+    const existingSprite = targetContainer.getByName('obsidian_sprite');
     if (existingSprite) {
       existingSprite.destroy();
     }
-    const existingPenguin = this.player.getByName('penguin_sprite');
+    const existingPenguin = targetContainer.getByName('penguin_sprite');
     if (existingPenguin) {
       existingPenguin.destroy();
     }
@@ -776,7 +777,7 @@ export class GameScene extends Phaser.Scene {
       const sprite = this.add.image(0, 0, 'obsidian_char');
       sprite.setName('obsidian_sprite');
       sprite.setScale(s);
-      this.player.add(sprite);
+      targetContainer.add(sprite);
       
       g.fillStyle(0x000000, 0.25);
       g.fillEllipse(0, 8 * s, 16 * s, 6 * s);
@@ -788,7 +789,7 @@ export class GameScene extends Phaser.Scene {
       const sprite = this.add.image(0, 0, 'penguin_char');
       sprite.setName('penguin_sprite');
       sprite.setScale(s * 0.816);
-      this.player.add(sprite);
+      targetContainer.add(sprite);
       
       g.fillStyle(0x000000, 0.25);
       g.fillEllipse(0, 8 * s, 16 * s, 6 * s);
@@ -858,6 +859,56 @@ export class GameScene extends Phaser.Scene {
     g.lineTo(5 * s, (-2 * s) + eyeYOffset);
     g.moveTo(5 * s, (-6 * s) + eyeYOffset);
     g.lineTo(1 * s, (-2 * s) + eyeYOffset);
+    g.strokePath();
+  }
+
+  private drawDeadEyesOverlay(
+    g: Phaser.GameObjects.Graphics,
+    s: number,
+    opts: { maskColor: number; xColor: number; eyeYOffset?: number; maskRadius?: number; lineWidth?: number }
+  ) {
+    const eyeYOffset = opts.eyeYOffset ?? 0;
+    const maskRadius = opts.maskRadius ?? 4;
+    const lineWidth = opts.lineWidth ?? 1.5;
+
+    // Hide the baked sprite eyes first so dead-eyes don't stack visually.
+    g.fillStyle(opts.maskColor, 1);
+    g.fillCircle(-3 * s, (-4 * s) + eyeYOffset, maskRadius * s);
+    g.fillCircle(3 * s, (-4 * s) + eyeYOffset, maskRadius * s);
+
+    g.lineStyle(lineWidth * s, opts.xColor, 1);
+    // Left eye X
+    g.beginPath();
+    g.moveTo(-5 * s, (-6 * s) + eyeYOffset);
+    g.lineTo(-1 * s, (-2 * s) + eyeYOffset);
+    g.moveTo(-1 * s, (-6 * s) + eyeYOffset);
+    g.lineTo(-5 * s, (-2 * s) + eyeYOffset);
+    g.strokePath();
+    // Right eye X
+    g.beginPath();
+    g.moveTo(1 * s, (-6 * s) + eyeYOffset);
+    g.lineTo(5 * s, (-2 * s) + eyeYOffset);
+    g.moveTo(5 * s, (-6 * s) + eyeYOffset);
+    g.lineTo(1 * s, (-2 * s) + eyeYOffset);
+    g.strokePath();
+  }
+
+  private drawPenguinBeakOverlay(g: Phaser.GameObjects.Graphics, s: number, yOffset = 0) {
+    const topY = 0.45 * s + yOffset;
+    const midY = 1.65 * s + yOffset;
+    const bottomY = 2.9 * s + yOffset;
+    const halfW = 2.3 * s;
+
+    g.fillStyle(0xed8827, 1);
+    g.beginPath();
+    g.moveTo(0, topY);
+    g.lineTo(halfW, midY);
+    g.lineTo(0, bottomY);
+    g.lineTo(-halfW, midY);
+    g.closePath();
+    g.fillPath();
+
+    g.lineStyle(0.8 * s, 0xe07415, 0.95);
     g.strokePath();
   }
 
@@ -1452,9 +1503,33 @@ export class GameScene extends Phaser.Scene {
 
       // Draw character body (same cosmetics as player, but with X eyes)
       const body = this.add.graphics();
-      this.drawCharacterGraphic(body, { s, faceColor: face, edgeColor: edge, shape, dead: true });
-
       container.add(body);
+      this.drawCharacterGraphic(body, { s, faceColor: face, edgeColor: edge, shape, dead: true }, container);
+
+      // Special SVG skins return before procedural dead-eyes drawing, so add X-eyes overlay here.
+      const hasPenguinSprite = !!container.getByName('penguin_sprite');
+      const hasObsidianSprite = !!container.getByName('obsidian_sprite');
+      if (hasPenguinSprite || hasObsidianSprite) {
+        const deadEyes = this.add.graphics();
+        if (hasPenguinSprite) {
+          // Match requested style: dark eye patches + white X marks.
+          this.drawDeadEyesOverlay(deadEyes, s, {
+            maskColor: 0x000000,
+            xColor: 0xffffff,
+            maskRadius: 5.2,
+            lineWidth: 1.7,
+            eyeYOffset: 0.75 * s,
+          });
+          // Keep penguin beak visible on top of the dead-eyes treatment.
+          this.drawPenguinBeakOverlay(deadEyes, s, 0.35 * s);
+        } else {
+          this.drawDeadEyesOverlay(deadEyes, s, {
+            maskColor: face,
+            xColor: 0xffffff,
+          });
+        }
+        container.add(deadEyes);
+      }
 
       // Draw attempt number badges in corners
       // Priority positions: TR, TL, BR, BL, Center

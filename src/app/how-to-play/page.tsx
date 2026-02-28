@@ -41,7 +41,7 @@ export default function HowToPlay() {
                 '@type': 'HowToStep',
                 position: 1,
                 name: 'Understand the Goal',
-                text: 'Navigate your character to the star (goal) in exactly 10 moves. You have 3 lives to complete the puzzle.',
+                text: 'Navigate your character to the star (goal) in exactly 10 moves. You have 5 lives to complete the puzzle.',
               },
               {
                 '@type': 'HowToStep',
@@ -90,7 +90,7 @@ export default function HowToPlay() {
           <h2>The Goal</h2>
           <p>
             Navigate your character to the <strong>star</strong> in exactly <strong>10 moves</strong>.
-            You have <strong>3 lives</strong> to find the optimal solution. Complete the puzzle
+            You have <strong>5 lives</strong> to find the optimal solution. Complete the puzzle
             as fast as you can — every wrong move adds a time penalty!
           </p>
         </section>

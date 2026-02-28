@@ -123,7 +123,7 @@ export default function About() {
             navigating a character through ice tiles, ledges, and obstacles to reach the goal.
           </p>
           <p>
-            The twist? You have exactly <strong>10 moves</strong> to solve it, and you only get <strong>3 lives</strong>. 
+            The twist? You have exactly <strong>10 moves</strong> to solve it, and you only get <strong>5 lives</strong>. 
             Make a wrong move, lose a life, and get a time penalty. 
             It&apos;s simple to learn but challenging to master.
           </p>

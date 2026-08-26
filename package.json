@@ -13,6 +13,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@apple/app-store-server-library": "^3.1.0",
     "@upstash/redis": "^1.35.7",
     "@vercel/analytics": "^1.6.1",
     "date-fns": "^3.6.0",

@@ -1,5 +1,13 @@
 import Foundation
 
+struct AppleEntitlementSyncResponse: Codable, Equatable, Sendable {
+    let archiveAccess: Bool
+    let adsRemoved: Bool
+    let productId: String
+    let transactionId: String
+    let expiresAt: Date?
+}
+
 struct AuthenticatedResultAttempt: Codable, Equatable, Sendable {
     let moveCount: Int
     let correctMoves: Int?
@@ -94,6 +102,10 @@ private struct SettingsUpdatePayload: Encodable, Sendable {
     let leaderboardAutoSubmit: Bool?
 }
 
+private struct AppleEntitlementSyncPayload: Encodable, Sendable {
+    let signedTransaction: String
+}
+
 private struct ClaimNamePayload: Encodable, Sendable {
     let displayName: String
 }
@@ -141,6 +153,14 @@ struct AuthenticatedMazleService: Sendable {
             body: SettingsUpdatePayload(theme: theme, leaderboardAutoSubmit: leaderboardAutoSubmit)
         )
         return response.settings
+    }
+
+    func syncAppleTransaction(jwsRepresentation: String) async throws -> AppleEntitlementSyncResponse {
+        try await request(
+            path: ["api", "apple", "entitlements"],
+            method: "POST",
+            body: AppleEntitlementSyncPayload(signedTransaction: jwsRepresentation)
+        )
     }
 
     func claimDisplayName(_ displayName: String) async throws -> String {
@@ -233,7 +253,9 @@ struct AuthenticatedMazleService: Sendable {
     ) async throws -> Response {
         let data = try await perform(path: path, queryItems: queryItems, method: method, bodyData: bodyData)
         do {
-            return try JSONDecoder().decode(Response.self, from: data)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            return try decoder.decode(Response.self, from: data)
         } catch {
             throw PublicMazleServiceError.decoding
         }

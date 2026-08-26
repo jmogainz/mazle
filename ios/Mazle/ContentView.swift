@@ -2131,11 +2131,19 @@ private struct WebSupportDestination: View {
                 }
             }
 
-            if store.hasArchiveAccess {
+            if store.serverEntitlement?.archiveAccess == true {
                 Text("ARCHIVE ACCESS ACTIVE")
                     .font(WebFont.extraBold(12.8))
                     .tracking(0.8)
                     .foregroundStyle(MazleWebPalette.color(MazleWebPalette.success))
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 14)
+            } else if store.hasArchiveAccess {
+                Text("DEVICE PURCHASE VERIFIED — ACCOUNT SYNC PENDING")
+                    .font(WebFont.extraBold(11.2))
+                    .tracking(0.7)
+                    .foregroundStyle(MazleWebPalette.color(MazleWebPalette.warning))
+                    .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
                     .padding(.top, 14)
             }

@@ -14,6 +14,7 @@ final class StoreKitManager: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var isRestoring = false
     @Published private(set) var lastEntitlementRefresh: Date?
+    @Published private(set) var serverEntitlement: AppleEntitlementSyncResponse?
     @Published var errorMessage: String?
 
     private var updatesTask: Task<Void, Never>?
@@ -107,8 +108,21 @@ final class StoreKitManager: ObservableObject {
             if finish {
                 await transaction.finish()
             }
+            await syncServer(jwsRepresentation: result.jwsRepresentation)
         case .unverified:
             errorMessage = "The App Store could not verify this transaction."
+        }
+    }
+
+    private func syncServer(jwsRepresentation: String) async {
+        guard let session = MazleSessionStore.shared.session, !session.isExpired else { return }
+        do {
+            serverEntitlement = try await AuthenticatedMazleService(session: session)
+                .syncAppleTransaction(jwsRepresentation: jwsRepresentation)
+        } catch {
+            if serverEntitlement == nil {
+                errorMessage = "Purchase verified on this device; account entitlement sync is pending."
+            }
         }
     }
 }

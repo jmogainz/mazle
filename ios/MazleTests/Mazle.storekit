@@ -1,0 +1,66 @@
+{
+  "identifier" : "A1B2C3D4",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "9.99",
+      "familyShareable" : true,
+      "internalID" : "E1F2A3B4",
+      "localizations" : [
+        {
+          "description" : "Unlock the Mazle archive permanently.",
+          "displayName" : "Archive Lifetime",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.mazle.archive.lifetime",
+      "referenceName" : "Archive Lifetime",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "C1D2E3F4",
+      "localizations" : [
+
+      ],
+      "name" : "Mazle Archive",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "1.99",
+          "familyShareable" : true,
+          "groupNumber" : 1,
+          "internalID" : "B1C2D3E4",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Unlock the Mazle archive monthly.",
+              "displayName" : "Archive Monthly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.mazle.archive.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Archive Monthly",
+          "subscriptionGroupID" : "C1D2E3F4",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 2,
+    "minor" : 0
+  }
+}

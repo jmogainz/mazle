@@ -128,7 +128,7 @@ struct AuthenticatedMazleService: Sendable {
     let baseURL: URL
     let session: MazleAuthSession
 
-    init(baseURL: URL = URL(string: "https://mazle.io")!, session: MazleAuthSession) {
+    init(baseURL: URL = MazleRuntimeConfiguration.apiBaseURL, session: MazleAuthSession) {
         self.baseURL = baseURL
         self.session = session
     }

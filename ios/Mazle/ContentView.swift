@@ -14,24 +14,29 @@ struct ContentView: View {
             MazleWebPalette.color(MazleWebPalette.background)
                 .ignoresSafeArea()
 
-            if game.isLoading && game.puzzle == nil {
-                WebLoadingView()
-            } else if let puzzle = game.puzzle {
-                WebGameView(
-                    game: game,
-                    puzzle: puzzle,
-                    themePreference: $themePreference,
-                    onHelp: { showingHelp = true },
-                    onMenu: { showingMenu.toggle() },
-                    onRecentPuzzles: { menuDestination = .recentPuzzles },
-                    onAdventure: { openAdventure() },
-                    isMenuOpen: showingMenu
-                )
-            } else {
-                WebUnavailableView(message: game.errorMessage) {
-                    Task { await game.loadToday() }
+            ZStack {
+                if game.isLoading && game.puzzle == nil {
+                    WebLoadingView()
+                } else if let puzzle = game.puzzle {
+                    WebGameView(
+                        game: game,
+                        puzzle: puzzle,
+                        themePreference: $themePreference,
+                        onHelp: { showingHelp = true },
+                        onMenu: { showingMenu.toggle() },
+                        onRecentPuzzles: { menuDestination = .recentPuzzles },
+                        onAdventure: { openAdventure() },
+                        isMenuOpen: showingMenu
+                    )
+                } else {
+                    WebUnavailableView(message: game.errorMessage) {
+                        Task { await game.loadToday() }
+                    }
                 }
             }
+            .accessibilityElement(children: .contain)
+            .accessibilityHidden(showingAdventure)
+            .allowsHitTesting(!showingAdventure)
 
             if showingMenu {
                 WebMenuOverlay(
@@ -97,6 +102,7 @@ struct ContentView: View {
         .statusBarHidden(true)
         .preferredColorScheme(themePreference == "dark" ? .dark : themePreference == "light" ? .light : nil)
         .task {
+            guard !MazleRuntimeConfiguration.isOfflinePreview else { return }
             await game.loadToday()
             if !webHelpSeen {
                 showingHelp = true
@@ -112,6 +118,7 @@ struct ContentView: View {
                   url.host?.lowercased() == "adventure" else { return }
             openAdventure()
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("mazle.web-native-screen")
     }
 

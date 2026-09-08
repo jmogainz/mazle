@@ -74,7 +74,7 @@ enum AdventureAppleRefillDisposition: Equatable, Sendable {
 
 @MainActor
 final class AdventureProgressStore: ObservableObject {
-    static let shared = AdventureProgressStore()
+    static let shared = AdventureProgressStore(defaults: MazleRuntimeConfiguration.adventureDefaults)
 
     @Published private(set) var catalog: AdventureCatalog?
     @Published private(set) var progress: AdventureProgress
@@ -304,19 +304,26 @@ final class AdventureProgressStore: ObservableObject {
                 pendingCompletions.removeAll { $0.id == pending.id }
                 persist()
                 statusMessage = "Adventure progress synced."
-                return response.level.local
+                // The overlay is for this attempt. The progress response carries
+                // the account's best result and would make a replay celebrate an
+                // older, faster run instead of the solve just completed.
+                return result
             } catch {
                 if currentStorageScope == requestScope {
                     statusMessage = "Level saved locally; account sync will retry."
                 }
             }
         }
-        return progress.levelResults[level.id] ?? result
+        return result
     }
 
     @discardableResult
     func failActiveAttempt(level: AdventureLevel, moves: Int, timeMs: Int, outcome: AdventureAttemptOutcome) async -> Bool {
-        let snapshot = activeAttempt
+        // A settled attempt must be idempotent. In particular, an interrupted
+        // movement and a view dismissal can both race to abandon the same run.
+        guard let snapshot = activeAttempt, snapshot.levelId == level.id else {
+            return false
+        }
         var consumed = false
         if !level.isProtectedFromEnergyLoss, moves > 0 {
             consumed = energy.consume(at: now())
@@ -324,7 +331,7 @@ final class AdventureProgressStore: ObservableObject {
         activeAttempt = nil
         persist()
 
-        if let session = validSession, snapshot?.serverAuthorized == true, let snapshot {
+        if let session = validSession, snapshot.serverAuthorized {
             let requestScope = currentStorageScope
             do {
                 let response = try await AdventureService(session: session).fail(
@@ -378,7 +385,7 @@ final class AdventureProgressStore: ObservableObject {
             throw AdventureProgressError.accountChanged
         }
         apply(response.energy)
-        MazleHaptics.shared.success()
+        AdventureFeedback.shared.play(.win)
     }
 
     func useDailyRefill() async throws {
@@ -395,7 +402,7 @@ final class AdventureProgressStore: ObservableObject {
         }
         apply(response.energy)
         dailyRefillAvailable = false
-        MazleHaptics.shared.success()
+        AdventureFeedback.shared.play(.win)
     }
 
     @discardableResult

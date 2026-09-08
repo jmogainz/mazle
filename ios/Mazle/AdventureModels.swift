@@ -82,6 +82,11 @@ struct AdventureChapter: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
+struct AdventureMapPosition: Codable, Equatable, Sendable {
+    let x: Double
+    let y: Double
+}
+
 struct AdventureLevel: Decodable, Equatable, Identifiable, Sendable {
     let id: Int
     let key: String
@@ -91,6 +96,7 @@ struct AdventureLevel: Decodable, Equatable, Identifiable, Sendable {
     let title: String
     let difficulty: AdventureDifficulty
     let seed: String
+    let mapPosition: AdventureMapPosition
     let width: Int
     let height: Int
     let tiles: [[TileType]]
@@ -127,6 +133,7 @@ struct AdventureLevel: Decodable, Equatable, Identifiable, Sendable {
         case title
         case difficulty
         case seed
+        case mapPosition
         case rows
         case mechanics
         case optimalMoves
@@ -145,6 +152,7 @@ struct AdventureLevel: Decodable, Equatable, Identifiable, Sendable {
         title = try container.decode(String.self, forKey: .title)
         difficulty = try container.decode(AdventureDifficulty.self, forKey: .difficulty)
         seed = try container.decode(String.self, forKey: .seed)
+        mapPosition = try container.decode(AdventureMapPosition.self, forKey: .mapPosition)
         mechanics = try container.decode([AdventureMechanic].self, forKey: .mechanics)
         optimalMoves = try container.decode(Int.self, forKey: .optimalMoves)
         moveLimit = try container.decode(Int.self, forKey: .moveLimit)

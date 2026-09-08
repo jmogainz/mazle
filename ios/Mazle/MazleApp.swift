@@ -1,6 +1,35 @@
 import SwiftUI
 import CoreText
 
+// Debug previews and hosted tests never inherit a real account or API endpoint.
+// Release builds always use the normal production configuration.
+enum MazleRuntimeConfiguration {
+    static var isOfflinePreview: Bool {
+        #if DEBUG
+        let process = ProcessInfo.processInfo
+        return process.arguments.contains("-MazleOfflinePreview")
+            || process.environment["MAZLE_OFFLINE_PREVIEW"] == "1"
+            || process.environment["XCTestConfigurationFilePath"] != nil
+        #else
+        return false
+        #endif
+    }
+
+    static var apiBaseURL: URL {
+        URL(string: isOfflinePreview ? "http://127.0.0.1:9" : "https://mazle.io")!
+    }
+
+    static var adventureDefaults: UserDefaults {
+        guard isOfflinePreview else { return .standard }
+        let suite = "com.mazle.adventure.preview"
+        let defaults = UserDefaults(suiteName: suite)!
+        if ProcessInfo.processInfo.arguments.contains("-MazleResetAdventurePreview") {
+            defaults.removePersistentDomain(forName: suite)
+        }
+        return defaults
+    }
+}
+
 private enum MazleFontRegistrar {
     static func registerBundledFonts() {
         let fontNames = [

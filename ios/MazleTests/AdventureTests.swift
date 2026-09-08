@@ -121,6 +121,188 @@ final class AdventureTests: XCTestCase {
         XCTAssertNil(StoreKitManager.refillAccountToken(for: legacySession))
     }
 
+    func testMoveAnimationKeepsEveryPointAndCapsLongSlides() {
+        XCTAssertEqual(AdventureMoveAnimation.duration(forPathCount: 0), 0)
+        XCTAssertEqual(AdventureMoveAnimation.duration(forPathCount: 1), 0.12, accuracy: 0.0001)
+        XCTAssertEqual(AdventureMoveAnimation.duration(forPathCount: 20), 0.45, accuracy: 0.0001)
+
+        let path = (1...20).map { GridPosition(x: $0, y: 0) }
+        let animation = AdventureMoveAnimation(id: UUID(), path: path)
+        XCTAssertEqual(animation.path, path)
+        XCTAssertEqual(animation.duration, 0.45, accuracy: 0.0001)
+        XCTAssertEqual(animation.stepDuration, 0.0225, accuracy: 0.0001)
+    }
+
+    @MainActor
+    func testRetryResetsPositionAndMoveCountAfterAnAnimatedMove() async throws {
+        let catalog = try AdventureCatalogLoader.load(bundle: Bundle(for: AdventureProgressStore.self))
+        let suiteName = "AdventureTests.retry.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = AdventureProgressStore(catalog: catalog, defaults: defaults, observeSession: false)
+        let level = try XCTUnwrap(catalog.level(id: 1))
+        let game = AdventureGameViewModel(level: level, progressStore: store)
+
+        await game.prepare()
+        await game.move(level.solution[0])
+        XCTAssertEqual(game.moves, 1)
+        XCTAssertNotEqual(game.position, level.start)
+
+        await game.restart()
+        XCTAssertEqual(game.position, level.start)
+        XCTAssertEqual(game.moves, 0)
+        XCTAssertEqual(game.phase, .playing)
+        XCTAssertFalse(game.isAnimatingMove)
+        XCTAssertNil(game.moveAnimation)
+    }
+
+    @MainActor
+    func testCancellingMovementLeavesOneSettledAttemptAndNoStaleCompletion() async throws {
+        let catalog = try AdventureCatalogLoader.load(bundle: Bundle(for: AdventureProgressStore.self))
+        let suiteName = "AdventureTests.cancel.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = AdventureProgressStore(catalog: catalog, defaults: defaults, observeSession: false)
+        let level = try XCTUnwrap(catalog.level(id: 1))
+        let game = AdventureGameViewModel(level: level, progressStore: store)
+
+        await game.prepare()
+        let movement = Task { await game.move(level.solution[0]) }
+        try await Task.sleep(nanoseconds: 10_000_000)
+        game.cancelMovement()
+        await movement.value
+
+        XCTAssertFalse(game.isAnimatingMove)
+        XCTAssertNil(game.moveAnimation)
+        XCTAssertEqual(game.phase, .playing)
+        XCTAssertEqual(game.moves, 1)
+
+        await game.abandon()
+        let firstEnergy = store.energy.hearts
+        await game.abandon()
+        XCTAssertEqual(store.energy.hearts, firstEnergy)
+        XCTAssertNil(store.activeAttempt)
+    }
+
+    @MainActor
+    func testResumedGoalAttemptSettlesBeforeReturningToPlaying() async throws {
+        let catalog = try AdventureCatalogLoader.load(bundle: Bundle(for: AdventureProgressStore.self))
+        let suiteName = "AdventureTests.resume-terminal.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = AdventureProgressStore(catalog: catalog, defaults: defaults, observeSession: false)
+        let level = try XCTUnwrap(catalog.level(id: 1))
+        let firstGame = AdventureGameViewModel(level: level, progressStore: store)
+
+        await firstGame.prepare()
+        store.updateActiveAttempt(position: level.goal, moves: level.optimalMoves)
+
+        let resumedGame = AdventureGameViewModel(level: level, progressStore: store)
+        await resumedGame.prepare()
+
+        guard case .won(let result) = resumedGame.phase else {
+            return XCTFail("A persisted goal must settle as a win during prepare")
+        }
+        XCTAssertEqual(result.levelId, level.id)
+        XCTAssertNil(store.activeAttempt)
+    }
+
+    @MainActor
+    func testFailureSettlementDeductsOneHeartForUnprotectedLevelAndIsIdempotent() async throws {
+        let catalog = try AdventureCatalogLoader.load(bundle: Bundle(for: AdventureProgressStore.self))
+        let suiteName = "AdventureTests.failure-idempotency.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        var progress = AdventureProgress.fresh(catalogVersion: catalog.contentVersion)
+        for levelID in 1...5 {
+            progress.record(
+                AdventureLevelResult(
+                    levelId: levelID,
+                    stars: 1,
+                    bestMoves: 7,
+                    bestTimeMs: 7_000,
+                    completedAt: Date(timeIntervalSince1970: TimeInterval(levelID))
+                ),
+                maximumLevel: 50
+            )
+        }
+        let state = AdventureLocalState(
+            progress: progress,
+            energy: .full,
+            activeAttempt: nil,
+            processedStoreTransactionIDs: [],
+            pendingCompletions: [],
+            pendingAppleGrants: []
+        )
+        defaults.set(try JSONEncoder().encode(state), forKey: AdventureStorageScope.guest.storageKey)
+
+        let store = AdventureProgressStore(catalog: catalog, defaults: defaults, observeSession: false)
+        let level = try XCTUnwrap(catalog.level(id: 6))
+        _ = try await store.begin(level)
+
+        let firstSettlement = await store.failActiveAttempt(level: level, moves: 1, timeMs: 100, outcome: .failed)
+        XCTAssertTrue(firstSettlement)
+        XCTAssertEqual(store.energy.hearts, 2)
+        let secondSettlement = await store.failActiveAttempt(level: level, moves: 1, timeMs: 100, outcome: .abandoned)
+        XCTAssertFalse(secondSettlement)
+        XCTAssertEqual(store.energy.hearts, 2)
+    }
+
+    @MainActor
+    func testReplayReturnsCurrentStarsWhileProgressKeepsThreeStarBest() async throws {
+        let catalog = try AdventureCatalogLoader.load(bundle: Bundle(for: AdventureProgressStore.self))
+        let suiteName = "AdventureTests.replay-result.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = AdventureProgressStore(catalog: catalog, defaults: defaults, observeSession: false)
+        let level = try XCTUnwrap(catalog.level(id: 1))
+
+        _ = try await store.begin(level)
+        let first = await store.complete(level: level, moves: level.thresholds.three, timeMs: 1_000)
+        XCTAssertEqual(first.stars, 3)
+
+        _ = try await store.begin(level)
+        let replay = await store.complete(level: level, moves: level.thresholds.two, timeMs: 9_000)
+        XCTAssertEqual(replay.stars, 2)
+        XCTAssertEqual(store.result(for: level.id)?.stars, 3)
+        XCTAssertEqual(store.result(for: level.id)?.bestMoves, level.thresholds.three)
+    }
+
+    @MainActor
+    func testResumedExhaustedAttemptSettlesAsFailure() async throws {
+        let catalog = try AdventureCatalogLoader.load(bundle: Bundle(for: AdventureProgressStore.self))
+        let suiteName = "AdventureTests.resume-exhausted.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = AdventureProgressStore(catalog: catalog, defaults: defaults, observeSession: false)
+        let level = try XCTUnwrap(catalog.level(id: 1))
+        let initial = AdventureGameViewModel(level: level, progressStore: store)
+        await initial.prepare()
+        store.updateActiveAttempt(position: level.start, moves: level.moveLimit)
+
+        let resumed = AdventureGameViewModel(level: level, progressStore: store)
+        await resumed.prepare()
+        XCTAssertEqual(resumed.phase, .failed)
+        XCTAssertNil(store.activeAttempt)
+        XCTAssertEqual(store.energy.hearts, store.energy.maximumHearts)
+    }
+
+    @MainActor
+    func testFeedbackPreferencesPersistIndependently() throws {
+        let suiteName = "AdventureTests.feedback.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let feedback = AdventureFeedback(defaults: defaults)
+        feedback.soundEnabled = false
+        feedback.hapticsEnabled = false
+        let restored = AdventureFeedback(defaults: defaults)
+
+        XCTAssertFalse(restored.soundEnabled)
+        XCTAssertFalse(restored.hapticsEnabled)
+    }
+
     @MainActor
     func testAppleRefillStaysUnavailableAndQueuedDurablyUntilServerVerification() throws {
         let suiteName = "AdventureTests.\(UUID().uuidString)"

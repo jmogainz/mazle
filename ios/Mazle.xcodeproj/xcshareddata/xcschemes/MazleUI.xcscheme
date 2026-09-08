@@ -29,9 +29,9 @@
             buildForAnalyzing = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "05B3EC8A63BBE1016944E145"
-               BuildableName = "MazleTests.xctest"
-               BlueprintName = "MazleTests"
+               BlueprintIdentifier = "93C8E20C1DBFE5AAE3B810C4"
+               BuildableName = "MazleUITests.xctest"
+               BlueprintName = "MazleUITests"
                ReferencedContainer = "container:Mazle.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -41,8 +41,7 @@
       buildConfiguration = "Debug"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
-      shouldUseLaunchSchemeArgsEnv = "NO"
-      codeCoverageEnabled = "YES"
+      shouldUseLaunchSchemeArgsEnv = "YES"
       onlyGenerateCoverageForSpecifiedTargets = "NO">
       <MacroExpansion>
          <BuildableReference
@@ -59,22 +58,15 @@
             parallelizable = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "05B3EC8A63BBE1016944E145"
-               BuildableName = "MazleTests.xctest"
-               BlueprintName = "MazleTests"
+               BlueprintIdentifier = "93C8E20C1DBFE5AAE3B810C4"
+               BuildableName = "MazleUITests.xctest"
+               BlueprintName = "MazleUITests"
                ReferencedContainer = "container:Mazle.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
       <CommandLineArguments>
       </CommandLineArguments>
-      <EnvironmentVariables>
-         <EnvironmentVariable
-            key = "MAZLE_OFFLINE_PREVIEW"
-            value = "1"
-            isEnabled = "YES">
-         </EnvironmentVariable>
-      </EnvironmentVariables>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"
@@ -96,11 +88,6 @@
             ReferencedContainer = "container:Mazle.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
-      <CommandLineArguments>
-      </CommandLineArguments>
-      <StoreKitConfigurationFileReference
-         identifier = "../../Mazle.storekit">
-      </StoreKitConfigurationFileReference>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"

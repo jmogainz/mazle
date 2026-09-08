@@ -23,11 +23,11 @@ private enum AdventurePalette {
 
     static func chapter(_ index: Int) -> [Color] {
         switch index {
-        case 1: return [Color(red: 0.31, green: 0.76, blue: 0.96), Color(red: 0.35, green: 0.57, blue: 0.94)]
-        case 2: return [Color(red: 0.28, green: 0.82, blue: 0.76), Color(red: 0.20, green: 0.61, blue: 0.77)]
-        case 3: return [Color(red: 0.55, green: 0.50, blue: 0.94), Color(red: 0.31, green: 0.42, blue: 0.82)]
-        case 4: return [Color(red: 0.95, green: 0.52, blue: 0.46), Color(red: 0.69, green: 0.35, blue: 0.76)]
-        default: return [Color(red: 0.20, green: 0.32, blue: 0.59), Color(red: 0.08, green: 0.16, blue: 0.35)]
+        case 1: return [Color(red: 0.91, green: 0.97, blue: 1.0), Color(red: 0.71, green: 0.89, blue: 0.98)]
+        case 2: return [Color(red: 0.88, green: 0.98, blue: 0.96), Color(red: 0.70, green: 0.91, blue: 0.86)]
+        case 3: return [Color(red: 0.94, green: 0.94, blue: 1.0), Color(red: 0.80, green: 0.83, blue: 0.98)]
+        case 4: return [Color(red: 1.0, green: 0.94, blue: 0.91), Color(red: 0.98, green: 0.81, blue: 0.77)]
+        default: return [Color(red: 0.92, green: 0.91, blue: 0.99), Color(red: 0.73, green: 0.72, blue: 0.91)]
         }
     }
 }
@@ -46,11 +46,13 @@ private enum AdventureLaunchConfiguration {
 struct AdventureRootView: View {
     @EnvironmentObject private var progressStore: AdventureProgressStore
     @EnvironmentObject private var storeKit: StoreKitManager
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let onDaily: () -> Void
 
     @State private var selectedLevel: AdventureLevel?
     @State private var playingLevelId: Int? = AdventureLaunchConfiguration.requestedLevelID
     @State private var showingEnergy = false
+    @State private var showingSettings = false
 
     var body: some View {
         ZStack {
@@ -72,12 +74,13 @@ struct AdventureRootView: View {
                     progressStore: progressStore,
                     onDaily: onDaily,
                     onLevel: { selectedLevel = $0 },
-                    onEnergy: { showingEnergy = true }
+                    onEnergy: { showingEnergy = true },
+                    onSettings: { showingSettings = true }
                 )
                 .transition(.asymmetric(insertion: .opacity, removal: .move(edge: .leading)))
             }
         }
-        .animation(.easeInOut(duration: 0.32), value: playingLevelId)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.32), value: playingLevelId)
         .sheet(item: $selectedLevel) { level in
             AdventureLevelPreview(
                 level: level,
@@ -90,7 +93,7 @@ struct AdventureRootView: View {
                     }
                     selectedLevel = nil
                     playingLevelId = level.id
-                    MazleHaptics.shared.confirm()
+                    AdventureFeedback.shared.play(.star)
                 }
             )
             .presentationDetents([.height(410)])
@@ -103,11 +106,18 @@ struct AdventureRootView: View {
                 .presentationDragIndicator(.visible)
                 .presentationCornerRadius(28)
         }
+        .sheet(isPresented: $showingSettings) {
+            AdventureFeedbackSettings()
+                .presentationDetents([.height(310)])
+                .presentationDragIndicator(.visible)
+                .presentationCornerRadius(28)
+        }
         .task {
             progressStore.refreshEnergy()
             await progressStore.syncAccount()
         }
         .statusBarHidden(true)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("mazle.adventure-screen")
     }
 }
@@ -164,16 +174,19 @@ private struct AdventureBackdrop: View {
 
 private struct AdventureMapScreen: View {
     @ObservedObject var progressStore: AdventureProgressStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let onDaily: () -> Void
     let onLevel: (AdventureLevel) -> Void
     let onEnergy: () -> Void
+    let onSettings: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
             AdventureMapHeader(
                 progressStore: progressStore,
                 onDaily: onDaily,
-                onEnergy: onEnergy
+                onEnergy: onEnergy,
+                onSettings: onSettings
             )
 
             if let catalog = progressStore.catalog {
@@ -199,13 +212,26 @@ private struct AdventureMapScreen: View {
                         }
                         .padding(.horizontal, 14)
                         .padding(.bottom, 28)
+                        .frame(maxWidth: 760)
+                        .frame(maxWidth: .infinity)
                     }
-                    .onAppear {
+                    .task(id: progressStore.progress.highestUnlockedLevel) {
                         guard progressStore.progress.highestUnlockedLevel > 1 else { return }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                            withAnimation(.easeInOut(duration: 0.6)) {
-                                reader.scrollTo("level-\(progressStore.progress.highestUnlockedLevel)", anchor: .center)
-                            }
+                        guard !Task.isCancelled else { return }
+                        if reduceMotion {
+                            await Task.yield()
+                            guard !Task.isCancelled else { return }
+                            reader.scrollTo("level-\(progressStore.progress.highestUnlockedLevel)", anchor: .center)
+                            return
+                        }
+                        do {
+                            try await Task.sleep(nanoseconds: 350_000_000)
+                        } catch {
+                            return
+                        }
+                        guard !Task.isCancelled else { return }
+                        withAnimation(.easeInOut(duration: 0.6)) {
+                            reader.scrollTo("level-\(progressStore.progress.highestUnlockedLevel)", anchor: .center)
                         }
                     }
                 }
@@ -219,6 +245,8 @@ private struct AdventureMapScreen: View {
                 .frame(maxHeight: .infinity)
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("adventure-map")
     }
 }
 
@@ -226,6 +254,7 @@ private struct AdventureMapHeader: View {
     @ObservedObject var progressStore: AdventureProgressStore
     let onDaily: () -> Void
     let onEnergy: () -> Void
+    let onSettings: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
@@ -255,6 +284,18 @@ private struct AdventureMapHeader: View {
             .foregroundStyle(AdventurePalette.ink)
             .frame(maxWidth: .infinity)
 
+            Button(action: onSettings) {
+                Image(systemName: "gearshape.fill")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(AdventurePalette.ink)
+                    .frame(width: 42, height: 42)
+                    .background(.white.opacity(0.72), in: Circle())
+                    .overlay { Circle().stroke(.white.opacity(0.85), lineWidth: 1) }
+            }
+            .buttonStyle(AdventurePressStyle())
+            .accessibilityLabel("Adventure settings")
+            .accessibilityIdentifier("adventure-settings")
+
             AdventureEnergyPill(progressStore: progressStore, onTap: onEnergy)
         }
         .padding(.horizontal, 14)
@@ -262,6 +303,66 @@ private struct AdventureMapHeader: View {
         .padding(.bottom, 10)
         .background(.ultraThinMaterial.opacity(0.84))
         .overlay(alignment: .bottom) { Rectangle().fill(.white.opacity(0.7)).frame(height: 1) }
+    }
+}
+
+private struct AdventureFeedbackSettings: View {
+    @ObservedObject private var feedback = AdventureFeedback.shared
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("ADVENTURE SETTINGS")
+                    .font(AdventureFont.black(22))
+                    .foregroundStyle(AdventurePalette.ink)
+                Text("Make each move feel right for you.")
+                    .font(AdventureFont.regular(13))
+                    .foregroundStyle(AdventurePalette.ink.opacity(0.58))
+            }
+
+            Toggle(isOn: $feedback.soundEnabled) {
+                Label("Sound effects", systemImage: "speaker.wave.2.fill")
+                    .font(AdventureFont.bold(15))
+                    .foregroundStyle(AdventurePalette.ink)
+            }
+            .tint(AdventurePalette.blue)
+            .accessibilityIdentifier("adventure-settings-sound")
+
+            Toggle(isOn: $feedback.hapticsEnabled) {
+                Label("Haptics", systemImage: "hand.tap.fill")
+                    .font(AdventureFont.bold(15))
+                    .foregroundStyle(AdventurePalette.ink)
+            }
+            .tint(AdventurePalette.blue)
+            .accessibilityIdentifier("adventure-settings-haptics")
+
+            Text("Audio follows your iPhone’s silent switch and pauses during interruptions.")
+                .font(AdventureFont.regular(11.5))
+                .foregroundStyle(AdventurePalette.ink.opacity(0.5))
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button("Done") { dismiss() }
+                .font(AdventureFont.black(14))
+                .frame(maxWidth: .infinity)
+                .frame(height: 46)
+                .foregroundStyle(.white)
+                .background(AdventurePalette.blue, in: RoundedRectangle(cornerRadius: 14))
+                .buttonStyle(AdventurePressStyle())
+        }
+        .padding(24)
+        .background(AdventurePalette.snow)
+    }
+}
+
+private struct AdventurePressStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .opacity(configuration.isPressed ? 0.82 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
@@ -308,35 +409,136 @@ private struct AdventureWelcomeCard: View {
     @ObservedObject var progressStore: AdventureProgressStore
 
     var body: some View {
-        HStack(spacing: 14) {
-            ZStack {
-                Circle().fill(AdventurePalette.blue.opacity(0.13))
-                WebCharacterIcon(size: 58)
-            }
-            .frame(width: 70, height: 70)
+        VStack(alignment: .leading, spacing: 0) {
+            AdventureHeroIllustration()
+                .frame(height: 184)
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(progressStore.completedLevels == 0 ? "YOUR JOURNEY BEGINS" : "KEEP CLIMBING")
-                    .font(AdventureFont.black(16))
-                    .foregroundStyle(AdventurePalette.ink)
-                Text("Solve each maze, earn stars, and discover new ice trails.")
-                    .font(AdventureFont.regular(12.5))
-                    .foregroundStyle(AdventurePalette.ink.opacity(0.66))
-                    .fixedSize(horizontal: false, vertical: true)
-                HStack(spacing: 12) {
-                    Label("\(progressStore.totalStars)", systemImage: "star.fill")
-                    Label("\(progressStore.completedLevels)/50", systemImage: "flag.checkered")
+            VStack(alignment: .leading, spacing: 8) {
+                Text("YOUR JOURNEY")
+                    .font(AdventureFont.extraBold(10))
+                    .tracking(1.5)
+                    .foregroundStyle(AdventurePalette.blue)
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Level \(min(50, progressStore.progress.highestUnlockedLevel))")
+                        .font(AdventureFont.black(22))
+                        .foregroundStyle(AdventurePalette.ink)
+                    Spacer()
+                    Label("\(progressStore.totalStars)/150", systemImage: "star.fill")
+                        .font(AdventureFont.extraBold(12))
+                        .foregroundStyle(AdventurePalette.deepBlue)
                 }
-                .font(AdventureFont.extraBold(11))
-                .foregroundStyle(AdventurePalette.deepBlue)
-                .padding(.top, 3)
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
         }
-        .padding(16)
-        .background(.white.opacity(0.78), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay { RoundedRectangle(cornerRadius: 22).stroke(.white.opacity(0.92), lineWidth: 1.5) }
+        .background(.white.opacity(0.86), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay { RoundedRectangle(cornerRadius: 24).stroke(.white.opacity(0.96), lineWidth: 1.5) }
         .shadow(color: AdventurePalette.deepBlue.opacity(0.10), radius: 16, y: 8)
         .padding(.top, 14)
+    }
+}
+
+private struct AdventureHeroIllustration: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var sunOffset: CGFloat = 0
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .bottomLeading) {
+                LinearGradient(
+                    colors: [Color(red: 0.79, green: 0.94, blue: 1.0), Color(red: 0.94, green: 0.98, blue: 1.0)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+
+                Circle()
+                    .fill(Color(red: 1.0, green: 0.87, blue: 0.32).opacity(0.92))
+                    .frame(width: proxy.size.width * 0.34)
+                    .blur(radius: 1)
+                    .offset(x: proxy.size.width * 0.62, y: -proxy.size.height * 0.30 + sunOffset)
+
+                AdventureCloud(x: proxy.size.width * 0.10, y: proxy.size.height * 0.17, scale: 0.9)
+                AdventureCloud(x: proxy.size.width * 0.82, y: proxy.size.height * 0.29, scale: 0.65)
+
+                Canvas { context, size in
+                    var rear = Path()
+                    rear.move(to: CGPoint(x: 0, y: size.height * 0.77))
+                    rear.addLine(to: CGPoint(x: size.width * 0.27, y: size.height * 0.28))
+                    rear.addLine(to: CGPoint(x: size.width * 0.53, y: size.height * 0.77))
+                    rear.addLine(to: CGPoint(x: size.width * 0.74, y: size.height * 0.43))
+                    rear.addLine(to: CGPoint(x: size.width, y: size.height * 0.73))
+                    rear.addLine(to: CGPoint(x: size.width, y: size.height))
+                    rear.addLine(to: CGPoint(x: 0, y: size.height))
+                    rear.closeSubpath()
+                    context.fill(rear, with: .color(Color(red: 0.55, green: 0.74, blue: 0.84).opacity(0.54)))
+
+                    var snow = Path()
+                    snow.move(to: CGPoint(x: size.width * 0.27, y: size.height * 0.28))
+                    snow.addLine(to: CGPoint(x: size.width * 0.40, y: size.height * 0.52))
+                    snow.addLine(to: CGPoint(x: size.width * 0.32, y: size.height * 0.48))
+                    snow.addLine(to: CGPoint(x: size.width * 0.27, y: size.height * 0.57))
+                    snow.addLine(to: CGPoint(x: size.width * 0.18, y: size.height * 0.47))
+                    snow.closeSubpath()
+                    context.fill(snow, with: .color(.white.opacity(0.92)))
+
+                    for index in 0..<7 {
+                        let x = CGFloat(index) / 6 * size.width
+                        let baseY = size.height * (0.92 - CGFloat(index % 2) * 0.04)
+                        var pine = Path()
+                        pine.move(to: CGPoint(x: x, y: baseY - 34))
+                        pine.addLine(to: CGPoint(x: x - 18, y: baseY))
+                        pine.addLine(to: CGPoint(x: x + 18, y: baseY))
+                        pine.closeSubpath()
+                        context.fill(pine, with: .color(Color(red: 0.28, green: 0.56, blue: 0.66).opacity(0.38)))
+                    }
+                }
+
+                HStack(alignment: .bottom) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("THE FROSTPEAK TRAIL")
+                            .font(AdventureFont.extraBold(9))
+                            .tracking(1.2)
+                            .foregroundStyle(AdventurePalette.deepBlue)
+                            .padding(.horizontal, 9)
+                            .frame(height: 24)
+                            .background(.white.opacity(0.88), in: Capsule())
+                        Text("Every path has\na perfect route.")
+                            .font(AdventureFont.black(22))
+                            .foregroundStyle(AdventurePalette.ink)
+                            .shadow(color: .white.opacity(0.7), radius: 3)
+                    }
+                    Spacer()
+                    WebCharacterIcon(size: 46)
+                        .padding(8)
+                        .background(.white.opacity(0.72), in: Circle())
+                }
+                .padding(16)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        }
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 6).repeatForever(autoreverses: true)) {
+                sunOffset = -4
+            }
+        }
+    }
+}
+
+private struct AdventureCloud: View {
+    let x: CGFloat
+    let y: CGFloat
+    let scale: CGFloat
+
+    var body: some View {
+        HStack(spacing: -10 * scale) {
+            Circle().frame(width: 28 * scale, height: 20 * scale)
+            Circle().frame(width: 38 * scale, height: 28 * scale)
+            Circle().frame(width: 25 * scale, height: 18 * scale)
+        }
+        .foregroundStyle(.white.opacity(0.55))
+        .position(x: x, y: y)
     }
 }
 
@@ -346,24 +548,23 @@ private struct AdventureChapterTrack: View {
     @ObservedObject var progressStore: AdventureProgressStore
     let onLevel: (AdventureLevel) -> Void
 
-    private let stepHeight: CGFloat = 78
-    private let offsets: [CGFloat] = [-0.27, -0.06, 0.22, 0.10, -0.18, -0.28, 0.02, 0.27, 0.14, -0.10]
+    private let stepHeight: CGFloat = 100
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 Text(String(format: "%02d", chapter.index))
                     .font(AdventureFont.black(25))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(AdventurePalette.deepBlue)
                     .frame(width: 48, height: 48)
-                    .background(.white.opacity(0.18), in: RoundedRectangle(cornerRadius: 15))
+                    .background(.white.opacity(0.74), in: RoundedRectangle(cornerRadius: 15))
                 VStack(alignment: .leading, spacing: 1) {
                     Text(chapter.title.uppercased())
                         .font(AdventureFont.black(17))
                         .tracking(0.6)
                     Text(chapter.subtitle)
                         .font(AdventureFont.semibold(11.5))
-                        .foregroundStyle(.white.opacity(0.78))
+                        .foregroundStyle(AdventurePalette.ink.opacity(0.62))
                         .lineLimit(2)
                 }
                 Spacer()
@@ -371,10 +572,10 @@ private struct AdventureChapterTrack: View {
                     .font(AdventureFont.extraBold(12))
                     .padding(.horizontal, 10)
                     .frame(height: 30)
-                    .background(.black.opacity(0.13), in: Capsule())
+                    .background(.white.opacity(0.66), in: Capsule())
                     .accessibilityLabel("\(chapterStars) of 30 stars")
             }
-            .foregroundStyle(.white)
+            .foregroundStyle(AdventurePalette.ink)
             .padding(16)
 
             GeometryReader { proxy in
@@ -382,31 +583,31 @@ private struct AdventureChapterTrack: View {
                     Canvas { context, size in
                         guard levels.count > 1 else { return }
                         var path = Path()
-                        for index in levels.indices {
-                            let point = nodePoint(index: index, width: size.width)
+                        for (index, level) in levels.enumerated() {
+                            let point = nodePoint(level: level, width: size.width, height: size.height)
                             if index == 0 { path.move(to: point) } else { path.addLine(to: point) }
                         }
                         context.stroke(
                             path,
-                            with: .color(.white.opacity(0.42)),
-                            style: StrokeStyle(lineWidth: 9, lineCap: .round, lineJoin: .round, dash: [4, 15])
+                            with: .color(AdventurePalette.deepBlue.opacity(0.28)),
+                            style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round, dash: [3, 12])
                         )
                     }
 
-                    ForEach(Array(levels.enumerated()), id: \.element.id) { index, level in
+                    ForEach(Array(levels.enumerated()), id: \.element.id) { _, level in
                         AdventureLevelNode(
                             level: level,
                             result: progressStore.result(for: level.id),
                             unlocked: progressStore.isUnlocked(level),
-                            current: level.id == progressStore.progress.highestUnlockedLevel,
+                            current: level.id == progressStore.progress.highestUnlockedLevel && progressStore.result(for: level.id) == nil,
                             action: { onLevel(level) }
                         )
-                        .position(nodePoint(index: index, width: proxy.size.width))
+                        .position(nodePoint(level: level, width: proxy.size.width, height: proxy.size.height))
                         .id("level-\(level.id)")
                     }
                 }
             }
-            .frame(height: stepHeight * CGFloat(max(1, levels.count)) + 20)
+            .frame(height: stepHeight * CGFloat(max(1, levels.count)) + 24)
             .padding(.horizontal, 8)
         }
         .background(
@@ -428,9 +629,12 @@ private struct AdventureChapterTrack: View {
         levels.compactMap { progressStore.result(for: $0.id)?.stars }.reduce(0, +)
     }
 
-    private func nodePoint(index: Int, width: CGFloat) -> CGPoint {
-        let x = width / 2 + offsets[index % offsets.count] * width
-        return CGPoint(x: x, y: 48 + CGFloat(index) * stepHeight)
+    private func nodePoint(level: AdventureLevel, width: CGFloat, height: CGFloat) -> CGPoint {
+        let horizontalInset = min(48, width * 0.12)
+        let x = horizontalInset + CGFloat(level.mapPosition.x) * (width - horizontalInset * 2)
+        let yInset = CGFloat(22)
+        let y = yInset + CGFloat(level.mapPosition.y) * (height - yInset * 2)
+        return CGPoint(x: x, y: y)
     }
 }
 
@@ -448,19 +652,19 @@ private struct AdventureLevelNode: View {
         Button(action: action) {
             VStack(spacing: 3) {
                 ZStack {
-                    if current {
+                    if current && unlocked {
                         Circle()
-                            .stroke(.white.opacity(0.64), lineWidth: 4)
+                            .stroke(AdventurePalette.mint.opacity(0.58), lineWidth: 4)
                             .frame(width: 72, height: 72)
                             .scaleEffect(pulsing ? 1.09 : 0.98)
-                            .opacity(pulsing ? 0.18 : 0.8)
+                            .opacity(pulsing ? 0.20 : 0.78)
                     }
 
                     Circle()
                         .fill(nodeGradient)
                         .frame(width: level.levelInChapter == 10 ? 64 : 57, height: level.levelInChapter == 10 ? 64 : 57)
                         .overlay {
-                            Circle().stroke(.white.opacity(unlocked ? 0.92 : 0.35), lineWidth: 3)
+                            Circle().stroke(.white.opacity(unlocked ? 0.96 : 0.74), lineWidth: 3)
                         }
                         .shadow(color: .black.opacity(unlocked ? 0.22 : 0.08), radius: 5, y: 4)
 
@@ -472,7 +676,19 @@ private struct AdventureLevelNode: View {
                     } else {
                         Image(systemName: "lock.fill")
                             .font(.system(size: 18, weight: .bold))
-                            .foregroundStyle(.white.opacity(0.72))
+                            .foregroundStyle(AdventurePalette.ink.opacity(0.48))
+                    }
+
+                    if current && unlocked {
+                        Text("PLAY")
+                            .font(AdventureFont.black(9))
+                            .tracking(0.8)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 8)
+                            .frame(height: 20)
+                            .background(AdventurePalette.mint, in: Capsule())
+                            .overlay { Capsule().stroke(.white, lineWidth: 2) }
+                            .offset(y: -38)
                     }
                 }
 
@@ -480,15 +696,16 @@ private struct AdventureLevelNode: View {
                     ForEach(1...3, id: \.self) { star in
                         Image(systemName: star <= (result?.stars ?? 0) ? "star.fill" : "star")
                             .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(star <= (result?.stars ?? 0) ? AdventurePalette.gold : .white.opacity(0.55))
+                            .foregroundStyle(star <= (result?.stars ?? 0) ? AdventurePalette.gold : AdventurePalette.ink.opacity(0.32))
                     }
                 }
                 .frame(height: 11)
             }
-            .frame(width: 86, height: 78)
+            .frame(width: 92, height: 92)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("adventure-level-\(level.id)")
         .disabled(!unlocked)
         .accessibilityLabel("Level \(level.id), \(level.title)")
         .accessibilityValue(unlocked ? "\(result?.stars ?? 0) stars" : "Locked")
@@ -503,14 +720,16 @@ private struct AdventureLevelNode: View {
     private var nodeGradient: LinearGradient {
         let colors: [Color]
         if !unlocked {
-            colors = [.white.opacity(0.28), .black.opacity(0.18)]
+            colors = [Color(red: 0.84, green: 0.89, blue: 0.92), Color(red: 0.69, green: 0.77, blue: 0.82)]
         } else if result != nil {
-            colors = [AdventurePalette.gold, AdventurePalette.orange]
+            colors = [Color(red: 1.0, green: 0.83, blue: 0.35), Color(red: 0.94, green: 0.57, blue: 0.19)]
+        } else if current {
+            colors = [Color(red: 0.43, green: 0.86, blue: 0.62), Color(red: 0.14, green: 0.60, blue: 0.37)]
         } else {
             switch level.difficulty {
-            case .tutorial, .easy, .normal: colors = [.white.opacity(0.96), AdventurePalette.aqua]
-            case .hard: colors = [AdventurePalette.orange, AdventurePalette.coral]
-            case .superHard: colors = [AdventurePalette.purple, AdventurePalette.deepBlue]
+            case .tutorial, .easy, .normal: colors = [.white, Color(red: 0.55, green: 0.84, blue: 0.93)]
+            case .hard: colors = [Color(red: 1.0, green: 0.77, blue: 0.48), AdventurePalette.orange]
+            case .superHard: colors = [Color(red: 0.76, green: 0.68, blue: 0.95), AdventurePalette.purple]
             }
         }
         return LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom)
@@ -575,7 +794,8 @@ private struct AdventureLevelPreview: View {
                 )
                 .shadow(color: AdventurePalette.deepBlue.opacity(0.25), radius: 10, y: 6)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(AdventurePressStyle())
+            .accessibilityIdentifier("adventure-play-level")
 
             if !level.isProtectedFromEnergyLoss {
                 Text("A heart is only used if you fail or leave after making a move.")
@@ -866,6 +1086,7 @@ private struct AdventurePlayScreen: View {
                 .padding(.horizontal, 12)
                 .padding(.top, 12)
             }
+            .accessibilityHidden(game.isFinished)
 
             switch game.phase {
             case .won(let result):
@@ -892,7 +1113,13 @@ private struct AdventurePlayScreen: View {
                 }
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("adventure-play-screen")
         .task { await game.prepare() }
+        .onDisappear {
+            game.cancelMovement()
+            AdventureFeedback.shared.stopAudio()
+        }
         .alert("Leave this level?", isPresented: $showingAbandonConfirmation) {
             Button("Keep Playing", role: .cancel) {}
             Button("Leave Level", role: .destructive) {
@@ -960,6 +1187,7 @@ private struct AdventurePlayHeader: View {
 private struct AdventureMoveScoreboard: View {
     let level: AdventureLevel
     @ObservedObject var game: AdventureGameViewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 14) {
@@ -967,6 +1195,9 @@ private struct AdventureMoveScoreboard: View {
                 Text("\(game.movesRemaining)")
                     .font(AdventureFont.black(29))
                     .monospacedDigit()
+                    .contentTransition(.numericText())
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: game.movesRemaining)
+                    .accessibilityIdentifier("adventure-moves-remaining")
                 Text("MOVES LEFT")
                     .font(AdventureFont.extraBold(9))
                     .tracking(1)
@@ -1022,6 +1253,7 @@ private struct AdventureMazeBoard: View {
 
     @State private var displayedPosition: GridPosition
     @State private var animationTask: Task<Void, Never>?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(level: AdventureLevel, game: AdventureGameViewModel, size: CGFloat) {
         self.level = level
@@ -1082,7 +1314,9 @@ private struct AdventureMazeBoard: View {
         }
         .frame(width: size, height: size)
         .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier("adventure-board")
         .accessibilityLabel("Adventure maze for level \(level.id)")
+        .accessibilityValue(boardAccessibilityValue)
         .accessibilityHint("Swipe in a direction to move, or use the rotor actions")
         .accessibilityAction(named: "Move up") {
             Task { await game.move(.up) }
@@ -1098,15 +1332,32 @@ private struct AdventureMazeBoard: View {
         }
         .onAppear { displayedPosition = game.position }
         .onChange(of: game.moveAnimation) { _, animation in
-            guard let animation else { return }
             animationTask?.cancel()
+            guard let animation else {
+                // This also handles retry/reset: the previous non-nil
+                // animation may have been interrupted before its last point.
+                displayedPosition = game.position
+                return
+            }
             animationTask = Task { @MainActor in
-                for point in animation.path {
+                for (index, point) in animation.path.enumerated() {
                     guard !Task.isCancelled else { return }
-                    withAnimation(.easeInOut(duration: 0.068)) {
+                    if reduceMotion {
                         displayedPosition = point
+                    } else if index == animation.path.count - 1 {
+                        withAnimation(.easeOut(duration: animation.stepDuration)) {
+                            displayedPosition = point
+                        }
+                    } else {
+                        withAnimation(.linear(duration: animation.stepDuration)) {
+                            displayedPosition = point
+                        }
                     }
-                    try? await Task.sleep(nanoseconds: 72_000_000)
+                    do {
+                        try await Task.sleep(nanoseconds: UInt64(animation.stepDuration * 1_000_000_000))
+                    } catch {
+                        return
+                    }
                 }
             }
         }
@@ -1116,6 +1367,11 @@ private struct AdventureMazeBoard: View {
             }
         }
         .onDisappear { animationTask?.cancel() }
+    }
+
+    private var boardAccessibilityValue: String {
+        let state = game.isAnimatingMove ? "Moving" : "Ready"
+        return "\(state). Position \(game.position.x + 1), \(game.position.y + 1). \(game.movesRemaining) moves remaining"
     }
 }
 
@@ -1255,10 +1511,12 @@ private struct AdventureWinOverlay: View {
                         .frame(height: 52)
                         .background(AdventurePalette.blue, in: RoundedRectangle(cornerRadius: 16))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(AdventurePressStyle())
+                .accessibilityIdentifier("adventure-next")
 
                 HStack(spacing: 10) {
                     Button("REPLAY", action: onReplay)
+                        .accessibilityIdentifier("adventure-replay")
                     Button("MAP", action: onMap)
                 }
                 .font(AdventureFont.extraBold(12))
@@ -1272,18 +1530,24 @@ private struct AdventureWinOverlay: View {
             .shadow(color: .black.opacity(0.28), radius: 30, y: 16)
             .padding(22)
         }
-        .onAppear {
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("adventure-win")
+        .task(id: result) {
+            revealedStars = 0
             if reduceMotion {
                 revealedStars = result.stars
             } else {
-                Task { @MainActor in
-                    for star in 1...result.stars {
-                        try? await Task.sleep(nanoseconds: 250_000_000)
-                        withAnimation(.spring(response: 0.46, dampingFraction: 0.55)) {
-                            revealedStars = star
-                        }
-                        MazleHaptics.shared.confirm()
+                for star in 1...result.stars {
+                    do {
+                        try await Task.sleep(nanoseconds: 250_000_000)
+                    } catch {
+                        return
                     }
+                    guard !Task.isCancelled else { return }
+                    withAnimation(.spring(response: 0.46, dampingFraction: 0.55)) {
+                        revealedStars = star
+                    }
+                    AdventureFeedback.shared.play(.star)
                 }
             }
         }
@@ -1312,10 +1576,16 @@ private struct AdventureFailureOverlay: View {
                 Text("SO CLOSE")
                     .font(AdventureFont.black(25))
                     .foregroundStyle(AdventurePalette.ink)
-                Text("The trail ended before the star. Try a new route and watch your move limit.")
-                    .font(AdventureFont.regular(13))
-                    .foregroundStyle(AdventurePalette.ink.opacity(0.62))
-                    .multilineTextAlignment(.center)
+                if level.isProtectedFromEnergyLoss {
+                    Text("No heart was used.")
+                        .font(AdventureFont.bold(13))
+                        .foregroundStyle(AdventurePalette.mint)
+                } else {
+                    Text("The trail ended before the star. Try a new route and watch your move limit.")
+                        .font(AdventureFont.regular(13))
+                        .foregroundStyle(AdventurePalette.ink.opacity(0.62))
+                        .multilineTextAlignment(.center)
+                }
 
                 HStack(spacing: 5) {
                     ForEach(0..<progressStore.energy.maximumHearts, id: \.self) { index in
@@ -1333,7 +1603,8 @@ private struct AdventureFailureOverlay: View {
                         .frame(height: 52)
                         .background(canRetry ? AdventurePalette.blue : AdventurePalette.coral, in: RoundedRectangle(cornerRadius: 16))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(AdventurePressStyle())
+                .accessibilityIdentifier("adventure-retry")
 
                 Button("BACK TO MAP", action: onMap)
                     .font(AdventureFont.extraBold(12))
@@ -1344,6 +1615,8 @@ private struct AdventureFailureOverlay: View {
             .background(AdventurePalette.snow, in: RoundedRectangle(cornerRadius: 28))
             .padding(22)
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("adventure-failure")
     }
 
     private var canRetry: Bool {

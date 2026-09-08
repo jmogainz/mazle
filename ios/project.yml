@@ -44,6 +44,11 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         CFBundleURLTypes:
           - CFBundleURLName: com.mazle.game
             CFBundleURLSchemes:
@@ -61,6 +66,17 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.mazle.game.tests
         GENERATE_INFOPLIST_FILE: YES
+  MazleUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: MazleUITests
+    dependencies:
+      - target: Mazle
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mazle.game.uitests
+        GENERATE_INFOPLIST_FILE: YES
 schemes:
   Mazle:
     build:
@@ -71,6 +87,17 @@ schemes:
       storeKitConfiguration: Mazle.storekit
     test:
       gatherCoverageData: true
+      environmentVariables:
+        MAZLE_OFFLINE_PREVIEW: "1"
       targets:
         - name: MazleTests
+          parallelizable: false
+  MazleUI:
+    build:
+      targets:
+        Mazle: all
+        MazleUITests: [test]
+    test:
+      targets:
+        - name: MazleUITests
           parallelizable: false

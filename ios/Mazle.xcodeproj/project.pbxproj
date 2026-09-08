@@ -14,11 +14,13 @@
 		15DA0589F9C3E5B27554FDBA /* AdventureProgressStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E49FB5A1E73E98332D5446EF /* AdventureProgressStore.swift */; };
 		1F1A7668762F3FA81138193D /* WebCharacterIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E2D5303AC2060EF08F54328 /* WebCharacterIcon.swift */; };
 		28DCAEB962F8D21773DEB62F /* MazleHaptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D117F79F9249FF75F4C3046 /* MazleHaptics.swift */; };
+		32764D3851D273BB75EBAA96 /* AdventureUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90CF1C1FD10CECDCF566ADBC /* AdventureUITests.swift */; };
 		32F51479AB24D242C2A6A1D8 /* obsidian.svg in Resources */ = {isa = PBXBuildFile; fileRef = E13A760446BFB39806D8B98A /* obsidian.svg */; };
 		37F78485A0BD4C112DFED731 /* DailyPuzzleService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B27A2AD55B75F66A701FF612 /* DailyPuzzleService.swift */; };
 		3CC8E17AFE83453B74FE48D0 /* ReminderManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E22DF19AA7848FC609BBC043 /* ReminderManager.swift */; };
 		4352356757B0FB7359FC7987 /* AuthenticatedMazleService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 095854A21C37BA809070AB39 /* AuthenticatedMazleService.swift */; };
 		44BA722DC24DA6F8A828FECF /* MazleApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDAD7372E76AFE1BFA96C9A9 /* MazleApp.swift */; };
+		4D2ADD2DFEDE52AB0AD4D460 /* AdventureFeedback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 117B93ADA42F665B941A5BF6 /* AdventureFeedback.swift */; };
 		4ECDD6272BAC52724013B3BA /* MazeEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6668F212F4C0F3A585BE0D4 /* MazeEngine.swift */; };
 		5020654BB6DECE93BC069299 /* MazleWebParityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0E2D5F6FFD20058252D2B07 /* MazleWebParityTests.swift */; };
 		514A87694AAD0130BA4EACC6 /* MazleEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DB1319E4CD60F95F399B758 /* MazleEngineTests.swift */; };
@@ -39,16 +41,25 @@
 		C15013FE7F0EBA102001E2EA /* AdventureGameViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F30A2B9A1313B9738BF58C9E /* AdventureGameViewModel.swift */; };
 		D841359CBFEF8371DF5B926B /* AdventureModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = DED62EB4DC29E54164D70531 /* AdventureModels.swift */; };
 		DA1A8BB664BD2AAA22EE4EDF /* AdventureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33D0F72CE3070118A22B4F8C /* AdventureService.swift */; };
+		DD73934CCC8E2D7790CFD676 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CB70FCDE026AA50C64891A54 /* Assets.xcassets */; };
 		DF8ADC37ACFB83105BF837FD /* DailyDate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06B36ACDC9F2FFE0361D83DC /* DailyDate.swift */; };
 		ED42A5457A9243381304F85B /* AppPlaceholder.swift in Sources */ = {isa = PBXBuildFile; fileRef = D588B8115780BDEDCBFC89DD /* AppPlaceholder.swift */; };
 		ED61452C7CAFDD7749C5ABC2 /* DailyPuzzleContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61A4E35B3DDB37D358B3BADE /* DailyPuzzleContractTests.swift */; };
 		EE6FFF1E9B9BD6EBD855C1DB /* AdventureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DEA2ECA0C7AC98C16CC3032 /* AdventureTests.swift */; };
 		F69E2AE53917066222194089 /* StoreKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41C4D90F65728A5C4C9F9B33 /* StoreKitManager.swift */; };
 		FD452F824AD6EC372605E733 /* Nunito-ExtraBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B5E03BEC56AF5978628C0510 /* Nunito-ExtraBold.ttf */; };
+		FED51232743EDBD10A6097CC /* MazleRuntimeConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8828F901CD01B22390E53F8 /* MazleRuntimeConfigurationTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
 		AB41624751C688CCF9105D0F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 91779DED8846C8147ECBF57F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 313A59D0A7BE1F74E8DAF566;
+			remoteInfo = Mazle;
+		};
+		CE16F0AD574D606CEB44E09F /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 91779DED8846C8147ECBF57F /* Project object */;
 			proxyType = 1;
@@ -60,6 +71,7 @@
 /* Begin PBXFileReference section */
 		06B36ACDC9F2FFE0361D83DC /* DailyDate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyDate.swift; sourceTree = "<group>"; };
 		095854A21C37BA809070AB39 /* AuthenticatedMazleService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthenticatedMazleService.swift; sourceTree = "<group>"; };
+		117B93ADA42F665B941A5BF6 /* AdventureFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdventureFeedback.swift; sourceTree = "<group>"; };
 		170302DFFC7F13D6B2D3AFB3 /* ResultShareFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultShareFormatter.swift; sourceTree = "<group>"; };
 		1D117F79F9249FF75F4C3046 /* MazleHaptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MazleHaptics.swift; sourceTree = "<group>"; };
 		2477FDF138298A2068F835E9 /* LocalCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalCache.swift; sourceTree = "<group>"; };
@@ -78,13 +90,17 @@
 		74447EDF72ECCFE528B9B951 /* Mazle.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Mazle.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7ECE1C92CD8A5E1C68485C5B /* WebParitySpec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebParitySpec.swift; sourceTree = "<group>"; };
 		809E7CFEF586E158C44C822B /* Mazle.storekit */ = {isa = PBXFileReference; path = Mazle.storekit; sourceTree = "<group>"; };
+		8A010E09B6C779C43F5C1AE4 /* MazleUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = MazleUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		90CF1C1FD10CECDCF566ADBC /* AdventureUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdventureUITests.swift; sourceTree = "<group>"; };
 		9B864079DA3E2B34C54744C7 /* adventure-levels-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "adventure-levels-v1.json"; sourceTree = "<group>"; };
 		9BC8AC96C28D2B29E4B06E65 /* MazleAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MazleAuth.swift; sourceTree = "<group>"; };
 		B27A2AD55B75F66A701FF612 /* DailyPuzzleService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyPuzzleService.swift; sourceTree = "<group>"; };
 		B5E03BEC56AF5978628C0510 /* Nunito-ExtraBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Nunito-ExtraBold.ttf"; sourceTree = "<group>"; };
 		C279AE355F5A114667F699A0 /* penguin.svg */ = {isa = PBXFileReference; path = penguin.svg; sourceTree = "<group>"; };
 		C49557D33A66B7479032A0F3 /* Nunito-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Nunito-Regular.ttf"; sourceTree = "<group>"; };
+		CB70FCDE026AA50C64891A54 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		D588B8115780BDEDCBFC89DD /* AppPlaceholder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPlaceholder.swift; sourceTree = "<group>"; };
+		D8828F901CD01B22390E53F8 /* MazleRuntimeConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MazleRuntimeConfigurationTests.swift; sourceTree = "<group>"; };
 		DED62EB4DC29E54164D70531 /* AdventureModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdventureModels.swift; sourceTree = "<group>"; };
 		E13A760446BFB39806D8B98A /* obsidian.svg */ = {isa = PBXFileReference; path = obsidian.svg; sourceTree = "<group>"; };
 		E22DF19AA7848FC609BBC043 /* ReminderManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReminderManager.swift; sourceTree = "<group>"; };
@@ -105,12 +121,14 @@
 		0400D4EF60225B27C2BFC070 /* Mazle */ = {
 			isa = PBXGroup;
 			children = (
+				117B93ADA42F665B941A5BF6 /* AdventureFeedback.swift */,
 				F30A2B9A1313B9738BF58C9E /* AdventureGameViewModel.swift */,
 				DED62EB4DC29E54164D70531 /* AdventureModels.swift */,
 				E49FB5A1E73E98332D5446EF /* AdventureProgressStore.swift */,
 				33D0F72CE3070118A22B4F8C /* AdventureService.swift */,
 				6B788F3E178FAEB83AC20EE2 /* AdventureView.swift */,
 				D588B8115780BDEDCBFC89DD /* AppPlaceholder.swift */,
+				CB70FCDE026AA50C64891A54 /* Assets.xcassets */,
 				095854A21C37BA809070AB39 /* AuthenticatedMazleService.swift */,
 				6E53DD8D8B575BC3F20F195D /* ContentView.swift */,
 				06B36ACDC9F2FFE0361D83DC /* DailyDate.swift */,
@@ -140,6 +158,7 @@
 			children = (
 				74447EDF72ECCFE528B9B951 /* Mazle.app */,
 				29CBE9A16355AF454333B562 /* MazleTests.xctest */,
+				8A010E09B6C779C43F5C1AE4 /* MazleUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -181,6 +200,7 @@
 				61A4E35B3DDB37D358B3BADE /* DailyPuzzleContractTests.swift */,
 				809E7CFEF586E158C44C822B /* Mazle.storekit */,
 				2DB1319E4CD60F95F399B758 /* MazleEngineTests.swift */,
+				D8828F901CD01B22390E53F8 /* MazleRuntimeConfigurationTests.swift */,
 				F0E2D5F6FFD20058252D2B07 /* MazleWebParityTests.swift */,
 				EF01D98971E2D7419C9E6408 /* StoreKitConfigurationTests.swift */,
 			);
@@ -196,12 +216,21 @@
 			path = Characters;
 			sourceTree = "<group>";
 		};
+		D01D0568A2015E258D57EA07 /* MazleUITests */ = {
+			isa = PBXGroup;
+			children = (
+				90CF1C1FD10CECDCF566ADBC /* AdventureUITests.swift */,
+			);
+			path = MazleUITests;
+			sourceTree = "<group>";
+		};
 		F3C7BFA57C69A27EB16AA4CC = {
 			isa = PBXGroup;
 			children = (
 				767DA9F743555D5C08FCC1CF /* content */,
 				0400D4EF60225B27C2BFC070 /* Mazle */,
 				CC5AA4D72BEB9B78C4EFB10C /* MazleTests */,
+				D01D0568A2015E258D57EA07 /* MazleUITests */,
 				65B3B435A13D95F4CFA313D3 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -246,6 +275,24 @@
 			productReference = 74447EDF72ECCFE528B9B951 /* Mazle.app */;
 			productType = "com.apple.product-type.application";
 		};
+		93C8E20C1DBFE5AAE3B810C4 /* MazleUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6C60D621F6D96B2D0A8B9AC4 /* Build configuration list for PBXNativeTarget "MazleUITests" */;
+			buildPhases = (
+				CAEB6DEEEC1632177EB498DE /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				38E1055CBE308F1B7331971E /* PBXTargetDependency */,
+			);
+			name = MazleUITests;
+			packageProductDependencies = (
+			);
+			productName = MazleUITests;
+			productReference = 8A010E09B6C779C43F5C1AE4 /* MazleUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -260,6 +307,10 @@
 					};
 					313A59D0A7BE1F74E8DAF566 = {
 						ProvisioningStyle = Automatic;
+					};
+					93C8E20C1DBFE5AAE3B810C4 = {
+						ProvisioningStyle = Automatic;
+						TestTargetID = 313A59D0A7BE1F74E8DAF566;
 					};
 				};
 			};
@@ -279,6 +330,7 @@
 			targets = (
 				313A59D0A7BE1F74E8DAF566 /* Mazle */,
 				05B3EC8A63BBE1016944E145 /* MazleTests */,
+				93C8E20C1DBFE5AAE3B810C4 /* MazleUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -296,6 +348,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DD73934CCC8E2D7790CFD676 /* Assets.xcassets in Resources */,
 				121BD9D6BF5772FE502FC5C0 /* Nunito-Black.ttf in Resources */,
 				A4132DBE06B7EEEC1647EA3D /* Nunito-Bold.ttf in Resources */,
 				FD452F824AD6EC372605E733 /* Nunito-ExtraBold.ttf in Resources */,
@@ -317,6 +370,7 @@
 				EE6FFF1E9B9BD6EBD855C1DB /* AdventureTests.swift in Sources */,
 				ED61452C7CAFDD7749C5ABC2 /* DailyPuzzleContractTests.swift in Sources */,
 				514A87694AAD0130BA4EACC6 /* MazleEngineTests.swift in Sources */,
+				FED51232743EDBD10A6097CC /* MazleRuntimeConfigurationTests.swift in Sources */,
 				5020654BB6DECE93BC069299 /* MazleWebParityTests.swift in Sources */,
 				718CBC06D689C1E6F062B43A /* StoreKitConfigurationTests.swift in Sources */,
 			);
@@ -326,6 +380,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4D2ADD2DFEDE52AB0AD4D460 /* AdventureFeedback.swift in Sources */,
 				C15013FE7F0EBA102001E2EA /* AdventureGameViewModel.swift in Sources */,
 				D841359CBFEF8371DF5B926B /* AdventureModels.swift in Sources */,
 				15DA0589F9C3E5B27554FDBA /* AdventureProgressStore.swift in Sources */,
@@ -353,6 +408,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CAEB6DEEEC1632177EB498DE /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				32764D3851D273BB75EBAA96 /* AdventureUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -360,6 +423,11 @@
 			isa = PBXTargetDependency;
 			target = 313A59D0A7BE1F74E8DAF566 /* Mazle */;
 			targetProxy = AB41624751C688CCF9105D0F /* PBXContainerItemProxy */;
+		};
+		38E1055CBE308F1B7331971E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 313A59D0A7BE1F74E8DAF566 /* Mazle */;
+			targetProxy = CE16F0AD574D606CEB44E09F /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -378,6 +446,23 @@
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Mazle.app/Mazle";
+			};
+			name = Debug;
+		};
+		649BE7C261037347B0307CC4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.mazle.game.uitests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Mazle;
 			};
 			name = Debug;
 		};
@@ -575,6 +660,23 @@
 			};
 			name = Release;
 		};
+		E22948D4406C4706F02AE761 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.mazle.game.uitests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Mazle;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -583,6 +685,15 @@
 			buildConfigurations = (
 				850B744B419A1591498C48AB /* Debug */,
 				BAB29D63EB0BCF3E4E3F118D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		6C60D621F6D96B2D0A8B9AC4 /* Build configuration list for PBXNativeTarget "MazleUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				649BE7C261037347B0307CC4 /* Debug */,
+				E22948D4406C4706F02AE761 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

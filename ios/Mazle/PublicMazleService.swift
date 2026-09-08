@@ -92,7 +92,7 @@ private struct PublicFeedbackPayload: Encodable, Sendable {
 }
 
 struct PublicMazleService: Sendable {
-    static let live = PublicMazleService(baseURL: URL(string: "https://mazle.io")!)
+    static let live = PublicMazleService(baseURL: MazleRuntimeConfiguration.apiBaseURL)
 
     let baseURL: URL
 

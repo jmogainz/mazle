@@ -1,7 +1,7 @@
 import Foundation
 
 struct DailyPuzzleService: Sendable {
-    static let live = DailyPuzzleService(baseURL: URL(string: "https://mazle.io")!)
+    static let live = DailyPuzzleService(baseURL: MazleRuntimeConfiguration.apiBaseURL)
 
     let baseURL: URL
 

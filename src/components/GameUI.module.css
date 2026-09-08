@@ -47,6 +47,98 @@
   gap: calc(0.4rem * var(--ui-scale));
 }
 
+.adventureHeaderContainer {
+  padding: 0;
+}
+
+.adventureScoreboard {
+  width: min(100%, 500px);
+  display: grid;
+  grid-template-columns: minmax(82px, .7fr) 1px minmax(0, 1fr);
+  align-items: center;
+  gap: calc(1rem * var(--ui-scale));
+  padding: calc(.55rem * var(--ui-scale)) calc(.9rem * var(--ui-scale));
+  border: 1px solid rgba(35, 101, 145, .12);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, .68);
+  box-shadow: 0 7px 18px rgba(31, 79, 110, .06);
+}
+
+.adventureMovesGroup,
+.adventureStarsGroup {
+  display: flex;
+  flex-direction: column;
+}
+
+.adventureMovesGroup {
+  align-items: center;
+  justify-content: center;
+}
+
+.adventureMovesValue {
+  color: #18304c;
+  font-size: calc(1.55rem * var(--ui-scale));
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.05;
+}
+
+.adventureMovesDanger .adventureMovesValue {
+  color: #d05c62;
+  animation: pulse 1s infinite;
+}
+
+.adventureStatLabel {
+  margin-top: 4px;
+  color: #6b8496;
+  font-size: calc(.52rem * var(--ui-scale));
+  font-weight: 900;
+  letter-spacing: .11em;
+}
+
+.adventureScoreDivider {
+  width: 1px;
+  height: 38px;
+  background: rgba(35, 78, 105, .14);
+}
+
+.adventureStarsGroup {
+  min-width: 0;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.adventureStarRow {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.adventureStarRow svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 1.1;
+}
+
+.adventureStarOn {
+  fill: #ffd34c;
+  stroke: #d99a1e;
+}
+
+.adventureStarOff {
+  fill: #dde6ec;
+  stroke: #b9c5ce;
+}
+
+.adventureStarTarget {
+  overflow: hidden;
+  color: #6b8496;
+  font-size: calc(.62rem * var(--ui-scale));
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .puzzleInfo {
   display: flex;
   align-items: baseline;
@@ -614,4 +706,8 @@
     opacity: 0;
     transform: translate(var(--x-end), var(--y-end)) translate(-50%, -50%) scale(1);
   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .adventureMovesDanger .adventureMovesValue { animation: none; }
 }

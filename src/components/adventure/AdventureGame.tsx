@@ -35,23 +35,6 @@ const ACCESSIBLE_DIRECTIONS: Array<{ direction: Direction; label: string }> = [
   { direction: Direction.RIGHT, label: 'Move right' },
 ];
 
-function StarsPreview({ moves, level }: { moves: number; level: AdventureLevelDefinition }) {
-  const projected = moves <= level.starThresholds.three
-    ? 3
-    : moves <= level.starThresholds.two
-      ? 2
-      : 1;
-  return (
-    <div className={styles.starPreview} aria-label={`${projected} stars currently available`}>
-      {[1, 2, 3].map((star) => (
-        <svg key={star} viewBox="0 0 24 24" className={star <= projected ? styles.starOn : styles.starOff} aria-hidden="true">
-          <path d="m12 2.4 2.9 5.88 6.49.94-4.7 4.58 1.11 6.46L12 17.21l-5.8 3.05 1.11-6.46-4.7-4.58 6.49-.94L12 2.4Z" />
-        </svg>
-      ))}
-    </div>
-  );
-}
-
 export default function AdventureGame({ level, heartAtRisk, onFinish, onQuit }: AdventureGameProps) {
   const puzzle = useMemo(() => ({ ...toPuzzleData(level), variant: 'adventure' as const, moveLimit: level.moveLimit }), [level]);
   const chapterTitle = getAdventureChapter(level.chapterId)?.title ?? 'Frostpeak Trail';
@@ -205,7 +188,6 @@ export default function AdventureGame({ level, heartAtRisk, onFinish, onQuit }: 
           <span>{chapterTitle}</span>
           <strong>Level {level.id}</strong>
         </div>
-        <StarsPreview moves={moves} level={level} />
       </header>
 
       <section className={styles.gameContent}>
@@ -226,6 +208,7 @@ export default function AdventureGame({ level, heartAtRisk, onFinish, onQuit }: 
           hintsEnabled={false}
           frozen={isComplete}
           loading={!ready}
+          adventureScoreboard={{ starThresholds: level.starThresholds }}
         />
 
         <div ref={boardShellRef} className={styles.boardShell}>

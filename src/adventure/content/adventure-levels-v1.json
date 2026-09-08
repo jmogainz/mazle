@@ -1,0 +1,2076 @@
+{
+  "schemaVersion": 1,
+  "contentVersion": "1.0.0",
+  "campaignId": "mazle-adventure",
+  "tileLegend": {
+    "#": "wall",
+    ".": "ground",
+    "S": "start",
+    "G": "goal",
+    "~": "ice",
+    "^": "ledgeUp",
+    "v": "ledgeDown",
+    "<": "ledgeLeft",
+    ">": "ledgeRight"
+  },
+  "energyPolicy": {
+    "maximumHearts": 3,
+    "regenerationIntervalSeconds": 1800,
+    "failureCost": 1,
+    "protectedThroughLevel": 5,
+    "abandonAfterMoveCostsHeart": true,
+    "successfulAttemptCostsHeart": false
+  },
+  "chapters": [
+    {
+      "id": "snowdrop-trail",
+      "index": 1,
+      "title": "Snowdrop Trail",
+      "subtitle": "Learn the rhythm of every step.",
+      "theme": "alpine-dawn",
+      "colors": {
+        "primary": "#78BDE7",
+        "accent": "#FFF0A8",
+        "background": "#EAF7FF"
+      },
+      "levelIds": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "unlockAfterLevelId": null
+    },
+    {
+      "id": "glacier-gardens",
+      "index": 2,
+      "title": "Glacier Gardens",
+      "subtitle": "Let the ice carry you.",
+      "theme": "frozen-garden",
+      "colors": {
+        "primary": "#63A9DB",
+        "accent": "#B9F2E6",
+        "background": "#DBF2FF"
+      },
+      "levelIds": [
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20
+      ],
+      "unlockAfterLevelId": 10
+    },
+    {
+      "id": "arrowhead-pass",
+      "index": 3,
+      "title": "Arrowhead Pass",
+      "subtitle": "Read the ledges before you leap.",
+      "theme": "mountain-pass",
+      "colors": {
+        "primary": "#7987C7",
+        "accent": "#FFD083",
+        "background": "#E9E9FF"
+      },
+      "levelIds": [
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30
+      ],
+      "unlockAfterLevelId": 20
+    },
+    {
+      "id": "aurora-ascent",
+      "index": 4,
+      "title": "Aurora Ascent",
+      "subtitle": "Mix every lesson on the climb.",
+      "theme": "aurora-night",
+      "colors": {
+        "primary": "#6772C8",
+        "accent": "#8FF0C7",
+        "background": "#E4E9FF"
+      },
+      "levelIds": [
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40
+      ],
+      "unlockAfterLevelId": 30
+    },
+    {
+      "id": "crown-of-winter",
+      "index": 5,
+      "title": "Crown of Winter",
+      "subtitle": "Master the mountain at its peak.",
+      "theme": "summit",
+      "colors": {
+        "primary": "#6557A8",
+        "accent": "#FFE18A",
+        "background": "#EFEAFF"
+      },
+      "levelIds": [
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50
+      ],
+      "unlockAfterLevelId": 40
+    }
+  ],
+  "levels": [
+    {
+      "id": 1,
+      "key": "adventure-v1-001",
+      "chapterId": "snowdrop-trail",
+      "chapterIndex": 1,
+      "levelInChapter": 1,
+      "title": "First Footprints",
+      "difficulty": "tutorial",
+      "seed": "mazle-adventure-v1-001-candidate-0",
+      "mechanics": [
+        "ground"
+      ],
+      "prerequisiteLevelId": null,
+      "mapPosition": {
+        "x": 0.5,
+        "y": 0.05
+      },
+      "rows": [
+        "#######",
+        "#.#G..#",
+        "#.#.#.#",
+        "#...#S#",
+        "#####.#",
+        "#.....#",
+        "#######"
+      ],
+      "optimalMoves": 4,
+      "solution": "UULL",
+      "moveLimit": 7,
+      "starThresholds": {
+        "three": 4,
+        "two": 5,
+        "one": 7
+      }
+    },
+    {
+      "id": 2,
+      "key": "adventure-v1-002",
+      "chapterId": "snowdrop-trail",
+      "chapterIndex": 1,
+      "levelInChapter": 2,
+      "title": "Around the Bend",
+      "difficulty": "tutorial",
+      "seed": "mazle-adventure-v1-002-candidate-0",
+      "mechanics": [
+        "ground"
+      ],
+      "prerequisiteLevelId": 1,
+      "mapPosition": {
+        "x": 0.7,
+        "y": 0.15
+      },
+      "rows": [
+        "#######",
+        "#G...S#",
+        "###.#.#",
+        "#...#.#",
+        "#.###.#",
+        "#...#.#",
+        "#######"
+      ],
+      "optimalMoves": 4,
+      "solution": "LLLL",
+      "moveLimit": 7,
+      "starThresholds": {
+        "three": 4,
+        "two": 5,
+        "one": 7
+      }
+    },
+    {
+      "id": 3,
+      "key": "adventure-v1-003",
+      "chapterId": "snowdrop-trail",
+      "chapterIndex": 1,
+      "levelInChapter": 3,
+      "title": "Trail Markers",
+      "difficulty": "tutorial",
+      "seed": "mazle-adventure-v1-003-candidate-0",
+      "mechanics": [
+        "ground"
+      ],
+      "prerequisiteLevelId": 2,
+      "mapPosition": {
+        "x": 0.8,
+        "y": 0.25
+      },
+      "rows": [
+        "#######",
+        "#.#...#",
+        "#.#.#.#",
+        "#.#S#.#",
+        "#.#.###",
+        "#G....#",
+        "#######"
+      ],
+      "optimalMoves": 4,
+      "solution": "DDLL",
+      "moveLimit": 7,
+      "starThresholds": {
+        "three": 4,
+        "two": 5,
+        "one": 7
+      }
+    },
+    {
+      "id": 4,
+      "key": "adventure-v1-004",
+      "chapterId": "snowdrop-trail",
+      "chapterIndex": 1,
+      "levelInChapter": 4,
+      "title": "A Touch of Ice",
+      "difficulty": "tutorial",
+      "seed": "mazle-adventure-v1-004-candidate-0",
+      "mechanics": [
+        "ground",
+        "ice"
+      ],
+      "prerequisiteLevelId": 3,
+      "mapPosition": {
+        "x": 0.67,
+        "y": 0.35
+      },
+      "rows": [
+        "#######",
+        "#..G~~#",
+        "#~###.#",
+        "#~#~..#",
+        "#~#~#.#",
+        "#~..#S#",
+        "#######"
+      ],
+      "optimalMoves": 5,
+      "solution": "UUUUL",
+      "moveLimit": 8,
+      "starThresholds": {
+        "three": 5,
+        "two": 7,
+        "one": 8
+      }
+    },
+    {
+      "id": 5,
+      "key": "adventure-v1-005",
+      "chapterId": "snowdrop-trail",
+      "chapterIndex": 1,
+      "levelInChapter": 5,
+      "title": "Easy Does It",
+      "difficulty": "tutorial",
+      "seed": "mazle-adventure-v1-005-candidate-2",
+      "mechanics": [
+        "ground",
+        "ice"
+      ],
+      "prerequisiteLevelId": 4,
+      "mapPosition": {
+        "x": 0.42,
+        "y": 0.45
+      },
+      "rows": [
+        "#######",
+        "#S.~~~#",
+        "#.###~#",
+        "#~.~~~#",
+        "#~###~#",
+        "#.#G~~#",
+        "#######"
+      ],
+      "optimalMoves": 4,
+      "solution": "RRDL",
+      "moveLimit": 7,
+      "starThresholds": {
+        "three": 4,
+        "two": 5,
+        "one": 7
+      }
+    },
+    {
+      "id": 6,
+      "key": "adventure-v1-006",
+      "chapterId": "snowdrop-trail",
+      "chapterIndex": 1,
+      "levelInChapter": 6,
+      "title": "Long Way Home",
+      "difficulty": "easy",
+      "seed": "mazle-adventure-v1-006-candidate-4",
+      "mechanics": [
+        "ground",
+        "ice"
+      ],
+      "prerequisiteLevelId": 5,
+      "mapPosition": {
+        "x": 0.2,
+        "y": 0.55
+      },
+      "rows": [
+        "#######",
+        "#~.S.~#",
+        "#~###~#",
+        "#~~.#.#",
+        "#.#~#.#",
+        "#~~~#G#",
+        "#######"
+      ],
+      "optimalMoves": 5,
+      "solution": "RRDDD",
+      "moveLimit": 8,
+      "starThresholds": {
+        "three": 5,
+        "two": 7,
+        "one": 8
+      }
+    },
+    {
+      "id": 7,
+      "key": "adventure-v1-007",
+      "chapterId": "snowdrop-trail",
+      "chapterIndex": 1,
+      "levelInChapter": 7,
+      "title": "Frozen Corner",
+      "difficulty": "easy",
+      "seed": "mazle-adventure-v1-007-candidate-11",
+      "mechanics": [
+        "ice"
+      ],
+      "prerequisiteLevelId": 6,
+      "mapPosition": {
+        "x": 0.16,
+        "y": 0.65
+      },
+      "rows": [
+        "#######",
+        "#~~~~.#",
+        "#~#~###",
+        "#~#~~~#",
+        "#~#.#.#",
+        "#G#~~S#",
+        "#######"
+      ],
+      "optimalMoves": 5,
+      "solution": "LUULD",
+      "moveLimit": 8,
+      "starThresholds": {
+        "three": 5,
+        "two": 7,
+        "one": 8
+      }
+    },
+    {
+      "id": 8,
+      "key": "adventure-v1-008",
+      "chapterId": "snowdrop-trail",
+      "chapterIndex": 1,
+      "levelInChapter": 8,
+      "title": "Crossing Paths",
+      "difficulty": "easy",
+      "seed": "mazle-adventure-v1-008-candidate-26",
+      "mechanics": [
+        "ice"
+      ],
+      "prerequisiteLevelId": 7,
+      "mapPosition": {
+        "x": 0.32,
+        "y": 0.75
+      },
+      "rows": [
+        "#######",
+        "#~.~#G#",
+        "#.~~~.#",
+        "#~#S#~#",
+        "#~###.#",
+        "#~~.~~#",
+        "#######"
+      ],
+      "optimalMoves": 5,
+      "solution": "ULDRU",
+      "moveLimit": 8,
+      "starThresholds": {
+        "three": 5,
+        "two": 7,
+        "one": 8
+      }
+    },
+    {
+      "id": 9,
+      "key": "adventure-v1-009",
+      "chapterId": "snowdrop-trail",
+      "chapterIndex": 1,
+      "levelInChapter": 9,
+      "title": "Bluebird Run",
+      "difficulty": "easy",
+      "seed": "mazle-adventure-v1-009-candidate-2",
+      "mechanics": [
+        "ice"
+      ],
+      "prerequisiteLevelId": 8,
+      "mapPosition": {
+        "x": 0.58,
+        "y": 0.85
+      },
+      "rows": [
+        "#######",
+        "#~~.#S#",
+        "#~#~#~#",
+        "#~~G~~#",
+        "#~###~#",
+        "#~~.~~#",
+        "#######"
+      ],
+      "optimalMoves": 6,
+      "solution": "DLLURD",
+      "moveLimit": 10,
+      "starThresholds": {
+        "three": 6,
+        "two": 8,
+        "one": 10
+      }
+    },
+    {
+      "id": 10,
+      "key": "adventure-v1-010",
+      "chapterId": "snowdrop-trail",
+      "chapterIndex": 1,
+      "levelInChapter": 10,
+      "title": "Trailhead Test",
+      "difficulty": "hard",
+      "seed": "mazle-adventure-v1-010-candidate-67",
+      "mechanics": [
+        "ice"
+      ],
+      "prerequisiteLevelId": 9,
+      "mapPosition": {
+        "x": 0.74,
+        "y": 0.95
+      },
+      "rows": [
+        "#######",
+        "#S~.~~#",
+        "##.##~#",
+        "#G.~~~#",
+        "#~###.#",
+        "#..~.~#",
+        "#######"
+      ],
+      "optimalMoves": 8,
+      "solution": "RRDDLLLU",
+      "moveLimit": 13,
+      "starThresholds": {
+        "three": 8,
+        "two": 10,
+        "one": 13
+      }
+    },
+    {
+      "id": 11,
+      "key": "adventure-v1-011",
+      "chapterId": "glacier-gardens",
+      "chapterIndex": 2,
+      "levelInChapter": 1,
+      "title": "Garden Gate",
+      "difficulty": "normal",
+      "seed": "mazle-adventure-v1-011-candidate-0",
+      "mechanics": [
+        "ice"
+      ],
+      "prerequisiteLevelId": 10,
+      "mapPosition": {
+        "x": 0.5,
+        "y": 0.05
+      },
+      "rows": [
+        "#########",
+        "#~~G#~~~#",
+        "#~#~#~#~#",
+        "#~#~#S#~#",
+        "#~#~#.#~#",
+        "#~#~#~#~#",
+        "#~#####~#",
+        "#~~~~~~~#",
+        "#########"
+      ],
+      "optimalMoves": 6,
+      "solution": "URDLUR",
+      "moveLimit": 10,
+      "starThresholds": {
+        "three": 6,
+        "two": 8,
+        "one": 10
+      }
+    },
+    {
+      "id": 12,
+      "key": "adventure-v1-012",
+      "chapterId": "glacier-gardens",
+      "chapterIndex": 2,
+      "levelInChapter": 2,
+      "title": "Glass River",
+      "difficulty": "normal",
+      "seed": "mazle-adventure-v1-012-candidate-8",
+      "mechanics": [
+        "ice"
+      ],
+      "prerequisiteLevelId": 11,
+      "mapPosition": {
+        "x": 0.3,
+        "y": 0.15
+      },
+      "rows": [
+        "#########",
+        "#~~~~.~G#",
+        "#~###~###",
+        "#~~~#~~~#",
+        "#######~#",
+        "#~#~~S#~#",
+        "#~#~#~#~#",
+        "#~~~#~~~#",
+        "#########"
+      ],
+      "optimalMoves": 6,
+      "solution": "DRULUR",
+      "moveLimit": 10,
+      "starThresholds": {
+        "three": 6,
+        "two": 8,
+        "one": 10
+      }
+    },
+    {
+      "id": 13,
+      "key": "adventure-v1-013",
+      "chapterId": "glacier-gardens",
+      "chapterIndex": 2,
+      "levelInChapter": 3,
+      "title": "Snowbell Sweep",
+      "difficulty": "normal",
+      "seed": "mazle-adventure-v1-013-candidate-4",
+      "mechanics": [
+        "ice"
+      ],
+      "prerequisiteLevelId": 12,
+      "mapPosition": {
+        "x": 0.2,
+        "y": 0.25
+      },
+      "rows": [
+        "#########",
+        "#~~~#~~~#",
+        "#~###~#~#",
+        "#~~S~~#~#",
+        "#~#######",
+        "#~~~#~~G#",
+        "###~#~#~#",
+        "#~~~~.#~#",
+        "#########"
+      ],
+      "optimalMoves": 7,
+      "solution": "LDRDRUR",
+      "moveLimit": 12,
+      "starThresholds": {
+        "three": 7,
+        "two": 9,
+        "one": 12
+      }
+    },
+    {
+      "id": 14,
+      "key": "adventure-v1-014",
+      "chapterId": "glacier-gardens",
+      "chapterIndex": 2,
+      "levelInChapter": 4,
+      "title": "Frosted Fork",
+      "difficulty": "normal",
+      "seed": "mazle-adventure-v1-014-candidate-31",
+      "mechanics": [
+        "ice"
+      ],
+      "prerequisiteLevelId": 13,
+      "mapPosition": {
+        "x": 0.33,
+        "y": 0.35
+      },
+      "rows": [
+        "#########",
+        "#~~~~G~~#",
+        "#~~~###~#",
+        "#~#~#~~~#",
+        "#~#.#####",
+        "#~#~~~~~#",
+        "#~#####.#",
+        "#~#S~~~~#",
+        "#########"
+      ],
+      "optimalMoves": 7,
+      "solution": "RUULUUR",
+      "moveLimit": 12,
+      "starThresholds": {
+        "three": 7,
+        "two": 9,
+        "one": 12
+      }
+    },
+    {
+      "id": 15,
+      "key": "adventure-v1-015",
+      "chapterId": "glacier-gardens",
+      "chapterIndex": 2,
+      "levelInChapter": 5,
+      "title": "Crystal Steps",
+      "difficulty": "normal",
+      "seed": "mazle-adventure-v1-015-candidate-5",
+      "mechanics": [
+        "ice"
+      ],
+      "prerequisiteLevelId": 14,
+      "mapPosition": {
+        "x": 0.58,
+        "y": 0.45
+      },
+      "rows": [
+        "#########",
+        "#~~~~~~~#",
+        "#~#~#####",
+        "#G~~#~~~#",
+        "###~###~#",
+        "#~~~#~~S#",
+        "#~###~###",
+        "#~~~~~~~#",
+        "#########"
+      ],
+      "optimalMoves": 8,
+      "solution": "LDLURULD",
+      "moveLimit": 13,
+      "starThresholds": {
+        "three": 8,
+        "two": 10,
+        "one": 13
+      }
+    },
+    {
+      "id": 16,
+      "key": "adventure-v1-016",
+      "chapterId": "glacier-gardens",
+      "chapterIndex": 2,
+      "levelInChapter": 6,
+      "title": "Icy Switchback",
+      "difficulty": "normal",
+      "seed": "mazle-adventure-v1-016-candidate-50",
+      "mechanics": [
+        "ice"
+      ],
+      "prerequisiteLevelId": 15,
+      "mapPosition": {
+        "x": 0.8,
+        "y": 0.55
+      },
+      "rows": [
+        "#########",
+        "#G~~~~#~#",
+        "###~#~~~#",
+        "#~~~#~~~#",
+        "#~#####~#",
+        "#~#~~~#~#",
+        "#~#~#~#~#",
+        "#~~~#S#~#",
+        "#########"
+      ],
+      "optimalMoves": 8,
+      "solution": "ULDLURUL",
+      "moveLimit": 13,
+      "starThresholds": {
+        "three": 8,
+        "two": 10,
+        "one": 13
+      }
+    },
+    {
+      "id": 17,
+      "key": "adventure-v1-017",
+      "chapterId": "glacier-gardens",
+      "chapterIndex": 2,
+      "levelInChapter": 7,
+      "title": "Winter Bloom",
+      "difficulty": "normal",
+      "seed": "mazle-adventure-v1-017-candidate-23",
+      "mechanics": [
+        "ice"
+      ],
+      "prerequisiteLevelId": 16,
+      "mapPosition": {
+        "x": 0.84,
+        "y": 0.65
+      },
+      "rows": [
+        "#########",
+        "#G#~#.~~#",
+        "#~~~#~#~#",
+        "#~~~#~#~#",
+        "#~#####~#",
+        "#~#~~~#S#",
+        "#~#.#~#~#",
+        "#~~~#~~~#",
+        "#########"
+      ],
+      "optimalMoves": 8,
+      "solution": "DLULDDLU",
+      "moveLimit": 13,
+      "starThresholds": {
+        "three": 8,
+        "two": 10,
+        "one": 13
+      }
+    },
+    {
+      "id": 18,
+      "key": "adventure-v1-018",
+      "chapterId": "glacier-gardens",
+      "chapterIndex": 2,
+      "levelInChapter": 8,
+      "title": "Mirror Pond",
+      "difficulty": "normal",
+      "seed": "mazle-adventure-v1-018-candidate-20",
+      "mechanics": [
+        "ice"
+      ],
+      "prerequisiteLevelId": 17,
+      "mapPosition": {
+        "x": 0.68,
+        "y": 0.75
+      },
+      "rows": [
+        "#########",
+        "#~~~~~#~#",
+        "#~#####~#",
+        "#.#~~~#S#",
+        "#~#~#~~~#",
+        "#G#~#~.~#",
+        "#~#~#~###",
+        "#~..~~~~#",
+        "#########"
+      ],
+      "optimalMoves": 8,
+      "solution": "DLLDLLLU",
+      "moveLimit": 13,
+      "starThresholds": {
+        "three": 8,
+        "two": 10,
+        "one": 13
+      }
+    },
+    {
+      "id": 19,
+      "key": "adventure-v1-019",
+      "chapterId": "glacier-gardens",
+      "chapterIndex": 2,
+      "levelInChapter": 9,
+      "title": "Glacier Run",
+      "difficulty": "normal",
+      "seed": "mazle-adventure-v1-019-candidate-67",
+      "mechanics": [
+        "ice"
+      ],
+      "prerequisiteLevelId": 18,
+      "mapPosition": {
+        "x": 0.42,
+        "y": 0.85
+      },
+      "rows": [
+        "#########",
+        "#~~~#~~G#",
+        "#~#~#~#~#",
+        "#~#S#~#~#",
+        "#~#.#~###",
+        "#~#~#~..#",
+        "#~#~##~~#",
+        "#~~~~~~~#",
+        "#########"
+      ],
+      "optimalMoves": 8,
+      "solution": "DDRULLUR",
+      "moveLimit": 13,
+      "starThresholds": {
+        "three": 8,
+        "two": 10,
+        "one": 13
+      }
+    },
+    {
+      "id": 20,
+      "key": "adventure-v1-020",
+      "chapterId": "glacier-gardens",
+      "chapterIndex": 2,
+      "levelInChapter": 10,
+      "title": "Garden Guardian",
+      "difficulty": "hard",
+      "seed": "mazle-adventure-v1-020-candidate-1",
+      "mechanics": [
+        "ice"
+      ],
+      "prerequisiteLevelId": 19,
+      "mapPosition": {
+        "x": 0.26,
+        "y": 0.95
+      },
+      "rows": [
+        "#########",
+        "#~~S~~~~#",
+        "#~#~#####",
+        "#~~~#~~G#",
+        "#~#####~#",
+        "#~~~#~~~#",
+        "##~~#~#~#",
+        "#~~~~~#~#",
+        "#########"
+      ],
+      "optimalMoves": 8,
+      "solution": "LDRDRURU",
+      "moveLimit": 13,
+      "starThresholds": {
+        "three": 8,
+        "two": 10,
+        "one": 13
+      }
+    },
+    {
+      "id": 21,
+      "key": "adventure-v1-021",
+      "chapterId": "arrowhead-pass",
+      "chapterIndex": 3,
+      "levelInChapter": 1,
+      "title": "One Way In",
+      "difficulty": "normal",
+      "seed": "mazle-adventure-v1-021-candidate-6",
+      "mechanics": [
+        "ice",
+        "ledge"
+      ],
+      "prerequisiteLevelId": 20,
+      "mapPosition": {
+        "x": 0.5,
+        "y": 0.05
+      },
+      "rows": [
+        "#########",
+        "#~~S~~~~#",
+        "###~###~#",
+        "#~~~#~#~#",
+        "#####~#~#",
+        "#~~~#~~~#",
+        "#~###~###",
+        "#~~~~~>G#",
+        "#########"
+      ],
+      "optimalMoves": 6,
+      "solution": "RDLDRR",
+      "moveLimit": 10,
+      "starThresholds": {
+        "three": 6,
+        "two": 8,
+        "one": 10
+      }
+    },
+    {
+      "id": 22,
+      "key": "adventure-v1-022",
+      "chapterId": "arrowhead-pass",
+      "chapterIndex": 3,
+      "levelInChapter": 2,
+      "title": "Follow the Arrow",
+      "difficulty": "normal",
+      "seed": "mazle-adventure-v1-022-candidate-5",
+      "mechanics": [
+        "ice",
+        "ledge"
+      ],
+      "prerequisiteLevelId": 21,
+      "mapPosition": {
+        "x": 0.7,
+        "y": 0.15
+      },
+      "rows": [
+        "#########",
+        "#~~S~~~~#",
+        "#~#######",
+        "#~~~#~~~#",
+        "###~###~#",
+        "#~~~#~~~#",
+        "#^###~#~#",
+        "#~~~~G#~#",
+        "#########"
+      ],
+      "optimalMoves": 8,
+      "solution": "LDRDLDDR",
+      "moveLimit": 13,
+      "starThresholds": {
+        "three": 8,
+        "two": 10,
+        "one": 13
+      }
+    },
+    {
+      "id": 23,
+      "key": "adventure-v1-023",
+      "chapterId": "arrowhead-pass",
+      "chapterIndex": 3,
+      "levelInChapter": 3,
+      "title": "Passage North",
+      "difficulty": "normal",
+      "seed": "mazle-adventure-v1-023-candidate-6",
+      "mechanics": [
+        "ice",
+        "ledge"
+      ],
+      "prerequisiteLevelId": 22,
+      "mapPosition": {
+        "x": 0.8,
+        "y": 0.25
+      },
+      "rows": [
+        "#########",
+        "#~~~~<~~#",
+        "#~#####~#",
+        "#~#~#~~~#",
+        "#~#~#~#~#",
+        "#G~.#S#~#",
+        "#~###~#~#",
+        "#~#.~~#~#",
+        "#########"
+      ],
+      "optimalMoves": 6,
+      "solution": "URULLD",
+      "moveLimit": 10,
+      "starThresholds": {
+        "three": 6,
+        "two": 8,
+        "one": 10
+      }
+    },
+    {
+      "id": 24,
+      "key": "adventure-v1-024",
+      "chapterId": "arrowhead-pass",
+      "chapterIndex": 3,
+      "levelInChapter": 4,
+      "title": "Ridge Runner",
+      "difficulty": "normal",
+      "seed": "mazle-adventure-v1-024-candidate-59",
+      "mechanics": [
+        "ice",
+        "ledge"
+      ],
+      "prerequisiteLevelId": 23,
+      "mapPosition": {
+        "x": 0.67,
+        "y": 0.35
+      },
+      "rows": [
+        "#########",
+        "#~~~~~#~#",
+        "#~#~#~#~#",
+        "#~#S~~#~#",
+        "#^#####~#",
+        "#~#~~~~~#",
+        "#~###~#~#",
+        "#~~~~~#G#",
+        "#########"
+      ],
+      "optimalMoves": 8,
+      "solution": "ULDDRURD",
+      "moveLimit": 13,
+      "starThresholds": {
+        "three": 8,
+        "two": 10,
+        "one": 13
+      }
+    },
+    {
+      "id": 25,
+      "key": "adventure-v1-025",
+      "chapterId": "arrowhead-pass",
+      "chapterIndex": 3,
+      "levelInChapter": 5,
+      "title": "Narrow Landing",
+      "difficulty": "normal",
+      "seed": "mazle-adventure-v1-025-candidate-48",
+      "mechanics": [
+        "ice",
+        "ledge"
+      ],
+      "prerequisiteLevelId": 24,
+      "mapPosition": {
+        "x": 0.42,
+        "y": 0.45
+      },
+      "rows": [
+        "#########",
+        "#S~~~~~~#",
+        "#~#######",
+        "#~.~~~~~#",
+        "#######~#",
+        "#~~~~~~~#",
+        "#^~######",
+        "#G~~~~~~#",
+        "#########"
+      ],
+      "optimalMoves": 7,
+      "solution": "DRRDLDD",
+      "moveLimit": 12,
+      "starThresholds": {
+        "three": 7,
+        "two": 9,
+        "one": 12
+      }
+    },
+    {
+      "id": 26,
+      "key": "adventure-v1-026",
+      "chapterId": "arrowhead-pass",
+      "chapterIndex": 3,
+      "levelInChapter": 6,
+      "title": "Arrow Dance",
+      "difficulty": "normal",
+      "seed": "mazle-adventure-v1-026-candidate-17",
+      "mechanics": [
+        "ice",
+        "ledge"
+      ],
+      "prerequisiteLevelId": 25,
+      "mapPosition": {
+        "x": 0.2,
+        "y": 0.55
+      },
+      "rows": [
+        "#########",
+        "#~~~#~~~#",
+        "#~###~#~#",
+        "#~~~~~#~#",
+        "#~#####~#",
+        "#~#~~S~~#",
+        "#~##~####",
+        "#~>~~G~~#",
+        "#########"
+      ],
+      "optimalMoves": 8,
+      "solution": "RULDLDRR",
+      "moveLimit": 13,
+      "starThresholds": {
+        "three": 8,
+        "two": 10,
+        "one": 13
+      }
+    },
+    {
+      "id": 27,
+      "key": "adventure-v1-027",
+      "chapterId": "arrowhead-pass",
+      "chapterIndex": 3,
+      "levelInChapter": 7,
+      "title": "Cloudbreak",
+      "difficulty": "normal",
+      "seed": "mazle-adventure-v1-027-candidate-3",
+      "mechanics": [
+        "ice",
+        "ledge"
+      ],
+      "prerequisiteLevelId": 26,
+      "mapPosition": {
+        "x": 0.16,
+        "y": 0.65
+      },
+      "rows": [
+        "#########",
+        "#~~.#v~~#",
+        "#~#~#v#~#",
+        "#~#~~S#~#",
+        "#######~#",
+        "#~~G#~~~#",
+        "#~###~~##",
+        "#~~~~~~~#",
+        "#########"
+      ],
+      "optimalMoves": 9,
+      "solution": "UURDLDLUR",
+      "moveLimit": 15,
+      "starThresholds": {
+        "three": 9,
+        "two": 12,
+        "one": 15
+      }
+    },
+    {
+      "id": 28,
+      "key": "adventure-v1-028",
+      "chapterId": "arrowhead-pass",
+      "chapterIndex": 3,
+      "levelInChapter": 8,
+      "title": "High Traverse",
+      "difficulty": "normal",
+      "seed": "mazle-adventure-v1-028-candidate-10",
+      "mechanics": [
+        "ice",
+        "ledge"
+      ],
+      "prerequisiteLevelId": 27,
+      "mapPosition": {
+        "x": 0.32,
+        "y": 0.75
+      },
+      "rows": [
+        "#########",
+        "#~~>#~~~#",
+        "#.#~#~#~#",
+        "#S#~~>#G#",
+        "#~#######",
+        "#~~~#~~~#",
+        "#~#~.~#~#",
+        "#~#~~~.~#",
+        "#########"
+      ],
+      "optimalMoves": 8,
+      "solution": "UURDRURD",
+      "moveLimit": 13,
+      "starThresholds": {
+        "three": 8,
+        "two": 10,
+        "one": 13
+      }
+    },
+    {
+      "id": 29,
+      "key": "adventure-v1-029",
+      "chapterId": "arrowhead-pass",
+      "chapterIndex": 3,
+      "levelInChapter": 9,
+      "title": "Point of No Return",
+      "difficulty": "normal",
+      "seed": "mazle-adventure-v1-029-candidate-25",
+      "mechanics": [
+        "ice",
+        "ledge"
+      ],
+      "prerequisiteLevelId": 28,
+      "mapPosition": {
+        "x": 0.58,
+        "y": 0.85
+      },
+      "rows": [
+        "#########",
+        "#~#~~~~~#",
+        "#~#~#~#~#",
+        "#~#v#G#^#",
+        "#~#~~~#~#",
+        "#~#~#~#~#",
+        "#~#~#.#~#",
+        "#S~~#~~~#",
+        "#########"
+      ],
+      "optimalMoves": 9,
+      "solution": "RUURDDLUU",
+      "moveLimit": 15,
+      "starThresholds": {
+        "three": 9,
+        "two": 12,
+        "one": 15
+      }
+    },
+    {
+      "id": 30,
+      "key": "adventure-v1-030",
+      "chapterId": "arrowhead-pass",
+      "chapterIndex": 3,
+      "levelInChapter": 10,
+      "title": "Pass Keeper",
+      "difficulty": "hard",
+      "seed": "mazle-adventure-v1-030-candidate-97",
+      "mechanics": [
+        "ice",
+        "ledge"
+      ],
+      "prerequisiteLevelId": 29,
+      "mapPosition": {
+        "x": 0.74,
+        "y": 0.95
+      },
+      "rows": [
+        "#########",
+        "#~#~~~~~#",
+        "#~#~###~#",
+        "#~~G~~#~#",
+        "#~###~###",
+        "#S>~#~<~#",
+        "###~#~#~#",
+        "#~~~~~~~#",
+        "#########"
+      ],
+      "optimalMoves": 9,
+      "solution": "RRDRULLUL",
+      "moveLimit": 15,
+      "starThresholds": {
+        "three": 9,
+        "two": 12,
+        "one": 15
+      }
+    },
+    {
+      "id": 31,
+      "key": "adventure-v1-031",
+      "chapterId": "aurora-ascent",
+      "chapterIndex": 4,
+      "levelInChapter": 1,
+      "title": "Northern Lights",
+      "difficulty": "normal",
+      "seed": "mazle-adventure-v1-031-candidate-26",
+      "mechanics": [
+        "ice",
+        "ledge"
+      ],
+      "prerequisiteLevelId": 30,
+      "mapPosition": {
+        "x": 0.5,
+        "y": 0.05
+      },
+      "rows": [
+        "###########",
+        "#~~~#~~~~~#",
+        "#~#~###~#~#",
+        "#.#~#~~>#G#",
+        "#~###~###~#",
+        "#~~~#~~~#~#",
+        "###~#~#~###",
+        "#~.~#.#~<~#",
+        "#.#######~#",
+        "#.~~~~.S~~#",
+        "###########"
+      ],
+      "optimalMoves": 11,
+      "solution": "RULLULURURD",
+      "moveLimit": 18,
+      "starThresholds": {
+        "three": 11,
+        "two": 14,
+        "one": 18
+      }
+    },
+    {
+      "id": 32,
+      "key": "adventure-v1-032",
+      "chapterId": "aurora-ascent",
+      "chapterIndex": 4,
+      "levelInChapter": 2,
+      "title": "Skybridge",
+      "difficulty": "normal",
+      "seed": "mazle-adventure-v1-032-candidate-3",
+      "mechanics": [
+        "ice",
+        "ledge"
+      ],
+      "prerequisiteLevelId": 31,
+      "mapPosition": {
+        "x": 0.3,
+        "y": 0.15
+      },
+      "rows": [
+        "###########",
+        "#~~~~~~~~~#",
+        "#~#######~#",
+        "#~#~~>~~~G#",
+        "#~#~#####~#",
+        "#~#~<~#~~~#",
+        "#~###~#####",
+        "#~#~#~~~~~#",
+        "#~#~#####~#",
+        "#~#~~~~S~~#",
+        "###########"
+      ],
+      "optimalMoves": 9,
+      "solution": "RULULLURR",
+      "moveLimit": 15,
+      "starThresholds": {
+        "three": 9,
+        "two": 12,
+        "one": 15
+      }
+    },
+    {
+      "id": 33,
+      "key": "adventure-v1-033",
+      "chapterId": "aurora-ascent",
+      "chapterIndex": 4,
+      "levelInChapter": 3,
+      "title": "Prism Path",
+      "difficulty": "normal",
+      "seed": "mazle-adventure-v1-033-candidate-2",
+      "mechanics": [
+        "ice",
+        "ledge"
+      ],
+      "prerequisiteLevelId": 32,
+      "mapPosition": {
+        "x": 0.2,
+        "y": 0.25
+      },
+      "rows": [
+        "###########",
+        "#~~~#G~~~~#",
+        "#~#~#~###~#",
+        "#~#~~~#~#~#",
+        "#~#####~#~#",
+        "#~#S~~#~~~#",
+        "#~#^#~#####",
+        "#~~^#~#~~~#",
+        "#####~###~#",
+        "#~~~~~~~~~#",
+        "###########"
+      ],
+      "optimalMoves": 8,
+      "solution": "DDLURDRU",
+      "moveLimit": 13,
+      "starThresholds": {
+        "three": 8,
+        "two": 10,
+        "one": 13
+      }
+    },
+    {
+      "id": 34,
+      "key": "adventure-v1-034",
+      "chapterId": "aurora-ascent",
+      "chapterIndex": 4,
+      "levelInChapter": 4,
+      "title": "Moonlit Ice",
+      "difficulty": "normal",
+      "seed": "mazle-adventure-v1-034-candidate-1",
+      "mechanics": [
+        "ice",
+        "ledge"
+      ],
+      "prerequisiteLevelId": 33,
+      "mapPosition": {
+        "x": 0.33,
+        "y": 0.35
+      },
+      "rows": [
+        "###########",
+        "#~~~~~~.~~#",
+        "#~#~#####~#",
+        "#~#~~~#~~~#",
+        "#####~#####",
+        "#~~S#~~~~~#",
+        "#~#~###~#~#",
+        "#^#~~~#~~~#",
+        "#~#####~#.#",
+        "#~~~~~>~#G#",
+        "###########"
+      ],
+      "optimalMoves": 9,
+      "solution": "LDDRRURDD",
+      "moveLimit": 15,
+      "starThresholds": {
+        "three": 9,
+        "two": 12,
+        "one": 15
+      }
+    },
+    {
+      "id": 35,
+      "key": "adventure-v1-035",
+      "chapterId": "aurora-ascent",
+      "chapterIndex": 4,
+      "levelInChapter": 5,
+      "title": "Aurora Turn",
+      "difficulty": "normal",
+      "seed": "mazle-adventure-v1-035-candidate-0",
+      "mechanics": [
+        "ice",
+        "ledge"
+      ],
+      "prerequisiteLevelId": 34,
+      "mapPosition": {
+        "x": 0.58,
+        "y": 0.45
+      },
+      "rows": [
+        "###########",
+        "#~#~~~~~~G#",
+        "#~#.#~###v#",
+        "#~~~~~~~#~#",
+        "#########~#",
+        "#~~S#~~~#v#",
+        "#~#~#~#~#~#",
+        "#~#~~~#~~~#",
+        "#~#######~#",
+        "#~~~~~~~#~#",
+        "###########"
+      ],
+      "optimalMoves": 9,
+      "solution": "DRURDRUUU",
+      "moveLimit": 15,
+      "starThresholds": {
+        "three": 9,
+        "two": 12,
+        "one": 15
+      }
+    },
+    {
+      "id": 36,
+      "key": "adventure-v1-036",
+      "chapterId": "aurora-ascent",
+      "chapterIndex": 4,
+      "levelInChapter": 6,
+      "title": "Polar Crossing",
+      "difficulty": "normal",
+      "seed": "mazle-adventure-v1-036-candidate-0",
+      "mechanics": [
+        "ice",
+        "ledge"
+      ],
+      "prerequisiteLevelId": 35,
+      "mapPosition": {
+        "x": 0.8,
+        "y": 0.55
+      },
+      "rows": [
+        "###########",
+        "#~>~~>~.#~#",
+        "#~#####~#~#",
+        "#~~~~~~~~G#",
+        "#~###~#####",
+        "#~#~#~~~~~#",
+        "#~#~#####~#",
+        "#~#~~~#~~~#",
+        "#~#~#~#####",
+        "#~~~#~~S~~#",
+        "###########"
+      ],
+      "optimalMoves": 11,
+      "solution": "LULDLURRRDR",
+      "moveLimit": 18,
+      "starThresholds": {
+        "three": 11,
+        "two": 14,
+        "one": 18
+      }
+    },
+    {
+      "id": 37,
+      "key": "adventure-v1-037",
+      "chapterId": "aurora-ascent",
+      "chapterIndex": 4,
+      "levelInChapter": 7,
+      "title": "Starlight Slalom",
+      "difficulty": "normal",
+      "seed": "mazle-adventure-v1-037-candidate-16",
+      "mechanics": [
+        "ice",
+        "ledge"
+      ],
+      "prerequisiteLevelId": 36,
+      "mapPosition": {
+        "x": 0.84,
+        "y": 0.65
+      },
+      "rows": [
+        "###########",
+        "#<~~#~~~~S#",
+        "#~#~#^###.#",
+        "#~#~~~#~~~#",
+        "#~#####~#~#",
+        "#~~~#~~~~~#",
+        "###~#######",
+        "#~~~#~~~~~#",
+        "#~###~#####",
+        "#~~~~G~~~~#",
+        "###########"
+      ],
+      "optimalMoves": 12,
+      "solution": "LDDLULDRDLDR",
+      "moveLimit": 20,
+      "starThresholds": {
+        "three": 12,
+        "two": 15,
+        "one": 20
+      }
+    },
+    {
+      "id": 38,
+      "key": "adventure-v1-038",
+      "chapterId": "aurora-ascent",
+      "chapterIndex": 4,
+      "levelInChapter": 8,
+      "title": "Night Climb",
+      "difficulty": "normal",
+      "seed": "mazle-adventure-v1-038-candidate-4",
+      "mechanics": [
+        "ice",
+        "ledge"
+      ],
+      "prerequisiteLevelId": 37,
+      "mapPosition": {
+        "x": 0.68,
+        "y": 0.75
+      },
+      "rows": [
+        "###########",
+        "#G~~~~#~~~#",
+        "#~###~###~#",
+        "#~<~#~~~~~#",
+        "###~#~###~#",
+        "#~~~#~#S~~#",
+        "#~#~###~#~#",
+        "#~#~#~~~#~#",
+        "#~###~###~#",
+        "#~~.~<.~~~#",
+        "###########"
+      ],
+      "optimalMoves": 12,
+      "solution": "RDLLLLURULLU",
+      "moveLimit": 20,
+      "starThresholds": {
+        "three": 12,
+        "two": 15,
+        "one": 20
+      }
+    },
+    {
+      "id": 39,
+      "key": "adventure-v1-039",
+      "chapterId": "aurora-ascent",
+      "chapterIndex": 4,
+      "levelInChapter": 9,
+      "title": "Dancing Ribbons",
+      "difficulty": "hard",
+      "seed": "mazle-adventure-v1-039-candidate-11",
+      "mechanics": [
+        "ice",
+        "ledge"
+      ],
+      "prerequisiteLevelId": 38,
+      "mapPosition": {
+        "x": 0.42,
+        "y": 0.85
+      },
+      "rows": [
+        "###########",
+        "#~~<~~~~~~#",
+        "#~###~###~#",
+        "#~~~#~~~#~#",
+        "###~##~v#~#",
+        "#~~~#~~S#~#",
+        "#~#######~#",
+        "#~#~~~~~#~#",
+        "#~###~#~#~#",
+        "#G~~~~#~~~#",
+        "###########"
+      ],
+      "optimalMoves": 11,
+      "solution": "UULULLDRDLD",
+      "moveLimit": 18,
+      "starThresholds": {
+        "three": 11,
+        "two": 14,
+        "one": 18
+      }
+    },
+    {
+      "id": 40,
+      "key": "adventure-v1-040",
+      "chapterId": "aurora-ascent",
+      "chapterIndex": 4,
+      "levelInChapter": 10,
+      "title": "Aurora Guardian",
+      "difficulty": "super-hard",
+      "seed": "mazle-adventure-v1-040-candidate-17",
+      "mechanics": [
+        "ice",
+        "ledge"
+      ],
+      "prerequisiteLevelId": 39,
+      "mapPosition": {
+        "x": 0.26,
+        "y": 0.95
+      },
+      "rows": [
+        "###########",
+        "#~~~#S~~#~#",
+        "###~###~#.#",
+        "#~~~#~~~#~#",
+        "#~###~###~#",
+        "#~~~~~#~~~#",
+        "#~#####~#~#",
+        "#~~~#.~~~~#",
+        "###^#~###~#",
+        "#G<~~~~~~~#",
+        "###########"
+      ],
+      "optimalMoves": 11,
+      "solution": "RDLDLDRDDLL",
+      "moveLimit": 18,
+      "starThresholds": {
+        "three": 11,
+        "two": 14,
+        "one": 18
+      }
+    },
+    {
+      "id": 41,
+      "key": "adventure-v1-041",
+      "chapterId": "crown-of-winter",
+      "chapterIndex": 5,
+      "levelInChapter": 1,
+      "title": "Summit Steps",
+      "difficulty": "normal",
+      "seed": "mazle-adventure-v1-041-candidate-22",
+      "mechanics": [
+        "ice",
+        "ledge"
+      ],
+      "prerequisiteLevelId": 40,
+      "mapPosition": {
+        "x": 0.5,
+        "y": 0.05
+      },
+      "rows": [
+        "#############",
+        "#~~~~~~~~~~~#",
+        "#~#####~#####",
+        "#~#~~~#~~~~~#",
+        "#~#~#~#####~#",
+        "#~#~#~#v~~~~#",
+        "###~#~#~###~#",
+        "#~~~#~#~~~#~#",
+        "#####~#~#~#~#",
+        "#~~~#~#~#~#G#",
+        "#~#.#~###~#~#",
+        "#S#~~~~~~>#~#",
+        "#############"
+      ],
+      "optimalMoves": 10,
+      "solution": "URDDRULURD",
+      "moveLimit": 16,
+      "starThresholds": {
+        "three": 10,
+        "two": 13,
+        "one": 16
+      }
+    },
+    {
+      "id": 42,
+      "key": "adventure-v1-042",
+      "chapterId": "crown-of-winter",
+      "chapterIndex": 5,
+      "levelInChapter": 2,
+      "title": "Crown Jewel",
+      "difficulty": "normal",
+      "seed": "mazle-adventure-v1-042-candidate-0",
+      "mechanics": [
+        "ice",
+        "ledge"
+      ],
+      "prerequisiteLevelId": 41,
+      "mapPosition": {
+        "x": 0.7,
+        "y": 0.15
+      },
+      "rows": [
+        "#############",
+        "#~~~~~#~~~~~#",
+        "#~#~###~###~#",
+        "#~#~#~~~#~~~#",
+        "#~#~#~###~###",
+        "#~#G#~#~#S#~#",
+        "###~#~#~#~#~#",
+        "#~>~#~~~#~#~#",
+        "#v#######~#~#",
+        "#~~~~~#~~~#~#",
+        "#~###~#~###~#",
+        "#~.~#~.~~.~~#",
+        "#############"
+      ],
+      "optimalMoves": 12,
+      "solution": "DLDLLULUURRU",
+      "moveLimit": 20,
+      "starThresholds": {
+        "three": 12,
+        "two": 15,
+        "one": 20
+      }
+    },
+    {
+      "id": 43,
+      "key": "adventure-v1-043",
+      "chapterId": "crown-of-winter",
+      "chapterIndex": 5,
+      "levelInChapter": 3,
+      "title": "Whiteout",
+      "difficulty": "normal",
+      "seed": "mazle-adventure-v1-043-candidate-6",
+      "mechanics": [
+        "ice",
+        "ledge"
+      ],
+      "prerequisiteLevelId": 42,
+      "mapPosition": {
+        "x": 0.8,
+        "y": 0.25
+      },
+      "rows": [
+        "#############",
+        "#~~~~~#~~~#~#",
+        "#~#####~###~#",
+        "#~~~~~~~#~.~#",
+        "#~#########~#",
+        "#~~~~~~~#~~~#",
+        "#######~#~###",
+        "#~#~~S~~#.~~#",
+        "#~#^#######~#",
+        "#~~~#~~.~>#~#",
+        "#~###~###~#~#",
+        "#~~~~~#~~G~~#",
+        "#############"
+      ],
+      "optimalMoves": 10,
+      "solution": "LDDLDRURRD",
+      "moveLimit": 16,
+      "starThresholds": {
+        "three": 10,
+        "two": 13,
+        "one": 16
+      }
+    },
+    {
+      "id": 44,
+      "key": "adventure-v1-044",
+      "chapterId": "crown-of-winter",
+      "chapterIndex": 5,
+      "levelInChapter": 4,
+      "title": "Peak Passage",
+      "difficulty": "normal",
+      "seed": "mazle-adventure-v1-044-candidate-14",
+      "mechanics": [
+        "ice",
+        "ledge"
+      ],
+      "prerequisiteLevelId": 43,
+      "mapPosition": {
+        "x": 0.67,
+        "y": 0.35
+      },
+      "rows": [
+        "#############",
+        "#~~~~S~~~~~~#",
+        "#########~#~#",
+        "#~~.~G~~~~#~#",
+        "#~#########~#",
+        "#~~~~~~~#~~~#",
+        "#~#####~###^#",
+        "#~#~~~#~#~#~#",
+        "#~#~#~#~#~#~#",
+        "#~#~#~#~~.#~#",
+        "#~#~#~#####~#",
+        "#~~~#~<~~~~~#",
+        "#############"
+      ],
+      "optimalMoves": 12,
+      "solution": "RDDLLULDLURR",
+      "moveLimit": 20,
+      "starThresholds": {
+        "three": 12,
+        "two": 15,
+        "one": 20
+      }
+    },
+    {
+      "id": 45,
+      "key": "adventure-v1-045",
+      "chapterId": "crown-of-winter",
+      "chapterIndex": 5,
+      "levelInChapter": 5,
+      "title": "Royal Ridge",
+      "difficulty": "normal",
+      "seed": "mazle-adventure-v1-045-candidate-9",
+      "mechanics": [
+        "ice",
+        "ledge"
+      ],
+      "prerequisiteLevelId": 44,
+      "mapPosition": {
+        "x": 0.42,
+        "y": 0.45
+      },
+      "rows": [
+        "#############",
+        "#~~~~S~~~~#~#",
+        "#~####~##~#~#",
+        "#~#~~~~~#~~~#",
+        "#~#~#~#.###^#",
+        "#~#~#G#~~~#~#",
+        "#~###~###~#^#",
+        "#~~~#~~~#~#~#",
+        "#####~#~###~#",
+        "#~~~#~#~#~~~#",
+        "#~#~#~#~#~###",
+        "#~#~~~#~~^~~#",
+        "#############"
+      ],
+      "optimalMoves": 12,
+      "solution": "RDRDDDLDLULU",
+      "moveLimit": 20,
+      "starThresholds": {
+        "three": 12,
+        "two": 15,
+        "one": 20
+      }
+    },
+    {
+      "id": 46,
+      "key": "adventure-v1-046",
+      "chapterId": "crown-of-winter",
+      "chapterIndex": 5,
+      "levelInChapter": 6,
+      "title": "Winter Labyrinth",
+      "difficulty": "normal",
+      "seed": "mazle-adventure-v1-046-candidate-5",
+      "mechanics": [
+        "ice",
+        "ledge"
+      ],
+      "prerequisiteLevelId": 45,
+      "mapPosition": {
+        "x": 0.2,
+        "y": 0.55
+      },
+      "rows": [
+        "#############",
+        "#~#~~~#~~~~~#",
+        "#~#~#~#~###~#",
+        "#~#~#~~S#~~~#",
+        "#~#######~#~#",
+        "#~#~~~~~~~#~#",
+        "#~#~#####~#.#",
+        "#~~~#~~~#~~~#",
+        "#####~###^###",
+        "#~~~#~<~~~#~#",
+        "#~###~#####~#",
+        "#~~~~~>~~~~G#",
+        "#############"
+      ],
+      "optimalMoves": 12,
+      "solution": "URDDLDDLLDRR",
+      "moveLimit": 20,
+      "starThresholds": {
+        "three": 12,
+        "two": 15,
+        "one": 20
+      }
+    },
+    {
+      "id": 47,
+      "key": "adventure-v1-047",
+      "chapterId": "crown-of-winter",
+      "chapterIndex": 5,
+      "levelInChapter": 7,
+      "title": "Golden Compass",
+      "difficulty": "hard",
+      "seed": "mazle-adventure-v1-047-candidate-0",
+      "mechanics": [
+        "ice",
+        "ledge"
+      ],
+      "prerequisiteLevelId": 46,
+      "mapPosition": {
+        "x": 0.16,
+        "y": 0.65
+      },
+      "rows": [
+        "#############",
+        "#~#~~.#~~~~~#",
+        "#~#~###^#~###",
+        "#~#~#~~G#~~~#",
+        "#~#~#~#####~#",
+        "#S#~~~#~~~~~#",
+        "#~###~#~###~#",
+        "#.~~#~#~#~~~#",
+        "###~###~###~#",
+        "#~#~~~#~~~#~#",
+        "#~###~#~#v#~#",
+        "#~~~~~~>~~#~#",
+        "#############"
+      ],
+      "optimalMoves": 14,
+      "solution": "DRDRDRURULULDD",
+      "moveLimit": 23,
+      "starThresholds": {
+        "three": 14,
+        "two": 18,
+        "one": 23
+      }
+    },
+    {
+      "id": 48,
+      "key": "adventure-v1-048",
+      "chapterId": "crown-of-winter",
+      "chapterIndex": 5,
+      "levelInChapter": 8,
+      "title": "Final Approach",
+      "difficulty": "hard",
+      "seed": "mazle-adventure-v1-048-candidate-5",
+      "mechanics": [
+        "ice",
+        "ledge"
+      ],
+      "prerequisiteLevelId": 47,
+      "mapPosition": {
+        "x": 0.32,
+        "y": 0.75
+      },
+      "rows": [
+        "#############",
+        "#~~~~~~.#S~~#",
+        "#####~#~###~#",
+        "#~~~~~#~~~#~#",
+        "#.#######~#^#",
+        "#~#.~~#~~~~~#",
+        "#~#~###^#~###",
+        "#G#~~~~~~~~~#",
+        "#~#######~#~#",
+        "#~#~~~~v#~#~#",
+        "#~#~###~###~#",
+        "#~~~~~#~~~~~#",
+        "#############"
+      ],
+      "optimalMoves": 14,
+      "solution": "RDDLDDRDLULDLU",
+      "moveLimit": 23,
+      "starThresholds": {
+        "three": 14,
+        "two": 18,
+        "one": 23
+      }
+    },
+    {
+      "id": 49,
+      "key": "adventure-v1-049",
+      "chapterId": "crown-of-winter",
+      "chapterIndex": 5,
+      "levelInChapter": 9,
+      "title": "Top of the World",
+      "difficulty": "hard",
+      "seed": "mazle-adventure-v1-049-candidate-28",
+      "mechanics": [
+        "ice",
+        "ledge"
+      ],
+      "prerequisiteLevelId": 48,
+      "mapPosition": {
+        "x": 0.58,
+        "y": 0.85
+      },
+      "rows": [
+        "#############",
+        "#~~~~~~~~~~~#",
+        "#~###~#####~#",
+        "#~#~~~#~~G~~#",
+        "###~#~#######",
+        "#~~~#~#~~S~~#",
+        "#~###~#~###~#",
+        "#~~~~~#~#~~~#",
+        "#~#~###~#~#^#",
+        "#~#~~~#~#~#~#",
+        "#~#####~###~#",
+        "#~~~<~~<~~~~#",
+        "#############"
+      ],
+      "optimalMoves": 14,
+      "solution": "RDDLLLURURURDL",
+      "moveLimit": 23,
+      "starThresholds": {
+        "three": 14,
+        "two": 18,
+        "one": 23
+      }
+    },
+    {
+      "id": 50,
+      "key": "adventure-v1-050",
+      "chapterId": "crown-of-winter",
+      "chapterIndex": 5,
+      "levelInChapter": 10,
+      "title": "Winter Crown",
+      "difficulty": "super-hard",
+      "seed": "mazle-adventure-v1-050-candidate-13",
+      "mechanics": [
+        "ice",
+        "ledge"
+      ],
+      "prerequisiteLevelId": 49,
+      "mapPosition": {
+        "x": 0.74,
+        "y": 0.95
+      },
+      "rows": [
+        "#############",
+        "#.~~~~~~~~~S#",
+        "#^#########~#",
+        "#~~~~~.~#~~~#",
+        "#######~#~~##",
+        "#~~~~~~~#~~~#",
+        "#~#########~#",
+        "#^#G.v~~~~#~#",
+        "#~###~###~#~#",
+        "#~#~~~#~#.#~#",
+        "#~#~###~#~#~#",
+        "#~~~#~~~~~~.#",
+        "#############"
+      ],
+      "optimalMoves": 15,
+      "solution": "LDDRRDLDDRURULL",
+      "moveLimit": 24,
+      "starThresholds": {
+        "three": 15,
+        "two": 19,
+        "one": 24
+      }
+    }
+  ]
+}

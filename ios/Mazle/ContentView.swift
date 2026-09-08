@@ -4,6 +4,7 @@ struct ContentView: View {
     @EnvironmentObject private var game: GameViewModel
     @State private var showingHelp = false
     @State private var showingMenu = false
+    @State private var showingAdventure = ProcessInfo.processInfo.arguments.contains("-Adventure")
     @State private var menuDestination: WebMenuDestination?
     @AppStorage("mazle.webHelpSeen") private var webHelpSeen = false
     @AppStorage("mazle.themePreference") private var themePreference = "light"
@@ -23,6 +24,7 @@ struct ContentView: View {
                     onHelp: { showingHelp = true },
                     onMenu: { showingMenu.toggle() },
                     onRecentPuzzles: { menuDestination = .recentPuzzles },
+                    onAdventure: { openAdventure() },
                     isMenuOpen: showingMenu
                 )
             } else {
@@ -33,6 +35,10 @@ struct ContentView: View {
 
             if showingMenu {
                 WebMenuOverlay(
+                    onAdventure: {
+                        showingMenu = false
+                        openAdventure()
+                    },
                     onStats: {
                         showingMenu = false
                         menuDestination = .stats
@@ -77,6 +83,16 @@ struct ContentView: View {
                 }
                 .transition(.opacity)
             }
+
+            if showingAdventure {
+                AdventureRootView {
+                    withAnimation(.easeInOut(duration: 0.32)) {
+                        showingAdventure = false
+                    }
+                }
+                .transition(.opacity.combined(with: .move(edge: .trailing)))
+                .zIndex(20)
+            }
         }
         .statusBarHidden(true)
         .preferredColorScheme(themePreference == "dark" ? .dark : themePreference == "light" ? .light : nil)
@@ -91,7 +107,22 @@ struct ContentView: View {
                 showingHelp = false
             }
         }
+        .onOpenURL { url in
+            guard url.scheme?.lowercased() == "mazle",
+                  url.host?.lowercased() == "adventure" else { return }
+            openAdventure()
+        }
         .accessibilityIdentifier("mazle.web-native-screen")
+    }
+
+    private func openAdventure() {
+        showingHelp = false
+        showingMenu = false
+        menuDestination = nil
+        MazleHaptics.shared.confirm()
+        withAnimation(.easeInOut(duration: 0.32)) {
+            showingAdventure = true
+        }
     }
 }
 
@@ -253,6 +284,7 @@ private struct WebGameView: View {
     let onHelp: () -> Void
     let onMenu: () -> Void
     let onRecentPuzzles: () -> Void
+    let onAdventure: () -> Void
     let isMenuOpen: Bool
 
     @State private var isPlaying = false
@@ -273,6 +305,7 @@ private struct WebGameView: View {
                     themePreference: $themePreference,
                     onHelp: onHelp,
                     onMenu: onMenu,
+                    onAdventure: onAdventure,
                     isMenuOpen: isMenuOpen
                 )
 
@@ -356,6 +389,7 @@ private struct WebHeader: View {
     @Binding var themePreference: String
     let onHelp: () -> Void
     let onMenu: () -> Void
+    let onAdventure: () -> Void
     let isMenuOpen: Bool
 
     var body: some View {
@@ -373,13 +407,21 @@ private struct WebHeader: View {
 
                 Spacer()
 
-                HStack(spacing: 4) {
-                    Image(systemName: "flame.fill")
-                        .font(.system(size: 18, weight: .regular))
-                    Text("0")
-                        .font(.system(size: 15.2, weight: .heavy, design: .rounded))
+                Button(action: onAdventure) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "map.fill")
+                            .font(.system(size: 15, weight: .bold))
+                        Text("PLAY")
+                            .font(WebFont.extraBold(10.5))
+                            .tracking(0.6)
+                    }
+                    .foregroundStyle(MazleWebPalette.color(MazleWebPalette.success))
+                    .padding(.horizontal, 8)
+                    .frame(height: 30)
+                    .background(MazleWebPalette.color(MazleWebPalette.success).opacity(0.10), in: Capsule())
                 }
-                .foregroundStyle(MazleWebPalette.color(MazleWebPalette.secondary).opacity(0.4))
+                .buttonStyle(.plain)
+                .accessibilityLabel("Play Mazle Adventure")
 
                 Button(action: onMenu) {
                     WebMenuGlyph(isOpen: isMenuOpen)
@@ -1206,6 +1248,7 @@ private struct WebLegendTile: View {
 }
 
 private enum WebMenuIconKind {
+    case adventure
     case stats
     case leaderboard
     case hallOfFame
@@ -1225,6 +1268,21 @@ private struct WebMenuIcon: View {
             var path = Path()
 
             switch kind {
+            case .adventure:
+                path.move(to: CGPoint(x: 4, y: 5))
+                path.addLine(to: CGPoint(x: 9, y: 3))
+                path.addLine(to: CGPoint(x: 15, y: 5))
+                path.addLine(to: CGPoint(x: 20, y: 3))
+                path.addLine(to: CGPoint(x: 20, y: 19))
+                path.addLine(to: CGPoint(x: 15, y: 21))
+                path.addLine(to: CGPoint(x: 9, y: 19))
+                path.addLine(to: CGPoint(x: 4, y: 21))
+                path.closeSubpath()
+                path.move(to: CGPoint(x: 9, y: 3))
+                path.addLine(to: CGPoint(x: 9, y: 19))
+                path.move(to: CGPoint(x: 15, y: 5))
+                path.addLine(to: CGPoint(x: 15, y: 21))
+                context.stroke(path, with: .foreground, style: style)
             case .stats:
                 path.move(to: CGPoint(x: 3, y: 3))
                 path.addLine(to: CGPoint(x: 3, y: 21))
@@ -1330,6 +1388,7 @@ private struct WebMenuItemButton: View {
 }
 
 private struct WebMenuOverlay: View {
+    let onAdventure: () -> Void
     let onStats: () -> Void
     let onLeaderboard: () -> Void
     let onHallOfFame: () -> Void
@@ -1349,6 +1408,7 @@ private struct WebMenuOverlay: View {
                 HStack {
                     Spacer()
                     VStack(spacing: 3.2) {
+                        WebMenuItemButton(title: "Adventure", icon: .adventure, action: onAdventure)
                         WebMenuItemButton(title: "Stats", icon: .stats, action: onStats)
                         WebMenuItemButton(title: "Leaderboard", icon: .leaderboard, action: onLeaderboard)
                         WebMenuItemButton(title: "Hall of Fame", icon: .hallOfFame, action: onHallOfFame)

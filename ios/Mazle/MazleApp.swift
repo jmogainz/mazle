@@ -24,6 +24,7 @@ private enum MazleFontRegistrar {
 struct MazleApp: App {
     @StateObject private var game = GameViewModel()
     @StateObject private var storeKit = StoreKitManager()
+    @StateObject private var adventure = AdventureProgressStore.shared
 
     init() {
         MazleFontRegistrar.registerBundledFonts()
@@ -34,6 +35,7 @@ struct MazleApp: App {
             ContentView()
                 .environmentObject(game)
                 .environmentObject(storeKit)
+                .environmentObject(adventure)
         }
     }
 }

@@ -18,6 +18,51 @@
       "productID" : "com.mazle.archive.lifetime",
       "referenceName" : "Archive Lifetime",
       "type" : "NonConsumable"
+    },
+    {
+      "displayPrice" : "0.99",
+      "familyShareable" : false,
+      "internalID" : "A71F1111",
+      "localizations" : [
+        {
+          "description" : "Restores all three Adventure hearts once.",
+          "displayName" : "1 Refill Ticket",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.mazle.adventure.refill.1",
+      "referenceName" : "Adventure Refill 1",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "3.99",
+      "familyShareable" : false,
+      "internalID" : "A71F5555",
+      "localizations" : [
+        {
+          "description" : "Five full Adventure heart refills.",
+          "displayName" : "5 Refill Tickets",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.mazle.adventure.refill.5",
+      "referenceName" : "Adventure Refill 5",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "7.99",
+      "familyShareable" : false,
+      "internalID" : "A71F1212",
+      "localizations" : [
+        {
+          "description" : "Twelve full Adventure heart refills.",
+          "displayName" : "12 Refill Tickets",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.mazle.adventure.refill.12",
+      "referenceName" : "Adventure Refill 12",
+      "type" : "Consumable"
     }
   ],
   "settings" : {

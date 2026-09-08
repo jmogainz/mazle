@@ -16,6 +16,8 @@ targets:
     platform: iOS
     sources:
       - path: Mazle
+      - path: ../src/adventure/content/adventure-levels-v1.json
+        buildPhase: resources
     resources:
       - path: Mazle/Resources/Fonts
       - path: Mazle/Resources/Characters

@@ -34,5 +34,6 @@ export async function GET(request: Request) {
   });
 
   callback.searchParams.set('token', mobileToken);
+  callback.searchParams.set('userId', userId);
   return NextResponse.redirect(callback);
 }

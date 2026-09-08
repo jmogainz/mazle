@@ -8,6 +8,14 @@ struct MazleAuthSession: Codable, Equatable, Sendable {
     let accessToken: String
     let provider: String?
     let expiresAt: Date?
+    let userId: String?
+
+    init(accessToken: String, provider: String?, expiresAt: Date?, userId: String? = nil) {
+        self.accessToken = accessToken
+        self.provider = provider
+        self.expiresAt = expiresAt
+        self.userId = userId
+    }
 
     var isExpired: Bool {
         guard let expiresAt else { return false }
@@ -136,14 +144,20 @@ final class MazleAuthManager: NSObject, ObservableObject {
                       let components = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false),
                       let token = components.queryItems?.first(where: { $0.name == "token" })?.value,
                       !token.isEmpty else {
-                    self.errorMessage = "Sign-in completed without a session token."
+                    let callbackError = callbackURL.flatMap {
+                        URLComponents(url: $0, resolvingAgainstBaseURL: false)?
+                            .queryItems?.first(where: { $0.name == "error" })?.value
+                    }
+                    self.errorMessage = callbackError.map { "Sign-in failed: \($0)." }
+                        ?? "Sign-in completed without a session token."
                     return
                 }
                 self.sessionStore.save(
                     MazleAuthSession(
                         accessToken: token,
                         provider: components.queryItems?.first(where: { $0.name == "provider" })?.value,
-                        expiresAt: Date().addingTimeInterval(10 * 24 * 60 * 60)
+                        expiresAt: Date().addingTimeInterval(10 * 24 * 60 * 60),
+                        userId: components.queryItems?.first(where: { $0.name == "userId" })?.value
                     )
                 )
             }

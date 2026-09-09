@@ -14,6 +14,9 @@ struct DailyPuzzleService: Sendable {
     }
 
     func fetch(date: String) async throws -> DailyPuzzleResponse {
+        guard !MazleRuntimeConfiguration.isOfflineMode else {
+            throw DailyPuzzleServiceError.offlineOnly
+        }
         let today = DailyDate.todayString()
 
         if date == today {
@@ -44,6 +47,9 @@ struct DailyPuzzleService: Sendable {
     }
 
     private func request(path: [String], queryItems: [URLQueryItem] = []) async throws -> DailyPuzzleResponse {
+        guard !MazleRuntimeConfiguration.isOfflineMode else {
+            throw DailyPuzzleServiceError.offlineOnly
+        }
         var url = baseURL
         for component in path {
             url.appendPathComponent(component)
@@ -79,6 +85,7 @@ struct DailyPuzzleService: Sendable {
 }
 
 enum DailyPuzzleServiceError: LocalizedError, Sendable {
+    case offlineOnly
     case invalidURL
     case invalidResponse
     case httpStatus(Int)
@@ -88,6 +95,7 @@ enum DailyPuzzleServiceError: LocalizedError, Sendable {
 
     var errorDescription: String? {
         switch self {
+        case .offlineOnly: return "Networking is disabled in the offline TestFlight build."
         case .invalidURL: return "The Mazle server URL is invalid."
         case .invalidResponse: return "The Mazle server returned an invalid response."
         case .httpStatus(let status): return "The Mazle server returned HTTP \(status)."

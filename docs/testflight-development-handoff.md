@@ -13,8 +13,13 @@
 - Add iOS CI through a separate PR targeting this integration branch. Start with
   manual dispatch only, an explicit allowed-branch check excluding `main`, and a
   protected `testflight-development` GitHub environment requiring approval.
-- No TestFlight workflow, Apple credentials, app registration or tester group has
-  been configured as part of this handoff. No production migrations were run.
+- The implementation lives on the setup branch in
+  `.github/workflows/testflight-development.yml`; it is manual and rejects every
+  ref except `integration/adventure-web-ios`. It archives with the dedicated
+  `TestFlightDevelopment` configuration and uploads internal-only TestFlight.
+- The workflow does not alter or trigger `.github/workflows/deploy.yml` and never
+  uploads web changes. Apple secrets remain environment-scoped and are not stored
+  in this repository.
 
 ## Native project
 
@@ -30,6 +35,26 @@
   current source tree constitutes completed App Store submission metadata.
 - Semreh's pipeline is a read-only reference, not permission to change Semreh.
   Its Apple team/credentials may be reused only with the owner's authorization.
+
+## Offline TestFlight development contract
+
+- `TestFlightDevelopment` is a Release-derived configuration with the compile-time
+  `MAZLE_OFFLINE_TESTFLIGHT` condition. It uses a non-network `offline://` base URL
+  as defense in depth and a separate `com.mazle.adventure.testflight` local state
+  suite.
+- This build starts in Adventure and keeps the bundled 50-level catalog playable
+  locally, including animations, sound and haptics. It blocks production network
+  requests, login, credential restore/persistence, result/account sync, feedback,
+  StoreKit product loading, purchases, restores and transaction observation.
+- The offline TestFlight path bypasses server-authorized energy loss and purchase
+  refills so gameplay QA cannot dead-end without a backend. It is not a production
+  payment or account implementation.
+- Debug preview remains separate and continues to use
+  `-Adventure -MazleOfflinePreview`; the TestFlight contract must not depend on
+  launch arguments.
+- Local verification uses the Debug test target with the exact
+  `MAZLE_OFFLINE_TESTFLIGHT` condition, followed by a separately archived
+  `TestFlightDevelopment` app. Physical-device sound/haptic QA remains required.
 
 ## Backend isolation is a required gate
 

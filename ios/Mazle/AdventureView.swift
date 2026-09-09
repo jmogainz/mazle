@@ -114,6 +114,7 @@ struct AdventureRootView: View {
         }
         .task {
             progressStore.refreshEnergy()
+            guard !MazleRuntimeConfiguration.isOfflineMode else { return }
             await progressStore.syncAccount()
         }
         .statusBarHidden(true)
@@ -258,19 +259,28 @@ private struct AdventureMapHeader: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Button(action: onDaily) {
-                HStack(spacing: 6) {
-                    Image(systemName: "calendar")
-                    Text("DAILY")
+            if MazleRuntimeConfiguration.isOfflineTestFlight {
+                Label("OFFLINE", systemImage: "wifi.slash")
+                    .font(AdventureFont.extraBold(11))
+                    .foregroundStyle(AdventurePalette.ink.opacity(0.62))
+                    .padding(.horizontal, 12)
+                    .frame(height: 42)
+                    .background(.white.opacity(0.52), in: Capsule())
+            } else {
+                Button(action: onDaily) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "calendar")
+                        Text("DAILY")
+                    }
+                    .font(AdventureFont.extraBold(12))
+                    .foregroundStyle(AdventurePalette.ink)
+                    .padding(.horizontal, 12)
+                    .frame(height: 42)
+                    .background(.white.opacity(0.72), in: Capsule())
+                    .overlay { Capsule().stroke(.white.opacity(0.85), lineWidth: 1) }
                 }
-                .font(AdventureFont.extraBold(12))
-                .foregroundStyle(AdventurePalette.ink)
-                .padding(.horizontal, 12)
-                .frame(height: 42)
-                .background(.white.opacity(0.72), in: Capsule())
-                .overlay { Capsule().stroke(.white.opacity(0.85), lineWidth: 1) }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
 
             VStack(spacing: 0) {
                 Text("MAZLE")
@@ -371,35 +381,50 @@ private struct AdventureEnergyPill: View {
     let onTap: () -> Void
 
     var body: some View {
-        TimelineView(.periodic(from: Date(), by: 1)) { context in
-            Button(action: onTap) {
-                VStack(alignment: .trailing, spacing: 0) {
-                    HStack(spacing: 3) {
-                        Image(systemName: "heart.fill")
-                            .foregroundStyle(AdventurePalette.coral)
-                        Text("\(progressStore.energy.hearts)/\(progressStore.energy.maximumHearts)")
-                            .font(AdventureFont.extraBold(13))
-                        Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(AdventurePalette.blue)
-                    }
-                    if let countdown = progressStore.countdownString(at: context.date) {
-                        Text(countdown)
-                            .font(.system(size: 9, weight: .bold, design: .monospaced))
-                            .foregroundStyle(AdventurePalette.ink.opacity(0.55))
-                    }
-                }
-                .foregroundStyle(AdventurePalette.ink)
-                .padding(.horizontal, 11)
-                .frame(minWidth: 82, minHeight: 42)
-                .background(.white.opacity(0.78), in: Capsule())
-                .overlay { Capsule().stroke(.white.opacity(0.9), lineWidth: 1) }
+        if MazleRuntimeConfiguration.isOfflineTestFlight {
+            HStack(spacing: 4) {
+                Image(systemName: "heart.fill")
+                    .foregroundStyle(AdventurePalette.coral)
+                Text("\(progressStore.energy.hearts)/\(progressStore.energy.maximumHearts)")
+                    .font(AdventureFont.extraBold(13))
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("\(progressStore.energy.hearts) of \(progressStore.energy.maximumHearts) Adventure hearts")
-            .accessibilityHint("Opens energy and refill options")
-            .onChange(of: context.date) { _, date in
-                progressStore.refreshEnergy(at: date)
+            .foregroundStyle(AdventurePalette.ink)
+            .padding(.horizontal, 11)
+            .frame(minWidth: 82, minHeight: 42)
+            .background(.white.opacity(0.78), in: Capsule())
+            .overlay { Capsule().stroke(.white.opacity(0.9), lineWidth: 1) }
+            .accessibilityLabel("\(progressStore.energy.hearts) of \(progressStore.energy.maximumHearts) local Adventure hearts")
+        } else {
+            TimelineView(.periodic(from: Date(), by: 1)) { context in
+                Button(action: onTap) {
+                    VStack(alignment: .trailing, spacing: 0) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "heart.fill")
+                                .foregroundStyle(AdventurePalette.coral)
+                            Text("\(progressStore.energy.hearts)/\(progressStore.energy.maximumHearts)")
+                                .font(AdventureFont.extraBold(13))
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(AdventurePalette.blue)
+                        }
+                        if let countdown = progressStore.countdownString(at: context.date) {
+                            Text(countdown)
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .foregroundStyle(AdventurePalette.ink.opacity(0.55))
+                        }
+                    }
+                    .foregroundStyle(AdventurePalette.ink)
+                    .padding(.horizontal, 11)
+                    .frame(minWidth: 82, minHeight: 42)
+                    .background(.white.opacity(0.78), in: Capsule())
+                    .overlay { Capsule().stroke(.white.opacity(0.9), lineWidth: 1) }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(progressStore.energy.hearts) of \(progressStore.energy.maximumHearts) Adventure hearts")
+                .accessibilityHint("Opens energy and refill options")
+                .onChange(of: context.date) { _, date in
+                    progressStore.refreshEnergy(at: date)
+                }
             }
         }
     }
@@ -438,7 +463,6 @@ private struct AdventureWelcomeCard: View {
         .padding(.top, 14)
     }
 }
-
 private struct AdventureHeroIllustration: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var sunOffset: CGFloat = 0
@@ -1620,7 +1644,9 @@ private struct AdventureFailureOverlay: View {
     }
 
     private var canRetry: Bool {
-        level.isProtectedFromEnergyLoss || progressStore.energy.hearts > 0
+        MazleRuntimeConfiguration.isOfflineTestFlight ||
+            level.isProtectedFromEnergyLoss ||
+            progressStore.energy.hearts > 0
     }
 }
 

@@ -158,8 +158,15 @@ final class AdventureProgressStore: ObservableObject {
     }
 
     func canStart(_ level: AdventureLevel) -> Bool {
+        guard isUnlocked(level) else { return false }
+        if MazleRuntimeConfiguration.isOfflineTestFlight {
+            // The offline QA build has no server-authorized energy or purchase
+            // path. Keep every unlocked level playable so gameplay QA can
+            // exercise the full catalog without a dead-end refill screen.
+            return true
+        }
         refreshEnergy()
-        return isUnlocked(level) && (level.isProtectedFromEnergyLoss || energy.hearts > 0)
+        return level.isProtectedFromEnergyLoss || energy.hearts > 0
     }
 
     func refreshEnergy(at date: Date? = nil) {
@@ -181,9 +188,11 @@ final class AdventureProgressStore: ObservableObject {
     func begin(_ level: AdventureLevel) async throws -> AdventureAttemptSnapshot {
         guard let catalog else { throw AdventureProgressError.catalogUnavailable }
         guard isUnlocked(level) else { throw AdventureProgressError.lockedLevel }
-        refreshEnergy()
-        guard level.isProtectedFromEnergyLoss || energy.hearts > 0 else {
-            throw AdventureProgressError.noEnergy
+        if !MazleRuntimeConfiguration.isOfflineTestFlight {
+            refreshEnergy()
+            guard level.isProtectedFromEnergyLoss || energy.hearts > 0 else {
+                throw AdventureProgressError.noEnergy
+            }
         }
 
         if let activeAttempt,
@@ -325,7 +334,9 @@ final class AdventureProgressStore: ObservableObject {
             return false
         }
         var consumed = false
-        if !level.isProtectedFromEnergyLoss, moves > 0 {
+        if !MazleRuntimeConfiguration.isOfflineTestFlight,
+           !level.isProtectedFromEnergyLoss,
+           moves > 0 {
             consumed = energy.consume(at: now())
         }
         activeAttempt = nil
@@ -369,6 +380,9 @@ final class AdventureProgressStore: ObservableObject {
     }
 
     func useRefillTicket() async throws {
+        guard !MazleRuntimeConfiguration.isOfflineMode else {
+            throw AdventureProgressError.noRefillAvailable
+        }
         refreshEnergy()
         guard energy.refillTickets > 0,
               energy.hearts < energy.maximumHearts,
@@ -389,6 +403,9 @@ final class AdventureProgressStore: ObservableObject {
     }
 
     func useDailyRefill() async throws {
+        guard !MazleRuntimeConfiguration.isOfflineMode else {
+            throw AdventureProgressError.noRefillAvailable
+        }
         guard dailyRefillAvailable, let session = validSession else {
             throw AdventureProgressError.noRefillAvailable
         }
@@ -411,6 +428,9 @@ final class AdventureProgressStore: ObservableObject {
         transactionId: UInt64,
         signedTransaction: String
     ) async -> AdventureAppleRefillDisposition {
+        guard !MazleRuntimeConfiguration.isOfflineMode else {
+            return .rejected("Purchases are disabled in the offline TestFlight build.")
+        }
         guard validSession != nil else {
             statusMessage = "Sign in to verify this refill purchase. No charge will be lost."
             return .pending
@@ -463,6 +483,7 @@ final class AdventureProgressStore: ObservableObject {
     }
 
     func syncAccount() async {
+        guard !MazleRuntimeConfiguration.isOfflineMode else { return }
         let requestScope = currentStorageScope
         guard syncingScope != requestScope, let session = validSession else { return }
         syncingScope = requestScope

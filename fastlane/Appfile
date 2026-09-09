@@ -1,0 +1,4 @@
+# frozen_string_literal: true
+
+app_identifier("com.mazle.game")
+team_id("U8G25F98S2")

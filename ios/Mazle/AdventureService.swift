@@ -147,6 +147,7 @@ private struct AdventureAppleRefillPayload: Encodable {
 }
 
 enum AdventureServiceError: LocalizedError {
+    case offlineOnly
     case invalidResponse
     case httpStatus(status: Int, code: String?, message: String?)
     case decoding
@@ -163,6 +164,8 @@ enum AdventureServiceError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
+        case .offlineOnly:
+            return "Networking is disabled in the offline TestFlight build."
         case .invalidResponse:
             return "The Adventure server returned an invalid response."
         case .httpStatus(let status, let code, let message):
@@ -279,6 +282,9 @@ struct AdventureService {
     }
 
     private func perform<Response: Decodable, Body: Encodable>(path: [String], body: Body?) async throws -> Response {
+        guard !MazleRuntimeConfiguration.isOfflineMode else {
+            throw AdventureServiceError.offlineOnly
+        }
         var url = baseURL
         for component in path {
             url.appendPathComponent(component)

@@ -1,9 +1,18 @@
 import SwiftUI
 import CoreText
 
-// Debug previews and hosted tests never inherit a real account or API endpoint.
-// Release builds always use the normal production configuration.
+// Debug previews and the first TestFlight development build never inherit a
+// real account or API endpoint. The TestFlight flag is a compile-time Release
+// contract, not a launch argument that can be omitted from an uploaded build.
 enum MazleRuntimeConfiguration {
+    static var isOfflineTestFlight: Bool {
+        #if MAZLE_OFFLINE_TESTFLIGHT
+        return true
+        #else
+        return false
+        #endif
+    }
+
     static var isOfflinePreview: Bool {
         #if DEBUG
         let process = ProcessInfo.processInfo
@@ -15,13 +24,26 @@ enum MazleRuntimeConfiguration {
         #endif
     }
 
+    static var isOfflineMode: Bool {
+        isOfflineTestFlight || isOfflinePreview
+    }
+
     static var apiBaseURL: URL {
-        URL(string: isOfflinePreview ? "http://127.0.0.1:9" : "https://mazle.io")!
+        // Offline builds use a non-network URL as a defense-in-depth marker.
+        // Runtime service guards below fail before URLSession can be reached.
+        URL(string: isOfflineMode ? "offline://mazle.local" : "https://mazle.io")!
     }
 
     static var adventureDefaults: UserDefaults {
-        guard isOfflinePreview else { return .standard }
-        let suite = "com.mazle.adventure.preview"
+        let suite: String
+        if isOfflineTestFlight {
+            suite = "com.mazle.adventure.testflight"
+        } else if isOfflinePreview {
+            suite = "com.mazle.adventure.preview"
+        } else {
+            return .standard
+        }
+
         let defaults = UserDefaults(suiteName: suite)!
         if ProcessInfo.processInfo.arguments.contains("-MazleResetAdventurePreview") {
             defaults.removePersistentDomain(forName: suite)

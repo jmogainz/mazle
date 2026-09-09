@@ -5,7 +5,7 @@ final class MazleRuntimeConfigurationTests: XCTestCase {
     @MainActor
     func testHostedDebugTestsCannotDefaultToProductionServices() {
         #if DEBUG
-        XCTAssertTrue(MazleRuntimeConfiguration.isOfflinePreview)
+        XCTAssertTrue(MazleRuntimeConfiguration.isOfflineMode)
         let session = MazleAuthSession(accessToken: "local-test-token", provider: nil, expiresAt: nil)
         let urls = [
             DailyPuzzleService.live.baseURL,
@@ -15,9 +15,19 @@ final class MazleRuntimeConfigurationTests: XCTestCase {
             MazleAuthManager().baseURL,
         ]
         for url in urls {
-            XCTAssertEqual(url.host, "127.0.0.1")
-            XCTAssertEqual(url.port, 9)
+            XCTAssertEqual(url.scheme, "offline")
+            XCTAssertNotEqual(url.absoluteString, "https://mazle.io")
         }
+        #endif
+    }
+
+    func testTestFlightOfflineCompilationContract() {
+        #if MAZLE_OFFLINE_TESTFLIGHT
+        XCTAssertTrue(MazleRuntimeConfiguration.isOfflineTestFlight)
+        XCTAssertTrue(MazleRuntimeConfiguration.isOfflineMode)
+        XCTAssertEqual(MazleRuntimeConfiguration.apiBaseURL.scheme, "offline")
+        #else
+        XCTAssertFalse(MazleRuntimeConfiguration.isOfflineTestFlight)
         #endif
     }
 }

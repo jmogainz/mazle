@@ -1,4 +1,8 @@
 name: Mazle
+configs:
+  Debug: debug
+  Release: release
+  TestFlightDevelopment: release
 options:
   bundleIdPrefix: com.mazle
   deploymentTarget:
@@ -10,6 +14,9 @@ settings:
     CODE_SIGN_STYLE: Automatic
     ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: YES
     ENABLE_USER_SCRIPT_SANDBOXING: YES
+  configs:
+    TestFlightDevelopment:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) MAZLE_OFFLINE_TESTFLIGHT"
 targets:
   Mazle:
     type: application
@@ -35,6 +42,9 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         MARKETING_VERSION: "0.1"
         CURRENT_PROJECT_VERSION: "1"
+      configs:
+        TestFlightDevelopment:
+          CODE_SIGN_IDENTITY: "Apple Distribution"
     info:
       path: Mazle/Info.plist
       properties:
@@ -92,6 +102,8 @@ schemes:
       targets:
         - name: MazleTests
           parallelizable: false
+    archive:
+      config: TestFlightDevelopment
   MazleUI:
     build:
       targets:

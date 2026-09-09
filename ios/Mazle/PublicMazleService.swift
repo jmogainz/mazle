@@ -139,6 +139,9 @@ struct PublicMazleService: Sendable {
         attemptScores: [Int],
         rating: Int?
     ) async throws {
+        guard !MazleRuntimeConfiguration.isOfflineMode else {
+            throw PublicMazleServiceError.offlineOnly
+        }
         let url = baseURL.appendingPathComponent("api/feedback")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -171,6 +174,9 @@ struct PublicMazleService: Sendable {
         path: [String],
         queryItems: [URLQueryItem] = []
     ) async throws -> Response {
+        guard !MazleRuntimeConfiguration.isOfflineMode else {
+            throw PublicMazleServiceError.offlineOnly
+        }
         var url = baseURL
         for component in path {
             url.appendPathComponent(component)
@@ -206,6 +212,7 @@ struct PublicMazleService: Sendable {
 }
 
 enum PublicMazleServiceError: LocalizedError, Sendable {
+    case offlineOnly
     case invalidURL
     case invalidResponse
     case httpStatus(Int)
@@ -213,6 +220,8 @@ enum PublicMazleServiceError: LocalizedError, Sendable {
 
     var errorDescription: String? {
         switch self {
+        case .offlineOnly:
+            return "Networking is disabled in the offline TestFlight build."
         case .invalidURL:
             return "The Mazle server URL is invalid."
         case .invalidResponse:

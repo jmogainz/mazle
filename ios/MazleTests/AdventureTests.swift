@@ -242,11 +242,16 @@ final class AdventureTests: XCTestCase {
         _ = try await store.begin(level)
 
         let firstSettlement = await store.failActiveAttempt(level: level, moves: 1, timeMs: 100, outcome: .failed)
-        XCTAssertTrue(firstSettlement)
-        XCTAssertEqual(store.energy.hearts, 2)
+        if MazleRuntimeConfiguration.isOfflineTestFlight {
+            XCTAssertFalse(firstSettlement)
+            XCTAssertEqual(store.energy.hearts, 3)
+        } else {
+            XCTAssertTrue(firstSettlement)
+            XCTAssertEqual(store.energy.hearts, 2)
+        }
         let secondSettlement = await store.failActiveAttempt(level: level, moves: 1, timeMs: 100, outcome: .abandoned)
         XCTAssertFalse(secondSettlement)
-        XCTAssertEqual(store.energy.hearts, 2)
+        XCTAssertEqual(store.energy.hearts, MazleRuntimeConfiguration.isOfflineTestFlight ? 3 : 2)
     }
 
     @MainActor

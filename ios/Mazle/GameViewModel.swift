@@ -304,6 +304,7 @@ final class GameViewModel: ObservableObject {
     }
 
     private func syncCompletedResultIfNeeded() {
+        guard !MazleRuntimeConfiguration.isOfflineMode else { return }
         guard completed, !didSyncCompletedResult else { return }
         guard let session = MazleSessionStore.shared.session, !session.isExpired else { return }
 

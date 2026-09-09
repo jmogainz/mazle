@@ -1,0 +1,107 @@
+# frozen_string_literal: true
+
+default_platform(:ios)
+
+platform :ios do
+  desc "Archive and upload the offline-only development build to internal TestFlight"
+  lane :development_testflight do
+    repo_root = File.expand_path("..", FastlaneCore::FastlaneFolder.path)
+
+    ref_name = ENV["GITHUB_REF_NAME"].to_s
+    unless ref_name.empty? || ref_name == "integration/adventure-web-ios"
+      UI.user_error!("Mazle development TestFlight uploads must run from integration/adventure-web-ios. Current ref: #{ref_name}")
+    end
+
+    configuration = ENV.fetch("CONFIGURATION", "TestFlightDevelopment")
+    unless configuration == "TestFlightDevelopment"
+      UI.user_error!("This lane only accepts the offline TestFlightDevelopment configuration.")
+    end
+
+    key_id = required_env!("APP_STORE_CONNECT_KEY_ID")
+    issuer_id = required_env!("APP_STORE_CONNECT_ISSUER_ID")
+    key_path = required_env!("APP_STORE_CONNECT_KEY_PATH")
+    team_id = required_env!("TEAM_ID")
+    scheme = ENV.fetch("SCHEME", "Mazle")
+    marketing_version = required_env!("MARKETING_VERSION")
+    bundle_id = required_env!("BUNDLE_ID")
+
+    project = absolutize(ENV.fetch("PROJECT_PATH", "ios/Mazle.xcodeproj"), repo_root)
+    export_options = absolutize(
+      ENV.fetch("EXPORT_OPTIONS_PLIST", "ci/TestFlightDevelopmentExportOptions.plist"),
+      repo_root
+    )
+    output_directory = absolutize(ENV.fetch("EXPORT_PATH", File.join("build", "TestFlightExport")), repo_root)
+    derived_data = absolutize(ENV.fetch("DERIVED_DATA_PATH", File.join("build", "DerivedData")), repo_root)
+
+    api_key = app_store_connect_api_key(
+      key_id: key_id,
+      issuer_id: issuer_id,
+      key_filepath: key_path,
+      duration: 1200,
+      in_house: false
+    )
+
+    build_number = ENV["REQUESTED_BUILD_NUMBER"].to_s.strip
+    if build_number.empty?
+      latest = latest_testflight_build_number(
+        api_key: api_key,
+        app_identifier: bundle_id,
+        version: marketing_version
+      )
+      build_number = (latest.to_i + 1).to_s
+    end
+
+    UI.success("Uploading offline-only #{bundle_id} #{marketing_version} (#{build_number})")
+
+    xcargs = [
+      "DEVELOPMENT_TEAM=#{team_id}",
+      "CURRENT_PROJECT_VERSION=#{build_number}"
+    ].join(" ")
+
+    export_xcargs = [
+      "-allowProvisioningUpdates",
+      "-authenticationKeyPath #{key_path}",
+      "-authenticationKeyID #{key_id}",
+      "-authenticationKeyIssuerID #{issuer_id}",
+      "DEVELOPMENT_TEAM=#{team_id}",
+      "CODE_SIGN_IDENTITY='Apple Distribution'"
+    ].join(" ")
+
+    ipa = build_app(
+      project: project,
+      scheme: scheme,
+      configuration: configuration,
+      destination: "generic/platform=iOS",
+      derived_data_path: derived_data,
+      output_directory: output_directory,
+      output_name: "Mazle",
+      export_method: "app-store",
+      export_options: export_options,
+      xcargs: xcargs,
+      export_xcargs: export_xcargs,
+      skip_codesigning: true,
+      skip_package_pkg: true,
+      include_bitcode: false
+    )
+
+    upload_to_testflight(
+      api_key: api_key,
+      ipa: ipa,
+      app_identifier: bundle_id,
+      skip_waiting_for_build_processing: true,
+      distribute_external: false,
+      notify_external_testers: false
+    )
+  end
+
+  def required_env!(name)
+    value = ENV[name].to_s
+    UI.user_error!("Missing required environment variable: #{name}") if value.empty?
+    value
+  end
+
+  def absolutize(path, repo_root)
+    return path if path.start_with?("/")
+    File.expand_path(path, repo_root)
+  end
+end

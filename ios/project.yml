@@ -30,6 +30,7 @@ targets:
     resources:
       - path: Mazle/Resources/Fonts
       - path: Mazle/Resources/Characters
+      - path: Mazle/PrivacyInfo.xcprivacy
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.mazle.game
@@ -48,6 +49,8 @@ targets:
       path: Mazle/Info.plist
       properties:
         CFBundleDisplayName: Mazle
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         ITSAppUsesNonExemptEncryption: false
         UIApplicationSupportsIndirectInputEvents: true
         UILaunchScreen: {}

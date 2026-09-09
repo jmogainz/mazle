@@ -25,6 +25,7 @@
 		5020654BB6DECE93BC069299 /* MazleWebParityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0E2D5F6FFD20058252D2B07 /* MazleWebParityTests.swift */; };
 		514A87694AAD0130BA4EACC6 /* MazleEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DB1319E4CD60F95F399B758 /* MazleEngineTests.swift */; };
 		6272399F963D2DFB71015B80 /* GameViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDF1638364C6B93334127B97 /* GameViewModel.swift */; };
+		68D65ACBC90EF6D4A9AE055E /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 4D7D89B1E5AD7C9E587E7A10 /* PrivacyInfo.xcprivacy */; };
 		6C9EDDB611A445AF4CED3F1A /* Nunito-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = EB64F7BA70CD8CD5E4AB0044 /* Nunito-SemiBold.ttf */; };
 		718CBC06D689C1E6F062B43A /* StoreKitConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF01D98971E2D7419C9E6408 /* StoreKitConfigurationTests.swift */; };
 		79C42BD4A5C5F8FA8D9E08D3 /* adventure-levels-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = 9B864079DA3E2B34C54744C7 /* adventure-levels-v1.json */; };
@@ -82,6 +83,7 @@
 		3463DF1FCBB75E645B9FB08B /* LocalHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalHistory.swift; sourceTree = "<group>"; };
 		3DEA2ECA0C7AC98C16CC3032 /* AdventureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdventureTests.swift; sourceTree = "<group>"; };
 		41C4D90F65728A5C4C9F9B33 /* StoreKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitManager.swift; sourceTree = "<group>"; };
+		4D7D89B1E5AD7C9E587E7A10 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		5E2D5303AC2060EF08F54328 /* WebCharacterIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebCharacterIcon.swift; sourceTree = "<group>"; };
 		61A4E35B3DDB37D358B3BADE /* DailyPuzzleContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyPuzzleContractTests.swift; sourceTree = "<group>"; };
 		63CC3881DF6886E3B32AC018 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -142,6 +144,7 @@
 				9BC8AC96C28D2B29E4B06E65 /* MazleAuth.swift */,
 				1D117F79F9249FF75F4C3046 /* MazleHaptics.swift */,
 				EF57F0C35FDE28EB008B6983 /* Models.swift */,
+				4D7D89B1E5AD7C9E587E7A10 /* PrivacyInfo.xcprivacy */,
 				FD3062F9E2120652E07BEF92 /* PublicMazleService.swift */,
 				E22DF19AA7848FC609BBC043 /* ReminderManager.swift */,
 				170302DFFC7F13D6B2D3AFB3 /* ResultShareFormatter.swift */,
@@ -354,6 +357,7 @@
 				FD452F824AD6EC372605E733 /* Nunito-ExtraBold.ttf in Resources */,
 				023091E746E86A69971EC1BC /* Nunito-Regular.ttf in Resources */,
 				6C9EDDB611A445AF4CED3F1A /* Nunito-SemiBold.ttf in Resources */,
+				68D65ACBC90EF6D4A9AE055E /* PrivacyInfo.xcprivacy in Resources */,
 				79C42BD4A5C5F8FA8D9E08D3 /* adventure-levels-v1.json in Resources */,
 				32F51479AB24D242C2A6A1D8 /* obsidian.svg in Resources */,
 				A854C641EB3D056D0D671F81 /* penguin.svg in Resources */,

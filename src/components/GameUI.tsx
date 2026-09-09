@@ -30,6 +30,9 @@ interface GameUIProps {
   loading?: boolean; // When true, show skeleton placeholders
   analysisAnimationComplete?: boolean; // When true, solution animation has finished
   isResultModalActive?: boolean; // When true, the scorecard/share card is visible
+  adventureScoreboard?: {
+    starThresholds: { three: number; two: number; one: number };
+  };
 }
 
 export default function GameUI({
@@ -47,6 +50,7 @@ export default function GameUI({
   loading = false,
   analysisAnimationComplete = false,
   isResultModalActive = false,
+  adventureScoreboard,
 }: GameUIProps) {
   const [currentAttemptMoves, setCurrentAttemptMoves] = useState(initialState?.currentAttemptMoves ?? 0);
   const [maxLives, setMaxLives] = useState(propMaxLives ?? initialState?.maxLives ?? DEFAULT_LIVES);
@@ -370,6 +374,53 @@ export default function GameUI({
             {Math.max(0, movesRemaining)}
           </span>
           <span className={styles.movesLabel}>MOVES REMAINING</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (adventureScoreboard) {
+    const projectedStars = currentAttemptMoves <= adventureScoreboard.starThresholds.three
+      ? 3
+      : currentAttemptMoves <= adventureScoreboard.starThresholds.two
+        ? 2
+        : 1;
+    const targetMoves = projectedStars === 3
+      ? adventureScoreboard.starThresholds.three
+      : projectedStars === 2
+        ? adventureScoreboard.starThresholds.two
+        : adventureScoreboard.starThresholds.one;
+
+    return (
+      <div className={`${styles.headerContainer} ${styles.adventureHeaderContainer}`}>
+        <div className={styles.adventureScoreboard}>
+          <div
+            className={`${styles.adventureMovesGroup} ${!loading && movesRemaining <= 3 ? styles.adventureMovesDanger : ''}`}
+            aria-label={`${Math.max(0, movesRemaining)} moves left`}
+          >
+            <span key={movesRemaining} className={styles.adventureMovesValue} data-testid="adventure-moves-remaining">
+              {loading ? '00' : Math.max(0, movesRemaining)}
+            </span>
+            <span className={styles.adventureStatLabel}>MOVES LEFT</span>
+          </div>
+
+          <div className={styles.adventureScoreDivider} aria-hidden="true" />
+
+          <div className={styles.adventureStarsGroup}>
+            <div
+              className={styles.adventureStarRow}
+              aria-label={`${projectedStars} stars currently available`}
+            >
+              {[1, 2, 3].map((star) => (
+                <svg key={star} viewBox="0 0 24 24" className={star <= projectedStars ? styles.adventureStarOn : styles.adventureStarOff} aria-hidden="true">
+                  <path d="m12 2.4 2.9 5.88 6.49.94-4.7 4.58 1.11 6.46L12 17.21l-5.8 3.05 1.11-6.46-4.7-4.58 6.49-.94L12 2.4Z" />
+                </svg>
+              ))}
+            </div>
+            <span className={styles.adventureStarTarget}>
+              {loading ? 'Calculating star targets' : `${projectedStars}-star target · ${targetMoves} moves`}
+            </span>
+          </div>
         </div>
       </div>
     );

@@ -967,7 +967,9 @@ export class GameScene extends Phaser.Scene {
 
   private handleLifeLost(finalPos: Position) {
     this.gameState.lives--;
-    this.gameState.penaltyTimeMs += PENALTY_MS; // 30s penalty
+    if (this.puzzle.variant !== 'adventure') {
+      this.gameState.penaltyTimeMs += PENALTY_MS; // Daily/archive 30s penalty
+    }
 
     // Penalty animation is now handled by DOM (GameUI) for proper z-index control
 
@@ -989,13 +991,15 @@ export class GameScene extends Phaser.Scene {
 
     // Final life: keep the board state and freeze moves remaining at 0.
     if (this.gameState.lives <= 0) {
-      this.gameState.currentAttemptMoves = this.puzzle.optimalMoves;
+      this.gameState.currentAttemptMoves = this.getAttemptMoveLimit();
       emitGameEvent('stateUpdate', { ...this.gameState });
-      emitGameEvent('lifeLost', {
-        lives: this.gameState.lives,
-        penaltyMs: PENALTY_MS,
-        finalPos: finalPos
-      });
+      if (this.puzzle.variant !== 'adventure') {
+        emitGameEvent('lifeLost', {
+          lives: this.gameState.lives,
+          penaltyMs: PENALTY_MS,
+          finalPos: finalPos
+        });
+      }
       this.handleGameOver();
       return;
     }
@@ -1013,11 +1017,13 @@ export class GameScene extends Phaser.Scene {
     }
 
     emitGameEvent('stateUpdate', { ...this.gameState });
-    emitGameEvent('lifeLost', {
-      lives: this.gameState.lives,
-      penaltyMs: PENALTY_MS,
-      finalPos: finalPos
-    });
+    if (this.puzzle.variant !== 'adventure') {
+      emitGameEvent('lifeLost', {
+        lives: this.gameState.lives,
+        penaltyMs: PENALTY_MS,
+        finalPos: finalPos
+      });
+    }
 
     // Block input during respawn sequence
     this.isAnimating = true;
@@ -1131,8 +1137,7 @@ export class GameScene extends Phaser.Scene {
       delay: 200, // Linger for 200ms before fading
       ease: 'Quad.easeOut',
       onComplete: () => {
-        // Show analysis first, then emit gameComplete when animation finishes
-        this.drawEndGameAnalysis(() => {
+        const emitFailure = () => {
           emitGameEvent('gameComplete', {
             moveCount: this.gameState.moveCount,
             timeMs: ((this.gameState.endTime ?? this.gameState.startTime) - this.gameState.startTime) + this.gameState.penaltyTimeMs,
@@ -1141,7 +1146,17 @@ export class GameScene extends Phaser.Scene {
             attempts: this.gameState.attempts,
             solutionPath: this.puzzle.solutionPath,
           });
-        });
+        };
+
+        // Adventure levels are designed for replay. Revealing the canonical
+        // route on a failed run both spoils the level and delays the retry UI.
+        if (this.puzzle.variant === 'adventure') {
+          emitFailure();
+          return;
+        }
+
+        // Show analysis first, then emit gameComplete when animation finishes
+        this.drawEndGameAnalysis(emitFailure);
       }
     });
   }
@@ -1609,7 +1624,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Check if life lost
-    if (this.gameState.currentAttemptMoves >= this.puzzle.optimalMoves) {
+    if (this.gameState.currentAttemptMoves >= this.getAttemptMoveLimit()) {
       // Life lost!
       // Animate the move first, then trigger life lost logic
       this.animatePath(path, () => {
@@ -1624,6 +1639,13 @@ export class GameScene extends Phaser.Scene {
         onComplete();
       });
     }
+  }
+
+  private getAttemptMoveLimit(): number {
+    if (this.puzzle.variant === 'adventure' && Number.isFinite(this.puzzle.moveLimit)) {
+      return Math.max(this.puzzle.optimalMoves, Math.floor(this.puzzle.moveLimit as number));
+    }
+    return this.puzzle.optimalMoves;
   }
 
   private handleStandardMove(dir: Direction) {
@@ -1772,8 +1794,11 @@ export class GameScene extends Phaser.Scene {
     // Hide player
     this.player.setVisible(false);
 
-    // Show analysis
-    this.drawEndGameAnalysis();
+    // Daily/archive keep their post-game route analysis. Adventure presents
+    // its own result sheet and should not animate beneath it.
+    if (this.puzzle.variant !== 'adventure') {
+      this.drawEndGameAnalysis();
+    }
 
     // Goal burst effect
     const particles = this.add.particles(this.goalSprite.x, this.goalSprite.y, undefined, {
@@ -1878,7 +1903,8 @@ export class GameScene extends Phaser.Scene {
 
   // Set maximum lives (for dev tools, 3-5)
   public setMaxLives(count: number) {
-    const clamped = Math.max(3, Math.min(5, count));
+    const minimum = this.puzzle.variant === 'adventure' ? 1 : 3;
+    const clamped = Math.max(minimum, Math.min(5, count));
     if (this.maxLives === clamped) return;
     this.maxLives = clamped;
     // Update current lives to match new max if game hasn't started

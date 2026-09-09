@@ -19,6 +19,7 @@ interface HeaderProps {
   logoClassName?: string;
   menuButtonRef?: React.Ref<HTMLButtonElement>;
   showThemeToggle?: boolean;
+  showAdventureLink?: boolean;
 }
 
 export default function Header({
@@ -32,6 +33,7 @@ export default function Header({
   logoClassName,
   menuButtonRef,
   showThemeToggle = true,
+  showAdventureLink = true,
 }: HeaderProps) {
   const getEffectiveIsDark = () => {
     const pref = getPrefs().themePreference;
@@ -102,6 +104,17 @@ export default function Header({
             <path d="M128,144v-8c0-20,28-20,28-48a28,28,0,1,0-56,0"></path>
           </svg>
         </Link>
+        {showAdventureLink && (
+          <Link href="/adventure" className={`${styles.iconButton} ${styles.adventureButton}`} aria-label="Play Mazle Adventure" title="Adventure">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M4 19c3.5-1 4-5.5 7.5-6.5S16 8 20 5" />
+              <circle cx="4" cy="19" r="2" />
+              <circle cx="20" cy="5" r="2" />
+              <path d="m10 7 2-3 2 3M16 15l2-3 2 3" />
+            </svg>
+            <span className={styles.adventureDot}>50</span>
+          </Link>
+        )}
         {showThemeToggle && (
           <label className={styles.themeToggle}>
             <input

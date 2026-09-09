@@ -44,6 +44,13 @@ const nextConfig = {
   
   // Configure webpack for WASM
   webpack: (config, { isServer }) => {
+    // Keep the @/* alias explicit for webpack builds, including environments
+    // that do not propagate tsconfig paths into the Next resolver.
+    config.resolve.alias = {
+      ...(config.resolve.alias || {}),
+      '@': path.join(__dirname, 'src'),
+    };
+
     // Don't process WASM files through webpack - they need to be loaded
     // manually to preserve shared memory features
     config.module.rules.push({

@@ -276,6 +276,9 @@ struct AuthenticatedMazleService: Sendable {
         method: String,
         bodyData: Data?
     ) async throws -> Data {
+        guard !MazleRuntimeConfiguration.isOfflineBuild else {
+            throw MazleRuntimeError.offlineOnlyBuild
+        }
         var url = baseURL
         for component in path {
             url.appendPathComponent(component)

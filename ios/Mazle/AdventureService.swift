@@ -279,6 +279,9 @@ struct AdventureService {
     }
 
     private func perform<Response: Decodable, Body: Encodable>(path: [String], body: Body?) async throws -> Response {
+        guard !MazleRuntimeConfiguration.isOfflineBuild else {
+            throw MazleRuntimeError.offlineOnlyBuild
+        }
         var url = baseURL
         for component in path {
             url.appendPathComponent(component)

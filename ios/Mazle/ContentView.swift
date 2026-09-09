@@ -4,7 +4,8 @@ struct ContentView: View {
     @EnvironmentObject private var game: GameViewModel
     @State private var showingHelp = false
     @State private var showingMenu = false
-    @State private var showingAdventure = ProcessInfo.processInfo.arguments.contains("-Adventure")
+    @State private var showingAdventure = MazleRuntimeConfiguration.isOfflineBuild
+        || ProcessInfo.processInfo.arguments.contains("-Adventure")
     @State private var menuDestination: WebMenuDestination?
     @AppStorage("mazle.webHelpSeen") private var webHelpSeen = false
     @AppStorage("mazle.themePreference") private var themePreference = "light"
@@ -102,7 +103,7 @@ struct ContentView: View {
         .statusBarHidden(true)
         .preferredColorScheme(themePreference == "dark" ? .dark : themePreference == "light" ? .light : nil)
         .task {
-            guard !MazleRuntimeConfiguration.isOfflinePreview else { return }
+            guard !MazleRuntimeConfiguration.isOfflineBuild else { return }
             await game.loadToday()
             if !webHelpSeen {
                 showingHelp = true

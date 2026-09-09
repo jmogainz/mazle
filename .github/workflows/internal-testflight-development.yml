@@ -1,0 +1,261 @@
+# Manual, internal-only TestFlight workflow for the offline Mazle QA build.
+# This workflow intentionally does not run from main or deploy the web app.
+name: Mazle Offline Internal TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      team_id:
+        description: "Jacob's Apple Developer Team ID"
+        required: true
+        type: string
+      bundle_id:
+        description: "Registered App Store bundle identifier"
+        required: true
+        default: com.mazle.game
+        type: string
+      marketing_version:
+        description: "Short version shown in TestFlight"
+        required: true
+        default: "0.1"
+        type: string
+      build_number:
+        description: "Optional requested build number; blank auto-selects the next App Store build"
+        required: false
+        default: ""
+        type: string
+      confirm_offline:
+        description: "Confirm this build disables production networking, login, sync, and purchases"
+        required: true
+        default: false
+        type: boolean
+
+run-name: "Mazle offline TestFlight ${{ inputs.marketing_version }} (${{ inputs.build_number }})"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mazle-testflight-development
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    name: Build and upload internal-only TestFlight
+    runs-on: macos-26
+    environment:
+      name: testflight-development
+    timeout-minutes: 90
+
+    env:
+      APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+      TEAM_ID: ${{ inputs.team_id }}
+      BUNDLE_ID: ${{ inputs.bundle_id }}
+      MARKETING_VERSION: ${{ inputs.marketing_version }}
+      BUILD_NUMBER: ${{ inputs.build_number }}
+      PROJECT_PATH: ios/Mazle.xcodeproj
+      SCHEME: Mazle
+      CONFIGURATION: OfflineTestFlight
+      FASTLANE_SKIP_UPDATE_CHECK: "1"
+
+    steps:
+      - name: Enforce authorized branch and offline confirmation
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_REF_NAME}" != "integration/adventure-web-ios" || "${GITHUB_REF_NAME}" == "main" ]]; then
+            echo "Mazle TestFlight uploads must run from integration/adventure-web-ios. Current ref: ${GITHUB_REF_NAME}" >&2
+            exit 1
+          fi
+
+          if [[ "${{ inputs.confirm_offline }}" != "true" ]]; then
+            echo "Dispatch confirmation is required: this build is offline-only." >&2
+            exit 1
+          fi
+
+          [[ "${TEAM_ID}" =~ ^[A-Z0-9]{10}$ ]] || {
+            echo "team_id must be the exact 10-character Apple Team ID." >&2
+            exit 1
+          }
+          [[ "${BUNDLE_ID}" =~ ^[A-Za-z0-9.-]+$ ]] || {
+            echo "bundle_id contains unsupported characters." >&2
+            exit 1
+          }
+          [[ "${MARKETING_VERSION}" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]] || {
+            echo "marketing_version must be a numeric Apple short version." >&2
+            exit 1
+          }
+
+      - name: Check required App Store Connect secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in APP_STORE_CONNECT_KEY_ID APP_STORE_CONNECT_ISSUER_ID APP_STORE_CONNECT_PRIVATE_KEY; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Missing required secret: ${name}" >&2
+              missing=1
+            fi
+          done
+          exit "${missing}"
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Preflight Xcode and XcodeGen
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          xcode-select -p
+          xcrun simctl list devices available | sed -n '1,40p'
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+          xcodegen --version
+
+      - name: Generate and validate the offline project
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd ios && xcodegen generate)
+          test "$(xcodebuild -project "${PROJECT_PATH}" -scheme "${SCHEME}" -showBuildSettings -configuration "${CONFIGURATION}" | awk -F'= ' '/SWIFT_ACTIVE_COMPILATION_CONDITIONS/ { print $2; exit }')" = "OFFLINE_TESTFLIGHT"
+          xcodebuild -project "${PROJECT_PATH}" -scheme "${SCHEME}" -showBuildSettings -configuration "${CONFIGURATION}" \
+            | awk -F'= ' '/(PRODUCT_BUNDLE_IDENTIFIER|MARKETING_VERSION|CURRENT_PROJECT_VERSION|SWIFT_ACTIVE_COMPILATION_CONDITIONS|SWIFT_OPTIMIZATION_LEVEL)/ { print }'
+          git diff --check
+
+      - name: Run offline-policy regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project "${PROJECT_PATH}" \
+            -scheme "${SCHEME}" \
+            -configuration Debug \
+            -destination 'platform=iOS Simulator,name=iPhone 17' \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG OFFLINE_TESTFLIGHT' \
+            CODE_SIGNING_ALLOWED=NO \
+            test
+
+      - name: Build the shipped OfflineTestFlight configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project "${PROJECT_PATH}" \
+            -scheme "${SCHEME}" \
+            -configuration "${CONFIGURATION}" \
+            -destination 'generic/platform=iOS' \
+            MARKETING_VERSION="${MARKETING_VERSION}" \
+            CURRENT_PROJECT_VERSION="${BUILD_NUMBER}" \
+            PRODUCT_BUNDLE_IDENTIFIER="${BUNDLE_ID}" \
+            DEVELOPMENT_TEAM="${TEAM_ID}" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Prepare App Store Connect authentication and export options
+        shell: bash
+        run: |
+          set -euo pipefail
+          key_path="${RUNNER_TEMP}/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
+          if [[ "${APP_STORE_CONNECT_PRIVATE_KEY}" == *"\\n"* ]]; then
+            printf "%s" "${APP_STORE_CONNECT_PRIVATE_KEY}" | perl -pe 's/\\n/\n/g' > "${key_path}"
+          else
+            printf "%s" "${APP_STORE_CONNECT_PRIVATE_KEY}" > "${key_path}"
+          fi
+          chmod 600 "${key_path}"
+
+          export_options="${RUNNER_TEMP}/MazleOfflineTestFlightExportOptions.plist"
+          cat > "${export_options}" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>destination</key>
+            <string>upload</string>
+            <key>manageAppVersionAndBuildNumber</key>
+            <false/>
+            <key>method</key>
+            <string>app-store-connect</string>
+            <key>signingStyle</key>
+            <string>automatic</string>
+            <key>teamID</key>
+            <string>${TEAM_ID}</string>
+            <key>testFlightInternalTestingOnly</key>
+            <true/>
+            <key>uploadSymbols</key>
+            <true/>
+          </dict>
+          </plist>
+          EOF
+          plutil -lint "${export_options}"
+          {
+            echo "APP_STORE_CONNECT_KEY_PATH=${key_path}"
+            echo "EXPORT_OPTIONS=${export_options}"
+            echo "ARCHIVE_PATH=${RUNNER_TEMP}/Mazle-${MARKETING_VERSION}-${BUILD_NUMBER}.xcarchive"
+            echo "EXPORT_PATH=${RUNNER_TEMP}/MazleTestFlightUpload"
+          } >> "${GITHUB_ENV}"
+
+      - name: Select a unique App Store build number
+        shell: bash
+        env:
+          REQUESTED_BUILD_NUMBER: ${{ inputs.build_number }}
+        run: |
+          set -euo pipefail
+          selected="$(ruby ci/select_testflight_build_number.rb)"
+          [[ "${selected}" =~ ^[1-9][0-9]*$ ]] || {
+            echo "Build-number selector returned an invalid value." >&2
+            exit 1
+          }
+          echo "BUILD_NUMBER=${selected}" >> "${GITHUB_ENV}"
+
+      - name: Archive with automatic Apple signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project "${PROJECT_PATH}" \
+            -scheme "${SCHEME}" \
+            -configuration "${CONFIGURATION}" \
+            -destination 'generic/platform=iOS' \
+            -archivePath "${ARCHIVE_PATH}" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "${APP_STORE_CONNECT_KEY_PATH}" \
+            -authenticationKeyID "${APP_STORE_CONNECT_KEY_ID}" \
+            -authenticationKeyIssuerID "${APP_STORE_CONNECT_ISSUER_ID}" \
+            MARKETING_VERSION="${MARKETING_VERSION}" \
+            CURRENT_PROJECT_VERSION="${BUILD_NUMBER}" \
+            PRODUCT_BUNDLE_IDENTIFIER="${BUNDLE_ID}" \
+            DEVELOPMENT_TEAM="${TEAM_ID}" \
+            CODE_SIGNING_ALLOWED=YES \
+            clean archive
+          test -d "${ARCHIVE_PATH}"
+
+      - name: Export and upload internal-only build
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -exportArchive \
+            -archivePath "${ARCHIVE_PATH}" \
+            -exportPath "${EXPORT_PATH}" \
+            -exportOptionsPlist "${EXPORT_OPTIONS}" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "${APP_STORE_CONNECT_KEY_PATH}" \
+            -authenticationKeyID "${APP_STORE_CONNECT_KEY_ID}" \
+            -authenticationKeyIssuerID "${APP_STORE_CONNECT_ISSUER_ID}"
+          echo "Apple upload command completed; verify App Store Connect processing before tester setup."
+
+      - name: Remove temporary App Store Connect key
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${APP_STORE_CONNECT_KEY_PATH:-}" ]]; then
+            rm -f -- "${APP_STORE_CONNECT_KEY_PATH}"
+          fi

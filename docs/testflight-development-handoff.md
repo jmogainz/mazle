@@ -10,11 +10,15 @@
   That existing workflow deploys web production on pushes to `main`.
 - `vercel.json` currently disables Git deployments. Its build configuration uses
   production defaults; do not copy those blindly into a development deployment.
-- Add iOS CI through a separate PR targeting this integration branch. Start with
-  manual dispatch only, an explicit allowed-branch check excluding `main`, and a
-  protected `testflight-development` GitHub environment requiring approval.
-- No TestFlight workflow, Apple credentials, app registration or tester group has
-  been configured as part of this handoff. No production migrations were run.
+- The isolated iOS workflow is
+  `.github/workflows/internal-testflight-development.yml`. It remains manual
+  dispatch only, allows exactly this integration branch, and uses the protected
+  `testflight-development` GitHub environment. It does not modify or invoke the
+  web production workflow.
+- Apple credentials, app registration and tester group are still owner-side
+  prerequisites. The workflow stops before signing/upload when the environment
+  secrets or App Store Connect record are absent. No production migrations were
+  run.
 
 ## Native project
 

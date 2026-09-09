@@ -1,4 +1,8 @@
 name: Mazle
+configs:
+  Debug: debug
+  Release: release
+  OfflineTestFlight: release
 options:
   bundleIdPrefix: com.mazle
   deploymentTarget:
@@ -10,6 +14,11 @@ settings:
     CODE_SIGN_STYLE: Automatic
     ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: YES
     ENABLE_USER_SCRIPT_SANDBOXING: YES
+  configs:
+    OfflineTestFlight:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: OFFLINE_TESTFLIGHT
+      MARKETING_VERSION: "0.1"
+      CURRENT_PROJECT_VERSION: "1"
 targets:
   Mazle:
     type: application
@@ -92,6 +101,8 @@ schemes:
       targets:
         - name: MazleTests
           parallelizable: false
+    archive:
+      config: OfflineTestFlight
   MazleUI:
     build:
       targets:

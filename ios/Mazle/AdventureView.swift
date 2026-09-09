@@ -114,6 +114,7 @@ struct AdventureRootView: View {
         }
         .task {
             progressStore.refreshEnergy()
+            guard !MazleRuntimeConfiguration.isOfflineBuild else { return }
             await progressStore.syncAccount()
         }
         .statusBarHidden(true)
@@ -258,19 +259,24 @@ private struct AdventureMapHeader: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Button(action: onDaily) {
-                HStack(spacing: 6) {
-                    Image(systemName: "calendar")
-                    Text("DAILY")
+            if MazleRuntimeConfiguration.isOfflineBuild {
+                Color.clear
+                    .frame(width: 42, height: 42)
+            } else {
+                Button(action: onDaily) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "calendar")
+                        Text("DAILY")
+                    }
+                    .font(AdventureFont.extraBold(12))
+                    .foregroundStyle(AdventurePalette.ink)
+                    .padding(.horizontal, 12)
+                    .frame(height: 42)
+                    .background(.white.opacity(0.72), in: Capsule())
+                    .overlay { Capsule().stroke(.white.opacity(0.85), lineWidth: 1) }
                 }
-                .font(AdventureFont.extraBold(12))
-                .foregroundStyle(AdventurePalette.ink)
-                .padding(.horizontal, 12)
-                .frame(height: 42)
-                .background(.white.opacity(0.72), in: Capsule())
-                .overlay { Capsule().stroke(.white.opacity(0.85), lineWidth: 1) }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
 
             VStack(spacing: 0) {
                 Text("MAZLE")
@@ -954,55 +960,64 @@ private struct AdventureEnergyShop: View {
                         .tracking(1.3)
                         .foregroundStyle(AdventurePalette.ink.opacity(0.58))
 
-                    if !sessionStore.isSignedIn {
-                        Label("Sign in from Account before buying refills so purchases stay with you.", systemImage: "person.crop.circle.badge.exclamationmark")
+                    if MazleRuntimeConfiguration.isOfflineBuild {
+                        Label("Refills are disabled in this offline TestFlight build.", systemImage: "wifi.slash")
                             .font(AdventureFont.semibold(12))
-                            .foregroundStyle(AdventurePalette.orange)
+                            .foregroundStyle(AdventurePalette.ink.opacity(0.6))
                             .padding(12)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(AdventurePalette.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 13))
-                    }
-
-                    if storeKit.isLoading {
-                        ProgressView("Loading App Store…")
-                            .font(AdventureFont.semibold(12))
-                            .frame(maxWidth: .infinity, minHeight: 74)
-                    } else if refillProducts.isEmpty {
-                        Text(storeKit.errorMessage ?? "Refill products are unavailable in this build.")
-                            .font(AdventureFont.regular(12))
-                            .foregroundStyle(AdventurePalette.ink.opacity(0.6))
-                            .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
+                            .background(AdventurePalette.ink.opacity(0.06), in: RoundedRectangle(cornerRadius: 13))
                     } else {
-                        ForEach(refillProducts, id: \.id) { product in
-                            Button {
-                                Task { await storeKit.purchase(product) }
-                            } label: {
-                                HStack(spacing: 12) {
-                                    Image(systemName: "ticket.fill")
-                                        .font(.system(size: 23, weight: .bold))
-                                        .foregroundStyle(AdventurePalette.blue)
-                                        .frame(width: 38, height: 38)
-                                        .background(AdventurePalette.blue.opacity(0.10), in: RoundedRectangle(cornerRadius: 11))
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(product.displayName)
-                                            .font(AdventureFont.extraBold(13))
-                                        Text(product.description)
-                                            .font(AdventureFont.regular(10.5))
-                                            .foregroundStyle(AdventurePalette.ink.opacity(0.55))
-                                            .lineLimit(1)
-                                    }
-                                    Spacer()
-                                    Text(product.displayPrice)
-                                        .font(AdventureFont.black(14))
-                                }
-                                .foregroundStyle(AdventurePalette.ink)
+                        if !sessionStore.isSignedIn {
+                            Label("Sign in from Account before buying refills so purchases stay with you.", systemImage: "person.crop.circle.badge.exclamationmark")
+                                .font(AdventureFont.semibold(12))
+                                .foregroundStyle(AdventurePalette.orange)
                                 .padding(12)
-                                .background(.white, in: RoundedRectangle(cornerRadius: 16))
-                                .overlay { RoundedRectangle(cornerRadius: 16).stroke(AdventurePalette.blue.opacity(0.12), lineWidth: 1) }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(AdventurePalette.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 13))
+                        }
+
+                        if storeKit.isLoading {
+                            ProgressView("Loading App Store…")
+                                .font(AdventureFont.semibold(12))
+                                .frame(maxWidth: .infinity, minHeight: 74)
+                        } else if refillProducts.isEmpty {
+                            Text(storeKit.errorMessage ?? "Refill products are unavailable in this build.")
+                                .font(AdventureFont.regular(12))
+                                .foregroundStyle(AdventurePalette.ink.opacity(0.6))
+                                .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
+                        } else {
+                            ForEach(refillProducts, id: \.id) { product in
+                                Button {
+                                    Task { await storeKit.purchase(product) }
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        Image(systemName: "ticket.fill")
+                                            .font(.system(size: 23, weight: .bold))
+                                            .foregroundStyle(AdventurePalette.blue)
+                                            .frame(width: 38, height: 38)
+                                            .background(AdventurePalette.blue.opacity(0.10), in: RoundedRectangle(cornerRadius: 11))
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(product.displayName)
+                                                .font(AdventureFont.extraBold(13))
+                                            Text(product.description)
+                                                .font(AdventureFont.regular(10.5))
+                                                .foregroundStyle(AdventurePalette.ink.opacity(0.55))
+                                                .lineLimit(1)
+                                        }
+                                        Spacer()
+                                        Text(product.displayPrice)
+                                            .font(AdventureFont.black(14))
+                                    }
+                                    .foregroundStyle(AdventurePalette.ink)
+                                    .padding(12)
+                                    .background(.white, in: RoundedRectangle(cornerRadius: 16))
+                                    .overlay { RoundedRectangle(cornerRadius: 16).stroke(AdventurePalette.blue.opacity(0.12), lineWidth: 1) }
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(!sessionStore.isSignedIn)
+                                .opacity(sessionStore.isSignedIn ? 1 : 0.5)
                             }
-                            .buttonStyle(.plain)
-                            .disabled(!sessionStore.isSignedIn)
-                            .opacity(sessionStore.isSignedIn ? 1 : 0.5)
                         }
                     }
                 }

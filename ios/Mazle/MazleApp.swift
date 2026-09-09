@@ -1,9 +1,18 @@
 import SwiftUI
 import CoreText
 
-// Debug previews and hosted tests never inherit a real account or API endpoint.
-// Release builds always use the normal production configuration.
+// Debug previews and the first TestFlight build never inherit a real account or
+// production endpoint. Release builds use the live Mazle configuration only when
+// they are not compiled with OFFLINE_TESTFLIGHT.
 enum MazleRuntimeConfiguration {
+    static var isOfflineTestFlight: Bool {
+        #if OFFLINE_TESTFLIGHT
+        return true
+        #else
+        return false
+        #endif
+    }
+
     static var isOfflinePreview: Bool {
         #if DEBUG
         let process = ProcessInfo.processInfo
@@ -15,18 +24,38 @@ enum MazleRuntimeConfiguration {
         #endif
     }
 
+    static var isOfflineBuild: Bool {
+        isOfflineTestFlight || isOfflinePreview
+    }
+
     static var apiBaseURL: URL {
-        URL(string: isOfflinePreview ? "http://127.0.0.1:9" : "https://mazle.io")!
+        if isOfflineTestFlight {
+            return URL(string: "offline://mazle-testflight")!
+        }
+        return URL(string: isOfflinePreview ? "http://127.0.0.1:9" : "https://mazle.io")!
     }
 
     static var adventureDefaults: UserDefaults {
-        guard isOfflinePreview else { return .standard }
-        let suite = "com.mazle.adventure.preview"
+        guard isOfflineBuild else { return .standard }
+        let suite = isOfflineTestFlight
+            ? "com.mazle.adventure.testflight"
+            : "com.mazle.adventure.preview"
         let defaults = UserDefaults(suiteName: suite)!
         if ProcessInfo.processInfo.arguments.contains("-MazleResetAdventurePreview") {
             defaults.removePersistentDomain(forName: suite)
         }
         return defaults
+    }
+}
+
+enum MazleRuntimeError: LocalizedError, Sendable {
+    case offlineOnlyBuild
+
+    var errorDescription: String? {
+        switch self {
+        case .offlineOnlyBuild:
+            return "Networking is disabled in this offline Mazle build."
+        }
     }
 }
 

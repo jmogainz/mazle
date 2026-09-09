@@ -27,6 +27,23 @@ xcodebuild \
 
 `project.yml` is the source of truth for the generated project. The generated scheme maps `Mazle.storekit` into the Xcode Run action; launching with `simctl` does not apply Xcode's Run-action StoreKit session configuration.
 
+## Offline internal TestFlight build
+
+The first development TestFlight artifact is intentionally offline-only. The
+`OfflineTestFlight` configuration starts the Adventure surface from the bundled
+50-level catalog and disables production networking, login, account sync,
+feedback submission, and StoreKit purchases/restores. Local movement animation,
+sound, haptics, and scoped progress persistence remain available for device QA.
+
+The manual workflow is
+`.github/workflows/internal-testflight-development.yml`. It accepts only
+`integration/adventure-web-ios`, requires the protected `testflight-development`
+environment, uses internal-only export settings, and does not invite testers.
+Dispatch requires Jacob's exact Team ID, the registered bundle ID, a unique
+App Store build number, and the three `APP_STORE_CONNECT_*` environment secrets.
+Apple processing, export compliance, internal-group attachment, and tester
+eligibility remain separate App Store Connect gates after upload.
+
 ## Before TestFlight/App Store submission
 
 1. Register the final bundle ID and signing team.

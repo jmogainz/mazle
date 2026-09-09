@@ -34,7 +34,7 @@ final class StoreKitManager: ObservableObject {
     private var updatesTask: Task<Void, Never>?
 
     init() {
-        if !MazleRuntimeConfiguration.isOfflinePreview {
+        if !MazleRuntimeConfiguration.isOfflineBuild {
             updatesTask = observeTransactions()
         }
     }
@@ -51,7 +51,7 @@ final class StoreKitManager: ObservableObject {
     }
 
     func prepare() async {
-        guard !MazleRuntimeConfiguration.isOfflinePreview else { return }
+        guard !MazleRuntimeConfiguration.isOfflineBuild else { return }
         guard !isLoading else { return }
         isLoading = true
         defer { isLoading = false }
@@ -67,7 +67,7 @@ final class StoreKitManager: ObservableObject {
     }
 
     func purchase(_ product: Product) async {
-        guard !MazleRuntimeConfiguration.isOfflinePreview else { return }
+        guard !MazleRuntimeConfiguration.isOfflineBuild else { return }
         let refillAccountToken: UUID?
         if ProductID.refillCount(for: product.id) != nil {
             guard MazleSessionStore.shared.isSignedIn else {
@@ -109,7 +109,7 @@ final class StoreKitManager: ObservableObject {
     }
 
     func restorePurchases() async {
-        guard !MazleRuntimeConfiguration.isOfflinePreview else { return }
+        guard !MazleRuntimeConfiguration.isOfflineBuild else { return }
         guard !isRestoring else { return }
         isRestoring = true
         errorMessage = nil

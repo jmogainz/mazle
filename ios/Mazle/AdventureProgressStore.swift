@@ -495,7 +495,8 @@ final class AdventureProgressStore: ObservableObject {
     }
 
     private var validSession: MazleAuthSession? {
-        guard let session = sessionStore.session,
+        guard !MazleRuntimeConfiguration.isOfflineBuild,
+              let session = sessionStore.session,
               !session.isExpired,
               AdventureStorageScope(session: session) == currentStorageScope else { return nil }
         return session

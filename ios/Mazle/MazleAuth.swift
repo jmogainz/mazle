@@ -33,7 +33,7 @@ final class MazleSessionStore: ObservableObject {
     private static let account = "session"
 
     private init() {
-        guard !MazleRuntimeConfiguration.isOfflinePreview else { return }
+        guard !MazleRuntimeConfiguration.isOfflineBuild else { return }
         session = Self.load()
         if session?.isExpired == true {
             session = nil
@@ -46,8 +46,8 @@ final class MazleSessionStore: ObservableObject {
     }
 
     func save(_ session: MazleAuthSession) {
-        if MazleRuntimeConfiguration.isOfflinePreview {
-            self.session = session
+        if MazleRuntimeConfiguration.isOfflineBuild {
+            self.session = nil
             return
         }
         guard let data = try? JSONEncoder().encode(session) else { return }
@@ -62,7 +62,7 @@ final class MazleSessionStore: ObservableObject {
     }
 
     func clear() {
-        if !MazleRuntimeConfiguration.isOfflinePreview { Self.remove() }
+        if !MazleRuntimeConfiguration.isOfflineBuild { Self.remove() }
         session = nil
     }
 
@@ -113,7 +113,7 @@ final class MazleAuthManager: NSObject, ObservableObject {
     var isSignedIn: Bool { sessionStore.isSignedIn }
 
     func signIn(provider: String) {
-        guard !MazleRuntimeConfiguration.isOfflinePreview else { return }
+        guard !MazleRuntimeConfiguration.isOfflineBuild else { return }
         guard !isAuthenticating else { return }
         guard let callbackURL = URL(string: "https://mazle.io/api/mobile/auth/callback") else { return }
 

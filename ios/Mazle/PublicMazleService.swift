@@ -139,6 +139,9 @@ struct PublicMazleService: Sendable {
         attemptScores: [Int],
         rating: Int?
     ) async throws {
+        guard !MazleRuntimeConfiguration.isOfflineBuild else {
+            throw MazleRuntimeError.offlineOnlyBuild
+        }
         let url = baseURL.appendingPathComponent("api/feedback")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -171,6 +174,9 @@ struct PublicMazleService: Sendable {
         path: [String],
         queryItems: [URLQueryItem] = []
     ) async throws -> Response {
+        guard !MazleRuntimeConfiguration.isOfflineBuild else {
+            throw MazleRuntimeError.offlineOnlyBuild
+        }
         var url = baseURL
         for component in path {
             url.appendPathComponent(component)

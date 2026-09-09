@@ -14,6 +14,10 @@ struct DailyPuzzleService: Sendable {
     }
 
     func fetch(date: String) async throws -> DailyPuzzleResponse {
+        if MazleRuntimeConfiguration.isOfflineBuild {
+            return try offlineResponse(for: date)
+        }
+
         let today = DailyDate.todayString()
 
         if date == today {
@@ -43,7 +47,30 @@ struct DailyPuzzleService: Sendable {
         }
     }
 
+    private func offlineResponse(for date: String) throws -> DailyPuzzleResponse {
+        let bundle: Bundle
+        if Bundle.main.url(forResource: AdventureCatalogLoader.resourceName, withExtension: "json") != nil {
+            bundle = .main
+        } else {
+            bundle = Bundle(for: AdventureProgressStore.self)
+        }
+        let catalog = try AdventureCatalogLoader.load(bundle: bundle)
+        guard let level = catalog.level(id: 1) else {
+            throw DailyPuzzleServiceError.missingPuzzle
+        }
+        return DailyPuzzleResponse(
+            puzzle: level.puzzle,
+            puzzleNumber: 1,
+            date: date,
+            seed: level.seed,
+            source: "offline-testflight"
+        )
+    }
+
     private func request(path: [String], queryItems: [URLQueryItem] = []) async throws -> DailyPuzzleResponse {
+        guard !MazleRuntimeConfiguration.isOfflineBuild else {
+            throw MazleRuntimeError.offlineOnlyBuild
+        }
         var url = baseURL
         for component in path {
             url.appendPathComponent(component)

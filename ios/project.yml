@@ -17,7 +17,6 @@ settings:
   configs:
     OfflineTestFlight:
       SWIFT_ACTIVE_COMPILATION_CONDITIONS: OFFLINE_TESTFLIGHT
-      CODE_SIGN_IDENTITY: "Apple Distribution"
       MARKETING_VERSION: "0.1"
       CURRENT_PROJECT_VERSION: "1"
 targets:
@@ -46,9 +45,6 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         MARKETING_VERSION: "0.1"
         CURRENT_PROJECT_VERSION: "1"
-      configs:
-        OfflineTestFlight:
-          CODE_SIGN_IDENTITY: "Apple Distribution"
     info:
       path: Mazle/Info.plist
       properties:

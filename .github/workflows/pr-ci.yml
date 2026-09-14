@@ -1,0 +1,183 @@
+# Contributor CI for Mazle's native iOS target.
+# No repository secrets are required. The integration TestFlight workflow stays
+# manual-only and is intentionally separate from this pull-request check.
+
+name: PR CI
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: mazle-pr-ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run_ios: ${{ steps.filter.outputs.run_ios }}
+    steps:
+      - name: Classify changed files
+        id: filter
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          files="$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
+            --paginate --jq '.[].filename')"
+          printf '%s\n' "Changed files:"
+          printf '%s\n' "${files}"
+
+          # Docs-only changes do not need the macOS/Xcode runner. Everything
+          # else, including project/config/workflow changes, runs the suite.
+          non_docs="$(printf '%s\n' "${files}" | grep -vE '^(docs/.*|.*\.md|LICENSE|\.gitignore|\.github/ISSUE_TEMPLATE/.*|\.github/CODEOWNERS|\.github/dependabot\.yml|\.github/FUNDING\.yml)$' || true)"
+          if [[ -n "${non_docs}" ]]; then
+            printf '%s\n' 'Non-docs changes detected; running native iOS CI.'
+            printf '%s\n' "${non_docs}"
+            echo 'run_ios=true' >> "$GITHUB_OUTPUT"
+          else
+            printf '%s\n' 'Docs-only change; skipping the macOS runner.'
+            echo 'run_ios=false' >> "$GITHUB_OUTPUT"
+          fi
+
+  test:
+    name: Build and Test
+    needs: changes
+    if: needs.changes.outputs.run_ios == 'true'
+    runs-on: macos-26
+    timeout-minutes: 90
+
+    env:
+      PROJECT_PATH: ios/Mazle.xcodeproj
+      SCHEME: Mazle
+      UI_SCHEME: MazleUI
+      DERIVED_DATA_PATH: DerivedData
+      UNIT_RESULT_BUNDLE_PATH: MazleTests.xcresult
+      UI_RESULT_BUNDLE_PATH: MazleUITests.xcresult
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Ensure XcodeGen
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+          xcodegen --version
+
+      - name: Generate and validate the native project
+        shell: bash
+        run: |
+          set -euo pipefail
+          (
+            cd ios
+            xcodegen generate
+          )
+          git diff --exit-code -- ios/Mazle.xcodeproj/project.pbxproj
+          git diff --check
+
+      - name: Select simulator
+        id: sim
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="$(xcrun simctl list devices available --json | python3 -c '
+          import json, sys
+          data = json.load(sys.stdin)
+          phones = [
+              device["name"]
+              for runtime, devices in data["devices"].items()
+              if "iOS" in runtime
+              for device in devices
+              if device.get("isAvailable") and device["name"].startswith("iPhone")
+          ]
+          preferred = "iPhone 17"
+          print(preferred if preferred in phones else phones[0] if phones else "")
+          ')")
+          if [[ -z "${name}" ]]; then
+            echo 'No available iPhone simulator found.' >&2
+            xcrun simctl list devices available >&2
+            exit 1
+          fi
+          echo "Using simulator: ${name}"
+          echo "name=${name}" >> "$GITHUB_OUTPUT"
+
+      - name: Test native unit suite
+        env:
+          SIMULATOR_NAME: ${{ steps.sim.outputs.name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            test \
+            -project "${PROJECT_PATH}" \
+            -scheme "${SCHEME}" \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,name=${SIMULATOR_NAME}" \
+            -derivedDataPath "${DERIVED_DATA_PATH}" \
+            -resultBundlePath "${UNIT_RESULT_BUNDLE_PATH}" \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG OFFLINE_TESTFLIGHT' \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Test native UI suite
+        env:
+          SIMULATOR_NAME: ${{ steps.sim.outputs.name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            test \
+            -project "${PROJECT_PATH}" \
+            -scheme "${UI_SCHEME}" \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,name=${SIMULATOR_NAME}" \
+            -derivedDataPath "${DERIVED_DATA_PATH}" \
+            -resultBundlePath "${UI_RESULT_BUNDLE_PATH}" \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG OFFLINE_TESTFLIGHT' \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Upload test results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mazle-test-results
+          path: |
+            ${{ env.UNIT_RESULT_BUNDLE_PATH }}
+            ${{ env.UI_RESULT_BUNDLE_PATH }}
+          if-no-files-found: ignore
+
+  gate:
+    name: CI Gate
+    needs: [changes, test]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check results
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "changes: ${{ needs.changes.result }}"
+          echo "test: ${{ needs.test.result }}"
+          if [[ "${{ needs.changes.result }}" != 'success' ]]; then
+            echo 'Path detection failed; failing the gate.' >&2
+            exit 1
+          fi
+          case "${{ needs.test.result }}" in
+            success|skipped) echo 'Gate passed.' ;;
+            *) echo 'Native iOS CI did not pass; failing the gate.' >&2; exit 1 ;;
+          esac

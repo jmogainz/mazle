@@ -107,7 +107,7 @@ jobs:
           ]
           preferred = "iPhone 17"
           print(preferred if preferred in phones else phones[0] if phones else "")
-          ')")
+          ')
           if [[ -z "${name}" ]]; then
             echo 'No available iPhone simulator found.' >&2
             xcrun simctl list devices available >&2

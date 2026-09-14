@@ -35,7 +35,7 @@ export BWS_PROJECT_NAME_FOR_DB_SECRETS := $(APP_NAME)-$(BWS_ENV)
 
 # stripe.compose.yaml configurations
 export STRIPE_WEBHOOK_CONNECTED_EVENTS := payment_intent.created
-export STRIPE_WEBHOOK_PLATFORM_EVENTS := checkout.session.completed,customer.subscription.updated,customer.subscription.deleted
+export STRIPE_WEBHOOK_PLATFORM_EVENTS := checkout.session.completed,checkout.session.async_payment_succeeded,customer.subscription.created,customer.subscription.updated,customer.subscription.deleted,charge.refunded
 export STRIPE_WEBHOOK_ROUTE := /api/stripe/webhook
 export STRIPE_WEBHOOK_CHECK_ROUTE := /api/stripe/webhook/check
 STRIPE_WEBHOOK_CHECK_MODE ?= platform

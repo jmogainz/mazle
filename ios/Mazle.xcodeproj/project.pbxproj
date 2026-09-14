@@ -1,0 +1,852 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		023091E746E86A69971EC1BC /* Nunito-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = C49557D33A66B7479032A0F3 /* Nunito-Regular.ttf */; };
+		0432DB42A53BEB48B501F37D /* LocalHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3463DF1FCBB75E645B9FB08B /* LocalHistory.swift */; };
+		0A1F9A09DBEB4B9DC3F0EB87 /* LocalCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2477FDF138298A2068F835E9 /* LocalCache.swift */; };
+		121BD9D6BF5772FE502FC5C0 /* Nunito-Black.ttf in Resources */ = {isa = PBXBuildFile; fileRef = ED8D3BD00294212A1B256CB4 /* Nunito-Black.ttf */; };
+		15DA0589F9C3E5B27554FDBA /* AdventureProgressStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E49FB5A1E73E98332D5446EF /* AdventureProgressStore.swift */; };
+		1F1A7668762F3FA81138193D /* WebCharacterIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E2D5303AC2060EF08F54328 /* WebCharacterIcon.swift */; };
+		28DCAEB962F8D21773DEB62F /* MazleHaptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D117F79F9249FF75F4C3046 /* MazleHaptics.swift */; };
+		32764D3851D273BB75EBAA96 /* AdventureUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90CF1C1FD10CECDCF566ADBC /* AdventureUITests.swift */; };
+		32F51479AB24D242C2A6A1D8 /* obsidian.svg in Resources */ = {isa = PBXBuildFile; fileRef = E13A760446BFB39806D8B98A /* obsidian.svg */; };
+		37F78485A0BD4C112DFED731 /* DailyPuzzleService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B27A2AD55B75F66A701FF612 /* DailyPuzzleService.swift */; };
+		3CC8E17AFE83453B74FE48D0 /* ReminderManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E22DF19AA7848FC609BBC043 /* ReminderManager.swift */; };
+		4352356757B0FB7359FC7987 /* AuthenticatedMazleService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 095854A21C37BA809070AB39 /* AuthenticatedMazleService.swift */; };
+		44BA722DC24DA6F8A828FECF /* MazleApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDAD7372E76AFE1BFA96C9A9 /* MazleApp.swift */; };
+		4D2ADD2DFEDE52AB0AD4D460 /* AdventureFeedback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 117B93ADA42F665B941A5BF6 /* AdventureFeedback.swift */; };
+		4ECDD6272BAC52724013B3BA /* MazeEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6668F212F4C0F3A585BE0D4 /* MazeEngine.swift */; };
+		5020654BB6DECE93BC069299 /* MazleWebParityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0E2D5F6FFD20058252D2B07 /* MazleWebParityTests.swift */; };
+		514A87694AAD0130BA4EACC6 /* MazleEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DB1319E4CD60F95F399B758 /* MazleEngineTests.swift */; };
+		6272399F963D2DFB71015B80 /* GameViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDF1638364C6B93334127B97 /* GameViewModel.swift */; };
+		68D65ACBC90EF6D4A9AE055E /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 4D7D89B1E5AD7C9E587E7A10 /* PrivacyInfo.xcprivacy */; };
+		6C9EDDB611A445AF4CED3F1A /* Nunito-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = EB64F7BA70CD8CD5E4AB0044 /* Nunito-SemiBold.ttf */; };
+		718CBC06D689C1E6F062B43A /* StoreKitConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF01D98971E2D7419C9E6408 /* StoreKitConfigurationTests.swift */; };
+		79C42BD4A5C5F8FA8D9E08D3 /* adventure-levels-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = 9B864079DA3E2B34C54744C7 /* adventure-levels-v1.json */; };
+		7E94EF98AEE912CFC36A7A54 /* WebParitySpec.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ECE1C92CD8A5E1C68485C5B /* WebParitySpec.swift */; };
+		7FFEC892FC1CAAC49BCC107C /* PublicMazleService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD3062F9E2120652E07BEF92 /* PublicMazleService.swift */; };
+		96A67258EA96BC5481469C7F /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF57F0C35FDE28EB008B6983 /* Models.swift */; };
+		9F15D111B8C767733EC59FFA /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E53DD8D8B575BC3F20F195D /* ContentView.swift */; };
+		A4132DBE06B7EEEC1647EA3D /* Nunito-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 3416941DE74570148D36B915 /* Nunito-Bold.ttf */; };
+		A854C641EB3D056D0D671F81 /* penguin.svg in Resources */ = {isa = PBXBuildFile; fileRef = C279AE355F5A114667F699A0 /* penguin.svg */; };
+		B503A812622272F41F3BA7D8 /* AdventureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B788F3E178FAEB83AC20EE2 /* AdventureView.swift */; };
+		B6EFB4FA4BBD54B650A3484A /* ResultShareFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 170302DFFC7F13D6B2D3AFB3 /* ResultShareFormatter.swift */; };
+		B9792A7D30EF9DA94117DB6C /* MazleAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BC8AC96C28D2B29E4B06E65 /* MazleAuth.swift */; };
+		BFD40B34BDF2CBDA0F5C3044 /* Mazle.storekit in Resources */ = {isa = PBXBuildFile; fileRef = 809E7CFEF586E158C44C822B /* Mazle.storekit */; };
+		C15013FE7F0EBA102001E2EA /* AdventureGameViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F30A2B9A1313B9738BF58C9E /* AdventureGameViewModel.swift */; };
+		D841359CBFEF8371DF5B926B /* AdventureModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = DED62EB4DC29E54164D70531 /* AdventureModels.swift */; };
+		DA1A8BB664BD2AAA22EE4EDF /* AdventureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33D0F72CE3070118A22B4F8C /* AdventureService.swift */; };
+		DD73934CCC8E2D7790CFD676 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CB70FCDE026AA50C64891A54 /* Assets.xcassets */; };
+		DF8ADC37ACFB83105BF837FD /* DailyDate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06B36ACDC9F2FFE0361D83DC /* DailyDate.swift */; };
+		ED42A5457A9243381304F85B /* AppPlaceholder.swift in Sources */ = {isa = PBXBuildFile; fileRef = D588B8115780BDEDCBFC89DD /* AppPlaceholder.swift */; };
+		ED61452C7CAFDD7749C5ABC2 /* DailyPuzzleContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61A4E35B3DDB37D358B3BADE /* DailyPuzzleContractTests.swift */; };
+		EE6FFF1E9B9BD6EBD855C1DB /* AdventureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DEA2ECA0C7AC98C16CC3032 /* AdventureTests.swift */; };
+		F69E2AE53917066222194089 /* StoreKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41C4D90F65728A5C4C9F9B33 /* StoreKitManager.swift */; };
+		FD452F824AD6EC372605E733 /* Nunito-ExtraBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B5E03BEC56AF5978628C0510 /* Nunito-ExtraBold.ttf */; };
+		FED51232743EDBD10A6097CC /* MazleRuntimeConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8828F901CD01B22390E53F8 /* MazleRuntimeConfigurationTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		AB41624751C688CCF9105D0F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 91779DED8846C8147ECBF57F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 313A59D0A7BE1F74E8DAF566;
+			remoteInfo = Mazle;
+		};
+		CE16F0AD574D606CEB44E09F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 91779DED8846C8147ECBF57F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 313A59D0A7BE1F74E8DAF566;
+			remoteInfo = Mazle;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		06B36ACDC9F2FFE0361D83DC /* DailyDate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyDate.swift; sourceTree = "<group>"; };
+		095854A21C37BA809070AB39 /* AuthenticatedMazleService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthenticatedMazleService.swift; sourceTree = "<group>"; };
+		117B93ADA42F665B941A5BF6 /* AdventureFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdventureFeedback.swift; sourceTree = "<group>"; };
+		170302DFFC7F13D6B2D3AFB3 /* ResultShareFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultShareFormatter.swift; sourceTree = "<group>"; };
+		1D117F79F9249FF75F4C3046 /* MazleHaptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MazleHaptics.swift; sourceTree = "<group>"; };
+		2477FDF138298A2068F835E9 /* LocalCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalCache.swift; sourceTree = "<group>"; };
+		29CBE9A16355AF454333B562 /* MazleTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = MazleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		2DB1319E4CD60F95F399B758 /* MazleEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MazleEngineTests.swift; sourceTree = "<group>"; };
+		33D0F72CE3070118A22B4F8C /* AdventureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdventureService.swift; sourceTree = "<group>"; };
+		3416941DE74570148D36B915 /* Nunito-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Nunito-Bold.ttf"; sourceTree = "<group>"; };
+		3463DF1FCBB75E645B9FB08B /* LocalHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalHistory.swift; sourceTree = "<group>"; };
+		3DEA2ECA0C7AC98C16CC3032 /* AdventureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdventureTests.swift; sourceTree = "<group>"; };
+		41C4D90F65728A5C4C9F9B33 /* StoreKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitManager.swift; sourceTree = "<group>"; };
+		4D7D89B1E5AD7C9E587E7A10 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		5E2D5303AC2060EF08F54328 /* WebCharacterIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebCharacterIcon.swift; sourceTree = "<group>"; };
+		61A4E35B3DDB37D358B3BADE /* DailyPuzzleContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyPuzzleContractTests.swift; sourceTree = "<group>"; };
+		63CC3881DF6886E3B32AC018 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		6B788F3E178FAEB83AC20EE2 /* AdventureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdventureView.swift; sourceTree = "<group>"; };
+		6E53DD8D8B575BC3F20F195D /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		74447EDF72ECCFE528B9B951 /* Mazle.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Mazle.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		7ECE1C92CD8A5E1C68485C5B /* WebParitySpec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebParitySpec.swift; sourceTree = "<group>"; };
+		809E7CFEF586E158C44C822B /* Mazle.storekit */ = {isa = PBXFileReference; path = Mazle.storekit; sourceTree = "<group>"; };
+		8A010E09B6C779C43F5C1AE4 /* MazleUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = MazleUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		90CF1C1FD10CECDCF566ADBC /* AdventureUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdventureUITests.swift; sourceTree = "<group>"; };
+		9B864079DA3E2B34C54744C7 /* adventure-levels-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "adventure-levels-v1.json"; sourceTree = "<group>"; };
+		9BC8AC96C28D2B29E4B06E65 /* MazleAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MazleAuth.swift; sourceTree = "<group>"; };
+		B27A2AD55B75F66A701FF612 /* DailyPuzzleService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyPuzzleService.swift; sourceTree = "<group>"; };
+		B5E03BEC56AF5978628C0510 /* Nunito-ExtraBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Nunito-ExtraBold.ttf"; sourceTree = "<group>"; };
+		C279AE355F5A114667F699A0 /* penguin.svg */ = {isa = PBXFileReference; path = penguin.svg; sourceTree = "<group>"; };
+		C49557D33A66B7479032A0F3 /* Nunito-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Nunito-Regular.ttf"; sourceTree = "<group>"; };
+		CB70FCDE026AA50C64891A54 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		D588B8115780BDEDCBFC89DD /* AppPlaceholder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPlaceholder.swift; sourceTree = "<group>"; };
+		D8828F901CD01B22390E53F8 /* MazleRuntimeConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MazleRuntimeConfigurationTests.swift; sourceTree = "<group>"; };
+		DED62EB4DC29E54164D70531 /* AdventureModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdventureModels.swift; sourceTree = "<group>"; };
+		E13A760446BFB39806D8B98A /* obsidian.svg */ = {isa = PBXFileReference; path = obsidian.svg; sourceTree = "<group>"; };
+		E22DF19AA7848FC609BBC043 /* ReminderManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReminderManager.swift; sourceTree = "<group>"; };
+		E49FB5A1E73E98332D5446EF /* AdventureProgressStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdventureProgressStore.swift; sourceTree = "<group>"; };
+		E6668F212F4C0F3A585BE0D4 /* MazeEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MazeEngine.swift; sourceTree = "<group>"; };
+		EB64F7BA70CD8CD5E4AB0044 /* Nunito-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Nunito-SemiBold.ttf"; sourceTree = "<group>"; };
+		ED8D3BD00294212A1B256CB4 /* Nunito-Black.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Nunito-Black.ttf"; sourceTree = "<group>"; };
+		EF01D98971E2D7419C9E6408 /* StoreKitConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitConfigurationTests.swift; sourceTree = "<group>"; };
+		EF57F0C35FDE28EB008B6983 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		F0E2D5F6FFD20058252D2B07 /* MazleWebParityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MazleWebParityTests.swift; sourceTree = "<group>"; };
+		F30A2B9A1313B9738BF58C9E /* AdventureGameViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdventureGameViewModel.swift; sourceTree = "<group>"; };
+		FD3062F9E2120652E07BEF92 /* PublicMazleService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicMazleService.swift; sourceTree = "<group>"; };
+		FDAD7372E76AFE1BFA96C9A9 /* MazleApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MazleApp.swift; sourceTree = "<group>"; };
+		FDF1638364C6B93334127B97 /* GameViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameViewModel.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		0400D4EF60225B27C2BFC070 /* Mazle */ = {
+			isa = PBXGroup;
+			children = (
+				117B93ADA42F665B941A5BF6 /* AdventureFeedback.swift */,
+				F30A2B9A1313B9738BF58C9E /* AdventureGameViewModel.swift */,
+				DED62EB4DC29E54164D70531 /* AdventureModels.swift */,
+				E49FB5A1E73E98332D5446EF /* AdventureProgressStore.swift */,
+				33D0F72CE3070118A22B4F8C /* AdventureService.swift */,
+				6B788F3E178FAEB83AC20EE2 /* AdventureView.swift */,
+				D588B8115780BDEDCBFC89DD /* AppPlaceholder.swift */,
+				CB70FCDE026AA50C64891A54 /* Assets.xcassets */,
+				095854A21C37BA809070AB39 /* AuthenticatedMazleService.swift */,
+				6E53DD8D8B575BC3F20F195D /* ContentView.swift */,
+				06B36ACDC9F2FFE0361D83DC /* DailyDate.swift */,
+				B27A2AD55B75F66A701FF612 /* DailyPuzzleService.swift */,
+				FDF1638364C6B93334127B97 /* GameViewModel.swift */,
+				63CC3881DF6886E3B32AC018 /* Info.plist */,
+				2477FDF138298A2068F835E9 /* LocalCache.swift */,
+				3463DF1FCBB75E645B9FB08B /* LocalHistory.swift */,
+				E6668F212F4C0F3A585BE0D4 /* MazeEngine.swift */,
+				FDAD7372E76AFE1BFA96C9A9 /* MazleApp.swift */,
+				9BC8AC96C28D2B29E4B06E65 /* MazleAuth.swift */,
+				1D117F79F9249FF75F4C3046 /* MazleHaptics.swift */,
+				EF57F0C35FDE28EB008B6983 /* Models.swift */,
+				4D7D89B1E5AD7C9E587E7A10 /* PrivacyInfo.xcprivacy */,
+				FD3062F9E2120652E07BEF92 /* PublicMazleService.swift */,
+				E22DF19AA7848FC609BBC043 /* ReminderManager.swift */,
+				170302DFFC7F13D6B2D3AFB3 /* ResultShareFormatter.swift */,
+				41C4D90F65728A5C4C9F9B33 /* StoreKitManager.swift */,
+				5E2D5303AC2060EF08F54328 /* WebCharacterIcon.swift */,
+				7ECE1C92CD8A5E1C68485C5B /* WebParitySpec.swift */,
+				6B268A3AA6315FAB85C67723 /* Resources */,
+			);
+			path = Mazle;
+			sourceTree = "<group>";
+		};
+		65B3B435A13D95F4CFA313D3 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				74447EDF72ECCFE528B9B951 /* Mazle.app */,
+				29CBE9A16355AF454333B562 /* MazleTests.xctest */,
+				8A010E09B6C779C43F5C1AE4 /* MazleUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		6B268A3AA6315FAB85C67723 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				CC888EDDA1E3F0F35F7BF11F /* Characters */,
+				84F4960DC48DC4BAEBEA71A8 /* Fonts */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		767DA9F743555D5C08FCC1CF /* content */ = {
+			isa = PBXGroup;
+			children = (
+				9B864079DA3E2B34C54744C7 /* adventure-levels-v1.json */,
+			);
+			name = content;
+			path = ../src/adventure/content;
+			sourceTree = "<group>";
+		};
+		84F4960DC48DC4BAEBEA71A8 /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				ED8D3BD00294212A1B256CB4 /* Nunito-Black.ttf */,
+				3416941DE74570148D36B915 /* Nunito-Bold.ttf */,
+				B5E03BEC56AF5978628C0510 /* Nunito-ExtraBold.ttf */,
+				C49557D33A66B7479032A0F3 /* Nunito-Regular.ttf */,
+				EB64F7BA70CD8CD5E4AB0044 /* Nunito-SemiBold.ttf */,
+			);
+			path = Fonts;
+			sourceTree = "<group>";
+		};
+		CC5AA4D72BEB9B78C4EFB10C /* MazleTests */ = {
+			isa = PBXGroup;
+			children = (
+				3DEA2ECA0C7AC98C16CC3032 /* AdventureTests.swift */,
+				61A4E35B3DDB37D358B3BADE /* DailyPuzzleContractTests.swift */,
+				809E7CFEF586E158C44C822B /* Mazle.storekit */,
+				2DB1319E4CD60F95F399B758 /* MazleEngineTests.swift */,
+				D8828F901CD01B22390E53F8 /* MazleRuntimeConfigurationTests.swift */,
+				F0E2D5F6FFD20058252D2B07 /* MazleWebParityTests.swift */,
+				EF01D98971E2D7419C9E6408 /* StoreKitConfigurationTests.swift */,
+			);
+			path = MazleTests;
+			sourceTree = "<group>";
+		};
+		CC888EDDA1E3F0F35F7BF11F /* Characters */ = {
+			isa = PBXGroup;
+			children = (
+				E13A760446BFB39806D8B98A /* obsidian.svg */,
+				C279AE355F5A114667F699A0 /* penguin.svg */,
+			);
+			path = Characters;
+			sourceTree = "<group>";
+		};
+		D01D0568A2015E258D57EA07 /* MazleUITests */ = {
+			isa = PBXGroup;
+			children = (
+				90CF1C1FD10CECDCF566ADBC /* AdventureUITests.swift */,
+			);
+			path = MazleUITests;
+			sourceTree = "<group>";
+		};
+		F3C7BFA57C69A27EB16AA4CC = {
+			isa = PBXGroup;
+			children = (
+				767DA9F743555D5C08FCC1CF /* content */,
+				0400D4EF60225B27C2BFC070 /* Mazle */,
+				CC5AA4D72BEB9B78C4EFB10C /* MazleTests */,
+				D01D0568A2015E258D57EA07 /* MazleUITests */,
+				65B3B435A13D95F4CFA313D3 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		05B3EC8A63BBE1016944E145 /* MazleTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D51BB27396DB6094E8B4E7F3 /* Build configuration list for PBXNativeTarget "MazleTests" */;
+			buildPhases = (
+				6B49A0BFB09945F66105DC1E /* Sources */,
+				4F1B776A9521DA71C7F39B39 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				337BF1EFCADDF3833581574E /* PBXTargetDependency */,
+			);
+			name = MazleTests;
+			packageProductDependencies = (
+			);
+			productName = MazleTests;
+			productReference = 29CBE9A16355AF454333B562 /* MazleTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		313A59D0A7BE1F74E8DAF566 /* Mazle */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4A9DE1726A85E53A3FEADD40 /* Build configuration list for PBXNativeTarget "Mazle" */;
+			buildPhases = (
+				A8B113322C75E54E61E2ED47 /* Sources */,
+				A3DB1010DA48767A1FC46226 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Mazle;
+			packageProductDependencies = (
+			);
+			productName = Mazle;
+			productReference = 74447EDF72ECCFE528B9B951 /* Mazle.app */;
+			productType = "com.apple.product-type.application";
+		};
+		93C8E20C1DBFE5AAE3B810C4 /* MazleUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6C60D621F6D96B2D0A8B9AC4 /* Build configuration list for PBXNativeTarget "MazleUITests" */;
+			buildPhases = (
+				CAEB6DEEEC1632177EB498DE /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				38E1055CBE308F1B7331971E /* PBXTargetDependency */,
+			);
+			name = MazleUITests;
+			packageProductDependencies = (
+			);
+			productName = MazleUITests;
+			productReference = 8A010E09B6C779C43F5C1AE4 /* MazleUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		91779DED8846C8147ECBF57F /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 2660;
+				TargetAttributes = {
+					05B3EC8A63BBE1016944E145 = {
+						ProvisioningStyle = Automatic;
+					};
+					313A59D0A7BE1F74E8DAF566 = {
+						ProvisioningStyle = Automatic;
+					};
+					93C8E20C1DBFE5AAE3B810C4 = {
+						ProvisioningStyle = Automatic;
+						TestTargetID = 313A59D0A7BE1F74E8DAF566;
+					};
+				};
+			};
+			buildConfigurationList = 945BFF731417B39A58D665F5 /* Build configuration list for PBXProject "Mazle" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = F3C7BFA57C69A27EB16AA4CC;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 65B3B435A13D95F4CFA313D3 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				313A59D0A7BE1F74E8DAF566 /* Mazle */,
+				05B3EC8A63BBE1016944E145 /* MazleTests */,
+				93C8E20C1DBFE5AAE3B810C4 /* MazleUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		4F1B776A9521DA71C7F39B39 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BFD40B34BDF2CBDA0F5C3044 /* Mazle.storekit in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A3DB1010DA48767A1FC46226 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DD73934CCC8E2D7790CFD676 /* Assets.xcassets in Resources */,
+				121BD9D6BF5772FE502FC5C0 /* Nunito-Black.ttf in Resources */,
+				A4132DBE06B7EEEC1647EA3D /* Nunito-Bold.ttf in Resources */,
+				FD452F824AD6EC372605E733 /* Nunito-ExtraBold.ttf in Resources */,
+				023091E746E86A69971EC1BC /* Nunito-Regular.ttf in Resources */,
+				6C9EDDB611A445AF4CED3F1A /* Nunito-SemiBold.ttf in Resources */,
+				68D65ACBC90EF6D4A9AE055E /* PrivacyInfo.xcprivacy in Resources */,
+				79C42BD4A5C5F8FA8D9E08D3 /* adventure-levels-v1.json in Resources */,
+				32F51479AB24D242C2A6A1D8 /* obsidian.svg in Resources */,
+				A854C641EB3D056D0D671F81 /* penguin.svg in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		6B49A0BFB09945F66105DC1E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EE6FFF1E9B9BD6EBD855C1DB /* AdventureTests.swift in Sources */,
+				ED61452C7CAFDD7749C5ABC2 /* DailyPuzzleContractTests.swift in Sources */,
+				514A87694AAD0130BA4EACC6 /* MazleEngineTests.swift in Sources */,
+				FED51232743EDBD10A6097CC /* MazleRuntimeConfigurationTests.swift in Sources */,
+				5020654BB6DECE93BC069299 /* MazleWebParityTests.swift in Sources */,
+				718CBC06D689C1E6F062B43A /* StoreKitConfigurationTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A8B113322C75E54E61E2ED47 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4D2ADD2DFEDE52AB0AD4D460 /* AdventureFeedback.swift in Sources */,
+				C15013FE7F0EBA102001E2EA /* AdventureGameViewModel.swift in Sources */,
+				D841359CBFEF8371DF5B926B /* AdventureModels.swift in Sources */,
+				15DA0589F9C3E5B27554FDBA /* AdventureProgressStore.swift in Sources */,
+				DA1A8BB664BD2AAA22EE4EDF /* AdventureService.swift in Sources */,
+				B503A812622272F41F3BA7D8 /* AdventureView.swift in Sources */,
+				ED42A5457A9243381304F85B /* AppPlaceholder.swift in Sources */,
+				4352356757B0FB7359FC7987 /* AuthenticatedMazleService.swift in Sources */,
+				9F15D111B8C767733EC59FFA /* ContentView.swift in Sources */,
+				DF8ADC37ACFB83105BF837FD /* DailyDate.swift in Sources */,
+				37F78485A0BD4C112DFED731 /* DailyPuzzleService.swift in Sources */,
+				6272399F963D2DFB71015B80 /* GameViewModel.swift in Sources */,
+				0A1F9A09DBEB4B9DC3F0EB87 /* LocalCache.swift in Sources */,
+				0432DB42A53BEB48B501F37D /* LocalHistory.swift in Sources */,
+				4ECDD6272BAC52724013B3BA /* MazeEngine.swift in Sources */,
+				44BA722DC24DA6F8A828FECF /* MazleApp.swift in Sources */,
+				B9792A7D30EF9DA94117DB6C /* MazleAuth.swift in Sources */,
+				28DCAEB962F8D21773DEB62F /* MazleHaptics.swift in Sources */,
+				96A67258EA96BC5481469C7F /* Models.swift in Sources */,
+				7FFEC892FC1CAAC49BCC107C /* PublicMazleService.swift in Sources */,
+				3CC8E17AFE83453B74FE48D0 /* ReminderManager.swift in Sources */,
+				B6EFB4FA4BBD54B650A3484A /* ResultShareFormatter.swift in Sources */,
+				F69E2AE53917066222194089 /* StoreKitManager.swift in Sources */,
+				1F1A7668762F3FA81138193D /* WebCharacterIcon.swift in Sources */,
+				7E94EF98AEE912CFC36A7A54 /* WebParitySpec.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CAEB6DEEEC1632177EB498DE /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				32764D3851D273BB75EBAA96 /* AdventureUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		337BF1EFCADDF3833581574E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 313A59D0A7BE1F74E8DAF566 /* Mazle */;
+			targetProxy = AB41624751C688CCF9105D0F /* PBXContainerItemProxy */;
+		};
+		38E1055CBE308F1B7331971E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 313A59D0A7BE1F74E8DAF566 /* Mazle */;
+			targetProxy = CE16F0AD574D606CEB44E09F /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		1305D6D5F64D6A0FD3CA7136 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.mazle.game.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Mazle.app/Mazle";
+			};
+			name = Debug;
+		};
+		2E6B1826FD475A074B7BEABA /* OfflineTestFlight */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.mazle.game.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Mazle.app/Mazle";
+			};
+			name = OfflineTestFlight;
+		};
+		3269385019A1E06D093D2E5A /* OfflineTestFlight */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Mazle/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Mazle;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mazle.game;
+				PRODUCT_NAME = Mazle;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = OfflineTestFlight;
+		};
+		42E53491A54D7F9731E67940 /* OfflineTestFlight */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.mazle.game.uitests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Mazle;
+			};
+			name = OfflineTestFlight;
+		};
+		649BE7C261037347B0307CC4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.mazle.game.uitests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Mazle;
+			};
+			name = Debug;
+		};
+		850B744B419A1591498C48AB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Mazle/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Mazle;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mazle.game;
+				PRODUCT_NAME = Mazle;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		8F33C34FD7C563DF9B519F82 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		A2ECDD4CB80B75A0C7AD74DF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		BAB29D63EB0BCF3E4E3F118D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Mazle/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Mazle;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mazle.game;
+				PRODUCT_NAME = Mazle;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		D4252693C86AE0A8F2D50CAA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.mazle.game.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Mazle.app/Mazle";
+			};
+			name = Release;
+		};
+		E22948D4406C4706F02AE761 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.mazle.game.uitests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Mazle;
+			};
+			name = Release;
+		};
+		F52EE873D89EF1222EEB259E /* OfflineTestFlight */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = OFFLINE_TESTFLIGHT;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = OfflineTestFlight;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		4A9DE1726A85E53A3FEADD40 /* Build configuration list for PBXNativeTarget "Mazle" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				850B744B419A1591498C48AB /* Debug */,
+				3269385019A1E06D093D2E5A /* OfflineTestFlight */,
+				BAB29D63EB0BCF3E4E3F118D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		6C60D621F6D96B2D0A8B9AC4 /* Build configuration list for PBXNativeTarget "MazleUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				649BE7C261037347B0307CC4 /* Debug */,
+				42E53491A54D7F9731E67940 /* OfflineTestFlight */,
+				E22948D4406C4706F02AE761 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		945BFF731417B39A58D665F5 /* Build configuration list for PBXProject "Mazle" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A2ECDD4CB80B75A0C7AD74DF /* Debug */,
+				F52EE873D89EF1222EEB259E /* OfflineTestFlight */,
+				8F33C34FD7C563DF9B519F82 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		D51BB27396DB6094E8B4E7F3 /* Build configuration list for PBXNativeTarget "MazleTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1305D6D5F64D6A0FD3CA7136 /* Debug */,
+				2E6B1826FD475A074B7BEABA /* OfflineTestFlight */,
+				D4252693C86AE0A8F2D50CAA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 91779DED8846C8147ECBF57F /* Project object */;
+}

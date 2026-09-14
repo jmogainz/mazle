@@ -1,0 +1,111 @@
+{
+  "identifier" : "A1B2C3D4",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "9.99",
+      "familyShareable" : true,
+      "internalID" : "E1F2A3B4",
+      "localizations" : [
+        {
+          "description" : "Unlock the Mazle archive permanently.",
+          "displayName" : "Archive Lifetime",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.mazle.archive.lifetime",
+      "referenceName" : "Archive Lifetime",
+      "type" : "NonConsumable"
+    },
+    {
+      "displayPrice" : "0.99",
+      "familyShareable" : false,
+      "internalID" : "A71F1111",
+      "localizations" : [
+        {
+          "description" : "Restores all three Adventure hearts once.",
+          "displayName" : "1 Refill Ticket",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.mazle.adventure.refill.1",
+      "referenceName" : "Adventure Refill 1",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "3.99",
+      "familyShareable" : false,
+      "internalID" : "A71F5555",
+      "localizations" : [
+        {
+          "description" : "Five full Adventure heart refills.",
+          "displayName" : "5 Refill Tickets",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.mazle.adventure.refill.5",
+      "referenceName" : "Adventure Refill 5",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "7.99",
+      "familyShareable" : false,
+      "internalID" : "A71F1212",
+      "localizations" : [
+        {
+          "description" : "Twelve full Adventure heart refills.",
+          "displayName" : "12 Refill Tickets",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.mazle.adventure.refill.12",
+      "referenceName" : "Adventure Refill 12",
+      "type" : "Consumable"
+    }
+  ],
+  "settings" : {
+
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "C1D2E3F4",
+      "localizations" : [
+
+      ],
+      "name" : "Mazle Archive",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "1.99",
+          "familyShareable" : true,
+          "groupNumber" : 1,
+          "internalID" : "B1C2D3E4",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Unlock the Mazle archive monthly.",
+              "displayName" : "Archive Monthly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.mazle.archive.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Archive Monthly",
+          "subscriptionGroupID" : "C1D2E3F4",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 2,
+    "minor" : 0
+  }
+}

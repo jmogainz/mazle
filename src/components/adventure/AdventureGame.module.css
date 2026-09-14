@@ -1,0 +1,104 @@
+.gameScreen {
+  height: 100dvh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  touch-action: none;
+  color: #18304c;
+  background: radial-gradient(circle at 50% 20%, #f7fdff 0 18%, #d9f1fb 48%, #baddeb 100%);
+}
+
+.gameHeader {
+  position: relative;
+  z-index: 10;
+  min-height: 68px;
+  display: grid;
+  grid-template-columns: 46px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: max(9px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) 9px max(14px, env(safe-area-inset-left));
+  background: rgba(246,252,255,.88);
+  border-bottom: 1px solid rgba(46,99,138,.13);
+  box-shadow: 0 7px 22px rgba(32,76,108,.08);
+  backdrop-filter: blur(16px);
+}
+
+.closeButton { width: 42px; height: 42px; display: grid; place-items: center; border: 1px solid rgba(38,91,132,.13); border-radius: 14px; color: #23445f; background: white; box-shadow: 0 4px 11px rgba(32,76,108,.09); cursor: pointer; }
+.closeButton svg { width: 22px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+.closeButton:active { transform: scale(.92); }
+.levelTitle { min-width: 0; display: flex; flex-direction: column; line-height: 1.05; }
+.levelTitle span { color: #6a879d; font-size: .54rem; font-weight: 900; letter-spacing: .14em; }
+.levelTitle strong { margin-top: 4px; font-size: 1.14rem; font-weight: 900; }
+.starPreview { display: flex; padding: 6px 8px; border-radius: 14px; background: rgba(255,255,255,.88); box-shadow: 0 4px 12px rgba(43,84,113,.08); }
+.starPreview svg { width: 21px; margin: 0 -1px; stroke-width: 1.1; }
+.starOn { fill: #ffd34c; stroke: #d99a1e; }
+.starOff { fill: #dde6ec; stroke: #b9c5ce; }
+
+.gameContent { flex: 1; min-height: 0; width: 100%; max-width: 620px; margin: 0 auto; display: flex; flex-direction: column; align-items: center; padding: 10px 12px max(9px, env(safe-area-inset-bottom)); }
+.objectiveCard { width: min(100%, 500px); display: grid; grid-template-columns: 43px 1fr auto; align-items: center; gap: 10px; padding: 9px 11px; margin-bottom: 4px; border: 1px solid rgba(35,101,145,.12); border-radius: 18px; background: rgba(255,255,255,.76); box-shadow: 0 7px 18px rgba(31,79,110,.07); }
+.goalBadge { width: 39px; height: 39px; display: grid; place-items: center; border-radius: 13px; background: linear-gradient(150deg, #81cf79, #48a85e); box-shadow: inset 0 -3px rgba(30,117,53,.2), 0 5px 10px rgba(49,137,67,.19); }
+.goalBadge svg { width: 22px; fill: #fff2a6; stroke: white; stroke-width: .7; }
+.objectiveCard > div:nth-child(2) { min-width: 0; display: flex; flex-direction: column; }
+.objectiveCard span, .parBadge small { color: #7690a4; font-size: .5rem; font-weight: 900; letter-spacing: .12em; }
+.objectiveCard > div:nth-child(2) strong { margin-top: 3px; overflow: hidden; font-size: .75rem; font-weight: 900; text-overflow: ellipsis; white-space: nowrap; }
+.parBadge { min-width: 49px; display: flex; flex-direction: column; align-items: center; padding: 5px 7px; border-radius: 12px; color: #9a6b13; background: #fff4c9; }
+.parBadge small { color: #b28736; font-size: .42rem; }
+.parBadge strong { font-size: 1rem; line-height: 1; }
+
+.boardShell { position: relative; flex: 1; min-height: 0; width: 100%; display: grid; place-items: center; }
+.boardGlow { position: absolute; width: 72%; aspect-ratio: 1; border-radius: 50%; background: rgba(75,171,214,.2); filter: blur(55px); }
+.gameFrame { position: relative; z-index: 2; max-width: 100%; max-height: 100%; flex: 0 0 auto; border-radius: 22px; overflow: hidden; background: rgba(255,255,255,.35); box-shadow: 0 18px 45px rgba(28,72,103,.12); }
+.gameFrame :global(.game-container), .gameFrame canvas { width: 100% !important; height: 100% !important; }
+.loadingBoard { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 12px; color: #5d7d94; background: rgba(235,248,253,.9); }
+.loadingBoard span { width: 34px; height: 34px; border: 4px solid rgba(48,121,166,.15); border-top-color: #4c9dce; border-radius: 50%; animation: spin 900ms linear infinite; }
+.loadingBoard p { font-size: .7rem; font-weight: 900; letter-spacing: .05em; }
+
+.swipeHint { margin: 5px 0 3px; color: #6c879a; font-size: .62rem; font-weight: 800; }
+.accessibleControls { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+.srOnlyControl { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+.srOnlyControl:focus { position: fixed; z-index: 50; width: auto; height: auto; margin: 8px; padding: 8px 12px; overflow: visible; clip: auto; clip-path: none; white-space: normal; border-radius: 8px; color: #18304c; background: white; }
+.dialogBackdrop { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(15,31,49,.48); backdrop-filter: blur(6px); animation: fadeIn 150ms ease-out; }
+.quitDialog { width: min(100%, 350px); padding: 24px; text-align: center; border: 1px solid rgba(255,255,255,.7); border-radius: 28px; background: #fafeff; box-shadow: 0 28px 70px rgba(15,35,52,.3); animation: popIn 260ms cubic-bezier(.2,.85,.25,1.2); }
+.quitIcon { width: 56px; height: 56px; display: grid; place-items: center; margin: 0 auto 12px; border-radius: 19px; color: #3c7197; background: #e2f2fa; font-size: 1.55rem; font-weight: 900; }
+.quitDialog h2 { font-size: 1.35rem; font-weight: 900; }
+.quitDialog p { margin: 8px 0 19px; color: #657f92; font-size: .82rem; font-weight: 700; line-height: 1.45; }
+.keepPlaying, .leaveButton { width: 100%; min-height: 49px; border: 0; border-radius: 16px; font-family: inherit; font-size: .85rem; font-weight: 900; cursor: pointer; }
+.keepPlaying { color: white; background: linear-gradient(180deg, #63c478, #359b55); box-shadow: 0 5px 0 #278244, 0 9px 17px rgba(36,132,67,.2); }
+.leaveButton { margin-top: 12px; color: #6e8190; background: transparent; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes fadeIn { from { opacity: 0; } }
+@keyframes popIn { from { opacity: 0; transform: translateY(12px) scale(.96); } }
+
+@media (max-height: 760px) {
+  .gameContent { padding-top: 5px; }
+  .objectiveCard { padding-block: 6px; }
+  .swipeHint { display: none; }
+}
+
+@media (min-width: 800px) and (pointer: fine) {
+  .accessibleControls { opacity: .9; }
+}
+
+@media (max-height: 500px) and (min-width: 700px) {
+  .gameContent {
+    max-width: 840px;
+    display: grid;
+    grid-template-columns: minmax(250px, 1fr) minmax(190px, 270px) 100px;
+    grid-template-rows: auto 1fr;
+    align-items: center;
+    gap: 6px 14px;
+    padding-top: 6px;
+  }
+  .objectiveCard { grid-column: 1; grid-row: 1; width: 100%; margin: 0; }
+  .gameContent > :nth-child(2) { grid-column: 1; grid-row: 2; }
+  .boardShell { grid-column: 2; grid-row: 1 / 3; width: 100%; height: 100%; }
+  .swipeHint { grid-column: 3; grid-row: 1; margin: 0; text-align: center; }
+  .accessibleControls { grid-column: 3; grid-row: 2; justify-self: center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loadingBoard span { animation-duration: 1.8s; }
+  .dialogBackdrop, .quitDialog { animation: none; }
+}

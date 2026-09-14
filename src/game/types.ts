@@ -39,9 +39,14 @@ export interface PuzzleData {
   start: Position;
   goal: Position;
   optimalMoves: number;
+  /**
+   * Adventure levels can be completed beyond the optimal route. Daily/archive
+   * puzzles intentionally omit this and retain the exact-optimal cutoff.
+   */
+  moveLimit?: number;
   solutionPath?: Position[];
   mapType?: MapType;
-  variant?: 'daily' | 'archive';
+  variant?: 'daily' | 'archive' | 'adventure';
 
   // Psychology-based difficulty metrics (for dev mode display)
   difficultyScore?: number;           // Overall psychology score

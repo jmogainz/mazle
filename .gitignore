@@ -29,6 +29,9 @@ logs/
 # Local env files
 .env*.local
 
+# Hermes verify recipe manifest (local tool artifact)
+.hermes/
+
 # Vercel
 .vercel/README.txt
 .vercel/output

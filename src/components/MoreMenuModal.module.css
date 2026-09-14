@@ -85,3 +85,18 @@
   align-items: center;
   justify-content: center;
 }
+
+.adventureItem {
+  color: #2e83b8;
+}
+
+.adventureItem::before {
+  content: 'NEW';
+  padding: 0.12rem 0.3rem;
+  color: #ffffff;
+  border-radius: 999px;
+  background: #f05b64;
+  font-size: 0.42rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+}

@@ -1,0 +1,11 @@
+.loadingScreen { height: 100dvh; display: grid; place-content: center; justify-items: center; gap: 15px; color: #4d718b; background: radial-gradient(circle at 50% 30%, #f4fcff, #c9e8f5); }
+.loadingMark { width: 67px; height: 63px; display: grid; place-items: center; color: white; border: 4px solid white; border-radius: 23px; background: linear-gradient(145deg, #ff6a70, #e83e4a); box-shadow: 0 8px 0 #bd2f3b, 0 15px 25px rgba(150,39,49,.2); animation: float 1.5s ease-in-out infinite; }
+.loadingMark span { font-size: 1.7rem; font-weight: 900; }
+.loadingScreen p { font-size: .73rem; font-weight: 900; letter-spacing: .04em; }
+.syncPill { position: fixed; z-index: 70; left: 50%; bottom: max(17px, env(safe-area-inset-bottom)); display: flex; align-items: center; gap: 7px; transform: translateX(-50%); padding: 8px 12px; color: #54748b; border: 1px solid rgba(45,102,142,.13); border-radius: 999px; background: rgba(255,255,255,.9); box-shadow: 0 8px 22px rgba(28,73,103,.14); backdrop-filter: blur(10px); font-size: .59rem; font-weight: 900; }
+.syncPill span, .startingOverlay span { width: 11px; height: 11px; border: 2px solid rgba(57,118,157,.2); border-top-color: #397ba5; border-radius: 50%; animation: spin 700ms linear infinite; }
+.startingOverlay { position: fixed; z-index: 140; inset: 0; display: flex; align-items: center; justify-content: center; gap: 10px; color: #315c78; background: rgba(235,248,253,.85); backdrop-filter: blur(8px); font-size: .75rem; font-weight: 900; }
+.startingOverlay span { width: 20px; height: 20px; border-width: 3px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes float { 50% { transform: translateY(-6px); } }
+@media (prefers-reduced-motion: reduce) { .loadingMark, .syncPill span, .startingOverlay span { animation-duration: 2s; } }

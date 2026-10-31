@@ -23,6 +23,12 @@ use mazle_generator::{
     PuzzleData, TileType,
 };
 
+// Use mimalloc on native targets: the parallel search churns through millions of
+// small allocations per minute, and the system allocator is the bottleneck.
+#[cfg(not(target_arch = "wasm32"))]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 /// Application state
 #[derive(Clone)]
 struct AppState {

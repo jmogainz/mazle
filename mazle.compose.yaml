@@ -1,5 +1,8 @@
+# buildx >= 0.37.2 rejects `build.network: host` unless the caller grants the
+# network.host entitlement, and `docker compose build` has no --allow flag.
+# Builds only need outbound internet, which the default bridge provides.
 x-build-network: &build-network
-  network: host
+  network: default
 
 x-networks: &networks
   networks:

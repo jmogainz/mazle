@@ -8,7 +8,9 @@ import {
   COLORS,
   TILE_SIZE,
   HINTS_ENABLED,
+  DEFAULT_HINT_MODE,
 } from './types';
+import type { HintMode } from './types';
 import { emitGameEvent, onGameEvent } from './events';
 import {
   simulateMove,
@@ -224,6 +226,7 @@ export class GameScene extends Phaser.Scene {
 
   private isPlaying = false;
   private hintsEnabled = HINTS_ENABLED;
+  private hintMode: HintMode = DEFAULT_HINT_MODE;
   private maxLives = DEFAULT_LIVES; // Configurable via dev tools
 
   private analysisObjects: Phaser.GameObjects.GameObject[] = [];
@@ -239,6 +242,7 @@ export class GameScene extends Phaser.Scene {
   private unlockedHintEdges: Set<string> = new Set();
   private unlockedThisLifeTiles: Set<string> = new Set();
   private unlockedThisLifeEdges: Set<string> = new Set();
+  private sequentialRevealIndex = 0;
 
   private cosmetics: { characterId: string; skinId: string } = { characterId: 'default', skinId: 'default' };
   private unsubscribeCosmeticsUpdate: (() => void) | null = null;
@@ -389,6 +393,7 @@ export class GameScene extends Phaser.Scene {
     this.unlockedHintEdges = new Set();
     this.unlockedThisLifeTiles = new Set();
     this.unlockedThisLifeEdges = new Set();
+    this.sequentialRevealIndex = 0;
     this.indexSolutionPath();
   }
 
@@ -974,7 +979,7 @@ export class GameScene extends Phaser.Scene {
     // Penalty animation is now handled by DOM (GameUI) for proper z-index control
 
     if (this.hintsEnabled) {
-      this.mergeHintsForNextLife();
+      this.applyHintsForLifeLost();
     }
 
     // Calculate deviation index
@@ -1901,6 +1906,10 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  public setHintMode(mode: HintMode) {
+    this.hintMode = mode;
+  }
+
   // Set maximum lives (for dev tools, 3-5)
   public setMaxLives(count: number) {
     const minimum = this.puzzle.variant === 'adventure' ? 1 : 3;
@@ -1944,6 +1953,7 @@ export class GameScene extends Phaser.Scene {
     this.unlockedHintEdges = new Set();
     this.unlockedThisLifeTiles = new Set();
     this.unlockedThisLifeEdges = new Set();
+    this.sequentialRevealIndex = 0;
     if (this.hintsEnabled) {
       this.redrawHintOverlays();
     }
@@ -2012,8 +2022,8 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // Visual hint unlocking (only if hints enabled)
-    if (this.hintsEnabled) {
+    // Visual hint unlocking (discovery mode only; sequential mode reveals on life loss)
+    if (this.hintsEnabled && this.hintMode === 'discovery') {
       // 2) Stopping on an optimal-path tile (landing positions only; not intermediate slide tiles)
       const toIndex = this.solutionIndexByKey.get(toKey);
       if (toIndex !== undefined && toKey !== startKey && toKey !== goalKey) {
@@ -2035,6 +2045,39 @@ export class GameScene extends Phaser.Scene {
     for (const key of this.unlockedThisLifeEdges) this.unlockedHintEdges.add(key);
     this.unlockedThisLifeTiles = new Set();
     this.unlockedThisLifeEdges = new Set();
+  }
+
+  private applyHintsForLifeLost() {
+    if (this.hintMode === 'sequential') {
+      this.revealNextSolutionStep();
+    } else {
+      this.mergeHintsForNextLife();
+    }
+  }
+
+  /**
+   * Sequential mode: reveal one more step of the solution path per life lost.
+   * Unlocks the segment's edge (drawn with its intermediate slide tiles) and
+   * its two stopping tiles, reusing the standard hint overlay rendering.
+   */
+  private revealNextSolutionStep() {
+    const path = this.puzzle.solutionPath;
+    if (!path || path.length < 2) return;
+
+    const startKey = positionKey(this.puzzle.start);
+    const goalKey = positionKey(this.puzzle.goal);
+    const maxSegments = path.length - 1;
+    if (this.sequentialRevealIndex >= maxSegments) return;
+
+    const from = path[this.sequentialRevealIndex];
+    const to = path[this.sequentialRevealIndex + 1];
+    const fromKey = positionKey(from);
+    const toKey = positionKey(to);
+
+    this.unlockedHintEdges.add(`${fromKey}->${toKey}`);
+    if (fromKey !== startKey && fromKey !== goalKey) this.unlockedHintTiles.add(fromKey);
+    if (toKey !== startKey && toKey !== goalKey) this.unlockedHintTiles.add(toKey);
+    this.sequentialRevealIndex++;
   }
 
   private createHintOverlays() {
@@ -2489,6 +2532,7 @@ export class GameScene extends Phaser.Scene {
     unlockedHintEdges?: string[];
     unlockedThisLifeTiles?: string[];
     unlockedThisLifeEdges?: string[];
+    sequentialRevealIndex?: number;
   } {
     // Calculate elapsed time (frozen at current moment)
     const frozenNow = this.gameState.isPaused && this.pauseStartedAtMs != null ? this.pauseStartedAtMs : Date.now();
@@ -2511,6 +2555,7 @@ export class GameScene extends Phaser.Scene {
       unlockedHintEdges: this.unlockedHintEdges.size > 0 ? Array.from(this.unlockedHintEdges) : undefined,
       unlockedThisLifeTiles: this.unlockedThisLifeTiles.size > 0 ? Array.from(this.unlockedThisLifeTiles) : undefined,
       unlockedThisLifeEdges: this.unlockedThisLifeEdges.size > 0 ? Array.from(this.unlockedThisLifeEdges) : undefined,
+      sequentialRevealIndex: this.sequentialRevealIndex > 0 ? this.sequentialRevealIndex : undefined,
     };
   }
 
@@ -2532,6 +2577,7 @@ export class GameScene extends Phaser.Scene {
     unlockedHintEdges?: string[];
     unlockedThisLifeTiles?: string[];
     unlockedThisLifeEdges?: string[];
+    sequentialRevealIndex?: number;
   }) {
     // Restore game state
     this.gameState.playerPos = { ...state.playerPos };
@@ -2558,6 +2604,7 @@ export class GameScene extends Phaser.Scene {
     this.unlockedHintEdges = new Set(state.unlockedHintEdges ?? []);
     this.unlockedThisLifeTiles = new Set(state.unlockedThisLifeTiles ?? []);
     this.unlockedThisLifeEdges = new Set(state.unlockedThisLifeEdges ?? []);
+    this.sequentialRevealIndex = state.sequentialRevealIndex ?? 0;
     // Redraw hint overlays if any hints were restored
     if (this.hintsEnabled && (state.unlockedHintTiles?.length || state.unlockedHintEdges?.length)) {
       this.redrawHintOverlays();

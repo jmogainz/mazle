@@ -3,7 +3,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import * as Phaser from 'phaser';
 import { GameScene } from './GameScene';
-import { PuzzleData, COLORS, Direction, TILE_SIZE } from './types';
+import { PuzzleData, COLORS, Direction, HintMode, TILE_SIZE } from './types';
 
 export interface GameControls {
   restart: () => void;
@@ -15,6 +15,7 @@ export interface GameControls {
   getSerializableState: () => ReturnType<GameScene['getSerializableState']> | null;
   restoreState: (state: Parameters<GameScene['restoreState']>[0]) => void;
   setHintsEnabled: (enabled: boolean) => void;
+  setHintMode: (mode: HintMode) => void;
   setMaxLives: (count: number) => void;
   getMaxLives: () => number;
   showSingleAttemptPath: (attemptIndex: number | null) => void;
@@ -83,6 +84,10 @@ export default function PhaserGame({ puzzle, viewportWidth, viewportHeight, onRe
     setHintsEnabled: (enabled: boolean) => {
       const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;
       scene?.setHintsEnabled(enabled);
+    },
+    setHintMode: (mode: HintMode) => {
+      const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;
+      scene?.setHintMode(mode);
     },
     setMaxLives: (count: number) => {
       const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;

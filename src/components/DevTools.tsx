@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import { GenerationProgress, GeneratorBackend, isRustBackendConfigured, getRustBackendUrl } from '@/game';
 import { PuzzleData } from '@/game';
+import type { HintMode } from '@/game/types';
 import { DEFAULT_LIVES } from '@/constants/game';
 import styles from '../app/page.module.css';
 
@@ -33,6 +34,8 @@ interface DevToolsProps {
   lastUsedBackend: 'rust-backend' | 'wasm' | null;
   hintsEnabled: boolean;
   onHintsToggle: (enabled: boolean) => void;
+  hintMode: HintMode;
+  onHintModeChange: (mode: HintMode) => void;
   maxLives: number;
   onMaxLivesChange: (count: number) => void;
   isGenerating: boolean;
@@ -60,6 +63,8 @@ export default function DevTools({
   lastUsedBackend,
   hintsEnabled,
   onHintsToggle,
+  hintMode,
+  onHintModeChange,
   maxLives,
   onMaxLivesChange,
   isGenerating,
@@ -152,6 +157,21 @@ export default function DevTools({
             Hints
           </label>
           <span className={styles.devToggleHint}>Show hint overlays after life loss</span>
+        </div>
+
+        <div className={styles.devToggleRow}>
+          <label className={styles.devToggleLabel}>
+            Mode:{' '}
+            <select
+              value={hintMode}
+              onChange={(e) => onHintModeChange(e.target.value as HintMode)}
+              disabled={!hintsEnabled}
+            >
+              <option value="sequential">Sequential (1 step / life)</option>
+              <option value="discovery">Discovery (current)</option>
+            </select>
+          </label>
+          <span className={styles.devToggleHint}>Sequential reveals one solution step per life lost</span>
         </div>
 
         <div className={styles.devToggleRow}>

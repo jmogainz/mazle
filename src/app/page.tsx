@@ -52,6 +52,7 @@ import {
   GeneratorBackend,
   preloadWasm,
   TILE_SIZE,
+  DEFAULT_HINT_MODE,
 } from '@/game';
 import {
   getPlayerStats,
@@ -74,7 +75,7 @@ import {
   setStorageScope,
 } from '@/utils/storage';
 import { useAdConsent } from '@/utils/consent';
-import type { PlayerStats, DailyStats, GameState, Direction, Position } from '@/game/types';
+import type { PlayerStats, DailyStats, GameState, Direction, Position, HintMode } from '@/game/types';
 import type { GameControls } from '@/game/PhaserGame';
 import { useGlobalSwipeMoves } from '@/game/useGlobalSwipeMoves';
 import { formatTime } from '@/utils/storage';
@@ -305,6 +306,7 @@ export default function Home() {
   const [showInlineResult, setShowInlineResult] = useState(false);
   const [isFreshCompletion, setIsFreshCompletion] = useState(false); // True when game completed this session (not loaded from storage)
   const [hintsEnabled, setHintsEnabled] = useState(true);
+  const [hintMode, setHintMode] = useState<HintMode>(DEFAULT_HINT_MODE);
   const [devMaxLives, setDevMaxLives] = useState(DEFAULT_LIVES);
   const [lifeFlash, setLifeFlash] = useState(false);
   const [nextPuzzleCountdown, setNextPuzzleCountdown] = useState(() => getTimeUntilMidnightET());
@@ -347,6 +349,7 @@ export default function Home() {
   const puzzleModeRef = useRef<'daily' | 'recent'>('daily');
   const recentDateRef = useRef<string | null>(null);
   const hintsEnabledRef = useRef(hintsEnabled);
+  const hintModeRef = useRef(hintMode);
   const devMaxLivesRef = useRef(devMaxLives);
   const isPlayingRef = useRef(isPlaying);
   const wakeLockRequestInFlightRef = useRef(false);
@@ -773,6 +776,10 @@ export default function Home() {
       hintsEnabledRef.current = enabled;
       setHintsEnabled(enabled);
     }
+    const storedMode = localStorage.getItem(STORAGE_KEYS.HINT_MODE);
+    if (storedMode === 'discovery' || storedMode === 'sequential') {
+      setHintMode(storedMode);
+    }
     hintsPrefLoadedRef.current = true;
   }, []);
 
@@ -782,6 +789,13 @@ export default function Home() {
     localStorage.setItem(STORAGE_KEYS.HINTS_ENABLED, hintsEnabled ? '1' : '0');
     gameControlsRef.current?.setHintsEnabled?.(hintsEnabled);
   }, [hintsEnabled]);
+
+  useEffect(() => {
+    if (!hintsPrefLoadedRef.current) return;
+    hintModeRef.current = hintMode;
+    localStorage.setItem(STORAGE_KEYS.HINT_MODE, hintMode);
+    gameControlsRef.current?.setHintMode?.(hintMode);
+  }, [hintMode]);
 
   const puzzleWidth = puzzle?.width ?? 15;
   const puzzleHeight = puzzle?.height ?? 15;
@@ -1838,6 +1852,7 @@ export default function Home() {
     gameControlsRef.current = controls;
     setIsGameReady(true);
     controls.setHintsEnabled(hintsEnabledRef.current);
+    controls.setHintMode(hintModeRef.current);
 
     const me = readCachedMe();
     emitGameEvent('cosmeticsUpdate', me?.mode === 'user' && me.profile ? me.profile : { characterId: 'default', skinId: 'default' });
@@ -2083,6 +2098,8 @@ export default function Home() {
               lastUsedBackend={lastUsedBackend}
               hintsEnabled={hintsEnabled}
               onHintsToggle={setHintsEnabled}
+              hintMode={hintMode}
+              onHintModeChange={setHintMode}
               maxLives={devMaxLives}
               onMaxLivesChange={handleMaxLivesChange}
               isGenerating={isGenerating}

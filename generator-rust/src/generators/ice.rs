@@ -12,6 +12,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::Mutex;
+#[cfg(not(target_arch = "wasm32"))]
+use std::cell::RefCell;
 #[cfg(target_arch = "wasm32")]
 use std::cell::{Cell, RefCell};
 #[cfg(not(target_arch = "wasm32"))]
@@ -403,6 +405,7 @@ where
 {
     range
         .into_par_iter()
+        .with_min_len(64)
         .filter_map(|i| f(i).map(|(puzzle, score)| (puzzle, score, i)))
         .max_by(|a, b| match a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal) {
             std::cmp::Ordering::Equal => a.2.cmp(&b.2),
@@ -1071,34 +1074,13 @@ fn is_solvable(
     find_path(tiles, start, goal, width, height).is_some()
 }
 
-fn build_reverse_graph_indices(
-    tiles: &Vec<Vec<TileType>>,
-    width: usize,
-    height: usize,
-) -> Vec<Vec<usize>> {
-    let mut reverse_graph: Vec<Vec<usize>> = vec![Vec::new(); width * height];
-
-    for y in 0..height {
-        for x in 0..width {
-            if tiles[y][x] == TileType::Wall {
-                continue;
-            }
-            let pos = Position {
-                x: x as i32,
-                y: y as i32,
-            };
-            let pos_idx = pos_index(&pos, width);
-            for dir in get_all_dirs() {
-                let result = simulate_move(tiles, &pos, dir, width, height);
-                if result.valid && !pos_eq(&result.pos, &pos) {
-                    let dest_idx = pos_index(&result.pos, width);
-                    reverse_graph[dest_idx].push(pos_idx);
-                }
-            }
-        }
-    }
-
-    reverse_graph
+// Reused scratch for the hot reachability checks: the reverse graph and BFS
+// queue are kept alive per thread so has_no_stuck_states stops allocating ~225
+// small Vecs on every call. Contents are rebuilt identically each call, so
+// results are unchanged.
+thread_local! {
+    static REVERSE_GRAPH_SCRATCH: RefCell<Vec<Vec<usize>>> = RefCell::new(Vec::new());
+    static REACH_QUEUE_SCRATCH: RefCell<Vec<usize>> = RefCell::new(Vec::new());
 }
 
 fn get_can_reach_goal_mask(
@@ -1107,26 +1089,65 @@ fn get_can_reach_goal_mask(
     width: usize,
     height: usize,
 ) -> Vec<bool> {
-    let reverse_graph = build_reverse_graph_indices(tiles, width, height);
+    let n = width * height;
+    let mut can_reach_goal = vec![false; n];
 
-    let mut can_reach_goal = vec![false; width * height];
-    let mut queue: Vec<usize> = Vec::with_capacity(width * height);
-    let goal_idx = pos_index(goal, width);
-    can_reach_goal[goal_idx] = true;
-    queue.push(goal_idx);
-    let mut head = 0;
+    REVERSE_GRAPH_SCRATCH.with(|cell| {
+        let reverse_graph = &mut *cell.borrow_mut();
 
-    while head < queue.len() {
-        let current_idx = queue[head];
-        head += 1;
+        // Rebuild in the reused scratch: same scan order as before, identical edges.
+        if reverse_graph.len() != n {
+            reverse_graph.clear();
+            reverse_graph.resize_with(n, Vec::new);
+        }
+        for v in reverse_graph.iter_mut() {
+            v.clear();
+        }
 
-        for &source_idx in &reverse_graph[current_idx] {
-            if !can_reach_goal[source_idx] {
-                can_reach_goal[source_idx] = true;
-                queue.push(source_idx);
+        for y in 0..height {
+            for x in 0..width {
+                if tiles[y][x] == TileType::Wall {
+                    continue;
+                }
+                let pos = Position {
+                    x: x as i32,
+                    y: y as i32,
+                };
+                let pos_idx = pos_index(&pos, width);
+                for dir in get_all_dirs() {
+                    let result = simulate_move(tiles, &pos, dir, width, height);
+                    if result.valid && !pos_eq(&result.pos, &pos) {
+                        let dest_idx = pos_index(&result.pos, width);
+                        reverse_graph[dest_idx].push(pos_idx);
+                    }
+                }
             }
         }
-    }
+
+        REACH_QUEUE_SCRATCH.with(|q_cell| {
+            let queue = &mut *q_cell.borrow_mut();
+            queue.clear();
+            if queue.capacity() < n {
+                queue.reserve(n);
+            }
+            let goal_idx = pos_index(goal, width);
+            can_reach_goal[goal_idx] = true;
+            queue.push(goal_idx);
+            let mut head = 0;
+
+            while head < queue.len() {
+                let current_idx = queue[head];
+                head += 1;
+
+                for &source_idx in &reverse_graph[current_idx] {
+                    if !can_reach_goal[source_idx] {
+                        can_reach_goal[source_idx] = true;
+                        queue.push(source_idx);
+                    }
+                }
+            }
+        });
+    });
 
     can_reach_goal
 }
@@ -3425,30 +3446,36 @@ fn compute_prefilter_thresholds(width: usize, height: usize, target_moves: i32) 
 
 fn create_base_maze(width: usize, height: usize, rng: &mut SeededRandom) -> Vec<Vec<TileType>> {
     let mut tiles = vec![vec![TileType::Wall; width]; height];
-    let mut visited = new_pos_set(width * height);
+    // Flat visited grid indexed by y * width + x: same semantics as the old
+    // HashSet<Position>, minus the hashing/probing overhead per cell.
+    let mut visited = vec![false; width * height];
 
     fn carve(
         tiles: &mut Vec<Vec<TileType>>,
-        visited: &mut HashSet<Position>,
+        visited: &mut [bool],
         x: i32,
         y: i32,
         width: usize,
         height: usize,
         rng: &mut SeededRandom,
     ) {
-        let pos = Position { x, y };
-        visited.insert(pos);
+        visited[(y as usize) * width + (x as usize)] = true;
         tiles[y as usize][x as usize] = TileType::Ice;
 
-        // Step-1 carving for single-wall borders and more open mazes
-        let dirs = [(0, -1), (0, 1), (-1, 0), (1, 0)];
-        let shuffled = rng.shuffle(&dirs);
+        // Step-1 carving for single-wall borders and more open mazes.
+        // In-place Fisher-Yates using the identical RNG call sequence as
+        // SeededRandom::shuffle (random_int(0, i + 1) for i in (1..4).rev()),
+        // so the carved mazes stay byte-for-byte identical to the old path.
+        let mut dirs = [(0, -1), (0, 1), (-1, 0), (1, 0)];
+        for i in (1..dirs.len()).rev() {
+            let j = rng.random_int(0, (i + 1) as i32) as usize;
+            dirs.swap(i, j);
+        }
 
-        for (dx, dy) in shuffled {
+        for (dx, dy) in dirs {
             let nx = x + dx;
             let ny = y + dy;
-            let npos = Position { x: nx, y: ny };
-            if is_inner(nx, ny, width, height) && !visited.contains(&npos) {
+            if is_inner(nx, ny, width, height) && !visited[(ny as usize) * width + (nx as usize)] {
                 carve(tiles, visited, nx, ny, width, height, rng);
             }
         }
@@ -4490,11 +4517,16 @@ fn apply_chaos_traps(
     _protected: &mut HashSet<Position>,
 ) -> Vec<String> {
     let mut applied_traps: Vec<String> = Vec::new();
-    
-    let trap_pool: Vec<TrapFunction> = ALL_TRAPS.to_vec();
 
-    // Shuffle trap order for variety
-    let shuffled_traps = rng.shuffle(&trap_pool);
+    // Original-order pool (used for the wild card pick) + a shuffled copy for the
+    // first pass. In-place Fisher-Yates with the identical RNG call sequence as
+    // SeededRandom::shuffle keeps trap order byte-for-byte identical.
+    let trap_pool_orig: [TrapFunction; 14] = ALL_TRAPS;
+    let mut trap_pool: [TrapFunction; 14] = ALL_TRAPS;
+    for i in (1..trap_pool.len()).rev() {
+        let j = rng.random_int(0, (i + 1) as i32) as usize;
+        trap_pool.swap(i, j);
+    }
     
     // Randomly determine how many traps to run (50-100% of all traps)
     let min_traps = (trap_pool.len() as f64 * 0.5).ceil() as usize;
@@ -4510,7 +4542,7 @@ fn apply_chaos_traps(
     };
     
     // First pass: Apply selected traps
-    for trap in shuffled_traps.into_iter().take(num_traps) {
+    for trap in trap_pool.into_iter().take(num_traps) {
         applied_traps.push(trap.short_name().to_string());
         match trap {
             TrapFunction::AlmostThere => {
@@ -4619,7 +4651,7 @@ fn apply_chaos_traps(
     if rng.random() < 0.5 {
         let wild_card_count = rng.random_int(1, 3);
         for _ in 0..wild_card_count {
-            let wild_trap = rng.random_choice(&trap_pool);
+            let wild_trap = rng.random_choice(&trap_pool_orig);
             applied_traps.push(format!("{}*", wild_trap.short_name())); // * marks wild card
             match wild_trap {
                 TrapFunction::AlmostThere => {
@@ -4822,7 +4854,7 @@ pub fn generate_puzzle_with_cancel(
             
             let mut attempt_rng = SeededRandom::new(&format!("{}-{}", seed, attempt));
             let mut tiles = create_base_maze(width, height, &mut attempt_rng);
-            let mut protected_cells = new_pos_set(width * height);
+            let mut protected_cells: HashSet<Position> = HashSet::default();
             
             #[cfg(not(target_arch = "wasm32"))]
             let t_base = t_start.elapsed();
@@ -5425,5 +5457,76 @@ pub fn generate_puzzle_with_cancel(
         }
 
         batch += 1;
+    }
+}
+
+// =============================================================================
+// TEMPORARY MICROBENCH (Goku, 2026-09-15) — remove after profiling
+// =============================================================================
+#[cfg(test)]
+mod carve_bench {
+    use super::*;
+
+    #[test]
+    #[ignore]
+    fn bench_all() {
+        // create_base_maze
+        let n = 100_000usize;
+        let mut total = 0usize;
+        let t0 = std::time::Instant::now();
+        for i in 0..n {
+            let mut rng = SeededRandom::new(&format!("bench-{}", i));
+            let tiles = create_base_maze(15, 15, &mut rng);
+            total += tiles.len();
+        }
+        let el = t0.elapsed();
+        println!("create_base_maze: {} calls in {:?} => {:.0} ns/call (tot {})", n, el, el.as_nanos() as f64 / n as f64, total);
+
+        // random()
+        let mut rng = SeededRandom::new("bench");
+        let n2 = 5_000_000u64;
+        let t0 = std::time::Instant::now();
+        let mut acc = 0.0f64;
+        for _ in 0..n2 { acc += rng.random(); }
+        let el = t0.elapsed();
+        println!("random(): {} calls in {:?} => {:.1} ns/call (acc {})", n2, el, el.as_nanos() as f64 / n2 as f64, acc);
+
+        // random_int(0, 4)
+        let mut rng = SeededRandom::new("bench");
+        let t0 = std::time::Instant::now();
+        let mut acc = 0i64;
+        for _ in 0..n2 { acc += rng.random_int(0, 4) as i64; }
+        let el = t0.elapsed();
+        println!("random_int(0,4): {} calls in {:?} => {:.1} ns/call (acc {})", n2, el, el.as_nanos() as f64 / n2 as f64, acc);
+
+        // SeededRandom::new
+        let n3 = 100_000usize;
+        let t0 = std::time::Instant::now();
+        for i in 0..n3 { std::hint::black_box(SeededRandom::new(&format!("bench-{}", i))); }
+        let el = t0.elapsed();
+        println!("SeededRandom::new: {} calls in {:?} => {:.0} ns/call", n3, el, el.as_nanos() as f64 / n3 as f64);
+
+        // is_solvable / has_no_stuck_states on a representative mid-construction maze
+        let mut rng = SeededRandom::new("solv-bench");
+        let mut tiles = create_base_maze(15, 15, &mut rng);
+        let mut rng2 = SeededRandom::new("solv-bench-2");
+        widen_passages(&mut tiles, 15, 15, &mut rng2, 0.2);
+        let start = Position { x: 1, y: 1 };
+        let goal = Position { x: 13, y: 13 };
+        let n4 = 200_000usize;
+        let t0 = std::time::Instant::now();
+        let mut acc = 0usize;
+        for _ in 0..n4 {
+            if is_solvable(&tiles, &start, &goal, 15, 15) { acc += 1; }
+        }
+        let el = t0.elapsed();
+        println!("is_solvable: {} calls in {:?} => {:.0} ns/call (acc {})", n4, el, el.as_nanos() as f64 / n4 as f64, acc);
+
+        let t0 = std::time::Instant::now();
+        for _ in 0..(n4 / 10) {
+            if has_no_stuck_states(&tiles, &start, &goal, 15, 15) { acc += 1; }
+        }
+        let el = t0.elapsed();
+        println!("has_no_stuck: {} calls in {:?} => {:.0} ns/call (acc {})", n4 / 10, el, el.as_nanos() as f64 / (n4 / 10) as f64, acc);
     }
 }

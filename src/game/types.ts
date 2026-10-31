@@ -1,6 +1,18 @@
 // Feature flags
 export const HINTS_ENABLED = true;
 
+/**
+ * Hint reveal modes.
+ * - 'discovery': legacy behavior — solution tiles/edges the player correctly
+ *   visits stay revealed across lives.
+ * - 'sequential': on each life lost, reveal the next step of the solution
+ *   path (one more segment each time).
+ */
+export type HintMode = 'discovery' | 'sequential';
+
+/** Default hint mode: reveal one more solution step per life lost. */
+export const DEFAULT_HINT_MODE: HintMode = 'sequential';
+
 // Tile types for the puzzle
 export enum TileType {
   GROUND = 0,  // Renamed from FLOOR - normal walkable tile
